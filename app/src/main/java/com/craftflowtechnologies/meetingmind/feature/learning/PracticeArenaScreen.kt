@@ -11,11 +11,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -126,6 +133,7 @@ fun PracticeArenaScreen(
     val activeFilter by viewModel.practiceFilter.collectAsState()
     val isLoadingPractice by viewModel.isLoadingPractice.collectAsState()
     val practiceStats by viewModel.practiceStats.collectAsState()
+    val missedActivityIds by viewModel.missedActivityIds.collectAsState()
     val hintLadder by viewModel.hintLadder.collectAsState()
     val revealedHintCount by viewModel.revealedHintCount.collectAsState()
     val isLoadingHints by viewModel.isLoadingHints.collectAsState()
@@ -166,6 +174,7 @@ fun PracticeArenaScreen(
             )
         },
         onNext = { viewModel.nextCard() },
+        onPrevious = { viewModel.previousCard() },
         onFinish = {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             isCompleted = true
@@ -183,6 +192,7 @@ fun PracticeArenaScreen(
         activeFilter = activeFilter,
         isLoadingPractice = isLoadingPractice,
         practiceStats = practiceStats,
+        missedCount = missedActivityIds.size,
         onSelectFilter = { filter ->
             isCompleted = false
             viewModel.loadPracticeByFilter(filter = filter)
@@ -190,6 +200,10 @@ fun PracticeArenaScreen(
         onRestartDeck = {
             isCompleted = false
             viewModel.restartPracticeDeck()
+        },
+        onPracticeMissed = {
+            isCompleted = false
+            viewModel.restartPracticeDeck(weakOnly = true)
         },
         onGenerateQuickTopicDeck = { topic, domain ->
             isCompleted = false
@@ -221,6 +235,7 @@ fun PracticeArenaContent(
     onFlip: () -> Unit,
     onRate: (RecallRating) -> Unit,
     onNext: () -> Unit,
+    onPrevious: () -> Unit = {},
     onFinish: () -> Unit = {},
     onToggleVoice: () -> Unit,
     onSubmitTeachBackText: (LearningActivity, String) -> Unit,
@@ -229,8 +244,10 @@ fun PracticeArenaContent(
     activeFilter: PracticeArenaFilter = PracticeArenaFilter.ALL,
     isLoadingPractice: Boolean = false,
     practiceStats: PracticeSessionStats = PracticeSessionStats(),
+    missedCount: Int = 0,
     onSelectFilter: (PracticeArenaFilter) -> Unit = {},
     onRestartDeck: () -> Unit = {},
+    onPracticeMissed: () -> Unit = {},
     onGenerateQuickTopicDeck: (topic: String, domain: SubjectDomain) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -307,10 +324,15 @@ fun PracticeArenaContent(
         ) {
             PracticeArenaFilter.entries.forEach { filter ->
                 val isSelected = activeFilter == filter
+                val pillBg by animateColorAsState(
+                    targetValue = if (isSelected) c.accent else c.surfaceSunk,
+                    animationSpec = MM.motion.quick(),
+                    label = "practice_filter_bg_${filter.name}"
+                )
                 Box(
                     modifier = Modifier
                         .clip(MM.radius.pill)
-                        .background(if (isSelected) c.accent else c.surfaceSunk)
+                        .background(pillBg)
                         .clickable { onSelectFilter(filter) }
                         .padding(horizontal = MM.space.m, vertical = MM.space.xs)
                         .testTag("practice_filter_${filter.name.lowercase()}")
@@ -326,8 +348,13 @@ fun PracticeArenaContent(
 
         if (activities.isNotEmpty() && !isCompleted && currentIndex < activities.size) {
             val progress = ((currentIndex + 1).toFloat() / activities.size.coerceAtLeast(1)).coerceIn(0f, 1f)
+            val animatedProgress by animateFloatAsState(
+                targetValue = progress,
+                animationSpec = MM.motion.standard(),
+                label = "practice_progress_bar"
+            )
             LinearProgressIndicator(
-                progress = { progress },
+                progress = { animatedProgress },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = MM.space.l, vertical = MM.space.xs / 2)
@@ -366,7 +393,9 @@ fun PracticeArenaContent(
                 companionForm = companionForm,
                 stats = practiceStats,
                 totalCards = activities.size,
+                missedCount = missedCount,
                 onPracticeAgain = onRestartDeck,
+                onPracticeMissed = onPracticeMissed,
                 onBack = onBack
             )
         } else {
@@ -379,6 +408,12 @@ fun PracticeArenaContent(
             ) {
                 AnimatedContent(
                     targetState = currentIndex,
+                    transitionSpec = {
+                        val forward = targetState >= initialState
+                        val dir = if (forward) 1 else -1
+                        (slideInHorizontally(tween(240)) { it / 5 * dir } + fadeIn(tween(220))) togetherWith
+                            (slideOutHorizontally(tween(180)) { -it / 5 * dir } + fadeOut(tween(160)))
+                    },
                     label = "practice_card"
                 ) { targetIndex ->
                     val activityForIndex = activities.getOrNull(targetIndex) ?: return@AnimatedContent
@@ -452,15 +487,25 @@ fun PracticeArenaContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .padding(MM.space.l),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SecondaryButton(
-                    text = "Back to Study",
-                    onClick = onBack,
-                    modifier = Modifier.testTag("practice_exit_button")
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                    SecondaryButton(
+                        text = "Back to Study",
+                        onClick = onBack,
+                        modifier = Modifier.testTag("practice_exit_button")
+                    )
+                    if (currentIndex > 0) {
+                        SecondaryButton(
+                            text = "← Prev",
+                            onClick = onPrevious,
+                            modifier = Modifier.testTag("practice_prev_button")
+                        )
+                    }
+                }
                 if (currentIndex + 1 < activities.size) {
                     PrimaryButton(
                         text = "Next Card",
@@ -539,7 +584,7 @@ private fun RecallFlashcard(
                 }
 
                 Text(
-                    text = activity.prompt,
+                    text = activity.prompt.replace("**", ""),
                     style = MM.type.heading.copy(fontWeight = FontWeight.Medium),
                     color = c.ink,
                     textAlign = TextAlign.Center,
@@ -595,7 +640,7 @@ private fun RecallFlashcard(
                 }
 
                 Text(
-                    text = activity.prompt,
+                    text = activity.prompt.replace("**", ""),
                     style = MM.type.secondary,
                     color = c.inkSecondary,
                     textAlign = TextAlign.Center,
@@ -604,6 +649,29 @@ private fun RecallFlashcard(
                 )
 
                 HorizontalDivider(color = c.line)
+
+                if (studentAnswer.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MM.radius.small)
+                            .background(c.surfaceSunk)
+                            .padding(MM.space.s)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Your Attempt",
+                                style = MM.type.overline,
+                                color = c.inkSecondary
+                            )
+                            Text(
+                                text = studentAnswer,
+                                style = MM.type.caption,
+                                color = c.ink
+                            )
+                        }
+                    }
+                }
 
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -634,6 +702,7 @@ private fun RecallFlashcard(
                         label = "Again",
                         intervalHint = "<10m",
                         color = LearningFixedColors.MasteryNeedsReview,
+                        isSelected = lastRating == RecallRating.AGAIN,
                         onClick = {
                             val now = System.currentTimeMillis()
                             if (now - lastRatingTapMs >= 500L) {
@@ -651,6 +720,7 @@ private fun RecallFlashcard(
                         label = "Hard",
                         intervalHint = "1d",
                         color = LearningFixedColors.MasteryDeveloping,
+                        isSelected = lastRating == RecallRating.HARD,
                         onClick = {
                             val now = System.currentTimeMillis()
                             if (now - lastRatingTapMs >= 500L) {
@@ -668,6 +738,7 @@ private fun RecallFlashcard(
                         label = "Good",
                         intervalHint = "3d",
                         color = c.accent,
+                        isSelected = lastRating == RecallRating.GOOD,
                         onClick = {
                             val now = System.currentTimeMillis()
                             if (now - lastRatingTapMs >= 500L) {
@@ -683,6 +754,7 @@ private fun RecallFlashcard(
                         label = "Easy",
                         intervalHint = "7d",
                         color = LearningFixedColors.MasteryStrong,
+                        isSelected = lastRating == RecallRating.EASY,
                         onClick = {
                             val now = System.currentTimeMillis()
                             if (now - lastRatingTapMs >= 500L) {
@@ -693,6 +765,21 @@ private fun RecallFlashcard(
                             }
                         },
                         modifier = Modifier.weight(1f).testTag("rate_easy")
+                    )
+                }
+
+                AnimatedVisibility(visible = lastRating != null) {
+                    val scheduleText = when (lastRating) {
+                        RecallRating.AGAIN -> "Scheduled for immediate re-review (<10m)"
+                        RecallRating.HARD -> "Scheduled for review in 1 day"
+                        RecallRating.GOOD -> "Scheduled for review in 3 days"
+                        RecallRating.EASY -> "Mastered · Scheduled for review in 7 days"
+                        null -> ""
+                    }
+                    Text(
+                        text = "✓ $scheduleText",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = c.accent
                     )
                 }
 
@@ -717,13 +804,23 @@ private fun RecallButton(
     label: String,
     intervalHint: String,
     color: androidx.compose.ui.graphics.Color,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val bgAlpha by animateFloatAsState(
+        targetValue = if (isSelected) 0.28f else 0.14f,
+        animationSpec = MM.motion.quick(),
+        label = "recall_btn_alpha_$label"
+    )
     Box(
         modifier = modifier
             .clip(MM.radius.small)
-            .background(color.copy(alpha = 0.15f))
+            .background(color.copy(alpha = bgAlpha))
+            .then(
+                if (isSelected) Modifier.border(1.5.dp, color, MM.radius.small)
+                else Modifier
+            )
             .clickable(onClick = onClick)
             .heightIn(min = MMSize.minTouch)
             .padding(vertical = MM.space.xs, horizontal = MM.space.xs),
@@ -888,7 +985,7 @@ private fun TeachBackStudioCard(
             }
 
             Text(
-                text = activity.prompt,
+                text = activity.prompt.replace("**", ""),
                 style = MM.type.heading.copy(fontWeight = FontWeight.SemiBold),
                 color = c.ink,
                 textAlign = TextAlign.Center,
@@ -1178,18 +1275,26 @@ private fun InteractiveProblemCard(
                     val isCorrectOption = option.trim().equals(activity.expectedAnswer.trim(), ignoreCase = true) ||
                         activity.expectedAnswer.contains(option.trim(), ignoreCase = true)
 
-                    val borderColor = when {
-                        !isChecked && isSelected -> c.accent
-                        isChecked && isCorrectOption -> LearningFixedColors.MasteryStrong
-                        isChecked && isSelected && !isCorrectOption -> LearningFixedColors.MasteryNeedsReview
-                        else -> c.line
-                    }
-                    val bgColor = when {
-                        !isChecked && isSelected -> c.accentWash
-                        isChecked && isCorrectOption -> LearningFixedColors.MasteryStrong.copy(alpha = 0.14f)
-                        isChecked && isSelected && !isCorrectOption -> LearningFixedColors.MasteryNeedsReview.copy(alpha = 0.14f)
-                        else -> c.surfaceSunk
-                    }
+                    val borderColor by animateColorAsState(
+                        targetValue = when {
+                            !isChecked && isSelected -> c.accent
+                            isChecked && isCorrectOption -> LearningFixedColors.MasteryStrong
+                            isChecked && isSelected && !isCorrectOption -> LearningFixedColors.MasteryNeedsReview
+                            else -> c.line
+                        },
+                        animationSpec = MM.motion.quick(),
+                        label = "quiz_opt_border_$idx"
+                    )
+                    val bgColor by animateColorAsState(
+                        targetValue = when {
+                            !isChecked && isSelected -> c.accentWash
+                            isChecked && isCorrectOption -> LearningFixedColors.MasteryStrong.copy(alpha = 0.14f)
+                            isChecked && isSelected && !isCorrectOption -> LearningFixedColors.MasteryNeedsReview.copy(alpha = 0.14f)
+                            else -> c.surfaceSunk
+                        },
+                        animationSpec = MM.motion.quick(),
+                        label = "quiz_opt_bg_$idx"
+                    )
 
                     Row(
                         modifier = Modifier
@@ -1235,7 +1340,11 @@ private fun InteractiveProblemCard(
                 }
             }
 
-            if (isChecked) {
+            AnimatedVisibility(
+                visible = isChecked,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
                 val gotItRight = selectedOption?.let { opt ->
                     opt.trim().equals(activity.expectedAnswer.trim(), ignoreCase = true) ||
                         activity.expectedAnswer.contains(opt.trim(), ignoreCase = true)
@@ -1252,11 +1361,28 @@ private fun InteractiveProblemCard(
                         .padding(MM.space.m)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                        Text(
-                            text = if (gotItRight) "Correct! Strong Reasoning" else "Not quite — Review Model Solution",
-                            style = MM.type.bodyStrong,
-                            color = if (gotItRight) LearningFixedColors.MasteryStrong else LearningFixedColors.MasteryNeedsReview
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (gotItRight) "Correct! Strong Reasoning" else "Not quite — Review Model Solution",
+                                style = MM.type.bodyStrong,
+                                color = if (gotItRight) LearningFixedColors.MasteryStrong else LearningFixedColors.MasteryNeedsReview
+                            )
+                            if (!gotItRight) {
+                                Text(
+                                    text = "Try Again",
+                                    style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                    color = c.accent,
+                                    modifier = Modifier.clickable {
+                                        selectedOption = null
+                                        isChecked = false
+                                    }
+                                )
+                            }
+                        }
                         Text(
                             text = activity.expectedAnswer,
                             style = MM.type.body,
@@ -1408,7 +1534,9 @@ private fun AllDoneScreen(
     companionForm: CompanionForm,
     stats: PracticeSessionStats = PracticeSessionStats(),
     totalCards: Int = 0,
+    missedCount: Int = 0,
     onPracticeAgain: () -> Unit = {},
+    onPracticeMissed: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val c = MM.colors
@@ -1476,6 +1604,14 @@ private fun AllDoneScreen(
         }
 
         Spacer(Modifier.height(MM.space.l))
+        if (missedCount > 0) {
+            PrimaryButton(
+                text = "Drill Missed Cards ($missedCount)",
+                onClick = onPracticeMissed,
+                modifier = Modifier.fillMaxWidth().testTag("practice_drill_missed")
+            )
+            Spacer(Modifier.height(MM.space.s))
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(MM.space.s)

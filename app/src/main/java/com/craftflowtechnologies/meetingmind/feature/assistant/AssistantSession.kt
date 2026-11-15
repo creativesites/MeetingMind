@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -87,11 +88,13 @@ class AssistantSession(
             return AssistantScope(libraryLabel, faithLibrary, libraryLabel, today = today, learning = isLearningLibrary)
         }
         val db = MeetMindDatabase.getInstance(app)
-        val note = db.noteDao().getById(noteId)
+        val directSession = db.learningSessionDao().getById(noteId)
+        val resolvedNoteId = directSession?.noteId ?: noteId
+        val note = db.noteDao().getById(resolvedNoteId)
         val workflow = note?.workflow?.let { runCatching { RecordingType.valueOf(it) }.getOrNull() } ?: RecordingType.GENERAL
-        val meeting = db.noteDao().getMeetingsForNote(noteId).firstOrNull()
+        val meeting = db.noteDao().getMeetingsForNote(resolvedNoteId).firstOrNull()
         val meetingType = meeting?.recordingType?.let { runCatching { RecordingType.valueOf(it) }.getOrNull() }
-        val learningSession = db.learningSessionDao().getByNoteId(noteId)
+        val learningSession = directSession ?: db.learningSessionDao().getByNoteId(resolvedNoteId)
         val notebook = note?.notebookId?.let { nbId -> db.notebookDao().getById(nbId) }
         val isLearning = isLearningLibrary ||
             workflow in setOf(RecordingType.LECTURE, RecordingType.RESEARCH) ||
@@ -105,7 +108,7 @@ class AssistantSession(
             title = note?.title?.ifBlank { learningSession?.title ?: "Untitled lecture" } ?: learningSession?.title ?: "This lecture",
             faith = AskSermon.isFaith(workflow) || AskSermon.isFaith(meetingType),
             kindLabel = if (isLearning) (learningSession?.courseName ?: domainDisplay ?: "Lecture") else workflow.displayName,
-            noteId = noteId,
+            noteId = resolvedNoteId,
             meetingId = meeting?.id ?: learningSession?.meetingId,
             sermon = meetingType in setOf(RecordingType.SERMON, RecordingType.BIBLE_STUDY, RecordingType.DEVOTIONAL, RecordingType.TESTIMONY),
             today = today,
@@ -181,26 +184,43 @@ class AssistantSession(
                 // One transport instance for both the configured-check and the engine, so they can
                 // never disagree about whether Gemini or the DeepSeek backup is reachable.
                 val transport = CloudAi.transport(app)
-                if (!transport.refreshConfigured()) {
-                    val reply = AssistantMessage(false, "The assistant needs Internet mode (a Gemini key) or the backup AI. You can set either up in Settings.", error = true, retryable = false)
-                    replaceAt(placeholderIndex, reply)
+                val prefs = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(app).preferencesFlow.first()
+                val effectiveProfile = if (noteId != null) {
+                    com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forNote(app, noteId, prefs.processingProfile)
                 } else {
-                    val engine = AssistantEngine(transport, host())
-                    var lastUiEmitMs = 0L
-                    var lastToolCount = -1
-                    var lastTextLen = 0
-                    engine.replyStream(history.filterNot { it.error }, prompt).collect { snap ->
-                        _working.value = if (snap.done) null else snap.statusLabel
-                        val now = System.currentTimeMillis()
-                        val toolsChanged = snap.message.toolSteps != _messages.value.getOrNull(placeholderIndex)?.toolSteps ||
-                            snap.message.actions.size != _messages.value.getOrNull(placeholderIndex)?.actions?.size
-                        val textChanged = snap.message.text.length != lastTextLen
-                        if (snap.done || toolsChanged || (textChanged && now - lastUiEmitMs >= 45L) || now - lastUiEmitMs >= 100L) {
-                            lastUiEmitMs = now
-                            lastToolCount = snap.message.toolSteps.size
-                            lastTextLen = snap.message.text.length
-                            replaceAt(placeholderIndex, snap.message)
-                        }
+                    prefs.processingProfile
+                }
+                val forceLocal = effectiveProfile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.OFFLINE
+                val localProvider: suspend () -> com.craftflowtechnologies.meetingmind.ai.routing.ResolvedLanguageModel? = {
+                    com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory(
+                        context = app,
+                        modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(app),
+                        geminiTransport = transport
+                    ).resolveLocal(
+                        com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SUMMARIZATION,
+                        com.craftflowtechnologies.meetingmind.core.model.ModelTier.RECOMMENDED
+                    )
+                }
+                val engine = AssistantEngine(
+                    transport = transport,
+                    host = host(),
+                    localModelProvider = localProvider,
+                    forceLocal = forceLocal
+                )
+                var lastUiEmitMs = 0L
+                var lastToolCount = -1
+                var lastTextLen = 0
+                engine.replyStream(history.filterNot { it.error }, prompt).collect { snap ->
+                    _working.value = if (snap.done) null else snap.statusLabel
+                    val now = System.currentTimeMillis()
+                    val toolsChanged = snap.message.toolSteps != _messages.value.getOrNull(placeholderIndex)?.toolSteps ||
+                        snap.message.actions.size != _messages.value.getOrNull(placeholderIndex)?.actions?.size
+                    val textChanged = snap.message.text.length != lastTextLen
+                    if (snap.done || toolsChanged || (textChanged && now - lastUiEmitMs >= 45L) || now - lastUiEmitMs >= 100L) {
+                        lastUiEmitMs = now
+                        lastToolCount = snap.message.toolSteps.size
+                        lastTextLen = snap.message.text.length
+                        replaceAt(placeholderIndex, snap.message)
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {

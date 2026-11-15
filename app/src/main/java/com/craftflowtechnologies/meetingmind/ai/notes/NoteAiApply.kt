@@ -13,12 +13,31 @@ import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 object NoteAiApply {
     const val SUMMARY_KEY = "ai_summary"
     const val ACTIONS_KEY = "ai_actions"
+    const val GAPS_KEY = "ai_gaps"
+    const val RECAP_KEY = "ai_recap"
 
     /** A "Summary" section at the top, replacing an earlier AI summary but nothing else. */
-    fun withSummary(blocks: List<NoteBlock>, noteId: String, points: List<CitedItem>): List<NoteBlock> {
-        val rest = blocks.filterNot { it.sectionKey == SUMMARY_KEY }
-        val section = listOf(heading(noteId, "Summary", SUMMARY_KEY)) + points.map { p ->
-            NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.BULLET, RichText.plain(p.text), source = BlockSource.AI, sectionKey = SUMMARY_KEY)
+    fun withSummary(blocks: List<NoteBlock>, noteId: String, points: List<CitedItem>): List<NoteBlock> =
+        withBulletSection(blocks, noteId, "Summary", SUMMARY_KEY, points)
+
+    /** Open questions & unresolved gaps at the top, replacing an earlier AI gaps section. */
+    fun withGaps(blocks: List<NoteBlock>, noteId: String, points: List<CitedItem>): List<NoteBlock> =
+        withBulletSection(blocks, noteId, "Open questions & gaps", GAPS_KEY, points)
+
+    /** Share-ready recap & follow-up points at the top, replacing an earlier AI recap section. */
+    fun withRecap(blocks: List<NoteBlock>, noteId: String, points: List<CitedItem>): List<NoteBlock> =
+        withBulletSection(blocks, noteId, "Recap & follow-up", RECAP_KEY, points)
+
+    private fun withBulletSection(
+        blocks: List<NoteBlock>,
+        noteId: String,
+        title: String,
+        sectionKey: String,
+        points: List<CitedItem>
+    ): List<NoteBlock> {
+        val rest = blocks.filterNot { it.sectionKey == sectionKey }
+        val section = listOf(heading(noteId, title, sectionKey)) + points.map { p ->
+            NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.BULLET, RichText.plain(itemText(p)), source = BlockSource.AI, sectionKey = sectionKey)
         }
         return section + rest
     }

@@ -655,6 +655,30 @@ async function setWorkStatus(ctx) {
   return {};
 }
 
+async function toggleChecklistItem(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  await load(ctx, circleId);
+  const postId = cleanText(ctx.body.postId, "postId", { max: 80 });
+  const itemId = cleanText(ctx.body.itemId, "itemId", { max: 40 });
+  const post = await livePost(ctx, circleId, postId);
+  const checklist = Array.isArray(post.meta?.checklist) ? post.meta.checklist : [];
+  const targetIndex = checklist.findIndex((item) => item.id === itemId);
+  if (targetIndex === -1) throw notFound("That checklist item");
+  const currentItem = checklist[targetIndex];
+  const nextDone = typeof ctx.body.done === "boolean" ? ctx.body.done : !currentItem.done;
+  const updatedChecklist = checklist.map((item, idx) =>
+    idx === targetIndex ? { ...item, done: nextDone } : item
+  );
+  const updatedMeta = { ...(post.meta || {}), checklist: updatedChecklist };
+  const postPath = `${C(circleId)}/posts/${postId}`;
+  if (typeof ctx.db.update === "function") {
+    await ctx.db.update(postPath, { meta: updatedMeta });
+  } else {
+    await ctx.db.commit([w.update(postPath, { meta: updatedMeta })]);
+  }
+  return { ok: true, checklist: updatedChecklist };
+}
+
 async function deletePost(ctx) {
   const circleId = str(ctx.body, "circleId"); const postId = str(ctx.body, "postId");
   const { member } = await load(ctx, circleId);
@@ -805,7 +829,13 @@ function systemMessage(ctx, member, fields) {
 async function createPoll(ctx) {
   const circleId = str(ctx.body, "circleId");
   const { circle, member } = await load(ctx, circleId);
-  const shaped = shapePoll({ ...ctx.body, closesAt: ctx.body.closesAt ?? null });
+  const shaped = shapePoll({
+    ...ctx.body,
+    closesAt: ctx.body.closesAt ?? null,
+    correctOptionId: ctx.body.correctOptionId ?? null,
+    correctIndex: ctx.body.correctIndex ?? null,
+    explanation: ctx.body.explanation ?? null,
+  });
   await hit(ctx.kv, `rl:createPoll:${ctx.uid}`, RATE.createPoll);
   const pollId = newId(); const messageId = newId();
   await ctx.db.commit([
@@ -926,7 +956,7 @@ async function notifyChat(ctx) {
 
 export const HANDLERS = {
   createCircle, updateCircle, createInvite, createEmailInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
-  createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, setWorkStatus, deletePost,
+  createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, setWorkStatus, toggleChecklistItem, deletePost,
   prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken, notifyChat,
   createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
   decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp,

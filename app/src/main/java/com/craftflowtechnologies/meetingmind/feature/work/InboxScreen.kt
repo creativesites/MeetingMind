@@ -43,7 +43,6 @@ import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.AudioFile
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -575,7 +574,7 @@ private fun InboxTriageSummaryStrip(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Icon(Icons.Filled.AutoAwesome, null, tint = Accent, modifier = Modifier.size(16.dp))
+        Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(16.dp))
         Text(
             parts.joinToString(" · "),
             fontFamily = InterFamily,
@@ -832,7 +831,7 @@ private fun InboxCard(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Filled.AutoAwesome, null, tint = Accent, modifier = Modifier.size(13.dp))
+                            Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(13.dp))
                             Spacer(Modifier.width(5.dp))
                             Text(
                                 "AI SUMMARY",
@@ -1439,7 +1438,7 @@ private fun InboxDetailSheet(
             if (!summaryText.isNullOrBlank()) {
                 HorizontalDivider(Modifier.padding(vertical = 14.dp), color = LineSoft)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.AutoAwesome, null, tint = Accent, modifier = Modifier.size(14.dp))
+                    Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(
                         "AI SUMMARY",

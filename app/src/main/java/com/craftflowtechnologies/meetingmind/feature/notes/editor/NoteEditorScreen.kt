@@ -162,7 +162,8 @@ fun NoteEditorScreen(
     onShareCard: (com.craftflowtechnologies.meetingmind.feature.share.ShareRequest) -> Unit = {},
     onOpenTasks: () -> Unit = {},
     onCreateCircle: () -> Unit = {},
-    onOpenStudyStudio: (noteId: String) -> Unit = {}
+    onOpenStudyStudio: (noteId: String) -> Unit = {},
+    onOpenPaywall: (com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -246,6 +247,8 @@ fun NoteEditorScreen(
     val pendingDiffs by viewModel.pendingDiffs.collectAsState()
     val pendingDiffByBlock = remember(pendingDiffs) { pendingDiffs.associateBy { it.blockId } }
     var showAiMenu by remember { mutableStateOf(false) }
+    var showDeepSynthesis by remember { mutableStateOf(false) }
+    var showAutopilot by remember { mutableStateOf(false) }
     var showReadToMe by remember { mutableStateOf(false) }
     var showAsk by remember { mutableStateOf(false) }
     var aiSheetOpen by remember { mutableStateOf(false) }
@@ -704,7 +707,7 @@ fun NoteEditorScreen(
                                         "Study Studio",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = androidx.compose.ui.graphics.Color.White,
+                                        color = com.craftflowtechnologies.meetingmind.ui.theme.MM.colors.onAccent,
                                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
                                     )
                                 }
@@ -1059,8 +1062,42 @@ fun NoteEditorScreen(
             scope.launch { related = viewModel.relatedNotes() }
         },
         onPolishNote = { showAiMenu = false; viewModel.polishWholeNote() },
+        onDeepSynthesis = { showAiMenu = false; showDeepSynthesis = true },
+        onAutopilot = { showAiMenu = false; showAutopilot = true },
         onDismiss = { showAiMenu = false }
     )
+    if (showAutopilot) {
+        com.craftflowtechnologies.meetingmind.feature.automation.AutopilotSheet(
+            target = com.craftflowtechnologies.meetingmind.feature.automation.AutopilotTarget.Note(viewModel.noteId),
+            onDismiss = { showAutopilot = false },
+            onOpenPaywall = { trigger ->
+                showAutopilot = false
+                onOpenPaywall(trigger)
+            },
+            onOpenNote = { nId ->
+                showAutopilot = false
+                if (nId != viewModel.noteId) onOpenNote(nId)
+            }
+        )
+    }
+    if (showDeepSynthesis) {
+        com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisSheet(
+            target = com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisTarget.Note(viewModel.noteId),
+            onDismiss = { showDeepSynthesis = false },
+            onOpenPaywall = { trigger ->
+                showDeepSynthesis = false
+                onOpenPaywall(trigger)
+            },
+            onOpenNote = { nId ->
+                showDeepSynthesis = false
+                if (nId != viewModel.noteId) onOpenNote(nId)
+            },
+            onOpenMeeting = { mId, startMs ->
+                showDeepSynthesis = false
+                onOpenRecording(mId, startMs)
+            }
+        )
+    }
     if (showAsk) com.craftflowtechnologies.meetingmind.feature.notes.ai.AskDialog(
         forNotebook = false,
         onAsk = { q -> showAsk = false; viewModel.runAi(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.ASK, q); aiSheetOpen = true },
@@ -1078,10 +1115,15 @@ fun NoteEditorScreen(
             LaunchedEffect(Unit) { kotlinx.coroutines.delay(4000); if (viewModel.aiJobs.value.isEmpty()) aiSheetOpen = false }
         } else com.craftflowtechnologies.meetingmind.feature.notes.ai.NoteAiResultSheet(
             job = job,
-            primaryLabel = if (job.tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.EXTRACT_ACTIONS) "Add to note" else "Add summary to note",
+            primaryLabel = when (job.tool) {
+                com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.EXTRACT_ACTIONS -> "Add to note"
+                com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.UNRESOLVED_GAPS -> "Add gaps to note"
+                com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.FOLLOW_UP_BRIEF -> "Add recap to note"
+                else -> "Add summary to note"
+            },
             onPrimary = { items ->
                 aiSheetOpen = false
-                if (job.tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.EXTRACT_ACTIONS) viewModel.applyActions(job.id, items) else viewModel.applySummary(job.id, items)
+                viewModel.applyPointsTool(job.id, job.tool, items)
             },
             onApplyOrganized = { result -> aiSheetOpen = false; viewModel.applyOrganized(job.id, result) },
             onShowSource = { p ->

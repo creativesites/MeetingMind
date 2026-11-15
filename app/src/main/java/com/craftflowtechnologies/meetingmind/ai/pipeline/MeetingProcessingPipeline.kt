@@ -36,6 +36,7 @@ import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelStorage
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.SherpaEngineManager
 import com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs
 import com.craftflowtechnologies.meetingmind.core.model.ModelCapability
+import com.craftflowtechnologies.meetingmind.core.model.ModelTier
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiIntelligenceEngine
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTranscriptionEngine
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore
@@ -922,6 +923,7 @@ class MeetingProcessingPipeline(
                 }
             }
             runCatching { com.craftflowtechnologies.meetingmind.feature.moments.onNoteProcessed(context, meetingId) }
+            runCatching { com.craftflowtechnologies.meetingmind.ai.automation.AutopilotWorkspace.maybeAutoRunForReadyMeeting(context, meetingId) }
 
             updateJob(
                 step = "Completed",
@@ -1306,7 +1308,7 @@ class MeetingProcessingPipeline(
 
         suspend fun runPolishPass(targetSegments: List<TranscriptSegment>): List<com.craftflowtechnologies.meetingmind.core.model.NoteBlock> {
             if (notePolishMode != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP) return emptyList()
-            val model = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS) ?: return emptyList()
+            val model = languageModelFactory.resolveWithFallback(processingProfile, ModelCapability.SYNTHESIS) ?: return emptyList()
             progress(if (model.isCloud) "Polishing note formatting with Google's AI..." else "Polishing note formatting...", 97)
             return try {
                 val existingUserBlocks = database.noteDao().getBlocks(noteId).map { it.toDomain() }
@@ -1321,7 +1323,9 @@ class MeetingProcessingPipeline(
                 Log.w(PERF_TAG, "Note polish skipped: ${t.message}")
                 emptyList()
             } finally {
-                if (!model.isCloud) LlmEngineManager.release()
+                val ranLocal = !model.isCloud ||
+                    (model.languageModel as? com.craftflowtechnologies.meetingmind.ai.routing.ResilientLanguageModel)?.lastRanLocally == true
+                if (ranLocal) LlmEngineManager.release()
             }
         }
 
@@ -1334,8 +1338,16 @@ class MeetingProcessingPipeline(
                     progress("Mapping the service…", 93)
                     runCatching {
                         val transport = if (processingProfile == ProcessingProfile.INTERNET) geminiTransport else null
-                        com.craftflowtechnologies.meetingmind.ai.scene.SceneEngine(transport).build(file, segments, meeting.durationMs, recordingType.displayName)
-                            .also { com.craftflowtechnologies.meetingmind.ai.scene.SceneMap.save(file, it) }
+                        val fallbackLocal = if (processingProfile == ProcessingProfile.OFFLINE || transport == null) {
+                            languageModelFactory.resolveLocal(ModelCapability.SUMMARIZATION, ModelTier.RECOMMENDED)?.languageModel
+                        } else null
+                        try {
+                            com.craftflowtechnologies.meetingmind.ai.scene.SceneEngine(transport, fallbackLocal)
+                                .build(file, segments, meeting.durationMs, recordingType.displayName)
+                                .also { com.craftflowtechnologies.meetingmind.ai.scene.SceneMap.save(file, it) }
+                        } finally {
+                            if (fallbackLocal != null) LlmEngineManager.release()
+                        }
                     }.onFailure { Log.w(PERF_TAG, "Scenes failed: ${it.message}") }.getOrNull()
                 }
                 val spoken = scenes?.let { map ->
@@ -1343,7 +1355,7 @@ class MeetingProcessingPipeline(
                 }?.ifEmpty { null } ?: segments
                 progress("Finding scripture references...", 94)
                 val detections = com.craftflowtechnologies.meetingmind.core.scripture.ScriptureDetector.detect(spoken)
-                val resolved = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS)
+                val resolved = languageModelFactory.resolveWithFallback(processingProfile, ModelCapability.SYNTHESIS)
                 val outcome: AiResult<com.craftflowtechnologies.meetingmind.ai.faith.SermonExtraction>? = resolved?.let { model ->
                     progress(if (model.isCloud) "Writing sermon notes with Google's AI..." else "Writing sermon notes...", 96)
                     try {
@@ -1354,7 +1366,9 @@ class MeetingProcessingPipeline(
                     } catch (t: Throwable) {
                         AiResult.Failed(t.message ?: "the AI model failed", t)
                     } finally {
-                        if (!model.isCloud) LlmEngineManager.release()
+                        val ranLocal = !model.isCloud ||
+                            (model.languageModel as? com.craftflowtechnologies.meetingmind.ai.routing.ResilientLanguageModel)?.lastRanLocally == true
+                        if (ranLocal) LlmEngineManager.release()
                     }
                 }
                 val extraction = (outcome as? AiResult.Success)?.value
@@ -1396,7 +1410,7 @@ class MeetingProcessingPipeline(
                     domain = domain,
                     courseName = null
                 )
-                val resolvedFallback = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS)
+                val resolvedFallback = languageModelFactory.resolveLocal(ModelCapability.SYNTHESIS, ModelTier.RECOMMENDED)
                 val aiEngine = com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine(
                     transport = if (processingProfile == ProcessingProfile.INTERNET) geminiTransport else null,
                     fallbackModel = resolvedFallback?.languageModel
@@ -1406,7 +1420,7 @@ class MeetingProcessingPipeline(
                         aiEngine.synthesizeLecture(noteId, session.id, segments, domain, marks)
                     }.getOrNull()
                 } finally {
-                    if (resolvedFallback != null && !resolvedFallback.isCloud) LlmEngineManager.release()
+                    if (resolvedFallback != null) LlmEngineManager.release()
                 }
                 if (synthesis != null) {
                     learningRepo.saveConceptsAndActivities(session.id, synthesis.concepts, synthesis.activities)

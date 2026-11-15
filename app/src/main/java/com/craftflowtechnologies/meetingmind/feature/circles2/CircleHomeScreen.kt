@@ -3,7 +3,9 @@ package com.craftflowtechnologies.meetingmind.feature.circles2
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -37,11 +39,14 @@ import com.craftflowtechnologies.meetingmind.feature.create.rememberCreateContro
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.Member
+import com.craftflowtechnologies.meetingmind.core.circles2.MessageKind
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
 import com.craftflowtechnologies.meetingmind.core.circles2.PostMeta
+import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.circles2.WhoCanInvite
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
@@ -98,6 +103,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     var activeVerse by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference?>(null) }
     var activeMemberInfo by remember { mutableStateOf<Member?>(null) }
     var showSearch by remember { mutableStateOf(false) }
+    var targetChatMessageId by remember { mutableStateOf<String?>(null) }
     val eventRsvps by home.eventRsvps.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -178,7 +184,11 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onPhotoRefused = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
             onResumeDraft = home::resumeSavedDraft,
             onDiscardDraft = home::discardDraft,
-            onSetWorkStatus = home::setWorkStatus
+            onSetWorkStatus = home::setWorkStatus,
+            onToggleBookmark = home::toggleBookmark,
+            onDismissCatchUp = home::markCatchUpSeen,
+            onDismissPrompt = home::dismissTodayPrompt,
+            onToggleChecklistItem = home::toggleChecklistItem
         )
         val chatActions = ChatActions(
             onDraft = chat::setDraft, onSend = chat::send, onReply = chat::startReply, onCancelReply = chat::cancelReply,
@@ -211,7 +221,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             ),
             snackbar = snackbar, onBack = onBack, onSettings = { showSettings = true },
             onInvite = { home.createInvite(); showInvite = true }, onSearch = { showSearch = true }, onRetry = { },
-            savedDraft = savedDraft
+            savedDraft = savedDraft,
+            targetChatMessageId = targetChatMessageId,
+            onScrollHandled = { targetChatMessageId = null }
         )
     }
 
@@ -293,7 +305,16 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     pollDraft?.let { d ->
         PollSheet(
             d,
-            PollSheetActions(chat::setPollQuestion, chat::setPollOption, chat::addPollOption, chat::removePollOption, chat::setPollMulti, chat::createPoll),
+            PollSheetActions(
+                chat::setPollQuestion,
+                chat::setPollOption,
+                chat::addPollOption,
+                chat::removePollOption,
+                chat::setPollMulti,
+                chat::createPoll,
+                onCorrectOption = chat::setPollCorrectOption,
+                onExplanation = chat::setPollExplanation
+            ),
             chat::closePollDraft,
             space = circle?.settings?.space ?: "faith",
             onClosesAt = chat::setPollClosesAt
@@ -315,7 +336,8 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
         EventFormSheet(
             editingEvent, now,
             onSave = { d -> home.saveEvent(editingEvent?.id, d); showEventForm = false; editingEvent = null },
-            onDismiss = { showEventForm = false; editingEvent = null }
+            onDismiss = { showEventForm = false; editingEvent = null },
+            space = circle.settings.space
         )
     }
     if (showCard) ChatCardComposerSheet(space = circle?.settings?.space ?: "faith", onShare = { chat.shareCard(it) }, onDismiss = { showCard = false })
@@ -332,6 +354,10 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             },
             onOpenChat = {
                 tab = HomeTab.Chat
+            },
+            onOpenChatMessage = { messageId ->
+                tab = HomeTab.Chat
+                targetChatMessageId = messageId
             },
             onDismiss = { showSearch = false }
         )
@@ -365,7 +391,9 @@ fun CircleHomeContent(
     onInvite: () -> Unit,
     onRetry: () -> Unit = {},
     onSearch: () -> Unit = {},
-    savedDraft: com.craftflowtechnologies.meetingmind.core.circles2.ComposerDraft? = null
+    savedDraft: com.craftflowtechnologies.meetingmind.core.circles2.ComposerDraft? = null,
+    targetChatMessageId: String? = null,
+    onScrollHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val circle = state.circle
@@ -389,9 +417,45 @@ fun CircleHomeContent(
                 circle?.name ?: "Circle", Modifier.padding(horizontal = MM.space.s),
                 leading = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.inkSecondary) } },
                 actions = {
-                    if (circle != null) IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search in circle", tint = MM.colors.inkSecondary) }
-                    if (canInvite) IconButton(onClick = onInvite) { Icon(Icons.Rounded.PersonAdd, "Invite people", tint = MM.colors.inkSecondary) }
-                    if (circle != null) IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, "Circle settings", tint = MM.colors.inkSecondary) }
+                    if (circle != null) {
+                        Surface(
+                            onClick = onSearch,
+                            shape = CircleShape,
+                            color = MM.colors.surfaceRaised,
+                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Search, "Search in circle", tint = MM.colors.inkSecondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                    if (canInvite) {
+                        Surface(
+                            onClick = onInvite,
+                            shape = CircleShape,
+                            color = MM.colors.surfaceRaised,
+                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.PersonAdd, "Invite people", tint = MM.colors.inkSecondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                    if (circle != null) {
+                        Surface(
+                            onClick = onSettings,
+                            shape = CircleShape,
+                            color = MM.colors.surfaceRaised,
+                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Settings, "Circle settings", tint = MM.colors.inkSecondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
                 }
             )
             when {
@@ -405,15 +469,41 @@ fun CircleHomeContent(
                 }
                 else -> {
                     Row(
-                        modifier = Modifier.padding(horizontal = MM.space.l),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = MM.space.l),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(MM.space.s)
                     ) {
+                        val spaceLabel = circleSpace(circle)
+                        Surface(
+                            shape = MM.radius.pill,
+                            color = MM.colors.accentWash
+                        ) {
+                            Text(
+                                spaceLabel,
+                                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                color = MM.colors.accent,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
                         Text(
                             "${circle.groupWord} · ${if (circle.memberCount == 1) "1 member" else "${circle.memberCount} members"}",
                             style = MM.type.secondary,
                             color = MM.colors.inkSecondary
                         )
+                        if (state.isAdmin) {
+                            Surface(
+                                shape = MM.radius.pill,
+                                color = MM.colors.surfaceSunk,
+                                border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
+                            ) {
+                                Text(
+                                    "Admin",
+                                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MM.colors.inkSecondary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         if (circle.template == "client_engagement") {
                             Surface(
                                 shape = MM.radius.pill,
@@ -466,13 +556,15 @@ fun CircleHomeContent(
                     when (tab) {
                         HomeTab.Feed -> FeedTab(state, now, feed, Modifier.weight(1f), savedDraft = savedDraft)
                         HomeTab.Chat -> ChatTab(
-                            chat,
-                            draft,
-                            now,
-                            chatActions,
-                            Modifier.weight(1f),
+                            state = chat,
+                            draft = draft,
+                            now = now,
+                            actions = chatActions,
+                            modifier = Modifier.weight(1f),
                             isFaith = circle?.let { !it.isWork && it.settings.space != "learning" } ?: true,
-                            space = circle?.settings?.space ?: "faith"
+                            space = circle?.settings?.space ?: "faith",
+                            scrollToMessageId = targetChatMessageId,
+                            onScrollHandled = onScrollHandled
                         )
                         HomeTab.Members -> MembersTab(state, members, Modifier.weight(1f))
                     }
@@ -490,25 +582,67 @@ fun CircleSearchSheet(
     now: Long,
     onOpenPost: (Post) -> Unit,
     onOpenChat: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenChatMessage: ((String) -> Unit)? = null
 ) {
     var query by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("All") }
     val q = query.trim()
-    val matchingPosts = remember(q, state.posts) {
-        if (q.isBlank()) emptyList()
-        else state.posts.map { it.post }.filter { p ->
-            p.body.contains(q, ignoreCase = true) ||
-            p.authorName?.contains(q, ignoreCase = true) == true ||
-            p.type.label.contains(q, ignoreCase = true)
+
+    val matchingPosts = remember(q, state.posts, selectedCategory) {
+        val matchesCategory: (Post) -> Boolean = { p ->
+            when (selectedCategory) {
+                "All" -> true
+                "Posts" -> true
+                "Messages" -> false
+                "Tasks" -> p.type == PostType.Task ||
+                    p.type == PostType.Blocker ||
+                    p.type == PostType.Decision ||
+                    p.type.name.equals("Action", ignoreCase = true) ||
+                    p.type.name.equals("Question", ignoreCase = true) ||
+                    (p.meta?.checklist?.isNotEmpty() == true)
+                "Media" -> p.attachments.isNotEmpty()
+                else -> true
+            }
         }
-    }
-    val matchingMessages = remember(q, chat.messages) {
-        if (q.isBlank()) emptyList()
-        else chat.messages.filter { m ->
-            m.text.contains(q, ignoreCase = true) ||
-            m.authorName.contains(q, ignoreCase = true)
+        val matchesQuery: (Post) -> Boolean = { p ->
+            if (q.isBlank()) true
+            else {
+                p.body.contains(q, ignoreCase = true) ||
+                (p.authorName?.contains(q, ignoreCase = true) == true) ||
+                p.type.label.contains(q, ignoreCase = true) ||
+                (p.meta?.tags?.any { it.contains(q, ignoreCase = true) } == true) ||
+                (p.meta?.checklist?.any { it.text.contains(q, ignoreCase = true) } == true) ||
+                p.attachments.any { it.name?.contains(q, ignoreCase = true) == true }
+            }
         }
+        if (q.isBlank() && selectedCategory == "All") emptyList()
+        else state.posts.map { it.post }.filter { matchesCategory(it) && matchesQuery(it) }
     }
+
+    val matchingMessages = remember(q, chat.messages, selectedCategory) {
+        val matchesCategory: (com.craftflowtechnologies.meetingmind.core.circles2.ChatMessage) -> Boolean = { m ->
+            when (selectedCategory) {
+                "All" -> true
+                "Posts" -> false
+                "Messages" -> true
+                "Tasks" -> false
+                "Media" -> m.attachment != null || m.kind in listOf(MessageKind.Image, MessageKind.Video, MessageKind.Voice, MessageKind.File)
+                else -> true
+            }
+        }
+        val matchesQuery: (com.craftflowtechnologies.meetingmind.core.circles2.ChatMessage) -> Boolean = { m ->
+            if (q.isBlank()) true
+            else {
+                m.text.contains(q, ignoreCase = true) ||
+                m.authorName.contains(q, ignoreCase = true) ||
+                (m.attachment?.name?.contains(q, ignoreCase = true) == true)
+            }
+        }
+        if (q.isBlank() && selectedCategory == "All") emptyList()
+        else chat.messages.filter { matchesCategory(it) && matchesQuery(it) }
+    }
+
     CircleSheet(onDismiss) {
         Text(
             "Search in ${state.circle?.name ?: "Circle"}",
@@ -522,10 +656,26 @@ fun CircleSearchSheet(
             placeholder = "Type keyword, person, or topic…",
             leadingIcon = { Icon(Icons.Rounded.Search, null, tint = MM.colors.inkSecondary) }
         )
-        if (q.isNotBlank()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf("All", "Posts", "Messages", "Tasks", "Media").forEach { cat ->
+                MMChip(
+                    label = cat,
+                    selected = selectedCategory == cat,
+                    onClick = { selectedCategory = cat }
+                )
+            }
+        }
+        val hasActiveSearch = q.isNotBlank() || selectedCategory != "All"
+        if (hasActiveSearch) {
             if (matchingPosts.isEmpty() && matchingMessages.isEmpty()) {
                 Text(
-                    "No results found for \"$q\"",
+                    if (q.isNotBlank()) "No results found for \"$q\"" else "No $selectedCategory found",
                     style = MM.type.body,
                     color = MM.colors.inkSecondary,
                     modifier = Modifier.padding(vertical = MM.space.m)
@@ -552,7 +702,14 @@ fun CircleSearchSheet(
                     if (matchingMessages.isNotEmpty()) {
                         item { SectionHeader("Chat Messages", count = matchingMessages.size) }
                         items(matchingMessages, key = { "msg_${it.id}" }) { msg ->
-                            MMCard(onClick = { onOpenChat(); onDismiss() }) {
+                            MMCard(onClick = {
+                                if (onOpenChatMessage != null) {
+                                    onOpenChatMessage(msg.id)
+                                } else {
+                                    onOpenChat()
+                                }
+                                onDismiss()
+                            }) {
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(msg.authorName, style = MM.type.bodyStrong, color = MM.colors.ink, modifier = Modifier.weight(1f))

@@ -1,8 +1,11 @@
 package com.craftflowtechnologies.meetingmind.ai.routing
 
 import android.content.Context
+import com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiLanguageModel
+import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiLog
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport
+import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.llm.AiCoreLanguageModel
 import com.craftflowtechnologies.meetingmind.ai.llm.AiCoreRuntime
 import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
@@ -13,6 +16,8 @@ import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelStorage
 import com.craftflowtechnologies.meetingmind.core.model.ModelCapability
 import com.craftflowtechnologies.meetingmind.core.model.ModelTier
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 /** A language model chosen for one job, and the facts about it the caller needs. */
 data class ResolvedLanguageModel(
@@ -68,6 +73,36 @@ class LanguageModelFactory(
         return resolveLocal(capability, preferredTier)
     }
 
+    /**
+     * Resolves a model with automatic one-way fallback from cloud to on-device LLM when the device
+     * is offline, unconfigured, or a free-tier cloud allowance is exhausted.
+     *
+     * An [ProcessingProfile.OFFLINE] request still never touches the network.
+     */
+    suspend fun resolveWithFallback(
+        profile: ProcessingProfile,
+        capability: ModelCapability,
+        preferredTier: ModelTier = ModelTier.RECOMMENDED
+    ): ResolvedLanguageModel? {
+        if (profile == ProcessingProfile.INTERNET && geminiTransport.refreshConfigured()) {
+            val modelId = router.route(AiRoute.GEMINI_INTELLIGENCE).modelId
+            if (modelId != null) {
+                val resilient = ResilientLanguageModel(
+                    primary = GeminiLanguageModel(geminiTransport, router),
+                    primaryModelId = modelId,
+                    resolveLocalFallback = { resolveLocal(capability, preferredTier) }
+                )
+                return ResolvedLanguageModel(
+                    languageModel = resilient,
+                    modelId = modelId,
+                    contextLengthTokens = GEMINI_CONTEXT_BUDGET_TOKENS,
+                    isCloud = true
+                )
+            }
+        }
+        return resolveLocal(capability, preferredTier)
+    }
+
     /** The on-device model only — for callers that must never use the network. */
     fun resolveLocal(capability: ModelCapability, preferredTier: ModelTier): ResolvedLanguageModel? {
         val modelId = LlmModelResolver.resolveForModeOrNull(modelStorage, capability, preferredTier)
@@ -101,5 +136,87 @@ class LanguageModelFactory(
          */
         const val GEMINI_CONTEXT_BUDGET_TOKENS = 32_000
         private const val DEFAULT_LOCAL_CONTEXT_TOKENS = 4096
+    }
+}
+
+/**
+ * Tries [primary] cloud model first, then seamlessly falls back to an installed on-device model
+ * when cloud is unavailable, offline, or free-tier quota is exhausted. Tracks which model
+ * actually served the last call so provenance and local-engine cleanup stay honest.
+ */
+class ResilientLanguageModel(
+    private val primary: LanguageModel,
+    private val primaryModelId: String,
+    private val resolveLocalFallback: suspend () -> ResolvedLanguageModel?
+) : LanguageModel {
+
+    @Volatile var lastActualModelId: String = primaryModelId
+        private set
+    @Volatile var lastRanLocally: Boolean = false
+        private set
+
+    override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> {
+        val cloud = primary.generate(prompt, maxOutputTokens)
+        if (cloud is AiResult.Success) {
+            lastActualModelId = primaryModelId
+            lastRanLocally = false
+            return cloud
+        }
+        val local = resolveLocalFallback() ?: return cloud
+        GeminiLog.add("Falling back to on-device ${local.modelId} after cloud unavailability")
+        lastActualModelId = local.modelId
+        lastRanLocally = true
+        return local.languageModel.generate(prompt, maxOutputTokens)
+    }
+
+    override suspend fun generateStructured(
+        prompt: String,
+        responseSchema: String,
+        maxOutputTokens: Int
+    ): AiResult<String> {
+        val cloud = primary.generateStructured(prompt, responseSchema, maxOutputTokens)
+        if (cloud is AiResult.Success) {
+            lastActualModelId = primaryModelId
+            lastRanLocally = false
+            return cloud
+        }
+        val local = resolveLocalFallback() ?: return cloud
+        GeminiLog.add("Falling back to on-device ${local.modelId} for structured generation")
+        lastActualModelId = local.modelId
+        lastRanLocally = true
+        return local.languageModel.generateStructured(prompt, responseSchema, maxOutputTokens)
+    }
+
+    override fun generateStream(prompt: String, maxOutputTokens: Int): Flow<AiStreamEvent> = flow {
+        var emittedText = false
+        var completed = false
+        var cloudFailure: AiResult<Nothing>? = null
+        primary.generateStream(prompt, maxOutputTokens).collect { ev ->
+            when (ev) {
+                is AiStreamEvent.TextDelta, is AiStreamEvent.ThinkingDelta, is AiStreamEvent.FunctionCalls -> {
+                    emittedText = true
+                    emit(ev)
+                }
+                is AiStreamEvent.Completed -> {
+                    lastActualModelId = primaryModelId
+                    lastRanLocally = false
+                    completed = true
+                    emit(ev)
+                }
+                is AiStreamEvent.Failed -> cloudFailure = ev.error
+            }
+        }
+        if (completed) return@flow
+        if (!emittedText) {
+            val local = resolveLocalFallback()
+            if (local != null) {
+                GeminiLog.add("Falling back to on-device ${local.modelId} stream")
+                lastActualModelId = local.modelId
+                lastRanLocally = true
+                local.languageModel.generateStream(prompt, maxOutputTokens).collect { emit(it) }
+                return@flow
+            }
+        }
+        emit(AiStreamEvent.Failed(cloudFailure ?: AiResult.Failed("Cloud model stream interrupted.")))
     }
 }

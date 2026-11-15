@@ -230,7 +230,13 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     val briefs = com.craftflowtechnologies.meetingmind.core.work.BriefBuilder(database, workModels, packPrivacy)
     val memory = com.craftflowtechnologies.meetingmind.core.work.MemoryRepository(database, workModels, packPrivacy)
     val prepareWriter = com.craftflowtechnologies.meetingmind.core.work.PrepareWriter(database, workModels, packPrivacy)
-    val scopedAsk = com.craftflowtechnologies.meetingmind.ai.assistant.ScopedAsk(database, workModels, packPrivacy, dateLabel = { com.craftflowtechnologies.meetingmind.core.work.Pulse.shortDate(it) })
+    val scopedAsk = com.craftflowtechnologies.meetingmind.ai.assistant.ScopedAsk(
+        database = database,
+        models = workModels,
+        privacy = packPrivacy,
+        dateLabel = { com.craftflowtechnologies.meetingmind.core.work.Pulse.shortDate(it) },
+        onModelFinished = { com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release() }
+    )
 
     // ---------------------------------------------------------------- inbox (D7)
 

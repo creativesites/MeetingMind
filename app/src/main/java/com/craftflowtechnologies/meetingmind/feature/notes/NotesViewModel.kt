@@ -138,7 +138,13 @@ class NotesViewModel(application: Application, val scope: NotesScope = NotesScop
                     source = com.craftflowtechnologies.meetingmind.core.model.BlockSource.AI, indent = 1))
             }
         }
-        val title = (if (job.tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.EXTRACT_ACTIONS) "Action items" else "Summary") + " · $name · $date"
+        val baseTitle = when (job.tool) {
+            com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.EXTRACT_ACTIONS -> "Action items"
+            com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.UNRESOLVED_GAPS -> "Open questions & gaps"
+            com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.FOLLOW_UP_BRIEF -> "Recap & follow-up"
+            else -> "Summary"
+        }
+        val title = "$baseTitle · $name · $date"
         val note = notes.createNote(title = title, notebookId = nb, initialBlocks = blocks, useTemplate = false)
         noteAi.dismiss(job.id)
         onCreated(note.id)

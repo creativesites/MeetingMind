@@ -812,7 +812,8 @@ fun MeetingDetailScreen(
     /** "Study this sermon": the sermon's timeline, Scripture and transcript beside its note. */
     onStudy: (noteId: String, meetingId: String) -> Unit = { _, _ -> },
     /** "✨ Brief" on a work recording: its Intelligence Brief. */
-    onCreateBrief: ((meetingId: String) -> Unit)? = null
+    onCreateBrief: ((meetingId: String) -> Unit)? = null,
+    onOpenPaywall: (com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger) -> Unit = {}
 ) {
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
@@ -874,6 +875,8 @@ fun MeetingDetailScreen(
     var currentTab by remember { mutableStateOf(RecordingDetailTab.OVERVIEW) }
     var showFullPlayer by remember { mutableStateOf(false) }
     var showAiToolsSheet by remember { mutableStateOf(false) }
+    var showDeepSynthesisSheet by remember { mutableStateOf(false) }
+    var showAutopilotSheet by remember { mutableStateOf(false) }
     val processingProfile by viewModel.processingProfile.collectAsState()
     val latestToolResult by viewModel.latestToolResult.collectAsState()
     // Set when an "AI tools" entry whose data already exists is tapped (Phase 15 §7) — switches to
@@ -1063,6 +1066,34 @@ fun MeetingDetailScreen(
                                     Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text("Study", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                                }
+                            }
+                        }
+                        if (meeting?.status == MeetingStatus.READY) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                onClick = { showDeepSynthesisSheet = true },
+                                shape = RoundedCornerShape(50),
+                                color = AccentWash,
+                                modifier = Modifier.testTag("meeting_deep_synthesis_btn")
+                            ) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(15.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Deep Pack", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                                }
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                onClick = { showAutopilotSheet = true },
+                                shape = RoundedCornerShape(50),
+                                color = AccentWash,
+                                modifier = Modifier.testTag("meeting_autopilot_btn")
+                            ) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(15.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Autopilot", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
                                 }
                             }
                         }
@@ -1502,6 +1533,47 @@ fun MeetingDetailScreen(
                 Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
             }
         )
+    }
+
+    if (showDeepSynthesisSheet) {
+        meeting?.id?.let { mId ->
+            com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisSheet(
+                target = com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisTarget.Meeting(mId),
+                onDismiss = { showDeepSynthesisSheet = false },
+                onOpenPaywall = { trigger ->
+                    showDeepSynthesisSheet = false
+                    onOpenPaywall(trigger)
+                },
+                onOpenNote = { nId ->
+                    showDeepSynthesisSheet = false
+                    onOpenNote(nId)
+                },
+                onOpenMeeting = { srcMeetingId, startMs ->
+                    if (srcMeetingId == mId) {
+                        showDeepSynthesisSheet = false
+                        currentTab = RecordingDetailTab.TRANSCRIPT
+                        if (startMs != null) viewModel.jumpToTimestamp(startMs)
+                    }
+                }
+            )
+        }
+    }
+
+    if (showAutopilotSheet) {
+        meeting?.id?.let { mId ->
+            com.craftflowtechnologies.meetingmind.feature.automation.AutopilotSheet(
+                target = com.craftflowtechnologies.meetingmind.feature.automation.AutopilotTarget.Meeting(mId),
+                onDismiss = { showAutopilotSheet = false },
+                onOpenPaywall = { trigger ->
+                    showAutopilotSheet = false
+                    onOpenPaywall(trigger)
+                },
+                onOpenNote = { nId ->
+                    showAutopilotSheet = false
+                    onOpenNote(nId)
+                }
+            )
+        }
     }
 
     if (isProposingCleanup) {

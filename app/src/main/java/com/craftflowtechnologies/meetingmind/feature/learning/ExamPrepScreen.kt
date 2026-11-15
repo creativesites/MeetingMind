@@ -1,6 +1,9 @@
 package com.craftflowtechnologies.meetingmind.feature.learning
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -148,6 +151,14 @@ fun ExamPrepScreen(
             )
             onStartExamDrill?.invoke()
         },
+        onDrillConcept = { item ->
+            viewModel.loadWeakConceptsPractice(listOf(item.concept)) {
+                onStartExamDrill?.invoke()
+            }
+        },
+        onPreviewCramSheet = {
+            showCramSheetPreview = true
+        },
         modifier = modifier
     )
 
@@ -186,11 +197,39 @@ fun ExamPrepContent(
     onSelectFilter: (String?) -> Unit = {},
     onOpenSession: (String) -> Unit = {},
     onStartExamDrill: () -> Unit = {},
+    onDrillConcept: (ExamPriorityItem) -> Unit = { onStartExamDrill() },
+    onPreviewCramSheet: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val c = MM.colors
     var showDialog by remember { mutableStateOf(false) }
     var goalToDelete by remember { mutableStateOf<LearningGoal?>(null) }
+    var priorityMatrixFilter by remember { mutableStateOf("ALL") }
+
+    val gapCount = remember(priorities) {
+        priorities.count { it.mastery.state == LearningMasteryState.NEEDS_REVIEW || it.mastery.state == LearningMasteryState.NEW }
+    }
+    val flaggedCount = remember(priorities) {
+        priorities.count { it.concept.examImportance == ExamImportance.LECTURER_FLAGGED || it.concept.examImportance == ExamImportance.HIGH_YIELD }
+    }
+    val strongCount = remember(priorities) {
+        priorities.count { it.mastery.state == LearningMasteryState.STRONG }
+    }
+
+    val visiblePriorities = remember(priorities, priorityMatrixFilter) {
+        when (priorityMatrixFilter) {
+            "GAPS" -> priorities.filter {
+                it.mastery.state == LearningMasteryState.NEEDS_REVIEW || it.mastery.state == LearningMasteryState.NEW
+            }
+            "FLAGGED" -> priorities.filter {
+                it.concept.examImportance == ExamImportance.LECTURER_FLAGGED || it.concept.examImportance == ExamImportance.HIGH_YIELD
+            }
+            "STRONG" -> priorities.filter {
+                it.mastery.state == LearningMasteryState.STRONG
+            }
+            else -> priorities
+        }
+    }
 
     Column(
         modifier = modifier
@@ -311,16 +350,57 @@ fun ExamPrepContent(
             item(key = "cram_sheet_action") {
                 CramSheetActionCard(
                     isGenerating = isGeneratingCramSheet,
-                    onGenerate = onGenerateCramSheet
+                    hasGeneratedSheet = !cramSheetMarkdown.isNullOrBlank(),
+                    cramSheetPreviewText = cramSheetMarkdown,
+                    onGenerate = onGenerateCramSheet,
+                    onPreviewExisting = onPreviewCramSheet,
+                    onShareExisting = { cramSheetMarkdown?.let(onShareToCircle) }
                 )
             }
 
             // High-Yield Exam Priority Matrix
             item(key = "priority_header") {
-                SectionHeader(
-                    title = "High-Yield Priority Matrix",
-                    count = priorities.size
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                    SectionHeader(
+                        title = "High-Yield Priority Matrix",
+                        count = priorities.size
+                    )
+                    if (priorities.size > 2) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                        ) {
+                            listOf(
+                                "ALL" to "All (${priorities.size})",
+                                "GAPS" to "Priority Gaps ($gapCount)",
+                                "FLAGGED" to "High-Yield ($flaggedCount)",
+                                "STRONG" to "Mastered ($strongCount)"
+                            ).forEach { (key, label) ->
+                                val isSel = priorityMatrixFilter == key
+                                val chipBg by animateColorAsState(
+                                    targetValue = if (isSel) c.accent else c.surfaceSunk,
+                                    animationSpec = MM.motion.quick(),
+                                    label = "exam_matrix_filter_$key"
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(MM.radius.pill)
+                                        .background(chipBg)
+                                        .clickable { priorityMatrixFilter = key }
+                                        .padding(horizontal = MM.space.m, vertical = MM.space.xs / 2)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MM.type.caption.copy(fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium),
+                                        color = if (isSel) c.onAccent else c.inkSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             if (priorities.isEmpty()) {
@@ -333,11 +413,34 @@ fun ExamPrepContent(
                         )
                     }
                 }
+            } else if (visiblePriorities.isEmpty()) {
+                item(key = "empty_filtered_priorities") {
+                    MMCard(contentPadding = MM.space.m) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "No concepts match this filter yet.",
+                                style = MM.type.secondary,
+                                color = c.inkSecondary
+                            )
+                            Text(
+                                text = "Show All (${priorities.size})",
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                color = c.accent,
+                                modifier = Modifier.clickable { priorityMatrixFilter = "ALL" }
+                            )
+                        }
+                    }
+                }
             } else {
-                items(priorities, key = { it.concept.id }) { item ->
+                items(visiblePriorities, key = { it.concept.id }) { item ->
                     ExamPriorityRow(
                         item = item,
-                        onClick = { onOpenSession(item.concept.sessionId) }
+                        onClick = { onOpenSession(item.concept.sessionId) },
+                        onDrill = { onDrillConcept(item) }
                     )
                 }
             }
@@ -410,6 +513,11 @@ private fun ExamReadinessDashboardCard(
         it.mastery.state == LearningMasteryState.NEEDS_REVIEW || it.mastery.state == LearningMasteryState.NEW
     }
     val readinessScore = (((strongCount * 100f) + (developingCount * 60f) + (gapCount * 20f)) / total).toInt().coerceIn(0, 100)
+    val animatedReadiness by animateIntAsState(
+        targetValue = readinessScore,
+        animationSpec = MM.motion.standard(),
+        label = "exam_readiness_score"
+    )
 
     val readinessColor = when {
         readinessScore >= 75 -> LearningFixedColors.MasteryStrong
@@ -431,7 +539,7 @@ private fun ExamReadinessDashboardCard(
                         color = c.inkSecondary
                     )
                     Text(
-                        text = "$readinessScore% Ready",
+                        text = "$animatedReadiness% Ready",
                         style = MM.type.title.copy(fontWeight = FontWeight.Bold),
                         color = readinessColor
                     )
@@ -574,46 +682,93 @@ private fun EmptyGoalsCard(onAddGoal: () -> Unit) {
 @Composable
 private fun CramSheetActionCard(
     isGenerating: Boolean,
-    onGenerate: () -> Unit
+    hasGeneratedSheet: Boolean = false,
+    cramSheetPreviewText: String? = null,
+    onGenerate: () -> Unit,
+    onPreviewExisting: () -> Unit = {},
+    onShareExisting: () -> Unit = {}
 ) {
     val c = MM.colors
 
-    MMCard(contentPadding = MM.space.m) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = "1-Page Cram Sheet",
-                    style = MM.type.bodyStrong,
-                    color = c.ink
-                )
-                Text(
-                    text = "Synthesizes exam hints, core definitions & LaTeX formulas into one high-yield sheet.",
-                    style = MM.type.caption,
-                    color = c.inkSecondary
-                )
-            }
-            Spacer(Modifier.width(MM.space.s))
+    MMCard(
+        modifier = Modifier.animateContentSize(animationSpec = MM.motion.standard()),
+        contentPadding = MM.space.m
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isGenerating) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(MMSize.iconSmall),
-                        color = c.accent,
-                        strokeWidth = 2.dp
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "1-Page Cram Sheet",
+                        style = MM.type.bodyStrong,
+                        color = c.ink
+                    )
+                    Text(
+                        text = "Synthesizes exam hints, core definitions & LaTeX formulas into one high-yield sheet.",
+                        style = MM.type.caption,
+                        color = c.inkSecondary
                     )
                 }
-                PrimaryButton(
-                    text = "Generate",
-                    onClick = onGenerate,
-                    enabled = !isGenerating,
-                    modifier = Modifier.testTag("generate_cram_sheet_button")
-                )
+                Spacer(Modifier.width(MM.space.s))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    if (isGenerating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(MMSize.iconSmall),
+                            color = c.accent,
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    if (hasGeneratedSheet) {
+                        SecondaryButton(
+                            text = "Preview",
+                            onClick = onPreviewExisting
+                        )
+                        SecondaryButton(
+                            text = "Share",
+                            onClick = onShareExisting
+                        )
+                    }
+                    PrimaryButton(
+                        text = if (hasGeneratedSheet) "Regenerate" else "Generate",
+                        onClick = onGenerate,
+                        enabled = !isGenerating,
+                        modifier = Modifier.testTag("generate_cram_sheet_button")
+                    )
+                }
+            }
+
+            if (hasGeneratedSheet && !cramSheetPreviewText.isNullOrBlank()) {
+                val previewLines = remember(cramSheetPreviewText) {
+                    cramSheetPreviewText.lines()
+                        .map { it.trim().removePrefix("#").removePrefix("##").removePrefix("###").trim() }
+                        .filter { it.isNotBlank() && it != "---" }
+                        .take(2)
+                        .joinToString(" · ")
+                }
+                if (previewLines.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MM.radius.small)
+                            .background(c.surfaceSunk)
+                            .clickable(onClick = onPreviewExisting)
+                            .padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                    ) {
+                        Text(
+                            text = "Ready: $previewLines",
+                            style = MM.type.caption,
+                            color = c.accent,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
     }
@@ -622,7 +777,8 @@ private fun CramSheetActionCard(
 @Composable
 private fun ExamPriorityRow(
     item: ExamPriorityItem,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    onDrill: (() -> Unit)? = null
 ) {
     val c = MM.colors
 
@@ -690,6 +846,22 @@ private fun ExamPriorityRow(
                             style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
                             color = masteryColor
                         )
+                    }
+
+                    if (onDrill != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(MM.radius.pill)
+                                .background(c.accentWash)
+                                .clickable(onClick = onDrill)
+                                .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                        ) {
+                            Text(
+                                text = "Drill →",
+                                style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
+                                color = c.accent
+                            )
+                        }
                     }
                 }
             }
@@ -907,10 +1079,37 @@ private fun CramSheetPreviewDialog(
     onShareToCircle: () -> Unit
 ) {
     val c = MM.colors
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var copied by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("1-Page Cram Sheet", style = MM.type.heading, color = c.ink) },
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("1-Page Cram Sheet", style = MM.type.heading, color = c.ink)
+                Box(
+                    modifier = Modifier
+                        .clip(MM.radius.pill)
+                        .background(if (copied) LearningFixedColors.MasteryStrong.copy(alpha = 0.16f) else c.accentWash)
+                        .clickable {
+                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                            clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Exam Cram Sheet", markdown))
+                            copied = true
+                        }
+                        .padding(horizontal = MM.space.m, vertical = MM.space.xs / 2)
+                ) {
+                    Text(
+                        text = if (copied) "✓ Copied" else "Copy",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                        color = if (copied) LearningFixedColors.MasteryStrong else c.accent
+                    )
+                }
+            }
+        },
         text = {
             Column(
                 modifier = Modifier

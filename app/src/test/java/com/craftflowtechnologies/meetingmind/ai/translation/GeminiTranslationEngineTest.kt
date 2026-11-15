@@ -91,4 +91,33 @@ class GeminiTranslationEngineTest {
         assertTrue(prompt.contains("Shona, Ndebele, Bemba, Nyanja"))
         assertTrue(prompt.contains("Tine meeting mangwana"))
     }
+
+    @Test
+    fun `falls back to local language model when cloud transport is unconfigured`() = runBlocking {
+        val localModel = object : com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel {
+            override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> =
+                AiResult.Success(
+                    """```json
+                    {"title":"Sincronización semanal","summary":"Resumen breve","segments":[{"segmentId":"s1","translatedText":"Hola equipo"}]}
+                    ```""".trimIndent()
+                )
+        }
+        val engine = GeminiTranslationEngine(
+            transport = FakeTransport(AiResult.ModelUnavailable("gemini", "offline"), configured = false),
+            fallbackModelProvider = { localModel }
+        )
+
+        val result = engine.translateTranscript(
+            meetingTitle = "Weekly sync",
+            summaryText = "Short summary",
+            segments = listOf(TranscriptSegment(id = "s1", meetingId = "m1", startMs = 0, endMs = 1000, text = "Hello team")),
+            sourceLanguage = "en",
+            targetLanguage = "es"
+        )
+
+        assertTrue(result is AiResult.Success)
+        val value = (result as AiResult.Success).value
+        assertEquals("Sincronización semanal", value.translatedTitle)
+        assertEquals("Hola equipo", value.translatedSegments.single().translatedText)
+    }
 }

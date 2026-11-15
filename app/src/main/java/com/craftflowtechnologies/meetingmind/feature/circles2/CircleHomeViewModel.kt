@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.craftflowtechnologies.meetingmind.core.circles2.ChecklistItem
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleSettings
 import com.craftflowtechnologies.meetingmind.core.circles2.ComposerDraft
@@ -53,7 +54,13 @@ import com.craftflowtechnologies.meetingmind.core.circles2.fold
 
 /** A post as the feed shows it: [mine] is true even for my anonymous posts (known only on this phone). */
 @Immutable
-data class FeedPost(val post: Post, val mine: Boolean, val prayedByMe: Boolean, val myReaction: ReactionKind? = null)
+data class FeedPost(
+    val post: Post,
+    val mine: Boolean,
+    val prayedByMe: Boolean,
+    val myReaction: ReactionKind? = null,
+    val saved: Boolean = false
+)
 
 @Immutable
 data class CircleHomeUiState(
@@ -73,7 +80,12 @@ data class CircleHomeUiState(
     val myPendingCount: Int = 0,
     val failure: CirclesFailure? = null,
     /** I'm no longer in this circle (removed, left on another phone, or it was closed). */
-    val gone: Boolean = false
+    val gone: Boolean = false,
+    val unreadFeedCount: Int = 0,
+    val savedCount: Int = 0,
+    val streakDays: Int = 0,
+    val checkedInToday: Boolean = false,
+    val promptDismissedToday: Boolean = false
 ) {
     val isAdmin: Boolean get() = me?.role?.isAdmin == true
     val canModerate: Boolean get() = me?.role?.canModerate == true
@@ -139,6 +151,24 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     val invite = MutableStateFlow(InviteUiState())
     val myReactions = MutableStateFlow<Map<String, ReactionKind>>(emptyMap())
 
+    private fun loadHabitInfo(): HabitInfo {
+        val now = repo.clock()
+        val today = now / 86_400_000L
+        return HabitInfo(
+            savedIds = repo.store.savedPostIds(circleId),
+            lastVisit = repo.store.lastFeedVisit(circleId),
+            streakDays = repo.store.currentStreak(now),
+            checkedInToday = repo.store.checkedInToday(now),
+            promptDismissedToday = repo.store.dismissedPromptDay(circleId) == today
+        )
+    }
+
+    private val habitInfo = MutableStateFlow(loadHabitInfo())
+
+    private fun refreshHabits() {
+        habitInfo.value = loadHabitInfo()
+    }
+
     init { viewModelScope.launch { myUid.value = repo.uid().okOrNull } }
 
     private val circleState = repo.data.observeCircle(circleId)
@@ -160,30 +190,60 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
 
     private val extras: Flow<Extras> = combine(eventsState, adminData) { e, a -> Extras(e.valueOr(emptyList()), a) }
 
+    private val rawUserData: Flow<RawUser> = combine(myUid, prayed, mine, sentPending, myReactions) { u, p, m, s, r -> RawUser(u, p, m, s, r) }
+    private val userData: Flow<UserData> = combine(rawUserData, habitInfo) { r, h -> UserData(r, h) }
+
     val state: StateFlow<CircleHomeUiState> = combine(
-        circleState, membersState, postsState, extras, combine(myUid, prayed, mine, sentPending, myReactions) { u, p, m, s, r -> UserData(u, p, m, s, r) }
+        circleState, membersState, postsState, extras, userData
     ) { c, ms, ps, ex, q ->
         val members = ms.valueOr(emptyList())
         val circle = (c as? DataState.Ready)?.value
         val failure = listOf(c, ms, ps).filterIsInstance<DataState.Failed>().firstOrNull()?.failure
         val removed = (c is DataState.Ready && c.value == null) || failure?.code == "permission_denied"
+        val r = q.raw
+        val habit = q.habit
+        val feedPosts = ps.valueOr(emptyList()).map { post ->
+            FeedPost(
+                post = post,
+                mine = (r.uid != null && post.authorUid == r.uid) || post.id in r.mine,
+                prayedByMe = post.id in r.prayed,
+                myReaction = r.reactions[post.id],
+                saved = post.id in habit.savedIds
+            )
+        }
+        val now = repo.clock()
+        val lastVisit = habit.lastVisit
+        val unreadCount = when {
+            feedPosts.isEmpty() -> 0
+            lastVisit > 0L -> feedPosts.count { !it.mine && it.post.createdAt > lastVisit }
+            feedPosts.count { it.post.createdAt >= now - 86_400_000L } >= 2 ->
+                feedPosts.count { !it.mine && it.post.createdAt >= now - 86_400_000L }
+            else -> 0
+        }
         CircleHomeUiState(
             loading = c is DataState.Loading && circle == null,
             circle = circle,
-            me = members.firstOrNull { it.uid == q.uid },
+            me = members.firstOrNull { it.uid == r.uid },
             members = members,
-            posts = ps.valueOr(emptyList()).map { FeedPost(it, mine = (q.uid != null && it.authorUid == q.uid) || it.id in q.mine, prayedByMe = it.id in q.prayed, myReaction = q.reactions[it.id]) },
+            posts = feedPosts,
             pending = ex.admin.pending,
             joinRequests = ex.admin.requests,
             events = ex.events,
             pinnedPostId = circle?.pinnedPostId,
-            myPendingCount = q.pending,
+            myPendingCount = r.pending,
             failure = if (removed) null else failure,
-            gone = removed
+            gone = removed,
+            unreadFeedCount = unreadCount,
+            savedCount = feedPosts.count { it.saved },
+            streakDays = habit.streakDays,
+            checkedInToday = habit.checkedInToday,
+            promptDismissedToday = habit.promptDismissedToday
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CircleHomeUiState())
 
-    private data class UserData(val uid: String?, val prayed: Set<String>, val mine: Set<String>, val pending: Int, val reactions: Map<String, ReactionKind>)
+    private data class RawUser(val uid: String?, val prayed: Set<String>, val mine: Set<String>, val pending: Int, val reactions: Map<String, ReactionKind>)
+    private data class HabitInfo(val savedIds: Set<String>, val lastVisit: Long, val streakDays: Int, val checkedInToday: Boolean, val promptDismissedToday: Boolean)
+    private data class UserData(val raw: RawUser, val habit: HabitInfo)
     private data class AdminData(val pending: List<PendingPost>, val requests: List<JoinRequest>)
     private data class Extras(val events: List<CircleEvent>, val admin: AdminData)
 
@@ -372,6 +432,8 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
                     repo.store.setComposerDraft(circleId, null)
                     savedDraft.value = null
                     composer.value = ComposerState()
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
                     say(if (created.pending) "Sent to the admins. It will appear once they approve it." else "Posted.")
                 },
                 onErr = { f -> composer.update { it.copy(sending = false, error = f.message) } }
@@ -380,11 +442,33 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     }
 
     // ---------- feed actions ----------
+    fun toggleBookmark(post: Post) {
+        val added = repo.store.toggleSavedPost(circleId, post.id)
+        refreshHabits()
+        say(if (added) "Saved for later" else "Removed from saved")
+    }
+
+    fun markCatchUpSeen() {
+        repo.store.setLastFeedVisit(circleId, repo.clock())
+        refreshHabits()
+    }
+
+    fun dismissTodayPrompt() {
+        repo.store.setDismissedPromptDay(circleId, repo.clock() / 86_400_000L)
+        refreshHabits()
+    }
+
     fun pray(post: Post) {
         if (post.id in prayed.value) return
         prayed.update { it + post.id }
         viewModelScope.launch {
-            repo.prayed(circleId, post.id).fold(onOk = { }, onErr = { f -> prayed.update { it - post.id }; fail(f) })
+            repo.prayed(circleId, post.id).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                },
+                onErr = { f -> prayed.update { it - post.id }; fail(f) }
+            )
         }
     }
 
@@ -394,7 +478,16 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         myReactions.update { currentMap ->
             if (target == null) currentMap - post.id else currentMap + (post.id to target)
         }
-        viewModelScope.launch { repo.api.react(circleId, post.id, target).failureOrNull?.let(::fail) }
+        viewModelScope.launch {
+            val res = repo.api.react(circleId, post.id, target)
+            val err = res.failureOrNull
+            if (err != null) {
+                fail(err)
+            } else if (target != null) {
+                repo.store.recordActivity(repo.clock())
+                refreshHabits()
+            }
+        }
     }
 
     fun markAnswered(post: Post, onDone: (Post) -> Unit = {}) {
@@ -402,12 +495,22 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
             if (post.type == PostType.Task || post.type == PostType.Blocker) {
                 val message = if (post.type == PostType.Blocker) "Marked resolved." else "Marked completed."
                 repo.api.setWorkStatus(circleId, post.id, WorkStatus.Done).fold(
-                    onOk = { say(message); onDone(post) },
+                    onOk = {
+                        repo.store.recordActivity(repo.clock())
+                        refreshHabits()
+                        say(message)
+                        onDone(post)
+                    },
                     onErr = ::fail
                 )
             } else {
                 repo.api.markAnswered(circleId, post.id).fold(
-                    onOk = { say("Marked answered. Thank God!"); onDone(post) },
+                    onOk = {
+                        repo.store.recordActivity(repo.clock())
+                        refreshHabits()
+                        say("Marked answered. Thank God!")
+                        onDone(post)
+                    },
                     onErr = ::fail
                 )
             }
@@ -417,8 +520,24 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     fun setWorkStatus(post: Post, status: WorkStatus) {
         viewModelScope.launch {
             repo.api.setWorkStatus(circleId, post.id, status).fold(
-                onOk = { say("Marked ${status.label.lowercase()}.") },
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                    say("Marked ${status.label.lowercase()}.")
+                },
                 onErr = ::fail
+            )
+        }
+    }
+
+    fun toggleChecklistItem(post: Post, item: ChecklistItem) {
+        viewModelScope.launch {
+            repo.toggleChecklistItem(circleId, post.id, item.id, !item.done).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                },
+                onErr = { f -> _messages.emit(f.message) }
             )
         }
     }
@@ -428,13 +547,26 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         if (post.anonymous) return
         viewModelScope.launch {
             repo.api.celebrate(circleId, com.craftflowtechnologies.meetingmind.core.circles2.CelebrationKind.Answered, "", companionId?.takeIf { it in com.craftflowtechnologies.meetingmind.core.circles2.COMPANION_IDS }, post.id)
-                .fold(onOk = { say("Shared in the chat.") }, onErr = ::fail)
+                .fold(onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                    say("Shared in the chat.")
+                }, onErr = ::fail)
         }
     }
 
     fun addUpdate(post: Post, text: String) {
         val t = text.trim(); if (t.isEmpty()) return
-        viewModelScope.launch { repo.api.addUpdate(circleId, post.id, t).fold(onOk = { say("Update posted.") }, onErr = ::fail) }
+        viewModelScope.launch {
+            repo.api.addUpdate(circleId, post.id, t).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                    say("Update posted.")
+                },
+                onErr = ::fail
+            )
+        }
     }
 
     fun editPost(post: Post, text: String) {
@@ -487,6 +619,9 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
                     repo.store.setCommentDraft(circleId, postId, t)
                 }
                 fail(err)
+            } else {
+                repo.store.recordActivity(repo.clock())
+                refreshHabits()
             }
         }
     }
@@ -560,7 +695,16 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     }
 
     fun rsvp(eventId: String, answer: RsvpAnswer) {
-        viewModelScope.launch { repo.api.rsvp(circleId, eventId, answer).fold(onOk = { say("Saved: ${answer.label}.") }, onErr = ::fail) }
+        viewModelScope.launch {
+            repo.api.rsvp(circleId, eventId, answer).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                    say("Saved: ${answer.label}.")
+                },
+                onErr = ::fail
+            )
+        }
     }
 
     // ---------- invites ----------

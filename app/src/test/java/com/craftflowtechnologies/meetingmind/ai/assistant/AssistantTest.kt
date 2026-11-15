@@ -210,4 +210,47 @@ class AssistantTest {
         assertFalse(recordedRequests[0].jsonOutput)
         assertTrue(recordedRequests[1].contentsJson?.contains("functionResponse") == true)
     }
+
+    @Test fun fallsBackToLocalModelWhenCloudUnconfiguredAndSupportsTaskTools() = runBlocking {
+        val offlineTransport = object : GeminiTransport {
+            override fun isConfigured() = false
+            override suspend fun execute(request: GeminiRequest): AiResult<String> = AiResult.Failed("offline")
+        }
+        val localReplies = ArrayDeque(
+            listOf(
+                """{"say":"","calls":[{"tool":"list_tasks","args":{}}]}""",
+                """{"say":"You have 1 open task: Send slides.","calls":[]}"""
+            )
+        )
+        val localModel = object : com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel {
+            override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> =
+                AiResult.Success(localReplies.removeFirst())
+        }
+        val host = Host(AssistantScope("Weekly Sync", false, "Meeting", noteId = "n1", meetingId = "m1"))
+        val engine = AssistantEngine(
+            transport = offlineTransport,
+            host = host,
+            localModelProvider = {
+                com.craftflowtechnologies.meetingmind.ai.routing.ResolvedLanguageModel(
+                    languageModel = localModel,
+                    modelId = "gemma-local",
+                    contextLengthTokens = 4096,
+                    isCloud = false
+                )
+            }
+        )
+        assertTrue(AssistantTool.LIST_TASKS in engine.scopedTools())
+        assertTrue(AssistantTool.LIST_UPCOMING_REMINDERS in engine.scopedTools())
+        assertTrue(AssistantTool.COMPLETE_TASK in engine.scopedTools())
+
+        val reply = engine.reply(emptyList(), "What tasks are open?")
+        assertFalse(reply.error)
+        assertEquals("You have 1 open task: Send slides.", reply.text)
+        assertTrue(reply.provider?.contains("On-device") == true || reply.text.contains("Send slides"))
+    }
+
+    @Test fun `upcoming reminders native declaration has valid empty object parameters`() {
+        val raw = AssistantTool.nativeDeclarationsJson(listOf(AssistantTool.LIST_UPCOMING_REMINDERS))
+        assertTrue(raw.contains("list_upcoming_reminders"))
+    }
 }

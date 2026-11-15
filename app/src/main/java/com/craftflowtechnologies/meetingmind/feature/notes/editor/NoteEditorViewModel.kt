@@ -441,37 +441,93 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                 }
                 append("Text to edit:\n").append(edit.original)
             }
-            if (!geminiTransport.refreshConfigured()) {
-                val cur = _aiEdit.value ?: return@launch
-                _aiEdit.value = cur.copy(busy = false, error = "AI editing needs a Gemini API key. Add one in Settings.")
-                return@launch
+            val requestedProfile = withContext(Dispatchers.IO) {
+                com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(getApplication())
+                    .preferencesFlow.first().processingProfile
             }
+            val effectiveProfile = withContext(Dispatchers.IO) {
+                com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forNote(getApplication(), noteId, requestedProfile)
+            }
+            val cloudReady = effectiveProfile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET &&
+                runCatching { geminiTransport.refreshConfigured() }.getOrDefault(false)
+
             val raw = StringBuilder()
             var doneText: String? = null
             var provider: String? = null
             var failure: String? = null
-            geminiTransport.stream(
-                com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest(
-                    modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
-                    systemInstruction = AI_EDIT_SYSTEM,
-                    prompt = prompt,
-                    thinkingLevel = com.craftflowtechnologies.meetingmind.ai.cloud.ThinkingLevel.LOW,
-                    temperature = 0.4f,
-                    timeoutMs = 60_000L
-                )
-            ).collect { ev ->
-                when (ev) {
-                    is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.TextDelta -> {
-                        raw.append(ev.text)
-                        val cur = _aiEdit.value
-                        if (cur != null) _aiEdit.value = cur.copy(partial = com.craftflowtechnologies.meetingmind.core.notes.PasteTool.clean(raw.toString()))
+            if (cloudReady) {
+                geminiTransport.stream(
+                    com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest(
+                        modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
+                        systemInstruction = AI_EDIT_SYSTEM,
+                        prompt = prompt,
+                        thinkingLevel = com.craftflowtechnologies.meetingmind.ai.cloud.ThinkingLevel.LOW,
+                        temperature = 0.4f,
+                        timeoutMs = 60_000L
+                    )
+                ).collect { ev ->
+                    when (ev) {
+                        is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.TextDelta -> {
+                            raw.append(ev.text)
+                            val cur = _aiEdit.value
+                            if (cur != null) _aiEdit.value = cur.copy(partial = com.craftflowtechnologies.meetingmind.core.notes.PasteTool.clean(raw.toString()))
+                        }
+                        is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Completed -> {
+                            doneText = ev.text
+                            provider = com.craftflowtechnologies.meetingmind.ai.cloud.DeepSeek.lastProvider
+                        }
+                        is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Failed -> failure = ev.error.describeFailure()
+                        else -> Unit
                     }
-                    is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Completed -> {
-                        doneText = ev.text
-                        provider = com.craftflowtechnologies.meetingmind.ai.cloud.DeepSeek.lastProvider
+                }
+            }
+
+            // One-way local LLM fallback when offline, privacy-restricted, free-tier exhausted, or no key configured.
+            if (doneText.isNullOrBlank() && raw.isEmpty()) {
+                val localResolved = withContext(Dispatchers.IO) {
+                    com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory(
+                        context = getApplication(),
+                        modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(getApplication()),
+                        geminiTransport = geminiTransport
+                    ).resolveLocal(
+                        com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SUMMARIZATION,
+                        com.craftflowtechnologies.meetingmind.core.model.ModelTier.RECOMMENDED
+                    )
+                }
+                if (localResolved != null) {
+                    failure = null
+                    val localPrompt = "$AI_EDIT_SYSTEM\n\n$prompt"
+                    try {
+                        localResolved.languageModel.generateStream(localPrompt, maxOutputTokens = 1024).collect { ev ->
+                            when (ev) {
+                                is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.TextDelta -> {
+                                    raw.append(ev.text)
+                                    val cur = _aiEdit.value
+                                    if (cur != null) _aiEdit.value = cur.copy(partial = com.craftflowtechnologies.meetingmind.core.notes.PasteTool.clean(raw.toString()))
+                                }
+                                is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Completed -> {
+                                    doneText = ev.text
+                                    provider = localResolved.modelId
+                                }
+                                is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Failed -> {
+                                    failure = ev.error.describeFailure()
+                                }
+                                else -> Unit
+                            }
+                        }
+                        if (provider == null && (doneText != null || raw.isNotEmpty())) {
+                            provider = localResolved.modelId
+                        }
+                    } finally {
+                        com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
                     }
-                    is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Failed -> failure = ev.error.describeFailure()
-                    else -> Unit
+                } else if (!cloudReady) {
+                    val cur = _aiEdit.value ?: return@launch
+                    _aiEdit.value = cur.copy(
+                        busy = false,
+                        error = "AI editing needs Internet mode with a Gemini key, or an installed on-device AI model in Settings."
+                    )
+                    return@launch
                 }
             }
             val current = _aiEdit.value ?: return@launch
@@ -1550,7 +1606,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                         modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(getApplication()),
                         geminiTransport = com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(getApplication())
                     )
-                    factory.resolve(profile, com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SYNTHESIS)
+                    factory.resolveWithFallback(profile, com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SYNTHESIS)
                 }
                 if (resolved == null) {
                     _message.value = "No AI model is available. Add a Gemini key or download an on-device model in Settings."
@@ -1567,7 +1623,9 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                         ).polish(noteId, linkedMeetingId ?: noteId, currentNote.workflow, segments, userNotes = userBlocks, marks = marks)
                     }
                 } finally {
-                    if (!resolved.isCloud) com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
+                    val ranLocal = !resolved.isCloud ||
+                        (resolved.languageModel as? com.craftflowtechnologies.meetingmind.ai.routing.ResilientLanguageModel)?.lastRanLocally == true
+                    if (ranLocal) com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
                 }
                 when (result) {
                     is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success -> {
@@ -1593,6 +1651,23 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Summary")
         update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.withSummary(_blocks.value, noteId, points))
         dismissAi(jobId); _message.value = "Summary added — Undo to remove it"
+    }
+
+    fun applyPointsTool(jobId: String, tool: com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool, points: List<com.craftflowtechnologies.meetingmind.ai.notes.CitedItem>) {
+        when (tool) {
+            com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.EXTRACT_ACTIONS -> applyActions(jobId, points)
+            com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.UNRESOLVED_GAPS -> {
+                snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, tool.label)
+                update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.withGaps(_blocks.value, noteId, points))
+                dismissAi(jobId); _message.value = "Open questions added — Undo to remove"
+            }
+            com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.FOLLOW_UP_BRIEF -> {
+                snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, tool.label)
+                update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.withRecap(_blocks.value, noteId, points))
+                dismissAi(jobId); _message.value = "Recap added — Undo to remove"
+            }
+            else -> applySummary(jobId, points)
+        }
     }
 
     fun applyActions(jobId: String, actions: List<com.craftflowtechnologies.meetingmind.ai.notes.CitedItem>) {

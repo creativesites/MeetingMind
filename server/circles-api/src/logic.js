@@ -26,11 +26,11 @@ export const TEMPLATES = {
   ministry_team: ["prayer", "announcement", "study", "devotional"],
   custom: ["prayer", "testimony", "encouragement", "devotional"],
   // Work templates
-  project_team: ["task", "decision", "brief", "standup", "announcement", "note"],
-  client_engagement: ["decision", "brief", "task", "announcement", "note"],
+  project_team: ["task", "decision", "brief", "standup", "blocker", "announcement", "note"],
+  client_engagement: ["decision", "brief", "task", "blocker", "announcement", "note"],
   exec_board: ["decision", "brief", "announcement", "note"],
-  department: ["announcement", "standup", "task", "decision", "note"],
-  custom_work: ["task", "decision", "brief", "standup", "announcement", "note"],
+  department: ["announcement", "standup", "task", "decision", "blocker", "note"],
+  custom_work: ["task", "decision", "brief", "standup", "blocker", "announcement", "note"],
   // Learning templates
   study_group: ["study", "announcement", "encouragement", "achievement", "note"],
   course_cohort: ["study", "announcement", "note"],
@@ -225,6 +225,39 @@ export function cleanPostMeta(meta) {
     const s = meta.meetingDate.trim();
     if (s.length > 0) out.meetingDate = s.slice(0, 40);
   }
+  if (Array.isArray(meta.tags)) {
+    const seen = new Set();
+    const tags = [];
+    for (const item of meta.tags) {
+      if (typeof item !== "string") continue;
+      let s = item.trim();
+      while (s.startsWith("#")) s = s.slice(1).trim();
+      s = s.slice(0, 24);
+      if (!s) continue;
+      const lower = s.toLowerCase();
+      if (seen.has(lower)) continue;
+      seen.add(lower);
+      tags.push(s);
+      if (tags.length === 4) break;
+    }
+    if (tags.length > 0) out.tags = tags;
+  }
+  if (Array.isArray(meta.checklist)) {
+    const checklist = [];
+    let idx = 0;
+    for (const item of meta.checklist) {
+      if (!item || typeof item !== "object") continue;
+      const text = typeof item.text === "string" ? item.text.trim().slice(0, 120) : "";
+      if (!text) continue;
+      let id = typeof item.id === "string" ? item.id.trim().slice(0, 32) : "";
+      if (!id) id = `c${idx}`;
+      const done = item.done === true;
+      checklist.push({ id, text, done });
+      idx++;
+      if (checklist.length === 8) break;
+    }
+    if (checklist.length > 0) out.checklist = checklist;
+  }
   return Object.keys(out).length > 0 ? out : null;
 }
 
@@ -306,8 +339,8 @@ export const CHAT = { pollQuestionMax: 200, pollOptionMax: 80, pollOptionsMin: 2
 export const COMPANIONS = ["zuri", "nas", "wren", "page"];
 export const CELEBRATIONS = ["birthday", "answered", "streak", "milestone"];
 
-/** Validate and shape a poll. Returns { question, options:[{id,text}], optionIds, multi, closesAt? }. */
-export function shapePoll({ question, options, multi, closesAt }) {
+/** Validate and shape a poll. Returns { question, options:[{id,text}], optionIds, multi, closesAt?, correctOptionId?, explanation? }. */
+export function shapePoll({ question, options, multi, closesAt, correctOptionId, correctIndex, explanation }) {
   const q = cleanText(question, "question", { max: CHAT.pollQuestionMax });
   if (!Array.isArray(options) || options.length < CHAT.pollOptionsMin || options.length > CHAT.pollOptionsMax) {
     throw bad("bad_request", `A poll needs ${CHAT.pollOptionsMin} to ${CHAT.pollOptionsMax} options`);
@@ -325,6 +358,41 @@ export function shapePoll({ question, options, multi, closesAt }) {
   if (closesAt !== undefined && closesAt !== null) {
     res.closesAt = closesAt;
   }
+
+  let resolvedCorrectId = null;
+  const hasIndex = correctIndex !== undefined && correctIndex !== null;
+  const hasId = correctOptionId !== undefined && correctOptionId !== null;
+
+  if (hasIndex) {
+    if (Number.isInteger(correctIndex) && correctIndex >= 0 && correctIndex < opts.length) {
+      resolvedCorrectId = opts[correctIndex].id;
+    } else {
+      throw bad("bad_request", "Invalid correctIndex");
+    }
+  } else if (hasId) {
+    if (typeof correctOptionId === "string" && opts.some((o) => o.id === correctOptionId.trim())) {
+      resolvedCorrectId = correctOptionId.trim();
+    } else {
+      throw bad("bad_request", "Invalid correctOptionId");
+    }
+  }
+
+  if (resolvedCorrectId) {
+    if (res.multi) throw bad("bad_request", "Quiz polls cannot be multiple choice");
+    res.correctOptionId = resolvedCorrectId;
+  }
+
+  if (explanation !== undefined && explanation !== null) {
+    if (typeof explanation === "string") {
+      const expTrimmed = explanation.trim();
+      if (expTrimmed.length > 0) {
+        res.explanation = cleanText(explanation, "explanation", { min: 1, max: 240 });
+      }
+    } else {
+      throw bad("bad_request", "Invalid explanation");
+    }
+  }
+
   return res;
 }
 

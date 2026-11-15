@@ -15,14 +15,18 @@ import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmModelResolver
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.MeetingStatus
 import com.craftflowtechnologies.meetingmind.core.model.ModelCapability
+import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.TitleSource
 import com.craftflowtechnologies.meetingmind.core.model.Transcript
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
+import com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
@@ -55,10 +59,13 @@ object RecordingTitleBackfill {
                 return@runCatching
             }
 
+            val requestedProfile = runCatching { UserPreferencesManager(context).preferencesFlow.first().processingProfile }
+                .getOrDefault(ProcessingProfile.INTERNET)
             val modelStorage = LocalModelStorage(context)
             val installedModel = LlmModelResolver.resolveSmallestInstalled(modelStorage, ModelCapability.SUMMARIZATION)
             val cloud = CloudAi.transport(context)
-            val cloudReady = runCatching { cloud.refreshConfigured() }.getOrDefault(false)
+            val cloudReady = requestedProfile == ProcessingProfile.INTERNET &&
+                runCatching { cloud.refreshConfigured() }.getOrDefault(false)
             if (installedModel == null && !cloudReady) return@runCatching
 
             val localEngine: MeetingIntelligenceEngine? = installedModel?.let { modelId ->
@@ -68,17 +75,23 @@ object RecordingTitleBackfill {
                         ?: DEFAULT_CONTEXT_TOKENS
                 )
             }
-            val engine: MeetingIntelligenceEngine = when {
+            val onlineEngine: MeetingIntelligenceEngine? = when {
                 cloudReady && localEngine != null ->
                     FallbackMeetingIntelligenceEngine(primary = GeminiIntelligenceEngine(cloud), fallback = localEngine)
                 cloudReady -> GeminiIntelligenceEngine(cloud)
                 localEngine != null -> localEngine
-                else -> return@runCatching
+                else -> null
             }
 
             val candidates = meetingDao.getMeetingsForTitleBackfill(MAX_PER_RUN)
             for (meeting in candidates) {
                 try {
+                    val effectiveProfile = WorkPrivacy.forMeeting(context, meeting.id, requestedProfile)
+                    val engine = if (effectiveProfile == ProcessingProfile.INTERNET) {
+                        onlineEngine
+                    } else {
+                        localEngine
+                    } ?: continue
                     val segments = database.transcriptDao().getSegmentsForMeetingDirect(meeting.id)
                     val texts = segments.map { it.cleanedText ?: it.text }.filter { it.isNotBlank() }
                     if (!RecordingTitles.hasUsableWords(texts)) continue

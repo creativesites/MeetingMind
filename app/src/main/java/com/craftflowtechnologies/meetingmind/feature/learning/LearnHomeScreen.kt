@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.feature.learning
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -229,6 +230,11 @@ fun LearnHomeScreen(
             viewModel.generateQuickTopicDeck(topic = topic, domain = domain) {
                 actions.onOpenPractice()
             }
+        },
+        onDrillWeakConcepts = { weakList ->
+            viewModel.loadWeakConceptsPractice(weakList) {
+                actions.onOpenPractice()
+            }
         }
     )
 }
@@ -253,7 +259,8 @@ fun LearnHomeContent(
         }
     },
     onAssignNoteToCourse: (noteId: String, courseId: String) -> Unit = { _, _ -> },
-    onGenerateQuickDeck: (topic: String, domain: SubjectDomain) -> Unit = { _, _ -> actions.onOpenPractice() }
+    onGenerateQuickDeck: (topic: String, domain: SubjectDomain) -> Unit = { _, _ -> actions.onOpenPractice() },
+    onDrillWeakConcepts: (List<LearningConcept>) -> Unit = { actions.onStartDailyRecall() }
 ) {
     val c = MM.colors
     var showCreateCourseDialog by remember { mutableStateOf(false) }
@@ -323,6 +330,9 @@ fun LearnHomeContent(
                     Spacer(Modifier.height(MM.space.xs))
                     LearnTabSegmentedControl(
                         activeTab = activeTab,
+                        dueCount = dailyBrief?.dueReviews?.size ?: 0,
+                        courseCount = courses.size,
+                        goalCount = goals.size,
                         onSelectTab = onSelectTab
                     )
                 }
@@ -360,7 +370,8 @@ fun LearnHomeContent(
                             HighYieldWeakSection(
                                 weakConcepts = dailyBrief?.weakHighYieldConcepts.orEmpty(),
                                 sessions = sessions,
-                                onOpenSession = actions.onOpenSession
+                                onOpenSession = actions.onOpenSession,
+                                onDrillWeakConcepts = onDrillWeakConcepts
                             )
                         }
                         item(key = "recent_sessions") {
@@ -474,6 +485,9 @@ fun LearnHomeContent(
 @Composable
 private fun LearnTabSegmentedControl(
     activeTab: LearnTab,
+    dueCount: Int = 0,
+    courseCount: Int = 0,
+    goalCount: Int = 0,
     onSelectTab: (LearnTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -498,6 +512,12 @@ private fun LearnTabSegmentedControl(
                     LearnTab.PRACTICE -> "Practice"
                     LearnTab.EXAM -> "Exam"
                 }
+                val badgeCount = when (tab) {
+                    LearnTab.COURSES -> courseCount.takeIf { it > 0 }
+                    LearnTab.PRACTICE -> dueCount.takeIf { it > 0 }
+                    LearnTab.EXAM -> goalCount.takeIf { it > 0 }
+                    else -> null
+                }
                 Surface(
                     shape = MM.radius.pill,
                     color = fill.value,
@@ -514,13 +534,33 @@ private fun LearnTabSegmentedControl(
                         )
                         .testTag("learn_tab_${tab.name.lowercase()}")
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    ) {
                         Text(
                             text = label,
                             style = if (isSel) MM.type.bodyStrong else MM.type.body,
                             color = if (isSel) c.ink else c.inkSecondary,
                             maxLines = 1
                         )
+                        if (badgeCount != null) {
+                            Spacer(Modifier.width(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(MM.radius.pill)
+                                    .background(if (isSel) c.accentWash else c.surfaceSunk)
+                                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$badgeCount",
+                                    style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isSel) c.accent else c.inkSecondary
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -669,8 +709,7 @@ private fun CompanionBriefHero(
                 horizontalArrangement = Arrangement.spacedBy(MM.space.s)
             ) {
                 MasteryProgressRing(
-                    progress = masteryProgress,
-                    modifier = Modifier.testTag("learn_mastery_ring")
+                    progress = masteryProgress
                 )
                 Companion(
                     form = companionForm,
@@ -930,11 +969,16 @@ private fun DueReviewsSection(
 private fun HighYieldWeakSection(
     weakConcepts: List<LearningConcept>,
     sessions: List<LearningSession> = emptyList(),
-    onOpenSession: (noteId: String) -> Unit
+    onOpenSession: (noteId: String) -> Unit,
+    onDrillWeakConcepts: (List<LearningConcept>) -> Unit = {}
 ) {
     SectionHeader(
         title = "High-Yield Concepts to Strengthen",
-        count = if (weakConcepts.isNotEmpty()) weakConcepts.size else null
+        count = if (weakConcepts.isNotEmpty()) weakConcepts.size else null,
+        actionLabel = if (weakConcepts.isNotEmpty()) "Drill All" else null,
+        onAction = if (weakConcepts.isNotEmpty()) {
+            { onDrillWeakConcepts(weakConcepts) }
+        } else null
     )
     if (weakConcepts.isEmpty()) {
         MMCard(contentPadding = MM.space.m) {
@@ -958,7 +1002,7 @@ private fun HighYieldWeakSection(
     }
 
     MMCard(contentPadding = MM.space.m) {
-        weakConcepts.take(3).forEachIndexed { index, concept ->
+        weakConcepts.take(4).forEachIndexed { index, concept ->
             val targetSession = sessions.firstOrNull { it.id == concept.sessionId }
             val targetId = targetSession?.noteId ?: concept.sessionId
             if (index > 0) {
@@ -1008,17 +1052,35 @@ private fun HighYieldWeakSection(
                     )
                 }
                 Spacer(Modifier.width(MM.space.s))
-                Box(
-                    modifier = Modifier
-                        .clip(MM.radius.small)
-                        .background(LearningFixedColors.MasteryNeedsReviewBg)
-                        .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
                 ) {
-                    Text(
-                        text = concept.examImportance.label,
-                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
-                        color = LearningFixedColors.MasteryNeedsReview
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(MM.radius.small)
+                            .background(LearningFixedColors.MasteryNeedsReviewBg)
+                            .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                    ) {
+                        Text(
+                            text = concept.examImportance.label,
+                            style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                            color = LearningFixedColors.MasteryNeedsReview
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(MM.radius.pill)
+                            .background(MM.colors.accentWash)
+                            .clickable { onDrillWeakConcepts(listOf(concept)) }
+                            .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                    ) {
+                        Text(
+                            text = "Drill",
+                            style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                            color = MM.colors.accent
+                        )
+                    }
                 }
             }
         }
@@ -1033,6 +1095,10 @@ private fun RecentSessionsSection(
     onOpenSession: (noteId: String) -> Unit,
     onCreateCourseFromLecture: (LearningRepository.LectureNoteSummary) -> Unit
 ) {
+    var selectedLectureFilter by remember { mutableStateOf("ALL") }
+    var searchQuery by remember { mutableStateOf("") }
+    var showAllLectures by remember { mutableStateOf(false) }
+
     // Merge lectureNotes and any session not yet in lectureNotes so every recorded lecture & session is shown
     val displayLectures = remember(lectureNotes, sessions) {
         val byNoteId = lectureNotes.associateBy { it.noteId }.toMutableMap()
@@ -1058,6 +1124,33 @@ private fun RecentSessionsSection(
             }
         }
         byNoteId.values.sortedByDescending { it.updatedAt }
+    }
+
+    val unassignedCount = remember(displayLectures) { displayLectures.count { !it.isAssignedToCourse } }
+    val uniqueCourses = remember(displayLectures) {
+        displayLectures.mapNotNull { it.courseName?.takeIf { c -> c.isNotBlank() } }.distinct().take(4)
+    }
+
+    val filteredLectures = remember(displayLectures, selectedLectureFilter, searchQuery) {
+        val byCategory = when {
+            selectedLectureFilter == "ALL" -> displayLectures
+            selectedLectureFilter == "UNASSIGNED" -> displayLectures.filter { !it.isAssignedToCourse }
+            selectedLectureFilter.startsWith("COURSE:") -> {
+                val cName = selectedLectureFilter.removePrefix("COURSE:")
+                displayLectures.filter { it.courseName.equals(cName, ignoreCase = true) }
+            }
+            else -> displayLectures
+        }
+        if (searchQuery.isBlank()) byCategory
+        else {
+            val q = searchQuery.trim().lowercase()
+            byCategory.filter {
+                it.title.lowercase().contains(q) ||
+                    it.summary.lowercase().contains(q) ||
+                    (it.courseName?.lowercase()?.contains(q) == true) ||
+                    it.domain.displayName.lowercase().contains(q)
+            }
+        }
     }
 
     SectionHeader(
@@ -1090,125 +1183,198 @@ private fun RecentSessionsSection(
             }
         }
     } else {
-        MMCard(contentPadding = MM.space.m) {
-            displayLectures.take(8).forEachIndexed { index, lecture ->
-                if (index > 0) {
-                    HorizontalDivider(
-                        color = MM.colors.lineSoft,
-                        modifier = Modifier.padding(vertical = MM.space.xs)
-                    )
-                }
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(role = Role.Button) { onOpenSession(lecture.noteId) }
-                        .padding(vertical = MM.space.xs),
-                    verticalArrangement = Arrangement.spacedBy(MM.space.xs)
-                ) {
+        MMCard(
+            modifier = Modifier.animateContentSize(animationSpec = MM.motion.standard()),
+            contentPadding = MM.space.m
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                if (displayLectures.size > 2 && (unassignedCount > 0 || uniqueCourses.isNotEmpty())) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(MMSize.iconSmall + MM.space.s)
-                                .clip(MM.radius.pill)
-                                .background(
-                                    if (lecture.hasRecording) LearningFixedColors.MasteryStrongBg
-                                    else MM.colors.surfaceSunk
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (lecture.hasRecording) Icons.Rounded.GraphicEq else Icons.Rounded.School,
-                                contentDescription = null,
-                                tint = if (lecture.hasRecording) LearningFixedColors.MasteryStrong else MM.colors.inkSecondary,
-                                modifier = Modifier.size(MMSize.iconSmall)
-                            )
+                        val filterItems = buildList {
+                            add("ALL" to "All (${displayLectures.size})")
+                            if (unassignedCount > 0) add("UNASSIGNED" to "Unassigned ($unassignedCount)")
+                            uniqueCourses.forEach { cName -> add("COURSE:$cName" to cName) }
                         }
-                        Spacer(Modifier.width(MM.space.m))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = lecture.title,
-                                style = MM.type.bodyStrong,
-                                color = MM.colors.ink,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        filterItems.forEach { (key, label) ->
+                            val isSel = selectedLectureFilter == key
+                            val pillBg by animateColorAsState(
+                                targetValue = if (isSel) MM.colors.accent else MM.colors.surfaceSunk,
+                                animationSpec = MM.motion.quick(),
+                                label = "lecture_filter_$key"
                             )
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
-                                verticalAlignment = Alignment.CenterVertically
+                            Box(
+                                modifier = Modifier
+                                    .clip(MM.radius.pill)
+                                    .background(pillBg)
+                                    .clickable { selectedLectureFilter = key }
+                                    .padding(horizontal = MM.space.s, vertical = MM.space.xs / 2)
                             ) {
                                 Text(
-                                    text = lecture.courseName ?: "Unassigned Lecture",
-                                    style = MM.type.secondary,
-                                    color = if (lecture.courseName != null) MM.colors.inkSecondary else MM.colors.accent,
+                                    text = label,
+                                    style = MM.type.caption.copy(fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium),
+                                    color = if (isSel) MM.colors.onAccent else MM.colors.inkSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (displayLectures.size > 4) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = { Text("Search lectures by title, course or topic…") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                val visibleLectures = if (showAllLectures || searchQuery.isNotBlank()) filteredLectures else filteredLectures.take(6)
+
+                visibleLectures.forEachIndexed { index, lecture ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = MM.colors.lineSoft,
+                            modifier = Modifier.padding(vertical = MM.space.xs)
+                        )
+                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(role = Role.Button) { onOpenSession(lecture.noteId) }
+                            .padding(vertical = MM.space.xs),
+                        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(MMSize.iconSmall + MM.space.s)
+                                    .clip(MM.radius.pill)
+                                    .background(
+                                        if (lecture.hasRecording) LearningFixedColors.MasteryStrongBg
+                                        else MM.colors.surfaceSunk
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (lecture.hasRecording) Icons.Rounded.GraphicEq else Icons.Rounded.School,
+                                    contentDescription = null,
+                                    tint = if (lecture.hasRecording) LearningFixedColors.MasteryStrong else MM.colors.inkSecondary,
+                                    modifier = Modifier.size(MMSize.iconSmall)
+                                )
+                            }
+                            Spacer(Modifier.width(MM.space.m))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = lecture.title,
+                                    style = MM.type.bodyStrong,
+                                    color = MM.colors.ink,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Text("·", style = MM.type.secondary, color = MM.colors.inkMuted)
-                                Text(
-                                    text = lecture.domain.shortLabel,
-                                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MM.colors.accent
-                                )
-                                if (lecture.conceptCount > 0) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = lecture.courseName ?: "Unassigned Lecture",
+                                        style = MM.type.secondary,
+                                        color = if (lecture.courseName != null) MM.colors.inkSecondary else MM.colors.accent,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                     Text("·", style = MM.type.secondary, color = MM.colors.inkMuted)
                                     Text(
-                                        text = "${lecture.conceptCount} concepts",
-                                        style = MM.type.caption,
-                                        color = MM.colors.inkSecondary
+                                        text = lecture.domain.shortLabel,
+                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MM.colors.accent
+                                    )
+                                    if (lecture.durationSeconds >= 60L) {
+                                        Text("·", style = MM.type.secondary, color = MM.colors.inkMuted)
+                                        Text(
+                                            text = "${lecture.durationSeconds / 60L}m",
+                                            style = MM.type.caption,
+                                            color = MM.colors.inkSecondary
+                                        )
+                                    }
+                                    if (lecture.conceptCount > 0) {
+                                        Text("·", style = MM.type.secondary, color = MM.colors.inkMuted)
+                                        Text(
+                                            text = if (lecture.strongCount > 0) {
+                                                "${lecture.strongCount}/${lecture.conceptCount} mastered"
+                                            } else {
+                                                "${lecture.conceptCount} concepts"
+                                            },
+                                            style = MM.type.caption,
+                                            color = if (lecture.strongCount > 0) LearningFixedColors.MasteryStrong else MM.colors.inkSecondary
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.width(MM.space.xs))
+                            if (!lecture.isAssignedToCourse) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(MM.radius.pill)
+                                        .background(MM.colors.accentWash)
+                                        .clickable { onCreateCourseFromLecture(lecture) }
+                                        .padding(horizontal = MM.space.s, vertical = MM.space.xs / 2)
+                                        .testTag("create_course_from_note_${lecture.noteId}")
+                                ) {
+                                    Text(
+                                        text = "+ Course",
+                                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                        color = MM.colors.accent
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(MM.radius.pill)
+                                        .background(LearningFixedColors.MasteryStrongBg)
+                                        .padding(horizontal = MM.space.s, vertical = MM.space.xs / 2)
+                                ) {
+                                    Text(
+                                        text = "Active",
+                                        style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                        color = LearningFixedColors.MasteryStrong
                                     )
                                 }
                             }
+                            Spacer(Modifier.width(MM.space.xs))
+                            Icon(
+                                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MM.colors.inkSecondary
+                            )
                         }
-                        Spacer(Modifier.width(MM.space.xs))
-                        if (!lecture.isAssignedToCourse) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(MM.radius.pill)
-                                    .background(MM.colors.accentWash)
-                                    .clickable { onCreateCourseFromLecture(lecture) }
-                                    .padding(horizontal = MM.space.s, vertical = MM.space.xs / 2)
-                                    .testTag("create_course_from_note_${lecture.noteId}")
-                            ) {
-                                Text(
-                                    text = "+ Course",
-                                    style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
-                                    color = MM.colors.accent
-                                )
-                            }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .clip(MM.radius.pill)
-                                    .background(LearningFixedColors.MasteryStrongBg)
-                                    .padding(horizontal = MM.space.s, vertical = MM.space.xs / 2)
-                            ) {
-                                Text(
-                                    text = "Active",
-                                    style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                                    color = LearningFixedColors.MasteryStrong
-                                )
-                            }
+                        if (lecture.summary.isNotBlank()) {
+                            Text(
+                                text = lecture.summary,
+                                style = MM.type.caption,
+                                color = MM.colors.inkSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(start = MMSize.iconSmall + MM.space.s + MM.space.m)
+                            )
                         }
-                        Spacer(Modifier.width(MM.space.xs))
-                        Icon(
-                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MM.colors.inkSecondary
-                        )
                     }
-                    if (lecture.summary.isNotBlank()) {
-                        Text(
-                            text = lecture.summary,
-                            style = MM.type.caption,
-                            color = MM.colors.inkSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(start = MMSize.iconSmall + MM.space.s + MM.space.m)
-                        )
-                    }
+                }
+
+                if (filteredLectures.size > 6 && searchQuery.isBlank()) {
+                    SecondaryButton(
+                        text = if (showAllLectures) "Show Fewer Lectures" else "Show All ${filteredLectures.size} Lectures",
+                        onClick = { showAllLectures = !showAllLectures },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -1393,8 +1559,17 @@ private fun CoursesSection(
                 }
             }
         } else {
+            var expandedCourseId by remember { mutableStateOf<String?>(null) }
             Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
                 courses.forEach { course ->
+                    val courseLectures = remember(lectureNotes, course.notebook.id, course.notebook.name, course.properties.courseCode) {
+                        lectureNotes.filter { note ->
+                            note.notebookId == course.notebook.id ||
+                                note.courseName.equals(course.notebook.name, ignoreCase = true) ||
+                                (course.properties.courseCode.isNotBlank() && note.courseName.equals(course.properties.courseCode, ignoreCase = true))
+                        }
+                    }
+                    val isExpanded = expandedCourseId == course.notebook.id
                     val dueForCourse = maxOf(
                         course.dueReviewCount,
                         dailyBrief?.dueReviews?.count { it.session.courseName.equals(course.notebook.name, ignoreCase = true) } ?: 0
@@ -1408,11 +1583,14 @@ private fun CoursesSection(
                     }
                     val animatedProgress by animateFloatAsState(
                         targetValue = progressFraction,
+                        animationSpec = MM.motion.standard(),
                         label = "course_mastery_progress"
                     )
 
                     MMCard(
-                        modifier = Modifier.clickable { onOpenCourse(course.notebook.id) },
+                        modifier = Modifier
+                            .animateContentSize(animationSpec = MM.motion.standard())
+                            .clickable { onOpenCourse(course.notebook.id) },
                         contentPadding = MM.space.m
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
@@ -1476,7 +1654,7 @@ private fun CoursesSection(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "${course.noteCount} notes · ${course.sessionCount} sessions",
+                                        text = "${maxOf(course.noteCount, courseLectures.size)} notes · ${course.sessionCount} sessions",
                                         style = MM.type.caption,
                                         color = MM.colors.inkSecondary
                                     )
@@ -1499,6 +1677,26 @@ private fun CoursesSection(
                                 modifier = Modifier.fillMaxWidth().padding(top = MM.space.xs),
                                 verticalArrangement = Arrangement.spacedBy(MM.space.xs)
                             ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (course.conceptCount > 0) {
+                                            "${course.strongConceptCount}/${course.conceptCount} concepts mastered"
+                                        } else {
+                                            "Course mastery"
+                                        },
+                                        style = MM.type.overline,
+                                        color = MM.colors.inkSecondary
+                                    )
+                                    Text(
+                                        text = "${(animatedProgress * 100).toInt()}%",
+                                        style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
+                                        color = MM.colors.accent
+                                    )
+                                }
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1516,17 +1714,115 @@ private fun CoursesSection(
                                 }
                             }
 
+                            AnimatedVisibility(
+                                visible = isExpanded,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(top = MM.space.xs),
+                                    verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                                ) {
+                                    HorizontalDivider(color = MM.colors.lineSoft)
+                                    if (courseLectures.isEmpty()) {
+                                        Text(
+                                            text = "No lectures linked to this course yet.",
+                                            style = MM.type.caption,
+                                            color = MM.colors.inkSecondary
+                                        )
+                                    } else {
+                                        courseLectures.forEach { lecture ->
+                                            val subtitleParts = buildList {
+                                                if (lecture.durationSeconds >= 60L) add("${lecture.durationSeconds / 60L}m")
+                                                if (lecture.conceptCount > 0) {
+                                                    if (lecture.strongCount > 0) {
+                                                        add("${lecture.strongCount}/${lecture.conceptCount} mastered")
+                                                    } else {
+                                                        add("${lecture.conceptCount} concepts")
+                                                    }
+                                                }
+                                                add("Lecture Studio")
+                                            }
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(MM.radius.small)
+                                                    .background(MM.colors.surfaceSunk)
+                                                    .clickable { onOpenSession(lecture.noteId) }
+                                                    .padding(horizontal = MM.space.s, vertical = MM.space.xs),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = lecture.title,
+                                                        style = MM.type.bodyStrong,
+                                                        color = MM.colors.ink,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = subtitleParts.joinToString(" · "),
+                                                        style = MM.type.caption,
+                                                        color = MM.colors.inkSecondary
+                                                    )
+                                                }
+                                                Icon(
+                                                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                                    contentDescription = null,
+                                                    tint = MM.colors.inkSecondary
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (unassignedLectures.isNotEmpty()) {
+                                        Text(
+                                            text = "Tap to add an unassigned lecture to ${course.notebook.name}:",
+                                            style = MM.type.overline,
+                                            color = MM.colors.inkSecondary,
+                                            modifier = Modifier.padding(top = MM.space.xs)
+                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                                        ) {
+                                            unassignedLectures.take(4).forEach { unassigned ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(MM.radius.pill)
+                                                        .background(MM.colors.accentWash)
+                                                        .clickable {
+                                                            onAssignNoteToCourse(unassigned.noteId, course.notebook.id)
+                                                        }
+                                                        .padding(horizontal = MM.space.s, vertical = MM.space.xs / 2)
+                                                ) {
+                                                    Text(
+                                                        text = "+ ${unassigned.title.take(22)}",
+                                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                                        color = MM.colors.accent
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(top = MM.space.xs),
                                 horizontalArrangement = Arrangement.spacedBy(MM.space.s)
                             ) {
                                 SecondaryButton(
-                                    text = "View Lectures",
-                                    onClick = { onOpenCourse(course.notebook.id) },
+                                    text = if (isExpanded) "Hide Lectures" else "View Lectures (${courseLectures.size})",
+                                    onClick = {
+                                        expandedCourseId = if (isExpanded) null else course.notebook.id
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                                 PrimaryButton(
-                                    text = "Practice Course",
+                                    text = "Practice",
                                     onClick = { onPracticeCourse(course.notebook.id) },
                                     modifier = Modifier.weight(1f)
                                 )
@@ -1770,6 +2066,36 @@ private fun PracticeModesSection(
                                 text = dom.shortLabel,
                                 style = MM.type.caption.copy(fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal),
                                 color = if (isSel) MM.colors.onAccent else MM.colors.inkSecondary
+                            )
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    listOf(
+                        "Eigenvalues & Matrices" to SubjectDomain.MATH_QUANT,
+                        "Cell Signalling & ATP" to SubjectDomain.SCIENCES_MED,
+                        "Contract Law Remedies" to SubjectDomain.HUMANITIES_LAW,
+                        "Financial Ratios & DCF" to SubjectDomain.ACCOUNTING_FINANCE
+                    ).forEach { (presetTopic, presetDomain) ->
+                        Box(
+                            modifier = Modifier
+                                .clip(MM.radius.pill)
+                                .background(MM.colors.accentWash)
+                                .clickable {
+                                    quickTopic = presetTopic
+                                    selectedDomain = presetDomain
+                                }
+                                .padding(horizontal = MM.space.s, vertical = MM.space.xs / 2)
+                        ) {
+                            Text(
+                                text = presetTopic,
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                color = MM.colors.accent
                             )
                         }
                     }

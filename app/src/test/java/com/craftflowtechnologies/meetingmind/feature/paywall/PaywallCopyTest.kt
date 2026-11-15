@@ -45,7 +45,8 @@ class PaywallCopyTest {
             Capability.BYOK_KEY,
             Capability.CONNECTED_INTEGRATIONS,
             Capability.AUTOMATION_RECIPES,
-            Capability.CHURCH_ORG_WORKFLOWS
+            Capability.CHURCH_ORG_WORKFLOWS,
+            Capability.DEEP_SYNTHESIS
         )
         paidRows.forEach { row ->
             assertTrue("a paid row needs a capability: ${row.label}", row.paid)

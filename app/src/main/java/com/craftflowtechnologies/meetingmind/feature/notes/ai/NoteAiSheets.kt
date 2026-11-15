@@ -31,7 +31,10 @@ import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Summarize
@@ -96,6 +99,8 @@ fun NoteAiMenu(
     onPick: (NoteAiTool) -> Unit,
     onRelated: (() -> Unit)?,
     onPolishNote: (() -> Unit)? = null,
+    onDeepSynthesis: (() -> Unit)? = null,
+    onAutopilot: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val c = MM.colors
@@ -125,7 +130,25 @@ fun NoteAiMenu(
             )
             MenuRow(Icons.Filled.Summarize, "Summarize", if (forNotebook) "The main points across these notes" else "The main points, added at the top") { onPick(NoteAiTool.SUMMARIZE) }
             MenuRow(Icons.Filled.CheckBox, "Find action items", "Tasks and follow-ups the notes actually state") { onPick(NoteAiTool.EXTRACT_ACTIONS) }
+            MenuRow(Icons.Filled.HelpOutline, "Open questions & gaps", "Unanswered questions, blockers & loose ends") { onPick(NoteAiTool.UNRESOLVED_GAPS) }
+            MenuRow(Icons.Filled.MailOutline, "Recap & follow-up", "Share-ready status bullets with owners and citations") { onPick(NoteAiTool.FOLLOW_UP_BRIEF) }
             MenuRow(Icons.Filled.QuestionAnswer, if (forNotebook) "Ask this notebook" else "Ask this note", "An answer from your notes, with where it's from") { onPick(NoteAiTool.ASK) }
+            onDeepSynthesis?.let {
+                MenuRow(
+                    Icons.Filled.Insights,
+                    "Deep Synthesis Pack · Pro",
+                    "Cross-session patterns, commitment drift & ready-to-send brief across related notes",
+                    onClick = it
+                )
+            }
+            onAutopilot?.let {
+                MenuRow(
+                    AiMark,
+                    "Autopilot Workflows · Pro",
+                    "Run debrief, CRM sync, study drill or group guide recipes & auto-create tasks",
+                    onClick = it
+                )
+            }
             if (!forNotebook) {
                 onPolishNote?.let {
                     MenuRow(

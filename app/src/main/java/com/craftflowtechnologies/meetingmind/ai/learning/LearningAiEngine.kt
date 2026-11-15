@@ -38,7 +38,10 @@ import java.io.File
 class LearningAiEngine(
     private val transport: GeminiTransport? = null,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val fallbackModel: LanguageModel? = null
+    private val fallbackModel: LanguageModel? = null,
+    private val fallbackModelProvider: (suspend () -> LanguageModel?)? = null,
+    private val preferLocal: (suspend () -> Boolean)? = null,
+    private val onLocalFinished: (() -> Unit)? = null
 ) {
 
     private fun stripMarkdownCodeFences(raw: String): String {
@@ -53,9 +56,12 @@ class LearningAiEngine(
         return trimmed
     }
 
+    private suspend fun shouldPreferLocal(): Boolean = preferLocal?.invoke() == true
+
     private suspend fun generateText(prompt: String, responseSchema: String? = null): String? {
+        val forceLocal = shouldPreferLocal()
         val t = transport
-        if (t != null && t.refreshConfigured()) {
+        if (!forceLocal && t != null && t.refreshConfigured()) {
             val req = GeminiRequest(
                 modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
                 systemInstruction = "You are an expert academic tutor and university professor.",
@@ -69,15 +75,19 @@ class LearningAiEngine(
                 else -> {}
             }
         }
-        val model = fallbackModel ?: return null
-        val res = if (responseSchema != null) {
-            model.generateStructured(prompt, responseSchema, maxOutputTokens = 1500)
-        } else {
-            model.generate(prompt, maxOutputTokens = 1500)
-        }
-        return when (res) {
-            is AiResult.Success -> res.value
-            else -> null
+        val model = fallbackModel ?: fallbackModelProvider?.invoke() ?: return null
+        return try {
+            val res = if (responseSchema != null) {
+                model.generateStructured(prompt, responseSchema, maxOutputTokens = 1500)
+            } else {
+                model.generate(prompt, maxOutputTokens = 1500)
+            }
+            when (res) {
+                is AiResult.Success -> res.value
+                else -> null
+            }
+        } finally {
+            if (fallbackModel == null) onLocalFinished?.invoke()
         }
     }
 
@@ -89,7 +99,7 @@ class LearningAiEngine(
         marks: List<Mark>
     ): LectureSynthesis {
         val transcriptText = segments.joinToString("\n") { "[${it.startMs / 1000}s] ${it.text}" }
-        val maxTranscriptChars = if (transport?.refreshConfigured() == true) 90_000 else 15_000
+        val maxTranscriptChars = if (!shouldPreferLocal() && transport?.refreshConfigured() == true) 90_000 else 12_000
         val prompt = buildString {
             appendLine("You are an expert university professor and master tutor in ${domain.displayName}.")
             appendLine("Analyze the following lecture transcript and synthesize structured study materials.")

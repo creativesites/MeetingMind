@@ -84,6 +84,8 @@ class AppAssistantHost(
         AssistantTool.COMPARE_TRANSLATIONS -> compare(call.str("reference"))
         AssistantTool.ORIGINAL -> original(call.str("reference"))
         AssistantTool.LIST_PRAYER_REQUESTS -> listPrayerRequests()
+        AssistantTool.LIST_TASKS -> listTasks()
+        AssistantTool.LIST_UPCOMING_REMINDERS -> listUpcomingReminders()
         AssistantTool.LIST_COURSES -> listCourses()
         AssistantTool.GET_STUDY_CONCEPTS -> getStudyConcepts(call.str("query"))
         else -> ToolResult("Skipped", "not a read tool", ok = false)
@@ -171,6 +173,15 @@ class AppAssistantHost(
                 val when_ = listOfNotNull(due?.toString(), remind?.toLocalTime()?.toString()?.let { "reminder $it" }).joinToString(", ")
                 ToolResult("Created a task", "created task ${saved.id} '$title' $when_") to
                     AssistantAction(id, "Task: $title" + (if (when_.isNotBlank()) " · $when_" else ""), openTaskId = saved.id)
+            }
+            AssistantTool.COMPLETE_TASK -> {
+                val taskId = call.str("task_id") ?: return fail(id, "complete_task needs task_id")
+                val existing = tasks.get(taskId) ?: return fail(id, "no task with id '$taskId'")
+                if (existing.doneAt != null) return fail(id, "'${existing.title}' is already completed")
+                tasks.toggleDone(taskId)
+                undos[id] = { tasks.toggleDone(taskId) }
+                ToolResult("Completed task", "marked task '${existing.title}' done") to
+                    AssistantAction(id, "Completed: ${existing.title}", openTaskId = taskId)
             }
             AssistantTool.CREATE_NOTE -> {
                 val title = call.str("title") ?: "New note"
@@ -393,6 +404,42 @@ class AppAssistantHost(
         if (open.isEmpty()) return ToolResult("No open prayer requests", "the prayer list has no open requests")
         val text = open.joinToString("\n") { "${it.id}: ${it.title.ifBlank { "A prayer request" }}" }
         return ToolResult("Read the prayer list · ${open.size} open", text)
+    }
+
+    private suspend fun listTasks(): ToolResult {
+        val open = tasks.openTasks()
+        if (open.isEmpty()) return ToolResult("No open tasks", "no open tasks found")
+        val zone = ZoneId.systemDefault()
+        val lines = open.take(30).joinToString("\n") { t ->
+            val due = t.dueAt?.let { java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalDate().toString() }
+            val extra = listOfNotNull(due?.let { "due $it" }, t.kind.name.lowercase()).joinToString(", ")
+            "${t.id}: ${t.title} ($extra)"
+        }
+        return ToolResult("Read ${open.size} open tasks", lines)
+    }
+
+    private suspend fun listUpcomingReminders(): ToolResult {
+        val scheduled = tasks.upcomingReminders()
+        val withDue = tasks.openTasks().filter { it.remindAt != null || it.dueAt != null }
+        val combined = (scheduled + withDue)
+            .distinctBy { it.id }
+            .sortedBy { it.remindAt ?: it.dueAt ?: Long.MAX_VALUE }
+            .take(20)
+        if (combined.isEmpty()) {
+            return ToolResult("No upcoming reminders", "no scheduled task reminders or dated deadlines")
+        }
+        val zone = ZoneId.systemDefault()
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+        val now = System.currentTimeMillis()
+        val lines = combined.joinToString("\n") { t ->
+            val whenMs = t.remindAt ?: t.dueAt
+            val whenText = whenMs?.let {
+                java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalDateTime().format(fmt)
+            } ?: "unscheduled"
+            val tag = if (whenMs != null && whenMs < now) "OVERDUE" else if (t.remindAt != null) "reminder" else "due"
+            "${t.id}: ${t.title} [$tag: $whenText]"
+        }
+        return ToolResult("Read ${combined.size} reminders", lines)
     }
 
     private suspend fun listCourses(): ToolResult {

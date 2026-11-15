@@ -31,6 +31,7 @@ import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.work.Marks
 import com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,7 +80,29 @@ class LearnViewModel @JvmOverloads constructor(
     val learningRepo: LearningRepository = LearningRepository(database),
     val noteRepo: NoteRepository = NoteRepository(application, database),
     val aiEngine: LearningAiEngine = LearningAiEngine(
-        com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(application)
+        transport = com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(application),
+        fallbackModelProvider = {
+            com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory(
+                context = application,
+                modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(application),
+                geminiTransport = com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(application)
+            ).resolveLocal(
+                capability = com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SYNTHESIS,
+                preferredTier = com.craftflowtechnologies.meetingmind.core.model.ModelTier.RECOMMENDED
+            )?.languageModel
+        },
+        preferLocal = {
+            com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(application)
+                .preferencesFlow.first().processingProfile ==
+                com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.OFFLINE
+        },
+        onLocalFinished = {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching {
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
+                }
+            }
+        }
     ),
     private val readingCoordinator: ReadingCoordinator = ReadToMe.coordinator(application)
 ) : AndroidViewModel(application) {
@@ -143,6 +167,12 @@ class LearnViewModel @JvmOverloads constructor(
 
     private val _practiceStats = MutableStateFlow(PracticeSessionStats())
     val practiceStats: StateFlow<PracticeSessionStats> = _practiceStats.asStateFlow()
+
+    private val _missedActivityIds = MutableStateFlow<Set<String>>(emptySet())
+    val missedActivityIds: StateFlow<Set<String>> = _missedActivityIds.asStateFlow()
+
+    private val _savedConceptExplanationIds = MutableStateFlow<Set<String>>(emptySet())
+    val savedConceptExplanationIds: StateFlow<Set<String>> = _savedConceptExplanationIds.asStateFlow()
 
     private val _isLoadingPractice = MutableStateFlow(false)
     val isLoadingPractice: StateFlow<Boolean> = _isLoadingPractice.asStateFlow()
@@ -579,7 +609,34 @@ class LearnViewModel @JvmOverloads constructor(
         _hintLadder.value = emptyList()
         _revealedHintCount.value = 0
         _practiceStats.value = PracticeSessionStats()
+        _missedActivityIds.value = emptySet()
         _activeTab.value = LearnTab.PRACTICE
+    }
+
+    fun loadWeakConceptsPractice(concepts: List<LearningConcept>, onReady: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            _isLoadingPractice.value = true
+            try {
+                val conceptIds = concepts.map { it.id }.toSet()
+                val sessionIds = concepts.map { it.sessionId }.distinct()
+                val matchedActivities = mutableListOf<LearningActivity>()
+                for (sId in sessionIds) {
+                    val deck = learningRepo.getPracticeDeck(sessionId = sId)
+                    matchedActivities.addAll(deck.filter { it.conceptId in conceptIds })
+                }
+                val finalDeck = matchedActivities.ifEmpty {
+                    learningRepo.getPracticeDeck(onlyDue = false)
+                }
+                startPracticeSession(finalDeck)
+                if (onReady != null) {
+                    withContext(Dispatchers.Main) { onReady() }
+                }
+            } catch (e: Exception) {
+                Log.e("LearnViewModel", "Failed to load weak concept practice", e)
+            } finally {
+                _isLoadingPractice.value = false
+            }
+        }
     }
 
     fun loadPracticeByFilter(
@@ -712,6 +769,10 @@ class LearnViewModel @JvmOverloads constructor(
                 rating = rating
             )
             _lastOutcome.value = outcome
+            val isMissed = !isCorrect || rating == RecallRating.AGAIN || rating == RecallRating.HARD
+            if (isMissed) {
+                _missedActivityIds.value = _missedActivityIds.value + activity.id
+            }
             updatePracticeStats(isCorrect, outcome.masteryEvaluation?.state == LearningMasteryState.STRONG)
 
             if (!isCorrect) {
@@ -735,6 +796,18 @@ class LearnViewModel @JvmOverloads constructor(
             bestStreak = maxOf(prev.bestStreak, nextStreak),
             masteryUpgrades = prev.masteryUpgrades + (if (upgradedToStrong) 1 else 0)
         )
+    }
+
+    fun previousCard() {
+        if (_currentActivityIndex.value > 0) {
+            _hintLadder.value = emptyList()
+            _revealedHintCount.value = 0
+            _currentActivityIndex.value -= 1
+            _isFlipped.value = false
+            _lastOutcome.value = null
+            _mistakeExplanation.value = null
+            _teachBackEvaluation.value = null
+        }
     }
 
     fun nextCard() {
@@ -762,6 +835,14 @@ class LearnViewModel @JvmOverloads constructor(
         if (current.isEmpty()) {
             loadPracticeByFilter()
             return
+        }
+        if (weakOnly) {
+            val missedIds = _missedActivityIds.value
+            val missedDeck = current.filter { it.id in missedIds }
+            if (missedDeck.isNotEmpty()) {
+                startPracticeSession(missedDeck)
+                return
+            }
         }
         startPracticeSession(if (weakOnly && current.size > 1) current.shuffled() else current)
     }
@@ -841,15 +922,22 @@ class LearnViewModel @JvmOverloads constructor(
                 title = title.ifBlank { "Exam Cram Sheet" },
                 notebookId = courseNotebookId
             )
-            val blocks = listOf(
-                com.craftflowtechnologies.meetingmind.core.model.NoteBlock(
-                    id = NoteRepository.newId("block"),
-                    noteId = note.id,
-                    position = 0,
-                    type = com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.PARAGRAPH,
-                    content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(markdown)
-                )
+            val parsedBlocks = com.craftflowtechnologies.meetingmind.core.notes.MarkdownImport.parse(
+                markdown = markdown,
+                noteId = note.id,
+                source = com.craftflowtechnologies.meetingmind.core.model.BlockSource.AI
             )
+            val blocks = parsedBlocks.ifEmpty {
+                listOf(
+                    com.craftflowtechnologies.meetingmind.core.model.NoteBlock(
+                        id = NoteRepository.newId("block"),
+                        noteId = note.id,
+                        position = 0,
+                        type = com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.PARAGRAPH,
+                        content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(markdown)
+                    )
+                )
+            }
             noteRepo.saveBlocks(note.id, blocks)
             learningRepo.ensureSessionForNote(noteId = note.id, title = note.title)
             withContext(Dispatchers.Main) {
@@ -933,6 +1021,47 @@ class LearnViewModel @JvmOverloads constructor(
         }
     }
 
+    fun saveSimpleExplanationToNote(concept: LearningConcept, explanation: SimpleExplanation) {
+        viewModelScope.launch {
+            try {
+                val sessionDetail = _activeSessionDetail.value
+                    ?: learningRepo.getSessionDetail(concept.sessionId)
+                    ?: return@launch
+                val noteId = sessionDetail.session.noteId
+                val existingDoc = noteRepo.getDocument(noteId) ?: return@launch
+                val body = buildString {
+                    if (explanation.analogy.isNotBlank()) {
+                        append("Analogy: ${explanation.analogy.trim()}\n")
+                    }
+                    if (explanation.everydayExample.isNotBlank()) {
+                        append("Example: ${explanation.everydayExample.trim()}\n")
+                    }
+                    if (explanation.keyTakeaway.isNotBlank()) {
+                        append("Takeaway: ${explanation.keyTakeaway.trim()}")
+                    }
+                }.trim()
+                if (body.isBlank()) return@launch
+                val newBlock = com.craftflowtechnologies.meetingmind.core.model.NoteBlock(
+                    id = NoteRepository.newId("block"),
+                    noteId = noteId,
+                    position = existingDoc.blocks.size,
+                    type = com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.CALLOUT,
+                    content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(body),
+                    source = com.craftflowtechnologies.meetingmind.core.model.BlockSource.ENRICHED,
+                    payload = mapOf(
+                        com.craftflowtechnologies.meetingmind.core.model.NoteBlock.PAYLOAD_CALLOUT_KIND to "DEFINITION",
+                        com.craftflowtechnologies.meetingmind.core.model.NoteBlock.PAYLOAD_CALLOUT_TITLE to "Intuition: ${concept.name}",
+                        com.craftflowtechnologies.meetingmind.core.model.NoteBlock.PAYLOAD_UNPACKED to "1"
+                    )
+                )
+                noteRepo.saveBlocks(noteId, existingDoc.blocks + newBlock)
+                _savedConceptExplanationIds.value = _savedConceptExplanationIds.value + concept.id
+            } catch (e: Exception) {
+                Log.e("LearnViewModel", "Failed to save simple explanation to note", e)
+            }
+        }
+    }
+
     fun requestNextHint(activity: LearningActivity, domain: SubjectDomain = SubjectDomain.GENERAL) {
         viewModelScope.launch {
             if (_hintLadder.value.isEmpty()) {
@@ -996,5 +1125,10 @@ class LearnViewModel @JvmOverloads constructor(
     override fun onCleared() {
         super.onCleared()
         studyTimerJob?.cancel()
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
+            }
+        }
     }
 }

@@ -231,22 +231,34 @@ object SceneBuilder {
 }
 
 /** Runs the whole thing: acoustic analysis, windows, an AI pass when one is available. */
-class SceneEngine(private val transport: com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport?) {
+class SceneEngine(
+    private val transport: com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport?,
+    private val fallbackModel: com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel? = null
+) {
     suspend fun build(audio: File, segments: List<TranscriptSegment>, totalMs: Long, recordingType: String): SceneMap {
         val acoustic = com.craftflowtechnologies.meetingmind.core.audio.AcousticAnalyzer.analyze(audio).orEmpty()
         val ws = SceneBuilder.windows(acoustic, segments, totalMs)
         com.craftflowtechnologies.meetingmind.ai.cloud.GeminiLog.add("Scenes: ${acoustic.size} acoustic segments → ${ws.size} candidate windows")
         if (ws.isEmpty()) return SceneMap(emptyList())
+        val promptAsset = com.craftflowtechnologies.meetingmind.ai.faith.Prompts.get("scene_classifier")
+        val scenePrompt = SceneBuilder.prompt(ws, recordingType)
         val t = transport
-        if (t == null || !t.refreshConfigured()) return SceneBuilder.fromWindows(ws)
-        val prompt = com.craftflowtechnologies.meetingmind.ai.faith.Prompts.get("scene_classifier")
-        val r = t.execute(com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest(
-            modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
-            systemInstruction = com.craftflowtechnologies.meetingmind.ai.faith.Prompts.faithContract + "\n\n" + prompt.system(),
-            prompt = SceneBuilder.prompt(ws, recordingType),
-            responseSchema = null,
-            timeoutMs = 90_000L
-        ))
-        return if (r is AiResult.Success) SceneBuilder.parse(r.value, ws) else SceneBuilder.fromWindows(ws)
+        if (t != null && t.refreshConfigured()) {
+            val r = t.execute(com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest(
+                modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
+                systemInstruction = com.craftflowtechnologies.meetingmind.ai.faith.Prompts.faithContract + "\n\n" + promptAsset.system(),
+                prompt = scenePrompt,
+                responseSchema = null,
+                timeoutMs = 90_000L
+            ))
+            if (r is AiResult.Success) return SceneBuilder.parse(r.value, ws)
+        }
+        val local = fallbackModel
+        if (local != null) {
+            val localPrompt = com.craftflowtechnologies.meetingmind.ai.faith.Prompts.faithContract + "\n\n" + promptAsset.system() + "\n\n" + scenePrompt
+            val r = local.generate(localPrompt, maxOutputTokens = 768)
+            if (r is AiResult.Success) return SceneBuilder.parse(r.value, ws)
+        }
+        return SceneBuilder.fromWindows(ws)
     }
 }

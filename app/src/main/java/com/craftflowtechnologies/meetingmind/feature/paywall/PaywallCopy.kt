@@ -36,6 +36,7 @@ object PaywallCopy {
         IncludedRow("Use your own Gemini API key (BYOK)", free = false, paid = true, capability = Capability.BYOK_KEY),
         IncludedRow("Connected cloud integrations (Tasks, Notion, Slack/Teams, Pinned Vault)", free = false, paid = true, capability = Capability.CONNECTED_INTEGRATIONS),
         IncludedRow("Automation recipes and trigger workflows", free = false, paid = true, capability = Capability.AUTOMATION_RECIPES),
+        IncludedRow("Cross-session deep synthesis & executive briefs", free = false, paid = true, capability = Capability.DEEP_SYNTHESIS),
         IncludedRow("Church and organization ministry workflows", free = false, paid = true, capability = Capability.CHURCH_ORG_WORKFLOWS)
     )
 

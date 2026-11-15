@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -20,6 +21,9 @@ import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.core.circles2.fold
 
 /** The Join sheet: paste anything, see the code it contains, add a name, join. */
+@Immutable
+data class CircleStreakUi(val days: Int = 0, val checkedInToday: Boolean = false)
+
 data class JoinUiState(
     val input: String = "",
     val name: String = "",
@@ -40,9 +44,27 @@ class CirclesListViewModel(private val repo: CirclesRepository) : ViewModel() {
     private val _join = MutableStateFlow(JoinUiState(name = repo.displayName))
     val join: StateFlow<JoinUiState> = _join
 
+    private fun currentStreakUi(): CircleStreakUi {
+        val now = repo.clock()
+        return CircleStreakUi(
+            days = repo.store.currentStreak(now),
+            checkedInToday = repo.store.checkedInToday(now)
+        )
+    }
+
+    private val _streak = MutableStateFlow(currentStreakUi())
+    val streak: StateFlow<CircleStreakUi> = _streak
+
     init { viewModelScope.launch { repo.refresh() } }
 
-    fun refresh() { viewModelScope.launch { repo.refresh() } }
+    fun refreshEngagement() {
+        _streak.value = currentStreakUi()
+    }
+
+    fun refresh() {
+        viewModelScope.launch { repo.refresh() }
+        refreshEngagement()
+    }
 
     fun resetJoin() { _join.value = JoinUiState(name = repo.displayName) }
     fun onPaste(text: String) = _join.update { it.copy(input = text.take(4000), error = null) }

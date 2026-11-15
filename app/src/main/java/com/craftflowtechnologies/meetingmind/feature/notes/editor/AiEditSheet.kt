@@ -68,6 +68,9 @@ internal val AI_EDIT_ACTIONS = listOf(
     "Extract action items" to "Pull out every task, commitment or next step as a Markdown checklist ('- [ ] ...'). Only include items stated in the text.",
     "Turn into table" to "Organise this information into a clean GitHub-flavoured Markdown table. Keep every detail.",
     "Simplify" to "Rewrite this in simple, plain words anyone can follow.",
+    "Proofread & polish" to "Correct grammar, tighten phrasing, and improve clarity while keeping the writer's voice intact.",
+    "Turn into callout" to "Format this as a crisp Markdown blockquote callout highlighting the key insight.",
+    "Explain key terms" to "Add concise plain-language explanations for any jargon, acronyms, or core concepts mentioned.",
     "Summarise" to "Summarise this in one or two sentences."
 )
 

@@ -73,7 +73,9 @@ data class PollDraft(
     val multi: Boolean = false,
     val busy: Boolean = false,
     val error: String? = null,
-    val closesAt: Long? = null
+    val closesAt: Long? = null,
+    val correctOptionIndex: Int? = null,
+    val explanation: String = ""
 ) {
     val cleanOptions: List<String> get() = options.map { it.trim() }.filter { it.isNotEmpty() }
     val canCreate: Boolean get() = question.isNotBlank() && cleanOptions.size >= 2 && !busy
@@ -207,7 +209,10 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
                 when (val up = repo.uploadAttachment(circleId, kind, file.bytes, file.mime, file.name, file.durationMs)) {
                     is CirclesResult.Err -> fail(up.failure)
                     is CirclesResult.Ok -> when (val sent = repo.api.sendMessage(circleId, kind, up.value.path, caption, replyTo, file.durationMs, file.name, requestId)) {
-                        is CirclesResult.Ok -> { draft.value = ""; repo.store.setChatDraft(circleId, ""); reply.value = null; typingPing(false) }
+                        is CirclesResult.Ok -> {
+                            repo.store.recordActivity(repo.clock())
+                            draft.value = ""; repo.store.setChatDraft(circleId, ""); reply.value = null; typingPing(false)
+                        }
                         is CirclesResult.Err -> fail(sent.failure)
                     }
                 }
@@ -251,7 +256,10 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
                 repo.data.sendMessage(circleId, uid, repo.displayName.ifBlank { "Member" }, toSend)
             }
             if (result is CirclesResult.Err) { restore(text, replyTo, editing); forward.value = forwarded; fail(result.failure) }
-            else if (editing == null) { runCatching { repo.api.notifyChat(circleId, mentions.isNotEmpty()) } }
+            else if (editing == null) {
+                repo.store.recordActivity(repo.clock())
+                runCatching { repo.api.notifyChat(circleId, mentions.isNotEmpty()) }
+            }
         }
     }
 
@@ -269,7 +277,10 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
         viewModelScope.launch {
             val uid = (repo.uid() as? CirclesResult.Ok)?.value ?: return@launch fail(CirclesFailure.signedOut)
             val r = repo.data.sendMessage(circleId, uid, repo.displayName.ifBlank { "Member" }, MessageDraft.Card(card.copy(text = text.take(600))))
-            if (r is CirclesResult.Err) fail(r.failure) else runCatching { repo.api.notifyChat(circleId, false) }
+            if (r is CirclesResult.Err) fail(r.failure) else {
+                repo.store.recordActivity(repo.clock())
+                runCatching { repo.api.notifyChat(circleId, false) }
+            }
         }
     }
 
@@ -300,9 +311,16 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
     /** Tap a reaction: sets it, or removes it if it's already mine. */
     fun toggleReaction(messageId: String, emoji: String, current: List<MessageReaction>) {
         val mine = current.firstOrNull { it.mine }?.emoji
+        val isAdding = mine != emoji
         viewModelScope.launch {
             val uid = (repo.uid() as? CirclesResult.Ok)?.value ?: return@launch fail(CirclesFailure.signedOut)
-            repo.data.setMessageReaction(circleId, messageId, uid, if (mine == emoji) null else emoji).failureOrNull?.let(::fail)
+            val res = repo.data.setMessageReaction(circleId, messageId, uid, if (mine == emoji) null else emoji)
+            val err = res.failureOrNull
+            if (err != null) {
+                fail(err)
+            } else if (isAdding) {
+                repo.store.recordActivity(repo.clock())
+            }
         }
     }
 
@@ -318,16 +336,31 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
     fun setPollOption(i: Int, v: String) = pollDraft.update { d -> d?.copy(options = d.options.mapIndexed { j, o -> if (i == j) v.take(80) else o }, error = null) }
     fun addPollOption() = pollDraft.update { d -> if (d != null && d.options.size < 6) d.copy(options = d.options + "") else d }
     fun removePollOption(i: Int) = pollDraft.update { d -> if (d != null && d.options.size > 2) d.copy(options = d.options.filterIndexed { j, _ -> j != i }) else d }
-    fun setPollMulti(v: Boolean) = pollDraft.update { it?.copy(multi = v) }
+    fun setPollMulti(v: Boolean) = pollDraft.update { it?.copy(multi = v, correctOptionIndex = if (v) null else it.correctOptionIndex) }
+    fun setPollCorrectOption(index: Int?) = pollDraft.update { it?.copy(correctOptionIndex = index, multi = if (index != null) false else it.multi) }
+    fun setPollExplanation(text: String) = pollDraft.update { it?.copy(explanation = text.take(240)) }
     fun setPollClosesAt(closesAt: Long?) = pollDraft.update { it?.copy(closesAt = closesAt) }
 
     fun createPoll() {
         val d = pollDraft.value ?: return
         if (!d.canCreate) { pollDraft.update { it?.copy(error = "Add a question and at least two different options.") }; return }
         pollDraft.update { it?.copy(busy = true, error = null) }
+        val nonBlankPairs = d.options.mapIndexed { idx, s -> idx to s.trim() }.filter { it.second.isNotEmpty() }
+        val mappedCorrect = d.correctOptionIndex?.let { sel -> nonBlankPairs.indexOfFirst { it.first == sel }.takeIf { it >= 0 } }
         viewModelScope.launch {
-            repo.api.createPoll(circleId, d.question.trim(), d.cleanOptions, d.multi, d.closesAt).fold(
-                onOk = { pollDraft.value = null },
+            repo.api.createPoll(
+                circleId = circleId,
+                question = d.question.trim(),
+                options = d.cleanOptions,
+                multi = d.multi,
+                closesAt = d.closesAt,
+                correctOptionIndex = mappedCorrect,
+                explanation = d.explanation.trim().takeIf { it.isNotEmpty() }
+            ).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    pollDraft.value = null
+                },
                 onErr = { f -> pollDraft.update { it?.copy(busy = false, error = f.message) } }
             )
         }
@@ -342,9 +375,16 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
             optionId in mine -> emptyList()
             else -> listOf(optionId)
         }
+        val isVoting = next.isNotEmpty()
         viewModelScope.launch {
             val uid = (repo.uid() as? CirclesResult.Ok)?.value ?: return@launch fail(CirclesFailure.signedOut)
-            repo.data.vote(circleId, state.poll.id, uid, next).failureOrNull?.let(::fail)
+            val res = repo.data.vote(circleId, state.poll.id, uid, next)
+            val err = res.failureOrNull
+            if (err != null) {
+                fail(err)
+            } else if (isVoting) {
+                repo.store.recordActivity(repo.clock())
+            }
         }
     }
 
@@ -358,13 +398,27 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
 
     fun startChain(title: String, postId: String? = null) {
         val t = title.trim(); if (t.isEmpty()) return
-        viewModelScope.launch { repo.api.startChain(circleId, t, postId).fold(onOk = { say("Prayer chain started.") }, onErr = ::fail) }
+        viewModelScope.launch {
+            repo.api.startChain(circleId, t, postId).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    say("Prayer chain started.")
+                },
+                onErr = ::fail
+            )
+        }
     }
 
     fun claimSlot(chainId: String, hour: Int) {
         viewModelScope.launch {
             val uid = (repo.uid() as? CirclesResult.Ok)?.value ?: return@launch fail(CirclesFailure.signedOut)
-            repo.data.claimSlot(circleId, chainId, uid, repo.displayName.ifBlank { "Member" }, hour).fold(onOk = { say("Hour ${hourLabel(hour)} is yours.") }, onErr = ::fail)
+            repo.data.claimSlot(circleId, chainId, uid, repo.displayName.ifBlank { "Member" }, hour).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    say("Hour ${hourLabel(hour)} is yours.")
+                },
+                onErr = ::fail
+            )
         }
     }
 
@@ -376,7 +430,14 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
     /** Celebrate something about myself, cheered on by my companion. */
     fun celebrate(kind: CelebrationKind, text: String, companionId: String?, postId: String? = null) {
         val id = companionId?.takeIf { it in COMPANION_IDS }
-        viewModelScope.launch { repo.api.celebrate(circleId, kind, text.trim(), id, postId).fold(onOk = { }, onErr = ::fail) }
+        viewModelScope.launch {
+            repo.api.celebrate(circleId, kind, text.trim(), id, postId).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                },
+                onErr = ::fail
+            )
+        }
     }
 
     class Factory(private val circleId: String, private val repo: CirclesRepository) : ViewModelProvider.Factory {

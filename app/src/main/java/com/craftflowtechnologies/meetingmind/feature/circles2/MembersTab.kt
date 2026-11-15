@@ -3,6 +3,8 @@ package com.craftflowtechnologies.meetingmind.feature.circles2
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,16 +14,19 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.core.circles2.JoinRequest
@@ -35,6 +40,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
 class MemberActions(
     val onInvite: () -> Unit = {},
@@ -68,6 +74,13 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
     }
     val canInvite = me != null && (me.role.isAdmin || circle.settings.whoCanInvite == WhoCanInvite.Members)
     var query by remember { mutableStateOf("") }
+    val postsByUid = remember(state.posts) {
+        state.posts.mapNotNull { fp -> fp.post.authorUid?.let { it to fp.post } }.groupBy({ it.first }, { it.second })
+    }
+    val activeContributors = remember(postsByUid) { postsByUid.keys.size }
+    val topContributorUid = remember(postsByUid) {
+        postsByUid.maxByOrNull { it.value.size }?.takeIf { it.value.size >= 2 }?.key
+    }
     val shown = state.members.filter { query.isBlank() || it.displayName.contains(query.trim(), ignoreCase = true) }
     val leaders = shown.filter { it.role.canModerate }
     val regulars = shown.filter { !it.role.canModerate }
@@ -77,7 +90,38 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
         contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.s, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
+        item {
+            Surface(
+                shape = MM.radius.card,
+                color = MM.colors.surfaceSunk,
+                border = BorderStroke(MMSize.hairline, MM.colors.line),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = MM.space.m, vertical = MM.space.s),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("${state.members.size}", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                        Text("members", style = MM.type.caption, color = MM.colors.inkSecondary)
+                    }
+                    Box(Modifier.width(MMSize.hairline).height(20.dp).background(MM.colors.line))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("$activeContributors", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                        Text("active", style = MM.type.caption, color = MM.colors.inkSecondary)
+                    }
+                    Box(Modifier.width(MMSize.hairline).height(20.dp).background(MM.colors.line))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("${state.posts.size}", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                        Text("shared posts", style = MM.type.caption, color = MM.colors.inkSecondary)
+                    }
+                }
+            }
+        }
         if (me != null) item {
+            val myCount = postsByUid[me.uid]?.size ?: 0
+            val isMyTop = me.uid == topContributorUid
             MMCard {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -98,6 +142,52 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
                         ) {
                             me.title?.takeIf { it.isNotBlank() }?.let { TitleTag(it) }
                             RoleTag(me.role)
+                        }
+                        if (myCount > 0 || isMyTop) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                            ) {
+                                if (myCount > 0) {
+                                    Surface(
+                                        shape = MM.radius.pill,
+                                        color = MM.colors.surfaceSunk,
+                                        border = BorderStroke(MMSize.hairline, MM.colors.line)
+                                    ) {
+                                        Text(
+                                            "$myCount ${if (myCount == 1) "post" else "posts"}",
+                                            style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                            color = MM.colors.inkSecondary,
+                                            modifier = Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs / 2)
+                                        )
+                                    }
+                                }
+                                if (isMyTop) {
+                                    Surface(
+                                        shape = MM.radius.pill,
+                                        color = MM.colors.accentWash,
+                                        border = BorderStroke(MMSize.hairline, MM.colors.accent.copy(alpha = 0.35f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs / 2),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Star,
+                                                contentDescription = null,
+                                                tint = MM.colors.accent,
+                                                modifier = Modifier.size(MMSize.iconSmall - MM.space.s)
+                                            )
+                                            Text(
+                                                "Top contributor",
+                                                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                                color = MM.colors.accent
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -154,13 +244,17 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
             if (leaders.isNotEmpty()) {
                 item { SectionHeader("Owner and leaders", count = leaders.size) }
                 items(leaders, key = { it.uid }) { m ->
-                    MemberCard(circle.id, m, me, actions)
+                    val count = postsByUid[m.uid]?.size ?: 0
+                    val isTop = m.uid == topContributorUid
+                    MemberCard(circle.id, m, me, actions, count, isTop)
                 }
             }
             if (regulars.isNotEmpty()) {
                 item { SectionHeader("Members", count = regulars.size) }
                 items(regulars, key = { it.uid }) { m ->
-                    MemberCard(circle.id, m, me, actions)
+                    val count = postsByUid[m.uid]?.size ?: 0
+                    val isTop = m.uid == topContributorUid
+                    MemberCard(circle.id, m, me, actions, count, isTop)
                 }
             }
         }
@@ -183,7 +277,26 @@ private fun JoinRequestRow(r: JoinRequest, actions: MemberActions) {
 }
 
 @Composable
-private fun MemberCard(circleId: String, m: Member, me: Member?, actions: MemberActions) {
+fun MemberRow(
+    circleId: String,
+    m: Member,
+    me: Member?,
+    actions: MemberActions,
+    postCount: Int = 0,
+    isTopContributor: Boolean = false
+) {
+    MemberCard(circleId, m, me, actions, postCount, isTopContributor)
+}
+
+@Composable
+private fun MemberCard(
+    circleId: String,
+    m: Member,
+    me: Member?,
+    actions: MemberActions,
+    postCount: Int = 0,
+    isTopContributor: Boolean = false
+) {
     var menu by remember { mutableStateOf(false) }
     val isMe = m.uid == me?.uid
     val canChangeRole = me?.role == Role.Owner && !isMe
@@ -220,6 +333,52 @@ private fun MemberCard(circleId: String, m: Member, me: Member?, actions: Member
                     style = MM.type.caption,
                     color = MM.colors.inkSecondary
                 )
+                if (postCount > 0 || isTopContributor) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    ) {
+                        if (postCount > 0) {
+                            Surface(
+                                shape = MM.radius.pill,
+                                color = MM.colors.surfaceSunk,
+                                border = BorderStroke(MMSize.hairline, MM.colors.line)
+                            ) {
+                                Text(
+                                    "$postCount ${if (postCount == 1) "post" else "posts"}",
+                                    style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                    color = MM.colors.inkSecondary,
+                                    modifier = Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs / 2)
+                                )
+                            }
+                        }
+                        if (isTopContributor) {
+                            Surface(
+                                shape = MM.radius.pill,
+                                color = MM.colors.accentWash,
+                                border = BorderStroke(MMSize.hairline, MM.colors.accent.copy(alpha = 0.35f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs / 2),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Star,
+                                        contentDescription = null,
+                                        tint = MM.colors.accent,
+                                        modifier = Modifier.size(MMSize.iconSmall - MM.space.s)
+                                    )
+                                    Text(
+                                        "Top contributor",
+                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MM.colors.accent
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
             if (canChangeRole || canRemove || canEditTitle) {
                 Box {

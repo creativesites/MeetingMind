@@ -98,6 +98,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 enum class SearchFilter(val label: String) { ALL("All"), NOTES("Notes"), RECORDINGS("Recordings"), TASKS("Tasks") }
@@ -173,10 +174,29 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         _ask.value = AskState.Thinking
         askJob = viewModelScope.launch {
             val app = getApplication<Application>()
+            val transport = com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(app)
+            val profile = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(app)
+                .preferencesFlow.first().processingProfile
             val engine = com.craftflowtechnologies.meetingmind.ai.assistant.AskEverythingEngine(
-                com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(app),
+                transport = transport,
                 search = { sources(it) },
-                dateLabel = { Formatters.formatDateRelative(it) }
+                dateLabel = { Formatters.formatDateRelative(it) },
+                localModelProvider = {
+                    com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory(
+                        context = app,
+                        modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(app),
+                        geminiTransport = transport
+                    ).resolveLocal(
+                        com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SUMMARIZATION,
+                        com.craftflowtechnologies.meetingmind.core.model.ModelTier.RECOMMENDED
+                    )?.languageModel
+                },
+                preferLocal = profile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.OFFLINE,
+                onLocalFinished = {
+                    viewModelScope.launch {
+                        com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
+                    }
+                }
             )
             engine.askStream(q).collect { ev ->
                 when (ev) {

@@ -65,6 +65,14 @@ object CirclesParsing {
     fun postMeta(v: Any?): PostMeta? {
         val m = map(v)
         if (m.isEmpty()) return null
+        val tags = strings(m["tags"])
+        @Suppress("UNCHECKED_CAST")
+        val checklist = (m["checklist"] as? List<*>)?.mapIndexedNotNull { index, item ->
+            val im = map(item)
+            val text = str(im, "text")?.ifBlank { null } ?: return@mapIndexedNotNull null
+            val id = str(im, "id")?.ifBlank { null } ?: "c$index"
+            ChecklistItem(id = id, text = text, done = im["done"] == true)
+        }.orEmpty()
         val meta = PostMeta(
             sourceKind = str(m, "sourceKind")?.ifBlank { null },
             sourceId = str(m, "sourceId")?.ifBlank { null },
@@ -75,7 +83,9 @@ object CirclesParsing {
             priority = WorkPriority.from(str(m, "priority")),
             blockedOn = str(m, "blockedOn")?.ifBlank { null },
             decisionOwner = str(m, "decisionOwner")?.ifBlank { null },
-            meetingDate = str(m, "meetingDate")?.ifBlank { null }
+            meetingDate = str(m, "meetingDate")?.ifBlank { null },
+            tags = tags,
+            checklist = checklist
         )
         return if (meta.isEmpty) null else meta
     }
@@ -143,7 +153,19 @@ object CirclesParsing {
         val opts = (d["options"] as? List<Any?>).orEmpty().mapNotNull { o -> map(o).let { m -> str(m, "id")?.let { PollOption(it, str(m, "text").orEmpty()) } } }
         if (opts.isEmpty()) return null
         val closesAt = d["closesAt"]?.let { millis(it) }?.takeIf { it > 0 }
-        return Poll(id, str(d, "question").orEmpty(), opts, d["multi"] == true, d["closed"] == true, str(d, "createdBy").orEmpty(), closesAt)
+        val correctOptionId = str(d, "correctOptionId")?.ifBlank { null }
+        val explanation = str(d, "explanation")?.ifBlank { null }
+        return Poll(
+            id = id,
+            question = str(d, "question").orEmpty(),
+            options = opts,
+            multi = d["multi"] == true,
+            closed = d["closed"] == true,
+            createdBy = str(d, "createdBy").orEmpty(),
+            closesAt = closesAt,
+            correctOptionId = correctOptionId,
+            explanation = explanation
+        )
     }
 
     fun votes(docs: List<Pair<String, Map<String, Any?>>>): Map<String, List<String>> =

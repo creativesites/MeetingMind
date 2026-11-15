@@ -1,6 +1,11 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,18 +19,26 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.DropdownMenu
@@ -42,10 +55,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import android.content.Intent
@@ -58,6 +74,7 @@ import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferencePa
 import com.craftflowtechnologies.meetingmind.core.share.ShareHelper
 import com.craftflowtechnologies.meetingmind.feature.scripture.rememberPassage
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
+import com.craftflowtechnologies.meetingmind.core.circles2.ChecklistItem
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.Member
@@ -119,7 +136,11 @@ class FeedActions(
     val onResumeDraft: () -> Unit = {},
     /** Discards the locally saved draft for this circle. */
     val onDiscardDraft: () -> Unit = {},
-    val onSetWorkStatus: (Post, WorkStatus) -> Unit = { _, _ -> }
+    val onSetWorkStatus: (Post, WorkStatus) -> Unit = { _, _ -> },
+    val onToggleBookmark: (Post) -> Unit = {},
+    val onDismissCatchUp: () -> Unit = {},
+    val onDismissPrompt: () -> Unit = {},
+    val onToggleChecklistItem: (Post, ChecklistItem) -> Unit = { _, _ -> }
 ) { companion object { val None = FeedActions() } }
 
 @Composable
@@ -189,6 +210,7 @@ fun FeedTab(
     val allMedia = remember(state.posts) { state.posts.flatMap { it.post.attachments } }
     var showSharedMediaSheet by remember { mutableStateOf(false) }
     var selectedFilter by rememberSaveable { mutableStateOf("All") }
+    var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
 
     val nextSyncEvent = remember(state.events, now) {
         state.events
@@ -208,8 +230,10 @@ fun FeedTab(
         state.posts.count { it.post.type == PostType.Blocker && !it.post.isResolved }
     }
 
-    val filteredPosts = remember(state.posts, selectedFilter, circle.isWork, state.myUid) {
-        if (circle.isWork) {
+    val typeFilteredPosts = remember(state.posts, selectedFilter, circle.isWork, state.myUid) {
+        if (selectedFilter == "Saved") {
+            state.posts.filter { it.saved }
+        } else if (circle.isWork) {
             when (selectedFilter) {
                 "All" -> state.posts
                 "My Tasks" -> state.posts.filter {
@@ -236,12 +260,44 @@ fun FeedTab(
         }
     }
 
+    val filteredPosts = remember(typeFilteredPosts, selectedTag) {
+        if (selectedTag == null) {
+            typeFilteredPosts
+        } else {
+            val tagQuery = selectedTag!!.removePrefix("#")
+            typeFilteredPosts.filter { fp ->
+                fp.post.meta?.tags?.any { it.removePrefix("#").equals(tagQuery, ignoreCase = true) } == true
+            }
+        }
+    }
+
     LazyColumn(
         modifier, contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.s, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
         state.failure?.let { f -> item { StatusLine(StatusKind.Warning, f.message) } }
         item { CircleHero(circle, state, actions) }
+        if (state.unreadFeedCount > 0) {
+            item(key = "catch_up_banner") {
+                CatchUpCard(
+                    state = state,
+                    now = now,
+                    onDismiss = actions.onDismissCatchUp,
+                    onJumpIn = { selectedFilter = "All" },
+                    modifier = Modifier.animateItem()
+                )
+            }
+        }
+        if (!state.promptDismissedToday && state.circle != null) {
+            item(key = "today_prompt_card") {
+                TodayPromptCard(
+                    circle = state.circle,
+                    onRespond = actions.onStartPost,
+                    onDismiss = actions.onDismissPrompt,
+                    modifier = Modifier.animateItem()
+                )
+            }
+        }
         if (savedDraft != null && savedDraft.hasContent()) {
             item {
                 val label = com.craftflowtechnologies.meetingmind.core.circles2.PostType.entries
@@ -305,15 +361,30 @@ fun FeedTab(
         item(key = "feed_filter_chips") {
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                if (selectedTag != null) {
+                    MMChip(
+                        label = "#$selectedTag ✕",
+                        selected = true,
+                        onClick = { selectedTag = null }
+                    )
+                }
                 if (circle.isWork) {
                     val workFilters = listOf("All", "My Tasks", "Decisions", "Blockers", "Tasks", "Briefs", "Updates")
                     workFilters.forEach { f ->
                         MMChip(
                             label = f,
-                            selected = selectedFilter == f,
+                            selected = selectedFilter == f && selectedTag == null,
                             onClick = { selectedFilter = f }
+                        )
+                    }
+                    if (state.savedCount > 0 || selectedFilter == "Saved") {
+                        MMChip(
+                            label = "Saved (${state.savedCount})",
+                            selected = selectedFilter == "Saved",
+                            onClick = { selectedFilter = "Saved" }
                         )
                     }
                     if (allMedia.isNotEmpty()) {
@@ -324,12 +395,21 @@ fun FeedTab(
                         )
                     }
                 } else {
-                    MMChip("All", selected = selectedFilter == "All", onClick = { selectedFilter = "All" })
-                    MMChip("Media", selected = selectedFilter == "Media", onClick = { selectedFilter = "Media" })
+                    MMChip("All", selected = selectedFilter == "All" && selectedTag == null, onClick = { selectedFilter = "All" })
+                    if (state.savedCount > 0 || selectedFilter == "Saved") {
+                        MMChip(
+                            label = "Saved (${state.savedCount})",
+                            selected = selectedFilter == "Saved",
+                            onClick = { selectedFilter = "Saved" }
+                        )
+                    }
+                    if (allMedia.isNotEmpty()) {
+                        MMChip("Media", selected = selectedFilter == "Media", onClick = { selectedFilter = "Media" })
+                    }
                     circle.settings.allowedTypes.forEach { type ->
                         MMChip(
                             type.label,
-                            selected = selectedFilter == type.name,
+                            selected = selectedFilter == type.name && selectedTag == null,
                             onClick = { selectedFilter = type.name }
                         )
                     }
@@ -354,23 +434,26 @@ fun FeedTab(
             item {
                 EmptyState(
                     title = when {
+                        selectedTag != null -> "No posts tagged #$selectedTag"
+                        selectedFilter == "Saved" -> "No saved posts"
                         selectedFilter == "Decisions" -> "No decisions recorded yet"
                         selectedFilter == "All" -> "Nothing shared yet"
                         else -> "No posts found"
                     },
                     body = when {
+                        selectedTag != null -> "No posts match the #$selectedTag tag filter."
+                        selectedFilter == "Saved" -> "Bookmark posts with the bookmark icon to save them for quick reference later."
                         selectedFilter == "Decisions" -> "Record key team decisions and their context to keep everyone aligned."
                         selectedFilter != "All" -> "No posts match the \"${selectedFilter}\" filter."
                         circle.isWork -> "Share tasks, decisions, briefs and updates. Only members of this team can see it."
                         else -> "Share a prayer request, a testimony or a word of encouragement. Only members of this ${circle.groupWord.lowercase()} can see it."
                     },
-                    action = if (canPost) {
-                        when {
-                            selectedFilter == "Decisions" -> ({ PrimaryButton("Record decision", { actions.onStartPost(PostType.Decision) }, leadingIcon = Icons.Rounded.Add) })
-                            selectedFilter == "All" -> ({ PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) })
-                            else -> null
-                        }
-                    } else null
+                    action = when {
+                        selectedTag != null -> ({ SecondaryButton("Clear tag filter", { selectedTag = null }) })
+                        canPost && selectedFilter == "Decisions" -> ({ PrimaryButton("Record decision", { actions.onStartPost(PostType.Decision) }, leadingIcon = Icons.Rounded.Add) })
+                        canPost && selectedFilter == "All" -> ({ PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) })
+                        else -> null
+                    }
                 )
             }
         } else {
@@ -388,7 +471,11 @@ fun FeedTab(
                         pinned = true,
                         canModerate = state.canModerate,
                         members = state.members,
-                        modifier = Modifier.animateItem()
+                        modifier = Modifier.animateItem(),
+                        onSelectTag = { tag ->
+                            val clean = tag.removePrefix("#")
+                            selectedTag = if (selectedTag?.equals(clean, ignoreCase = true) == true) null else clean
+                        }
                     )
                 }
             }
@@ -401,7 +488,11 @@ fun FeedTab(
                     actions,
                     canModerate = state.canModerate,
                     members = state.members,
-                    modifier = Modifier.animateItem()
+                    modifier = Modifier.animateItem(),
+                    onSelectTag = { tag ->
+                        val clean = tag.removePrefix("#")
+                        selectedTag = if (selectedTag?.equals(clean, ignoreCase = true) == true) null else clean
+                    }
                 )
             }
         }
@@ -684,131 +775,7 @@ private fun PendingCard(p: PendingPost, actions: FeedActions) {
     }
 }
 
-@Composable
-private fun PostMediaGrid(
-    circleId: String,
-    attachments: List<MediaAttachment>,
-    who: String,
-    modifier: Modifier = Modifier
-) {
-    if (attachments.isEmpty()) return
-    Box(modifier = modifier.fillMaxWidth().clip(MM.radius.card)) {
-        when (attachments.size) {
-            1 -> {
-                val a = attachments[0]
-                AttachmentTile(
-                    circleId = circleId,
-                    a = a,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 200.dp, max = 300.dp)
-                        .clip(MM.radius.card),
-                    contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
-                )
-            }
-            2 -> {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                ) {
-                    attachments.take(2).forEach { a ->
-                        AttachmentTile(
-                            circleId = circleId,
-                            a = a,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(180.dp)
-                                .clip(MM.radius.card),
-                            contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
-                        )
-                    }
-                }
-            }
-            3 -> {
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(220.dp),
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                ) {
-                    val a0 = attachments[0]
-                    AttachmentTile(
-                        circleId = circleId,
-                        a = a0,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clip(MM.radius.card),
-                        contentDescription = if (a0.isVideo) "Video from $who" else "Photo from $who"
-                    )
-                    Column(
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
-                    ) {
-                        val a1 = attachments[1]
-                        val a2 = attachments[2]
-                        AttachmentTile(
-                            circleId = circleId,
-                            a = a1,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(108.dp)
-                                .clip(MM.radius.card),
-                            contentDescription = if (a1.isVideo) "Video from $who" else "Photo from $who"
-                        )
-                        AttachmentTile(
-                            circleId = circleId,
-                            a = a2,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(108.dp)
-                                .clip(MM.radius.card),
-                            contentDescription = if (a2.isVideo) "Video from $who" else "Photo from $who"
-                        )
-                    }
-                }
-            }
-            else -> {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(MM.space.xs)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                    ) {
-                        attachments.take(2).forEach { a ->
-                            AttachmentTile(
-                                circleId = circleId,
-                                a = a,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(136.dp)
-                                    .clip(MM.radius.card),
-                                contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                    ) {
-                        attachments.drop(2).take(2).forEach { a ->
-                            AttachmentTile(
-                                circleId = circleId,
-                                a = a,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(136.dp)
-                                    .clip(MM.radius.card),
-                                contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PostCard(
     item: FeedPost,
@@ -819,12 +786,14 @@ fun PostCard(
     pinned: Boolean = false,
     canModerate: Boolean = isAdmin,
     members: List<Member> = emptyList(),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSelectTag: ((String) -> Unit)? = null
 ) {
     val post = item.post
     val c = MM.colors
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     var menu by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     var hasOverflow by remember { mutableStateOf(false) }
@@ -877,10 +846,29 @@ fun PostCard(
                 )
             }
             PostTypeBadge(post.type)
+            IconButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    actions.onToggleBookmark(post)
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    if (item.saved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                    contentDescription = if (item.saved) "Remove bookmark" else "Bookmark post",
+                    tint = if (item.saved) c.accent else c.inkSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More actions", tint = c.inkSecondary) }
                 DropdownMenu(menu, { menu = false }, containerColor = c.surfaceRaised) {
                     if (post.body.isNotBlank()) MenuItem("Copy text") { clipboard.setText(AnnotatedString(post.body)); menu = false }
+                    MenuItem(if (item.saved) "Remove from saved" else "Save post") {
+                        menu = false
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        actions.onToggleBookmark(post)
+                    }
                     MenuItem("Share post") {
                         menu = false
                         val rawText = buildString {
@@ -1031,6 +1019,34 @@ fun PostCard(
             if (!meta.isEmpty) {
                 PostMetaChips(meta, Modifier.padding(top = MM.space.s))
             }
+            if (meta.tags.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = MM.space.xs),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    meta.tags.take(4).forEach { tag ->
+                        val cleanTag = tag.removePrefix("#")
+                        Surface(
+                            shape = MM.radius.pill,
+                            color = c.surfaceSunk,
+                            border = BorderStroke(1.dp, c.line),
+                            modifier = Modifier.clickable(enabled = onSelectTag != null) {
+                                onSelectTag?.invoke(cleanTag)
+                            }
+                        ) {
+                            Text(
+                                "#$cleanTag",
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                color = c.accent,
+                                modifier = Modifier.padding(horizontal = MM.space.m, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
         SelectionContainer {
             Column {
@@ -1061,6 +1077,86 @@ fun PostCard(
                 }
                 post.verseRef?.let {
                     PostVerseCard(it, actions.onOpenVerse)
+                }
+            }
+        }
+        post.meta?.let { meta ->
+            if (meta.checklist.isNotEmpty()) {
+                val doneCount = meta.checklist.count { it.done }
+                val progress = if (meta.checklist.isEmpty()) 0f else doneCount.toFloat() / meta.checklist.size
+                Surface(
+                    shape = MM.radius.card,
+                    color = c.surfaceSunk,
+                    border = BorderStroke(1.dp, c.line),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = MM.space.s)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(MM.space.m),
+                        verticalArrangement = Arrangement.spacedBy(MM.space.s)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Checklist · $doneCount/${meta.checklist.size}",
+                                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                color = c.inkSecondary
+                            )
+                            if (doneCount == meta.checklist.size && meta.checklist.isNotEmpty()) {
+                                Text(
+                                    "Completed",
+                                    style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                    color = c.success
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(MM.radius.pill)
+                                .background(c.track)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(progress)
+                                    .clip(MM.radius.pill)
+                                    .background(if (progress >= 1f) c.success else c.accent)
+                            )
+                        }
+                        meta.checklist.forEach { item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(MM.radius.small)
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        actions.onToggleChecklistItem(post, item)
+                                    }
+                                    .padding(vertical = MM.space.xs, horizontal = MM.space.xs),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                            ) {
+                                Icon(
+                                    imageVector = if (item.done) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                                    contentDescription = if (item.done) "Completed: ${item.text}" else "Mark done: ${item.text}",
+                                    tint = if (item.done) c.accent else c.inkSecondary,
+                                    modifier = Modifier.size(MMSize.iconSmall)
+                                )
+                                Text(
+                                    text = item.text,
+                                    style = if (item.done) MM.type.body.copy(textDecoration = TextDecoration.LineThrough) else MM.type.body,
+                                    color = if (item.done) c.inkMuted else c.ink,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1201,6 +1297,20 @@ fun PostCard(
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(Icons.Rounded.Share, "Share", tint = c.inkSecondary, modifier = Modifier.size(16.dp))
+            }
+            IconButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    actions.onToggleBookmark(post)
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    if (item.saved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                    contentDescription = if (item.saved) "Remove bookmark" else "Bookmark post",
+                    tint = if (item.saved) c.accent else c.inkSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
         if (post.type == PostType.Prayer && post.answered && item.mine) {
@@ -1718,6 +1828,195 @@ private fun WorkStatusToggle(
                         status.label,
                         style = MM.type.caption.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium),
                         color = fg
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CatchUpCard(
+    state: CircleHomeUiState,
+    now: Long,
+    onDismiss: () -> Unit,
+    onJumpIn: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val isWork = state.circle?.isWork == true
+    val openTasksOrRequests = remember(state.posts, isWork) {
+        if (isWork) {
+            state.posts.count { it.post.type == PostType.Task && !it.post.isResolved }
+        } else {
+            state.posts.count { it.post.type == PostType.Prayer && !it.post.answered }
+        }
+    }
+    val activeEventsCount = remember(state.events, now) {
+        state.events.count { it.status != "cancelled" && it.endsAt > now }
+    }
+
+    MMCard(modifier = modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Surface(
+                    shape = MM.radius.pill,
+                    color = MM.colors.accentWash
+                ) {
+                    Text(
+                        "Catch me up · ${state.unreadFeedCount} new",
+                        style = MM.type.secondary.copy(fontWeight = FontWeight.SemiBold),
+                        color = MM.colors.accent,
+                        modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                    )
+                }
+                Icon(
+                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = if (expanded) "Collapse digest" else "Expand digest",
+                    tint = MM.colors.inkSecondary
+                )
+            }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier.padding(top = MM.space.xs),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    val summaryLine = buildString {
+                        append("${state.unreadFeedCount} new ${if (state.unreadFeedCount == 1) "post" else "posts"}")
+                        if (openTasksOrRequests > 0) {
+                            val label = if (isWork) "open ${if (openTasksOrRequests == 1) "task" else "tasks"}"
+                            else "open prayer ${if (openTasksOrRequests == 1) "request" else "requests"}"
+                            append(" · $openTasksOrRequests $label")
+                        }
+                        if (activeEventsCount > 0) {
+                            append(" · $activeEventsCount upcoming ${if (activeEventsCount == 1) "event" else "events"}")
+                        }
+                    }
+                    Text(
+                        summaryLine,
+                        style = MM.type.body,
+                        color = MM.colors.ink
+                    )
+                    Text(
+                        "Stay up to speed with what your circle shared since your last visit.",
+                        style = MM.type.secondary,
+                        color = MM.colors.inkSecondary
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = MM.space.xs),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = MM.radius.pill,
+                    color = MM.colors.accent,
+                    modifier = Modifier.clickable(onClick = onJumpIn)
+                ) {
+                    Text(
+                        "Jump in",
+                        style = MM.type.secondary.copy(fontWeight = FontWeight.SemiBold),
+                        color = MM.colors.onAccent,
+                        modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                    )
+                }
+                Surface(
+                    shape = MM.radius.pill,
+                    color = MM.colors.surfaceSunk,
+                    border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
+                    modifier = Modifier.clickable(onClick = onDismiss)
+                ) {
+                    Text(
+                        "Mark caught up",
+                        style = MM.type.secondary,
+                        color = MM.colors.inkSecondary,
+                        modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodayPromptCard(
+    circle: Circle,
+    onRespond: (PostType) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val space = circleSpace(circle)
+    val (promptQuestion, defaultType) = when (space) {
+        "Work" -> "What's your top ship or blocker today?" to (if (PostType.Standup in circle.settings.allowedTypes) PostType.Standup else PostType.Note)
+        "Study" -> "Share one takeaway or tricky concept from today's study" to (if (PostType.Study in circle.settings.allowedTypes) PostType.Study else PostType.Note)
+        "Community" -> "Spark a conversation — what's on your mind today?" to PostType.Note
+        else -> "One gratitude or prayer request to lift up today?" to (if (PostType.Prayer in circle.settings.allowedTypes) PostType.Prayer else PostType.Note)
+    }
+
+    MMCard(modifier = modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Surface(
+                    shape = MM.radius.pill,
+                    color = MM.colors.surfaceSunk,
+                    border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
+                ) {
+                    Text(
+                        "Today's prompt",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = MM.colors.inkSecondary,
+                        modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                    )
+                }
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = "Dismiss prompt",
+                        tint = MM.colors.inkMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Text(
+                promptQuestion,
+                style = MM.type.bodyStrong,
+                color = MM.colors.ink
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Surface(
+                    shape = MM.radius.pill,
+                    color = MM.colors.accentWash,
+                    border = BorderStroke(MMSize.hairline, MM.colors.accent),
+                    modifier = Modifier.clickable { onRespond(defaultType) }
+                ) {
+                    Text(
+                        "Respond",
+                        style = MM.type.secondary.copy(fontWeight = FontWeight.SemiBold),
+                        color = MM.colors.accent,
+                        modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
                     )
                 }
             }

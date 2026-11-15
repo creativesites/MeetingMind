@@ -124,12 +124,12 @@ service cloud.firestore {
             && liveOpenPost(circleId, postId)
             && request.resource.data.keys().hasOnly(['authorUid', 'kind', 'createdAt'])
             && request.resource.data.authorUid == request.auth.uid
-            && request.resource.data.kind in ['praying', 'amen', 'heart', 'celebrate']
+            && request.resource.data.kind in ['praying', 'amen', 'heart', 'celebrate', 'ack', 'approved', 'priority', 'reviewing', 'win']
             && request.resource.data.createdAt == request.time;
           allow update: if isMember(circleId)
             && uid == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kind'])
-            && request.resource.data.kind in ['praying', 'amen', 'heart', 'celebrate'];
+            && request.resource.data.kind in ['praying', 'amen', 'heart', 'celebrate', 'ack', 'approved', 'priority', 'reviewing', 'win'];
           allow delete: if isMember(circleId) && uid == request.auth.uid;
         }
 
@@ -214,12 +214,12 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/circles/$(circleId)/messages/$(msgId)).data.deleted == false
             && request.resource.data.keys().hasOnly(['authorUid', 'emoji', 'createdAt'])
             && request.resource.data.authorUid == request.auth.uid
-            && request.resource.data.emoji in ['🙏', '❤️', '😂', '🎉', '👍', '🔥']
+            && request.resource.data.emoji in ['🙏', '❤️', '😂', '🎉', '👍', '🔥', '🙌', '🎯', '🚀', '💡', '👏', '📚']
             && request.resource.data.createdAt == request.time;
           allow update: if isMember(circleId)
             && uid == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['emoji'])
-            && request.resource.data.emoji in ['🙏', '❤️', '😂', '🎉', '👍', '🔥'];
+            && request.resource.data.emoji in ['🙏', '❤️', '😂', '🎉', '👍', '🔥', '🙌', '🎯', '🚀', '💡', '👏', '📚'];
           allow delete: if isMember(circleId) && uid == request.auth.uid;
         }
       }

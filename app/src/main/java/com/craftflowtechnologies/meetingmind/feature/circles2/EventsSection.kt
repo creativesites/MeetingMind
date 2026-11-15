@@ -1,11 +1,21 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -15,11 +25,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.ui.platform.LocalContext
 import com.craftflowtechnologies.meetingmind.core.calendar.CalendarExporter
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.EventDraft
@@ -35,6 +43,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -69,13 +78,49 @@ fun EventsSection(events: List<CircleEvent>, now: Long, onOpen: (CircleEvent) ->
 
 @Composable
 private fun EventRow(e: CircleEvent, onOpen: (CircleEvent) -> Unit) {
+    val context = LocalContext.current
     val where = e.location.takeIf { it.isNotBlank() }
     val sub = if (where != null) "${whenText(e.startsAt, e.timeZone)} · $where" else whenText(e.startsAt, e.timeZone)
+    val hasJoin = !e.cancelled && !e.onlineUrl.isNullOrBlank()
     ListRow(
         title = e.title,
         subtitle = sub,
         meta = if (e.cancelled) "Cancelled" else null,
         leading = { DayTile(e) },
+        trailing = if (hasJoin) {
+            {
+                Surface(
+                    shape = MM.radius.pill,
+                    color = MM.colors.accentWash,
+                    modifier = Modifier.clip(MM.radius.pill).clickable {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(e.onlineUrl))
+                            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        } catch (_: ActivityNotFoundException) {
+                        } catch (_: Throwable) {
+                        }
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Videocam,
+                            contentDescription = "Join event",
+                            tint = MM.colors.accent,
+                            modifier = Modifier.size(MMSize.iconSmall)
+                        )
+                        Text(
+                            "Join",
+                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = MM.colors.accent
+                        )
+                    }
+                }
+            }
+        } else null,
         onClick = { onOpen(e) }
     )
 }
@@ -176,11 +221,43 @@ fun EventSheet(
     }
 }
 
+private data class EventTemplate(val title: String, val durationMs: Long, val description: String)
+
 /** Create or edit an event. Times come from quick choices; the Worker checks the link and the zone. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> Unit, onDismiss: () -> Unit) {
+fun EventFormSheet(
+    existing: CircleEvent?,
+    nowMs: Long,
+    onSave: (EventDraft) -> Unit,
+    onDismiss: () -> Unit,
+    space: String = "faith"
+) {
     val zone = TimeZone.getDefault().id
+    val templates = remember(space) {
+        when (space.lowercase()) {
+            "work" -> listOf(
+                EventTemplate("Weekly Standup", 30 * 60_000L, "Quick round-robin: what's done, what's next, and blockers."),
+                EventTemplate("Sprint Review", 60 * 60_000L, "Walk through completed work and collect feedback."),
+                EventTemplate("Team Sync", 45 * 60_000L, "Alignment on priorities, goals, and team updates.")
+            )
+            "learning" -> listOf(
+                EventTemplate("Study Jam", 60 * 60_000L, "Focused study session with collaborative Q&A."),
+                EventTemplate("Mock Exam Prep", 60 * 60_000L, "Practice exam questions and review tricky topics."),
+                EventTemplate("Paper Review", 45 * 60_000L, "Discussion and breakdown of assigned reading or research paper.")
+            )
+            "faith" -> listOf(
+                EventTemplate("Prayer Night", 60 * 60_000L, "Gathering for praise, intercession, and fellowship."),
+                EventTemplate("Bible Study", 60 * 60_000L, "Reading, discussion, and practical application of the Word."),
+                EventTemplate("Service", 60 * 60_000L, "Worship service and message.")
+            )
+            else -> listOf(
+                EventTemplate("Monthly Hangout", 60 * 60_000L, "Casual catch-up and community social time."),
+                EventTemplate("Workshop", 60 * 60_000L, "Hands-on learning session and interactive discussion."),
+                EventTemplate("Community Call", 45 * 60_000L, "Open floor updates and community check-in.")
+            )
+        }
+    }
     val presets = remember(nowMs) {
         listOf(Calendar.WEDNESDAY to 19, Calendar.SUNDAY to 10, Calendar.SATURDAY to 9).map { (day, hour) -> nextAt(nowMs, zone, day, hour) }
     }
@@ -189,7 +266,7 @@ fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> 
     var location by remember { mutableStateOf(existing?.location.orEmpty()) }
     var link by remember { mutableStateOf(existing?.onlineUrl.orEmpty()) }
     var startAt by remember { mutableStateOf(existing?.startsAt ?: presets.first()) }
-    val duration = existing?.let { it.endsAt - it.startsAt }?.takeIf { it > 0 } ?: HOUR_MS
+    var duration by remember { mutableStateOf(existing?.let { it.endsAt - it.startsAt }?.takeIf { it > 0 } ?: HOUR_MS) }
     var showDate by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
     val dateState = rememberDatePickerState(initialSelectedDateMillis = startAt)
@@ -212,6 +289,27 @@ fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> 
 
     CircleSheet(onDismiss) {
         Text(if (existing == null) "New event" else "Edit event", style = MM.type.title, color = MM.colors.ink)
+        if (existing == null) {
+            Text("Templates", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+            ) {
+                templates.forEach { tmpl ->
+                    MMChip(
+                        label = tmpl.title,
+                        selected = title == tmpl.title,
+                        onClick = {
+                            title = tmpl.title
+                            duration = tmpl.durationMs
+                            if (description.isBlank()) {
+                                description = tmpl.description
+                            }
+                        }
+                    )
+                }
+            }
+        }
         CircleField(title, { title = it.take(80) }, "Title", placeholder = "Breakfast at Café Lumen")
         CircleField(description, { description = it.take(1000) }, "Details (optional)", minLines = 2, maxLines = 5)
         CircleField(location, { location = it.take(200) }, "Where (optional)", placeholder = "214 Maple St")

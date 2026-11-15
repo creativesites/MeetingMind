@@ -132,8 +132,9 @@ class NoteAiWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 "NOTE" -> com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forNote(applicationContext, job.targetId, prefs.processingProfile)
                 else -> com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forNotebook(applicationContext, job.targetId, prefs.processingProfile)
             }
-            val model = factory.resolve(profile, ModelCapability.SUMMARIZATION)
+            val model = factory.resolveWithFallback(profile, ModelCapability.SUMMARIZATION)
                 ?: return fail(job, "No AI model is available. Install one in Settings → AI Engine, or turn on Internet mode.")
+            val resilient = model.languageModel as? com.craftflowtechnologies.meetingmind.ai.routing.ResilientLanguageModel
 
             val question = runCatching { JSONObject(job.inputJson).optString("question") }.getOrNull()?.takeIf { it.isNotBlank() }
             val gathered = NoteAiGatherer(database).gather(
@@ -143,7 +144,10 @@ class NoteAiWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             ) ?: return fail(job, "That note or notebook no longer exists.")
 
             val outcome = NoteAiEngine(model.languageModel, MAX_OUTPUT).run(tool, gathered.passages, gathered.faith, question, gathered.sections)
-            if (!model.isCloud) com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
+            if (!model.isCloud || resilient?.lastRanLocally == true) {
+                com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
+            }
+            val actualEngineId = resilient?.lastActualModelId ?: model.modelId
             when (outcome) {
                 is AiResult.Success -> {
                     val cited = outcome.value.citedIds()
@@ -151,7 +155,7 @@ class NoteAiWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     dao.upsert(
                         job.copy(
                             status = NoteAiStatus.SUCCEEDED.name, resultJson = NoteAiCodec.encode(result).toString(),
-                            engine = model.modelId, updatedAt = System.currentTimeMillis()
+                            engine = actualEngineId, updatedAt = System.currentTimeMillis()
                         )
                     )
                     Result.success()

@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.filled.AddTask
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material.icons.filled.Groups
@@ -98,7 +97,8 @@ internal class TodayModel(
     val onOpenInbox: (() -> Unit)? = null,
     val onOpenWeeklyReview: (() -> Unit)? = null,
     val onOpenBrief: (() -> Unit)? = null,
-    val onOpenPeople: (() -> Unit)? = null
+    val onOpenPeople: (() -> Unit)? = null,
+    val onOpenAutopilot: (() -> Unit)? = null
 ) {
     val isEmpty get() = hero == null && needs.isEmpty() && upcoming.isEmpty() && earlier.isEmpty() && recent.isEmpty() && circles.isEmpty() && inboxCount == 0
 }
@@ -206,7 +206,8 @@ internal fun TodayContent(
                     onOpenInbox = model.onOpenInbox,
                     onOpenWeeklyReview = model.onOpenWeeklyReview,
                     onOpenBrief = model.onOpenBrief,
-                    onOpenPeople = model.onOpenPeople
+                    onOpenPeople = model.onOpenPeople,
+                    onOpenAutopilot = model.onOpenAutopilot
                 )
             }
         }
@@ -431,10 +432,15 @@ private fun ExecutiveRhythmRow(
     onOpenInbox: (() -> Unit)?,
     onOpenWeeklyReview: (() -> Unit)?,
     onOpenBrief: (() -> Unit)?,
-    onOpenPeople: (() -> Unit)?
+    onOpenPeople: (() -> Unit)?,
+    onOpenAutopilot: (() -> Unit)? = null
 ) {
     Column {
-        SectionHeader("Work intelligence & rhythm")
+        SectionHeader(
+            "Work intelligence & rhythm",
+            actionLabel = if (onOpenAutopilot != null) "Autopilot" else null,
+            onAction = onOpenAutopilot
+        )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
             if (onOpenWeeklyReview != null) {
                 RhythmCard(
@@ -448,7 +454,7 @@ private fun ExecutiveRhythmRow(
             }
             if (onOpenBrief != null) {
                 RhythmCard(
-                    icon = Icons.Filled.AutoAwesome,
+                    icon = com.craftflowtechnologies.meetingmind.ui.icons.AiMark,
                     title = "Executive brief",
                     subtitle = "AI week summary",
                     tint = MM.colors.speaker2,

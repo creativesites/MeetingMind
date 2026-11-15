@@ -113,19 +113,19 @@ data class CircleTemplate(
 
         val workTemplates: List<CircleTemplate> = listOf(
             CircleTemplate("project_team", "Project team", "A team collaborating on deliverables, decisions and tasks.",
-                listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Announcement, PostType.Note),
+                listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Blocker, PostType.Announcement, PostType.Note),
                 listOf("Team", "Project", "Squad"), space = "work"),
             CircleTemplate("client_engagement", "Client engagement", "External client or partner collaboration workspace.",
-                listOf(PostType.Decision, PostType.Brief, PostType.Task, PostType.Announcement, PostType.Note),
+                listOf(PostType.Decision, PostType.Brief, PostType.Task, PostType.Blocker, PostType.Announcement, PostType.Note),
                 listOf("Project", "Engagement", "Team"), space = "work"),
             CircleTemplate("exec_board", "Leadership & Board", "Executive team, board or advisory committee.",
                 listOf(PostType.Decision, PostType.Brief, PostType.Announcement, PostType.Note),
                 listOf("Committee", "Board", "Leadership"), space = "work"),
             CircleTemplate("department", "Department", "Functional department or division sharing updates.",
-                listOf(PostType.Announcement, PostType.Standup, PostType.Task, PostType.Decision, PostType.Note),
+                listOf(PostType.Announcement, PostType.Standup, PostType.Task, PostType.Decision, PostType.Blocker, PostType.Note),
                 listOf("Department", "Division", "Team"), space = "work"),
             CircleTemplate("custom_work", "Custom work group", "Configure your own collaborative team space.",
-                listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Announcement, PostType.Note),
+                listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Blocker, PostType.Announcement, PostType.Note),
                 listOf("Team", "Group", "Circle"), space = "work")
         )
 
@@ -211,6 +211,13 @@ enum class WorkStatus(val wire: String, val label: String) {
 }
 
 @Immutable
+data class ChecklistItem(
+    val id: String,
+    val text: String,
+    val done: Boolean = false
+)
+
+@Immutable
 data class PostMeta(
     val sourceKind: String? = null,
     val sourceId: String? = null,
@@ -221,10 +228,12 @@ data class PostMeta(
     val priority: WorkPriority? = null,
     val blockedOn: String? = null,
     val decisionOwner: String? = null,
-    val meetingDate: String? = null
+    val meetingDate: String? = null,
+    val tags: List<String> = emptyList(),
+    val checklist: List<ChecklistItem> = emptyList()
 ) {
     val isEmpty: Boolean
-        get() = listOfNotNull(sourceKind, sourceId, assigneeUid, assigneeName, dueText, priority, blockedOn, decisionOwner, meetingDate).all { it.toString().isBlank() } && dueAt == null
+        get() = listOfNotNull(sourceKind, sourceId, assigneeUid, assigneeName, dueText, priority, blockedOn, decisionOwner, meetingDate).all { it.toString().isBlank() } && dueAt == null && tags.isEmpty() && checklist.isEmpty()
 }
 
 @Immutable
@@ -332,7 +341,17 @@ val CHAT_EMOJI: List<String> = listOf("🙏", "❤️", "😂", "🎉", "👍", 
 data class PollOption(val id: String, val text: String)
 
 @Immutable
-data class Poll(val id: String, val question: String, val options: List<PollOption>, val multi: Boolean, val closed: Boolean, val createdBy: String, val closesAt: Long? = null)
+data class Poll(
+    val id: String,
+    val question: String,
+    val options: List<PollOption>,
+    val multi: Boolean,
+    val closed: Boolean,
+    val createdBy: String,
+    val closesAt: Long? = null,
+    val correctOptionId: String? = null,
+    val explanation: String? = null
+)
 
 /** A poll plus live votes (uid to the option ids chosen). */
 @Immutable

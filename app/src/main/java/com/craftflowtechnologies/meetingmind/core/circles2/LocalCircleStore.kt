@@ -67,6 +67,21 @@ interface LocalCircleStore {
     fun setChatDraft(circleId: String, text: String) = Unit
     fun commentDraft(circleId: String, postId: String): String = ""
     fun setCommentDraft(circleId: String, postId: String, text: String) = Unit
+    fun streakDays(): Int = 0
+    fun lastActivityDay(): Long = 0L
+    fun currentStreak(nowMs: Long = System.currentTimeMillis()): Int {
+        val today = nowMs / 86_400_000L
+        val last = lastActivityDay()
+        return if (last == 0L || today - last > 1L) 0 else streakDays()
+    }
+    fun checkedInToday(nowMs: Long = System.currentTimeMillis()): Boolean = lastActivityDay() == nowMs / 86_400_000L
+    fun recordActivity(nowMs: Long = System.currentTimeMillis()): Int = streakDays()
+    fun savedPostIds(circleId: String): Set<String> = emptySet()
+    fun toggleSavedPost(circleId: String, postId: String): Boolean = false
+    fun lastFeedVisit(circleId: String): Long = 0L
+    fun setLastFeedVisit(circleId: String, at: Long) = Unit
+    fun dismissedPromptDay(circleId: String): Long = 0L
+    fun setDismissedPromptDay(circleId: String, day: Long) = Unit
 }
 
 class InMemoryLocalCircleStore : LocalCircleStore {
@@ -79,6 +94,12 @@ class InMemoryLocalCircleStore : LocalCircleStore {
     private val drafts = HashMap<String, ComposerDraft>()
     private val chatDrafts = HashMap<String, String>()
     private val commentDrafts = HashMap<String, String>()
+    private var streak: Int = 0
+    private var lastDay: Long = 0L
+    private val saved = HashMap<String, MutableSet<String>>()
+    private val feedVisits = HashMap<String, Long>()
+    private val dismissedPrompts = HashMap<String, Long>()
+
     override fun circleIds() = circles.toList()
     override fun addCircle(id: String) { circles += id }
     override fun removeCircle(id: String) { circles -= id }
@@ -103,6 +124,39 @@ class InMemoryLocalCircleStore : LocalCircleStore {
         val k = "${circleId}_$postId"
         if (text.isBlank()) commentDrafts.remove(k) else commentDrafts[k] = text
     }
+    override fun streakDays(): Int = streak
+    override fun lastActivityDay(): Long = lastDay
+    override fun currentStreak(nowMs: Long): Int {
+        val today = nowMs / 86_400_000L
+        return if (lastDay == 0L || today - lastDay > 1L) 0 else streak
+    }
+    override fun checkedInToday(nowMs: Long): Boolean = lastDay == nowMs / 86_400_000L
+    override fun recordActivity(nowMs: Long): Int {
+        val today = nowMs / 86_400_000L
+        val next = when (lastDay) {
+            today -> if (streak < 1) 1 else streak
+            today - 1L -> streak.coerceAtLeast(1) + 1
+            else -> 1
+        }
+        streak = next
+        lastDay = today
+        return next
+    }
+    override fun savedPostIds(circleId: String): Set<String> = saved[circleId]?.toSet().orEmpty()
+    override fun toggleSavedPost(circleId: String, postId: String): Boolean {
+        val set = saved.getOrPut(circleId) { mutableSetOf() }
+        return if (postId in set) {
+            set.remove(postId)
+            false
+        } else {
+            set.add(postId)
+            true
+        }
+    }
+    override fun lastFeedVisit(circleId: String): Long = feedVisits[circleId] ?: 0L
+    override fun setLastFeedVisit(circleId: String, at: Long) { feedVisits[circleId] = at }
+    override fun dismissedPromptDay(circleId: String): Long = dismissedPrompts[circleId] ?: 0L
+    override fun setDismissedPromptDay(circleId: String, day: Long) { dismissedPrompts[circleId] = day }
 }
 
 class SharedPrefsLocalCircleStore(context: Context) : LocalCircleStore {
@@ -144,5 +198,50 @@ class SharedPrefsLocalCircleStore(context: Context) : LocalCircleStore {
             val k = "comment_draft_${circleId}_$postId"
             if (text.isBlank()) remove(k) else putString(k, text)
         }.apply()
+    }
+    override fun streakDays(): Int = prefs.getInt("streak_days", 0)
+    override fun lastActivityDay(): Long = prefs.getLong("last_activity_day", 0L)
+    override fun currentStreak(nowMs: Long): Int {
+        val today = nowMs / 86_400_000L
+        val last = lastActivityDay()
+        return if (last == 0L || today - last > 1L) 0 else streakDays()
+    }
+    override fun checkedInToday(nowMs: Long): Boolean = lastActivityDay() == nowMs / 86_400_000L
+    override fun recordActivity(nowMs: Long): Int {
+        val today = nowMs / 86_400_000L
+        val last = lastActivityDay()
+        val cur = streakDays()
+        val next = when (last) {
+            today -> if (cur < 1) 1 else cur
+            today - 1L -> cur.coerceAtLeast(1) + 1
+            else -> 1
+        }
+        prefs.edit()
+            .putInt("streak_days", next)
+            .putLong("last_activity_day", today)
+            .apply()
+        return next
+    }
+    override fun savedPostIds(circleId: String): Set<String> = set("saved_$circleId")
+    override fun toggleSavedPost(circleId: String, postId: String): Boolean {
+        val k = "saved_$circleId"
+        val cur = set(k)
+        val added = if (postId in cur) {
+            cur.remove(postId)
+            false
+        } else {
+            cur.add(postId)
+            true
+        }
+        put(k, cur)
+        return added
+    }
+    override fun lastFeedVisit(circleId: String): Long = prefs.getLong("feed_visit_$circleId", 0L)
+    override fun setLastFeedVisit(circleId: String, at: Long) {
+        prefs.edit().putLong("feed_visit_$circleId", at).apply()
+    }
+    override fun dismissedPromptDay(circleId: String): Long = prefs.getLong("prompt_dismissed_$circleId", 0L)
+    override fun setDismissedPromptDay(circleId: String, day: Long) {
+        prefs.edit().putLong("prompt_dismissed_$circleId", day).apply()
     }
 }

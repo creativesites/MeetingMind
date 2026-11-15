@@ -16,11 +16,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -37,6 +41,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -52,6 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -220,9 +226,34 @@ val MediaAttachment.isPdf: Boolean get() = mime == "application/pdf" || (name?.e
 
 /** A photo, video or PDF on a post. Photos open fullscreen; videos play in a player; PDFs open in document viewer. */
 @Composable
-fun AttachmentTile(circleId: String, a: MediaAttachment, modifier: Modifier, contentDescription: String) {
+fun AttachmentTile(
+    circleId: String,
+    a: MediaAttachment,
+    modifier: Modifier,
+    contentDescription: String,
+    gallery: List<MediaAttachment> = emptyList(),
+    index: Int = 0
+) {
     if (a.isVideo) VideoTile(circleId, a, modifier, contentDescription)
     else if (a.isPdf) PdfTile(circleId, a, modifier, contentDescription)
+    else if (gallery.isNotEmpty()) {
+        var showGallery by remember { mutableStateOf(false) }
+        MediaImage(
+            circleId = circleId,
+            path = a.path,
+            modifier = modifier.clickable { showGallery = true },
+            contentDescription = contentDescription,
+            allowFullscreen = false
+        )
+        if (showGallery) {
+            FullScreenGalleryDialog(
+                circleId = circleId,
+                attachments = gallery,
+                initialIndex = index,
+                onDismiss = { showGallery = false }
+            )
+        }
+    }
     else MediaImage(circleId = circleId, path = a.path, modifier = modifier, contentDescription = contentDescription, allowFullscreen = true)
 }
 
@@ -381,7 +412,10 @@ private fun InlineVideoPlayer(
     var showPlayer by remember { mutableStateOf<File?>(null) }
     var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
-    var playbackProgress by remember { mutableStateOf(0f) }
+    var playbackProgress by remember { mutableFloatStateOf(0f) }
+    var speed by remember { mutableFloatStateOf(1f) }
+    var currentPositionMs by remember { mutableLongStateOf(0L) }
+    var totalDurationMs by remember { mutableLongStateOf(a.durationMs ?: 0L) }
 
     LaunchedEffect(a.path) {
         if (videoFile == null) {
@@ -414,12 +448,35 @@ private fun InlineVideoPlayer(
         if (isInlinePlaying && !isPaused) {
             while (isActive) {
                 val vv = videoViewRef
-                val dur = vv?.duration ?: 0
-                val cur = vv?.currentPosition ?: 0
-                if (dur > 0) {
+                val dur = vv?.duration?.toLong() ?: 0L
+                val cur = vv?.currentPosition?.toLong() ?: 0L
+                if (dur > 0L) {
+                    totalDurationMs = dur
+                    currentPositionMs = cur
                     playbackProgress = (cur.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
                 }
                 delay(100)
+            }
+        }
+    }
+
+    val cycleSpeed: () -> Unit = {
+        val nextSpeed = when (speed) {
+            1f -> 1.5f
+            1.5f -> 2f
+            else -> 1f
+        }
+        speed = nextSpeed
+        val mp = mediaPlayerRef
+        if (mp != null) {
+            runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    val wasPlaying = mp.isPlaying
+                    mp.playbackParams = mp.playbackParams.setSpeed(nextSpeed)
+                    if (!wasPlaying && isPaused) {
+                        mp.pause()
+                    }
+                }
             }
         }
     }
@@ -517,6 +574,13 @@ private fun InlineVideoPlayer(
                             mediaPlayerRef = mp
                             mp.isLooping = true
                             mp.setVolume(if (isMuted) 0f else 1f, if (isMuted) 0f else 1f)
+                            runCatching {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && speed != 1f) {
+                                    mp.playbackParams = mp.playbackParams.setSpeed(speed)
+                                }
+                            }
+                            val dur = mp.duration.toLong()
+                            if (dur > 0L) totalDurationMs = dur
                             if (!isPaused) {
                                 start()
                             }
@@ -669,6 +733,53 @@ private fun InlineVideoPlayer(
             }
         }
 
+        // Bottom-left duration & speed cycle pill overlay (when inline playback is active)
+        if (isInlinePlaying) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = MM.space.s, bottom = MM.space.s)
+                    .padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val total = if (totalDurationMs > 0L) totalDurationMs else (a.durationMs ?: 0L)
+                val timeLabel = "${formatDuration(currentPositionMs)} / ${formatDuration(total)}"
+                Box(
+                    modifier = Modifier
+                        .clip(MM.radius.pill)
+                        .background(MM.colors.scrim.copy(alpha = 0.7f))
+                        .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                ) {
+                    Text(
+                        timeLabel,
+                        style = MM.type.caption,
+                        color = FixedWhite
+                    )
+                }
+
+                val speedLabel = when (speed) {
+                    1.5f -> "1.5x"
+                    2f -> "2x"
+                    else -> "1x"
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(MM.radius.pill)
+                        .background(MM.colors.scrim.copy(alpha = 0.7f))
+                        .clickable { cycleSpeed() }
+                        .padding(horizontal = MM.space.s, vertical = MM.space.xs),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        speedLabel,
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = FixedWhite
+                    )
+                }
+            }
+        }
+
         // Thin bottom playback progress bar updating while playing
         if (isInlinePlaying) {
             LinearProgressIndicator(
@@ -699,6 +810,8 @@ private fun VideoTile(circleId: String, a: MediaAttachment, modifier: Modifier, 
 fun VideoPlayerDialog(file: File, onDismiss: () -> Unit) {
     var isPreparing by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf(false) }
+    var speed by remember { mutableFloatStateOf(1f) }
+    var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
@@ -714,9 +827,15 @@ fun VideoPlayerDialog(file: File, onDismiss: () -> Unit) {
                         controller.setAnchorView(this)
                         setMediaController(controller)
                         setOnPreparedListener { mp ->
+                            mediaPlayerRef = mp
                             isPreparing = false
                             playbackError = false
                             mp.isLooping = false
+                            runCatching {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && speed != 1f) {
+                                    mp.playbackParams = mp.playbackParams.setSpeed(speed)
+                                }
+                            }
                             start()
                         }
                         setOnErrorListener { _, _, _ ->
@@ -766,13 +885,48 @@ fun VideoPlayerDialog(file: File, onDismiss: () -> Unit) {
                 }
             }
 
-            IconButton(
-                onClick = onDismiss,
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(MM.space.m)
+                    .padding(MM.space.m),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Rounded.Close, "Close video", tint = FixedWhite)
+                val speedLabel = when (speed) {
+                    1.5f -> "1.5x"
+                    2f -> "2x"
+                    else -> "1x"
+                }
+                Surface(
+                    onClick = {
+                        val next = when (speed) {
+                            1f -> 1.5f
+                            1.5f -> 2f
+                            else -> 1f
+                        }
+                        speed = next
+                        mediaPlayerRef?.let { mp ->
+                            runCatching {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    mp.playbackParams = mp.playbackParams.setSpeed(next)
+                                }
+                            }
+                        }
+                    },
+                    shape = MM.radius.pill,
+                    color = MM.colors.scrim.copy(alpha = 0.65f),
+                    border = BorderStroke(MMSize.hairline, FixedWhite.copy(alpha = 0.2f))
+                ) {
+                    Text(
+                        speedLabel,
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = FixedWhite,
+                        modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, "Close video", tint = FixedWhite)
+                }
             }
         }
     }
@@ -877,7 +1031,7 @@ fun MediaImage(
 }
 
 @Composable
-private fun FullscreenImageDialog(
+fun FullscreenImageDialog(
     bitmap: ImageBitmap,
     rawBytes: ByteArray,
     contentDescription: String?,
@@ -974,6 +1128,552 @@ private fun FullscreenImageDialog(
             }
         }
     }
+}
+
+/**
+ * Fullscreen photo dialog matching single-photo preview callers.
+ */
+@Composable
+fun FullScreenPhotoDialog(
+    bitmap: ImageBitmap,
+    rawBytes: ByteArray,
+    contentDescription: String? = null,
+    onDismiss: () -> Unit
+) {
+    FullscreenImageDialog(bitmap, rawBytes, contentDescription, onDismiss)
+}
+
+/**
+ * Fullscreen photo dialog overload that fetches from circleId & path.
+ */
+@Composable
+fun FullScreenPhotoDialog(
+    circleId: String,
+    path: String,
+    contentDescription: String? = null,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val imageState by produceState<Pair<ImageBitmap, ByteArray>?>(initialValue = null, circleId, path) {
+        val bytes = CircleMediaCache.fetch(context, circleId, path) ?: return@produceState
+        val bmp = withContext(Dispatchers.Default) {
+            decodeSampledBitmap(bytes, 2048)?.asImageBitmap()
+        }
+        if (bmp != null) {
+            value = Pair(bmp, bytes)
+        }
+    }
+    imageState?.let { (bmp, bytes) ->
+        FullscreenImageDialog(
+            bitmap = bmp,
+            rawBytes = bytes,
+            contentDescription = contentDescription,
+            onDismiss = onDismiss
+        )
+    }
+}
+
+/**
+ * Swipeable Multi-Photo Lightbox:
+ * Opens with HorizontalPager starting on the tapped index, pinch-to-zoom, top counter pill
+ * "${page + 1} / ${attachments.size}", close button, and share/save buttons.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FullScreenGalleryDialog(
+    circleId: String,
+    attachments: List<MediaAttachment>,
+    initialIndex: Int = 0,
+    onDismiss: () -> Unit
+) {
+    if (attachments.isEmpty()) {
+        onDismiss()
+        return
+    }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(
+        initialPage = initialIndex.coerceIn(0, attachments.lastIndex)
+    ) {
+        attachments.size
+    }
+
+    var currentBytes by remember { mutableStateOf<ByteArray?>(null) }
+
+    LaunchedEffect(pagerState.currentPage, attachments) {
+        val currentAttachment = attachments.getOrNull(pagerState.currentPage)
+        if (currentAttachment != null) {
+            currentBytes = CircleMediaCache.fetch(context, circleId, currentAttachment.path)
+        }
+    }
+
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/jpeg")) { uri: Uri? ->
+        if (uri != null) {
+            val bytes = currentBytes
+            if (bytes != null) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                }
+            }
+        }
+    }
+
+    val onShare: () -> Unit = {
+        val bytes = currentBytes
+        if (bytes != null) {
+            scope.launch(Dispatchers.IO) {
+                val cacheDir = File(context.cacheDir, "circles_media").apply { mkdirs() }
+                val shareFile = File(cacheDir, "share_${System.currentTimeMillis()}.jpg")
+                runCatching {
+                    shareFile.writeBytes(bytes)
+                    val uri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        shareFile
+                    )
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "image/jpeg"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Share photo"))
+                }
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(MM.colors.scrim.copy(alpha = 0.94f))
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                val attachment = attachments.getOrNull(page)
+                if (attachment != null) {
+                    GalleryPage(
+                        circleId = circleId,
+                        path = attachment.path,
+                        contentDescription = attachment.name,
+                        onDismiss = onDismiss
+                    )
+                }
+            }
+
+            // Top pill: "${page + 1} / ${attachments.size}"
+            Surface(
+                shape = MM.radius.pill,
+                color = MM.colors.scrim.copy(alpha = 0.65f),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(MM.space.m)
+            ) {
+                Text(
+                    text = "${pagerState.currentPage + 1} / ${attachments.size}",
+                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = FixedWhite,
+                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                )
+            }
+
+            // Top-end actions: Share, Save, Close
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(MM.space.m),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onShare) {
+                    Icon(Icons.Rounded.Share, "Share photo", tint = FixedWhite)
+                }
+                IconButton(onClick = { saver.launch("photo_${System.currentTimeMillis()}.jpg") }) {
+                    Icon(Icons.Rounded.Download, "Save photo", tint = FixedWhite)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, "Close gallery", tint = FixedWhite)
+                }
+            }
+        }
+    }
+}
+
+/** Overload accepting paths directly. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FullScreenGalleryDialog(
+    circleId: String,
+    paths: List<String>,
+    initialIndex: Int = 0,
+    onDismiss: () -> Unit,
+    unusedMarker: Unit = Unit
+) {
+    val attachments = remember(paths) {
+        paths.map { MediaAttachment(path = it, mime = "image/jpeg", bytes = 0L, durationMs = null, name = null) }
+    }
+    FullScreenGalleryDialog(circleId, attachments, initialIndex, onDismiss)
+}
+
+@Composable
+private fun GalleryPage(
+    circleId: String,
+    path: String,
+    contentDescription: String?,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    val bmpState by produceState<ImageBitmap?>(initialValue = null, circleId, path) {
+        val bytes = CircleMediaCache.fetch(context, circleId, path)
+        value = if (bytes != null) {
+            withContext(Dispatchers.Default) {
+                decodeSampledBitmap(bytes, 2048)?.asImageBitmap()
+            }
+        } else null
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(enabled = scale <= 1.05f) { onDismiss() }
+            .pointerInput(path) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(1f, 5f)
+                    scale = newScale
+                    if (newScale > 1f) {
+                        offset += pan
+                    } else {
+                        offset = Offset.Zero
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        val bmp = bmpState
+        if (bmp != null) {
+            Image(
+                bitmap = bmp,
+                contentDescription = contentDescription,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(MM.space.m)
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    ),
+                contentScale = ContentScale.Fit
+            )
+        } else {
+            CircularProgressIndicator(
+                modifier = Modifier.size(32.dp),
+                color = FixedWhite,
+                strokeWidth = 2.dp
+            )
+        }
+    }
+}
+
+/**
+ * A multi-photo / media grid for posts with swipeable multi-photo lightbox on tap.
+ */
+@Composable
+fun PostMediaGrid(
+    circleId: String,
+    attachments: List<MediaAttachment>,
+    who: String = "",
+    modifier: Modifier = Modifier
+) {
+    if (attachments.isEmpty()) return
+    var selectedPhotoIndex by remember { mutableStateOf<Int?>(null) }
+    val photos = remember(attachments) { attachments.filter { !it.isVideo && !it.isPdf } }
+
+    Box(modifier = modifier.fillMaxWidth().clip(MM.radius.card)) {
+        when (attachments.size) {
+            1 -> {
+                val a = attachments[0]
+                if (!a.isVideo && !a.isPdf) {
+                    MediaImage(
+                        circleId = circleId,
+                        path = a.path,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 200.dp, max = 300.dp)
+                            .clip(MM.radius.card)
+                            .clickable { selectedPhotoIndex = 0 },
+                        contentDescription = "Photo from $who",
+                        allowFullscreen = false
+                    )
+                } else {
+                    AttachmentTile(
+                        circleId = circleId,
+                        a = a,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 200.dp, max = 300.dp)
+                            .clip(MM.radius.card),
+                        contentDescription = if (a.isVideo) "Video from $who" else "File from $who"
+                    )
+                }
+            }
+            2 -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    attachments.take(2).forEach { a ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(180.dp)
+                                .clip(MM.radius.card)
+                        ) {
+                            if (!a.isVideo && !a.isPdf) {
+                                MediaImage(
+                                    circleId = circleId,
+                                    path = a.path,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clickable {
+                                            val pIdx = photos.indexOf(a).coerceAtLeast(0)
+                                            selectedPhotoIndex = pIdx
+                                        },
+                                    contentDescription = "Photo from $who",
+                                    allowFullscreen = false
+                                )
+                            } else {
+                                AttachmentTile(
+                                    circleId = circleId,
+                                    a = a,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentDescription = if (a.isVideo) "Video from $who" else "File from $who"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            3 -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(220.dp),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    val a0 = attachments[0]
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(MM.radius.card)
+                    ) {
+                        if (!a0.isVideo && !a0.isPdf) {
+                            MediaImage(
+                                circleId = circleId,
+                                path = a0.path,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable {
+                                        val pIdx = photos.indexOf(a0).coerceAtLeast(0)
+                                        selectedPhotoIndex = pIdx
+                                    },
+                                contentDescription = "Photo from $who",
+                                allowFullscreen = false
+                            )
+                        } else {
+                            AttachmentTile(
+                                circleId = circleId,
+                                a = a0,
+                                modifier = Modifier.fillMaxSize(),
+                                contentDescription = if (a0.isVideo) "Video from $who" else "File from $who"
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    ) {
+                        listOf(attachments[1], attachments[2]).forEach { a ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(108.dp)
+                                    .clip(MM.radius.card)
+                            ) {
+                                if (!a.isVideo && !a.isPdf) {
+                                    MediaImage(
+                                        circleId = circleId,
+                                        path = a.path,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable {
+                                                val pIdx = photos.indexOf(a).coerceAtLeast(0)
+                                                selectedPhotoIndex = pIdx
+                                            },
+                                        contentDescription = "Photo from $who",
+                                        allowFullscreen = false
+                                    )
+                                } else {
+                                    AttachmentTile(
+                                        circleId = circleId,
+                                        a = a,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentDescription = if (a.isVideo) "Video from $who" else "File from $who"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    ) {
+                        attachments.take(2).forEach { a ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(130.dp)
+                                    .clip(MM.radius.card)
+                            ) {
+                                if (!a.isVideo && !a.isPdf) {
+                                    MediaImage(
+                                        circleId = circleId,
+                                        path = a.path,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable {
+                                                val pIdx = photos.indexOf(a).coerceAtLeast(0)
+                                                selectedPhotoIndex = pIdx
+                                            },
+                                        contentDescription = "Photo from $who",
+                                        allowFullscreen = false
+                                    )
+                                } else {
+                                    AttachmentTile(
+                                        circleId = circleId,
+                                        a = a,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentDescription = if (a.isVideo) "Video from $who" else "File from $who"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    ) {
+                        attachments.drop(2).take(2).forEachIndexed { idx, a ->
+                            val remaining = attachments.size - 4
+                            val isLast = idx == 1 && remaining > 0
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(130.dp)
+                                    .clip(MM.radius.card)
+                            ) {
+                                if (!a.isVideo && !a.isPdf) {
+                                    MediaImage(
+                                        circleId = circleId,
+                                        path = a.path,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable {
+                                                val pIdx = photos.indexOf(a).coerceAtLeast(0)
+                                                selectedPhotoIndex = pIdx
+                                            },
+                                        contentDescription = "Photo from $who",
+                                        allowFullscreen = false
+                                    )
+                                } else {
+                                    AttachmentTile(
+                                        circleId = circleId,
+                                        a = a,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentDescription = if (a.isVideo) "Video from $who" else "File from $who"
+                                    )
+                                }
+                                if (isLast) {
+                                    Surface(
+                                        color = MM.colors.scrim.copy(alpha = 0.6f),
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable {
+                                                val pIdx = photos.indexOf(a).coerceAtLeast(0)
+                                                selectedPhotoIndex = pIdx
+                                            }
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "+$remaining",
+                                                style = MM.type.title,
+                                                color = FixedWhite
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    selectedPhotoIndex?.let { idx ->
+        if (photos.isNotEmpty()) {
+            FullScreenGalleryDialog(
+                circleId = circleId,
+                attachments = photos,
+                initialIndex = idx.coerceIn(0, photos.lastIndex),
+                onDismiss = { selectedPhotoIndex = null }
+            )
+        }
+    }
+}
+
+/** Fullscreen or inline video player matching video player naming conventions. */
+@Composable
+fun VideoPlayer(
+    circleId: String,
+    a: MediaAttachment,
+    modifier: Modifier = Modifier,
+    contentDescription: String = a.name ?: "Video"
+) {
+    InlineVideoPlayer(circleId, a, modifier, contentDescription)
+}
+
+/** Alias for VoiceBubble matching voice/audio player naming conventions. */
+@Composable
+fun VoiceNotePlayer(
+    circleId: String,
+    a: MediaAttachment,
+    tint: androidx.compose.ui.graphics.Color = CirclesPalette.Accent,
+    onAccent: Boolean = false
+) {
+    VoiceBubble(circleId, a, tint, onAccent)
+}
+
+/** Alias for VoiceBubble matching voice/audio player naming conventions. */
+@Composable
+fun AudioBubble(
+    circleId: String,
+    a: MediaAttachment,
+    tint: androidx.compose.ui.graphics.Color = CirclesPalette.Accent,
+    onAccent: Boolean = false
+) {
+    VoiceBubble(circleId, a, tint, onAccent)
 }
 
 /** Coordinated audio player tracking active voice note playback so only one plays at a time. */

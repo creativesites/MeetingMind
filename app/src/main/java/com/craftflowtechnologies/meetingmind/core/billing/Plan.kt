@@ -44,10 +44,12 @@ enum class Capability {
     BYOK_KEY,
     /** Connected cloud productivity & task integrations (Todoist, GitHub, Linear, Notion, Slack, Teams, Pinned Vault). */
     CONNECTED_INTEGRATIONS,
-    /** Automated trigger & workflow recipes (e.g. auto-publish, auto-sync tasks, export on completion). */
+    /** Automation trigger & workflow recipes (auto-publish, task sync, export on completion). */
     AUTOMATION_RECIPES,
     /** Church ministry & organization workflows (Sermon-to-Circle pack, multi-circle study distribution). */
-    CHURCH_ORG_WORKFLOWS
+    CHURCH_ORG_WORKFLOWS,
+    /** Cross-Session Deep Intelligence & Executive Action Pack synthesizing patterns, commitment drift, and deliverables across related recordings & notes. */
+    DEEP_SYNTHESIS
 }
 
 object PlanCapabilities {
@@ -57,6 +59,7 @@ object PlanCapabilities {
         Capability.CONNECTED_INTEGRATIONS -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
         Capability.AUTOMATION_RECIPES -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
         Capability.CHURCH_ORG_WORKFLOWS -> plan == Plan.CHURCH
+        Capability.DEEP_SYNTHESIS -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
     }
 }
 

@@ -569,4 +569,254 @@ class CircleViewModelsTest {
         assertEquals(deadline, api.lastPollClosesAt)
         assertNull(vm.pollDraft.value)
     }
+
+    @Test fun `poll draft quiz options and explanation`() = runTest {
+        val (vm, _, api) = chat()
+        vm.openPollDraft()
+        vm.setPollQuestion("Capital of France?")
+        vm.setPollOption(0, "London")
+        vm.setPollOption(1, "Paris")
+        vm.setPollOption(2, "Berlin")
+
+        // Setting correct option forces multi = false
+        vm.setPollMulti(true)
+        assertTrue(vm.pollDraft.value!!.multi)
+        vm.setPollCorrectOption(1)
+        assertEquals(1, vm.pollDraft.value!!.correctOptionIndex)
+        assertFalse(vm.pollDraft.value!!.multi)
+
+        // Setting multi = true clears correct option
+        vm.setPollMulti(true)
+        assertTrue(vm.pollDraft.value!!.multi)
+        assertNull(vm.pollDraft.value!!.correctOptionIndex)
+
+        // Reset correct option & explanation
+        vm.setPollCorrectOption(1)
+        vm.setPollExplanation("Paris has been the capital since 508 AD.")
+        assertEquals("Paris has been the capital since 508 AD.", vm.pollDraft.value!!.explanation)
+
+        vm.createPoll()
+        assertEquals(1, api.lastPollCorrectOptionIndex)
+        assertEquals("Paris has been the capital since 508 AD.", api.lastPollExplanation)
+        assertNull(vm.pollDraft.value)
+    }
+
+    @Test fun `createPoll maps correctOptionIndex when blanks are filtered`() = runTest {
+        val (vm, _, api) = chat()
+        vm.openPollDraft()
+        vm.setPollQuestion("Which is correct?")
+        vm.setPollOption(0, "   ") // blank, will be filtered
+        vm.setPollOption(1, "First valid")
+        vm.addPollOption()
+        vm.setPollOption(2, "Second valid")
+        // Select index 2 ("Second valid"), which becomes index 1 in cleaned options
+        vm.setPollCorrectOption(2)
+
+        vm.createPoll()
+        assertEquals(1, api.lastPollCorrectOptionIndex)
+    }
+
+    @Test fun `toggleChecklistItem calls repository, records activity and updates streak on success`() = runTest {
+        val store = InMemoryLocalCircleStore()
+        val now = 10_000L * 86_400_000L + 1_000_000L
+        val repo = CirclesRepository(FakeApi(), FakeData(), FakeAuth(), store, clock = { now })
+        val api = repo.api as FakeApi
+        val vm = CircleHomeViewModel("c1", repo)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.state.collect { } }
+
+        val post = Post("p1", PostType.Task, "Do homework", authorUid = "me")
+        val item = ChecklistItem("chk-1", "Math problems", done = false)
+
+        assertEquals(0, store.currentStreak(now))
+        vm.toggleChecklistItem(post, item)
+        assertEquals(Triple("p1", "chk-1", true), api.lastToggleChecklist)
+        assertEquals(1, store.currentStreak(now))
+        assertTrue(vm.state.value.checkedInToday)
+    }
+
+    @Test fun `toggleChecklistItem emits message on failure`() = runTest {
+        val store = InMemoryLocalCircleStore()
+        val api = FakeApi()
+        val repo = CirclesRepository(api, FakeData(), FakeAuth(), store)
+        val vm = CircleHomeViewModel("c1", repo)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.state.collect { } }
+
+        val messages = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.messages.collect { messages += it } }
+
+        api.nextFailure = CirclesFailure(FailureKind.Rejected, "Permission denied")
+        val post = Post("p1", PostType.Task, "Task", authorUid = "other")
+        val item = ChecklistItem("chk-1", "Action", done = true)
+
+        vm.toggleChecklistItem(post, item)
+        assertEquals(Triple("p1", "chk-1", false), api.lastToggleChecklist)
+        assertEquals(listOf("Permission denied"), messages)
+    }
+
+    // ---------- habit loops and streak tests ----------
+
+    @Test fun `InMemoryLocalCircleStore multi-day streak increment and gap reset`() {
+        val store = InMemoryLocalCircleStore()
+        val day1 = 10_000L * 86_400_000L + 3_600_000L
+        val day2 = 10_001L * 86_400_000L + 7_200_000L
+        val day3 = 10_002L * 86_400_000L + 1_000_000L
+        val day5 = 10_004L * 86_400_000L // 2-day gap after day 3
+
+        assertEquals(0, store.currentStreak(day1))
+        assertFalse(store.checkedInToday(day1))
+
+        // Day 1: first activity
+        val streak1 = store.recordActivity(day1)
+        assertEquals(1, streak1)
+        assertEquals(1, store.currentStreak(day1))
+        assertTrue(store.checkedInToday(day1))
+
+        // Same day second activity does not double streak
+        val streak1Again = store.recordActivity(day1 + 10_000L)
+        assertEquals(1, streak1Again)
+
+        // Day 2: consecutive day increments streak
+        assertFalse(store.checkedInToday(day2))
+        assertEquals(1, store.currentStreak(day2)) // streak still active before recording today
+        val streak2 = store.recordActivity(day2)
+        assertEquals(2, streak2)
+        assertEquals(2, store.currentStreak(day2))
+        assertTrue(store.checkedInToday(day2))
+
+        // Day 3: consecutive day increments streak
+        val streak3 = store.recordActivity(day3)
+        assertEquals(3, streak3)
+        assertEquals(3, store.currentStreak(day3))
+
+        // Day 5: 2 days later, streak is reset to 0 before activity, and resets to 1 after activity
+        assertEquals(0, store.currentStreak(day5))
+        assertFalse(store.checkedInToday(day5))
+        val streakReset = store.recordActivity(day5)
+        assertEquals(1, streakReset)
+        assertEquals(1, store.currentStreak(day5))
+    }
+
+    @Test fun `toggleBookmark updates store and UI state and emits notices`() = runTest {
+        val store = InMemoryLocalCircleStore()
+        val r = rig(store = store)
+        val post = Post("p1", PostType.Prayer, "Test bookmark")
+        r.data.posts.value = DataState.Ready(listOf(post))
+
+        val notes = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { r.vm.messages.collect { notes += it } }
+
+        assertFalse(r.vm.state.value.posts.first().saved)
+        assertEquals(0, r.vm.state.value.savedCount)
+
+        r.vm.toggleBookmark(post)
+        assertTrue(store.savedPostIds("c1").contains("p1"))
+        assertTrue(r.vm.state.value.posts.first().saved)
+        assertEquals(1, r.vm.state.value.savedCount)
+        assertEquals(listOf("Saved for later"), notes)
+
+        r.vm.toggleBookmark(post)
+        assertFalse(store.savedPostIds("c1").contains("p1"))
+        assertFalse(r.vm.state.value.posts.first().saved)
+        assertEquals(0, r.vm.state.value.savedCount)
+        assertEquals(listOf("Saved for later", "Removed from saved"), notes)
+    }
+
+    @Test fun `markCatchUpSeen and dismissTodayPrompt update state and reset unread`() = runTest {
+        val store = InMemoryLocalCircleStore()
+        val clockMs = 1_700_000_000_000L
+        val repo = CirclesRepository(FakeApi(), FakeData(), FakeAuth(), store, clock = { clockMs })
+        val data = repo.data as FakeData
+        data.circle.value = DataState.Ready(testCircle())
+        data.members.value = DataState.Ready(listOf(me))
+
+        val olderPost = Post("p1", PostType.Prayer, "Older post", createdAt = clockMs - 100_000L, authorUid = "other")
+        val newerPost = Post("p2", PostType.Note, "Newer post", createdAt = clockMs - 10_000L, authorUid = "other")
+        data.posts.value = DataState.Ready(listOf(olderPost, newerPost))
+
+        val vm = CircleHomeViewModel("c1", repo)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.state.collect { } }
+
+        assertEquals(2, vm.state.value.unreadFeedCount)
+        assertFalse(vm.state.value.promptDismissedToday)
+
+        vm.markCatchUpSeen()
+        assertEquals(clockMs, store.lastFeedVisit("c1"))
+        assertEquals(0, vm.state.value.unreadFeedCount)
+
+        vm.dismissTodayPrompt()
+        assertEquals(clockMs / 86_400_000L, store.dismissedPromptDay("c1"))
+        assertTrue(vm.state.value.promptDismissedToday)
+    }
+
+    @Test fun `engagement actions react, pray, and comment increment streak`() = runTest {
+        val store = InMemoryLocalCircleStore()
+        var clockMs = 10_000L * 86_400_000L + 12_000_000L
+        val repo = CirclesRepository(FakeApi(), FakeData(), FakeAuth(), store, clock = { clockMs })
+        val data = repo.data as FakeData
+        data.circle.value = DataState.Ready(testCircle())
+        data.members.value = DataState.Ready(listOf(me))
+        val post = Post("p1", PostType.Prayer, "Pray for me", authorUid = "other")
+        data.posts.value = DataState.Ready(listOf(post))
+
+        val vm = CircleHomeViewModel("c1", repo)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.state.collect { } }
+
+        assertEquals(0, vm.state.value.streakDays)
+        assertFalse(vm.state.value.checkedInToday)
+
+        // Day 1: pray records activity and starts streak at 1
+        vm.pray(post)
+        assertEquals(1, store.currentStreak(clockMs))
+        assertEquals(1, vm.state.value.streakDays)
+        assertTrue(vm.state.value.checkedInToday)
+
+        // Advance to Day 2
+        clockMs += 86_400_000L
+        // React increments streak to 2
+        vm.react(post, ReactionKind.Heart)
+        assertEquals(2, store.currentStreak(clockMs))
+        assertEquals(2, vm.state.value.streakDays)
+        assertTrue(vm.state.value.checkedInToday)
+
+        // Advance to Day 3
+        clockMs += 86_400_000L
+        // Comment increments streak to 3
+        vm.comment("p1", "Praying with you today")
+        assertEquals(3, store.currentStreak(clockMs))
+        assertEquals(3, vm.state.value.streakDays)
+        assertTrue(vm.state.value.checkedInToday)
+    }
+
+    @Test fun `CirclesListViewModel exposes streak and refreshEngagement updates it`() = runTest {
+        val store = InMemoryLocalCircleStore()
+        val now = 10_000L * 86_400_000L + 5_000_000L
+        store.recordActivity(now)
+
+        val customRepo = CirclesRepository(FakeApi(), FakeData(), FakeAuth(), store, clock = { now })
+        val vm = CirclesListViewModel(customRepo)
+
+        assertEquals(1, vm.streak.value.days)
+        assertTrue(vm.streak.value.checkedInToday)
+
+        store.recordActivity(now + 86_400_000L)
+        val nextRepo = CirclesRepository(FakeApi(), FakeData(), FakeAuth(), store, clock = { now + 86_400_000L })
+        val vm2 = CirclesListViewModel(nextRepo)
+        assertEquals(2, vm2.streak.value.days)
+        assertTrue(vm2.streak.value.checkedInToday)
+    }
+
+    @Test fun `chat send records activity`() = runTest {
+        val store = InMemoryLocalCircleStore()
+        val now = 10_000L * 86_400_000L + 1_000_000L
+        val repo = CirclesRepository(FakeApi(), FakeData(), FakeAuth(), store, clock = { now })
+        val vm = ChatViewModel("c1", repo)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.state.collect { } }
+
+        assertEquals(0, store.currentStreak(now))
+
+        vm.setDraft("Hello everyone")
+        vm.send()
+        assertEquals(1, store.currentStreak(now))
+        assertTrue(store.checkedInToday(now))
+    }
 }

@@ -161,13 +161,16 @@ fun ChatTab(
     actions: ChatActions,
     modifier: Modifier = Modifier,
     isFaith: Boolean = true,
-    space: String = "faith"
+    space: String = "faith",
+    scrollToMessageId: String? = null,
+    onScrollHandled: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var sheetFor by remember { mutableStateOf<ChatMessage?>(null) }
     var highlightedId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
     val recorder = remember { VoiceRecorder(context) }
     var recording by remember { mutableStateOf(false) }
     var stagedAttachment by remember { mutableStateOf<Pair<MediaKind, PickedFile>?>(null) }
@@ -204,10 +207,29 @@ fun ChatTab(
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) actions.onNotice("Allow the microphone to record a voice note.")
-        else if (recorder.start()) recording = true
+        else if (recorder.start()) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            recording = true
+        }
         else actions.onNotice("The microphone isn't available right now.")
     }
-    LaunchedEffect(state.messages.size) { if (state.messages.isNotEmpty()) listState.scrollToItem(state.messages.lastIndex) }
+    LaunchedEffect(state.messages.size) {
+        if (scrollToMessageId == null && state.messages.isNotEmpty()) {
+            listState.scrollToItem(state.messages.lastIndex)
+        }
+    }
+    LaunchedEffect(scrollToMessageId, state.messages.size) {
+        if (scrollToMessageId != null) {
+            val idx = state.messages.indexOfFirst { it.id == scrollToMessageId }
+            if (idx >= 0) {
+                listState.animateScrollToItem(idx)
+                highlightedId = scrollToMessageId
+                onScrollHandled()
+                delay(1200L)
+                if (highlightedId == scrollToMessageId) highlightedId = null
+            }
+        }
+    }
 
     Column(modifier.fillMaxSize()) {
         state.failure?.let { Column(Modifier.padding(horizontal = MM.space.l)) { StatusLine(StatusKind.Warning, it.message) } }
@@ -305,6 +327,7 @@ fun ChatTab(
                                 continued = isContinued,
                                 seen = seen,
                                 isHighlighted = (m.id == highlightedId),
+                                space = space,
                                 onScrollToMessage = { targetId ->
                                     val targetIdx = state.messages.indexOfFirst { it.id == targetId }
                                     if (targetIdx >= 0) {
@@ -331,27 +354,70 @@ fun ChatTab(
                     .align(Alignment.BottomEnd)
                     .padding(end = MM.space.l, bottom = MM.space.m)
             ) {
-                Surface(
-                    onClick = {
-                        coroutineScope.launch {
-                            if (state.messages.isNotEmpty()) {
-                                listState.animateScrollToItem(state.messages.lastIndex)
+                AnimatedContent(
+                    targetState = state.unread > 0,
+                    transitionSpec = {
+                        (fadeIn(tween(150)) + scaleIn(tween(150))).togetherWith(fadeOut(tween(150)) + scaleOut(tween(150)))
+                    },
+                    label = "jump_fab_badge"
+                ) { hasUnread ->
+                    if (hasUnread) {
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch {
+                                    if (state.messages.isNotEmpty()) {
+                                        listState.animateScrollToItem(state.messages.lastIndex)
+                                    }
+                                }
+                            },
+                            shape = MM.radius.pill,
+                            color = MM.colors.accent,
+                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft.copy(alpha = 0.2f)),
+                            shadowElevation = MM.elevation.floating,
+                            modifier = Modifier.height(38.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = MM.space.m),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                            ) {
+                                Text(
+                                    text = "${state.unread} new",
+                                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MM.colors.onAccent
+                                )
+                                Icon(
+                                    Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = "Jump to latest",
+                                    tint = MM.colors.onAccent,
+                                    modifier = Modifier.size(MMSize.iconSmall)
+                                )
                             }
                         }
-                    },
-                    shape = MM.radius.pill,
-                    color = MM.colors.surfaceRaised,
-                    border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
-                    shadowElevation = MM.elevation.floating,
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = "Jump to latest",
-                            tint = MM.colors.ink,
-                            modifier = Modifier.size(MMSize.icon)
-                        )
+                    } else {
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch {
+                                    if (state.messages.isNotEmpty()) {
+                                        listState.animateScrollToItem(state.messages.lastIndex)
+                                    }
+                                }
+                            },
+                            shape = MM.radius.pill,
+                            color = MM.colors.surfaceRaised,
+                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
+                            shadowElevation = MM.elevation.floating,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = "Jump to latest",
+                                    tint = MM.colors.ink,
+                                    modifier = Modifier.size(MMSize.icon)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -398,11 +464,13 @@ fun ChatTab(
             onAttachFile = { pickFile.launch("application/pdf") },
             onMicStart = { micPermission.launch(android.Manifest.permission.RECORD_AUDIO) },
             onMicStop = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 val file = recorder.stop()
                 recording = false
                 if (file == null) actions.onNotice("That was too short to keep.") else actions.onSendAttachment(MediaKind.Voice, file)
             },
             onMicCancel = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 recorder.cancel()
                 recording = false
             }
@@ -474,6 +542,7 @@ private fun MessageItem(
     continued: Boolean = false,
     seen: Int = 0,
     isHighlighted: Boolean = false,
+    space: String = "faith",
     onScrollToMessage: (String) -> Unit = {},
     onLongPress: () -> Unit
 ) {
@@ -485,6 +554,22 @@ private fun MessageItem(
     val thresholdPx = with(density) { 48.dp.toPx() }
     val offsetX = remember { Animatable(0f) }
     var hapticTriggered by remember { mutableStateOf(false) }
+    val reactions by remember(m.id) { actions.reactionsFor(m.id) }.collectAsState(emptyList())
+    var showBurst by remember { mutableStateOf(false) }
+
+    val quickEmoji = when (space) {
+        "work" -> "👍"
+        "learning", "study" -> "💡"
+        "faith" -> "🙏"
+        else -> "❤️"
+    }
+
+    LaunchedEffect(showBurst) {
+        if (showBurst) {
+            delay(650L)
+            showBurst = false
+        }
+    }
 
     val mine = m.authorUid == state.myUid
     val isAccentBubble = mine && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply || m.kind == MessageKind.Image || m.kind == MessageKind.Video || m.kind == MessageKind.Voice)
@@ -606,11 +691,17 @@ private fun MessageItem(
                             .widthIn(max = MM.space.xxl * 10)
                             .combinedClickable(
                                 onClick = {},
+                                onDoubleClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    actions.onToggleReaction(m.id, quickEmoji, reactions)
+                                    showBurst = true
+                                },
                                 onLongClick = onLongPress,
                                 onLongClickLabel = "Message actions"
                             )
                     ) {
-                        if (m.kind == MessageKind.Image || m.kind == MessageKind.Video) {
+                        Box {
+                            if (m.kind == MessageKind.Image || m.kind == MessageKind.Video) {
                             Column {
                                 val quoted = state.byId(m.replyTo)
                                 if (m.replyTo != null && quoted != null) {
@@ -789,18 +880,37 @@ private fun MessageItem(
                                 }
                             }
                         }
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = showBurst,
+                            enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(100)),
+                            exit = scaleOut(tween(200)) + fadeOut(tween(200)),
+                            modifier = Modifier.align(Alignment.Center)
+                        ) {
+                            Surface(
+                                shape = MM.radius.pill,
+                                color = c.surfaceRaised.copy(alpha = 0.95f),
+                                border = BorderStroke(MMSize.hairline, c.accent),
+                                shadowElevation = MM.elevation.floating
+                            ) {
+                                Text(
+                                    text = quickEmoji,
+                                    style = MM.type.title,
+                                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                                )
+                            }
+                        }
                     }
                 }
-                ReactionRow(m.id, actions, mine)
-                if (seen > 0) Text(if (seen == 1) "Seen" else "Seen by $seen", style = MM.type.caption, color = c.inkSecondary)
             }
+            ReactionRow(m.id, actions, mine, reactions)
+            if (seen > 0) Text(if (seen == 1) "Seen" else "Seen by $seen", style = MM.type.caption, color = c.inkSecondary)
         }
     }
 }
+}
 
 @Composable
-private fun ReactionRow(messageId: String, actions: ChatActions, mine: Boolean) {
-    val reactions by remember(messageId) { actions.reactionsFor(messageId) }.collectAsState(emptyList())
+private fun ReactionRow(messageId: String, actions: ChatActions, mine: Boolean, reactions: List<MessageReaction>) {
     if (reactions.isEmpty()) return
     Row(
         modifier = Modifier.padding(top = MM.space.xs),

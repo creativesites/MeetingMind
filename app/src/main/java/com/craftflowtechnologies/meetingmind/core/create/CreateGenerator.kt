@@ -23,7 +23,7 @@ sealed interface RemixOutcome {
 }
 
 const val FAILED_MESSAGE = "Couldn't generate — try again or write your own."
-const val UNAVAILABLE_MESSAGE = "Writing with AI needs Internet mode and a Gemini key. Write your own, or start from a starter."
+const val UNAVAILABLE_MESSAGE = "Writing with AI needs Internet mode with a Gemini key, or an installed local AI model. Write your own, or start from a starter."
 
 /**
  * Create's engine (replaces the old Spark generator).

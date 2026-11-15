@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -15,7 +16,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -37,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.circles2.COMPANION_IDS
@@ -84,25 +88,90 @@ fun PollCard(m: ChatMessage, actions: ChatActions) {
 @Composable
 fun PollBody(s: PollState, canClose: Boolean, actions: ChatActions, fallbackQuestion: String = "", creatorName: String = "") {
     val c = MM.colors
+    val isQuiz = s.poll.correctOptionId != null
+    val revealed = isQuiz && (s.mine.isNotEmpty() || s.poll.closed)
     Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-        Text("Poll", style = MM.type.overline, color = c.inkSecondary)
+        Text(
+            if (isQuiz) "Quiz poll" else "Poll",
+            style = MM.type.overline,
+            color = if (isQuiz) c.accent else c.inkSecondary
+        )
         SelectionContainer { Text(s.poll.question.ifBlank { fallbackQuestion }, style = MM.type.bodyStrong, color = c.ink) }
         s.poll.options.forEach { o ->
             val mine = o.id in s.mine
             val frac = s.fraction(o.id)
+            val isCorrect = o.id == s.poll.correctOptionId
+            val isWrongChoice = mine && !isCorrect
+
+            val barBg = when {
+                revealed && isCorrect -> c.success.copy(alpha = 0.2f)
+                revealed && isWrongChoice -> c.danger.copy(alpha = 0.2f)
+                mine -> c.accentWash
+                else -> c.track
+            }
+            val borderStroke = when {
+                revealed && isCorrect -> BorderStroke(1.dp, c.success)
+                revealed && isWrongChoice -> BorderStroke(1.dp, c.danger)
+                else -> null
+            }
+
             Surface(
-                shape = MM.radius.small, color = c.surfaceSunk,
+                shape = MM.radius.small,
+                color = c.surfaceSunk,
+                border = borderStroke,
                 modifier = Modifier.fillMaxWidth().heightIn(min = MMSize.minTouch)
                     .clickable(enabled = !s.poll.closed, role = Role.Button, onClickLabel = "Vote for ${o.text}") { actions.onVote(s, o.id) }
                     .semantics { contentDescription = "${o.text}, ${s.count(o.id)} votes${if (mine) ", your vote" else ""}" }
             ) {
                 Box {
-                    Box(Modifier.matchParentSize()) { Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(if (mine) c.accentWash else c.track)) }
+                    Box(Modifier.matchParentSize()) { Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(barBg)) }
                     Row(Modifier.padding(horizontal = MM.space.m, vertical = MM.space.s), verticalAlignment = Alignment.CenterVertically) {
-                        if (mine) { Icon(Icons.Rounded.Check, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall)); Spacer(Modifier.width(MM.space.xs)) }
-                        Text(o.text, style = MM.type.body, color = c.ink, modifier = Modifier.weight(1f))
+                        if (revealed && isCorrect) {
+                            Icon(Icons.Rounded.CheckCircle, "Correct answer", tint = c.success, modifier = Modifier.size(MMSize.iconSmall))
+                            Spacer(Modifier.width(MM.space.xs))
+                        } else if (revealed && isWrongChoice) {
+                            Icon(Icons.Rounded.Close, "Incorrect choice", tint = c.danger, modifier = Modifier.size(MMSize.iconSmall))
+                            Spacer(Modifier.width(MM.space.xs))
+                        } else if (mine) {
+                            Icon(Icons.Rounded.Check, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
+                            Spacer(Modifier.width(MM.space.xs))
+                        }
+                        Text(
+                            o.text,
+                            style = MM.type.body,
+                            color = when {
+                                revealed && isCorrect -> c.success
+                                revealed && isWrongChoice -> c.danger
+                                else -> c.ink
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
                         Text("${s.count(o.id)}", style = MM.type.caption, color = c.inkSecondary)
                     }
+                }
+            }
+        }
+        if (revealed && !s.poll.explanation.isNullOrBlank()) {
+            Surface(
+                shape = MM.radius.card,
+                color = c.accentWash,
+                border = BorderStroke(1.dp, c.accent.copy(alpha = 0.2f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(MM.space.m),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
+                ) {
+                    Text(
+                        "Answer explanation",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                        color = c.accent
+                    )
+                    Text(
+                        s.poll.explanation,
+                        style = MM.type.body,
+                        color = c.ink
+                    )
                 }
             }
         }
@@ -268,6 +337,13 @@ fun PollSheet(
         else -> "What should we do for our next hangout?"
     }
     var selectedDeadline by remember { mutableStateOf("Open ended") }
+    var quizMode by remember { mutableStateOf(draft.correctOptionIndex != null) }
+    LaunchedEffect(draft.multi) {
+        if (draft.multi && quizMode) {
+            quizMode = false
+            vm.onCorrectOption(null)
+        }
+    }
     CircleSheet(onDismiss) {
         Text("Start a poll", style = MM.type.title, color = MM.colors.ink)
         if (space == "work") {
@@ -305,11 +381,45 @@ fun PollSheet(
         CircleField(draft.question, vm.onQuestion, "Question", placeholder = questionPlaceholder)
         draft.options.forEachIndexed { i, o ->
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (quizMode) {
+                    val isCorrect = draft.correctOptionIndex == i
+                    IconButton(onClick = { vm.onCorrectOption(if (isCorrect) null else i) }) {
+                        Icon(
+                            imageVector = if (isCorrect) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                            contentDescription = if (isCorrect) "Option ${i + 1} is correct answer" else "Mark option ${i + 1} as correct",
+                            tint = if (isCorrect) MM.colors.accent else MM.colors.inkSecondary
+                        )
+                    }
+                }
                 CircleField(o, { vm.onOption(i, it) }, "Option ${i + 1}", modifier = Modifier.weight(1f))
-                if (draft.options.size > 2) IconButton(onClick = { vm.onRemove(i) }) { Icon(Icons.Rounded.Close, "Remove option ${i + 1}", tint = MM.colors.inkSecondary) }
+                if (draft.options.size > 2) IconButton(onClick = {
+                    if (draft.correctOptionIndex == i) vm.onCorrectOption(null)
+                    else if (draft.correctOptionIndex != null && draft.correctOptionIndex > i) vm.onCorrectOption(draft.correctOptionIndex - 1)
+                    vm.onRemove(i)
+                }) { Icon(Icons.Rounded.Close, "Remove option ${i + 1}", tint = MM.colors.inkSecondary) }
             }
         }
         if (draft.options.size < 6) TextAction("Add an option", vm.onAdd)
+        ToggleRow("Quiz poll (mark the correct answer)", null, quizMode, onChange = { enabled ->
+            quizMode = enabled
+            if (enabled) {
+                vm.onMulti(false)
+                if (draft.correctOptionIndex == null && draft.options.isNotEmpty()) {
+                    vm.onCorrectOption(0)
+                }
+            } else {
+                vm.onCorrectOption(null)
+                vm.onExplanation("")
+            }
+        })
+        if (quizMode) {
+            CircleField(
+                value = draft.explanation,
+                onValueChange = vm.onExplanation,
+                label = "Explanation (shown after voting)",
+                placeholder = "Why this is correct / learning context"
+            )
+        }
         if (space == "work") {
             Text("Deadline", style = MM.type.overline, color = MM.colors.inkSecondary)
             Row(
@@ -336,7 +446,13 @@ fun PollSheet(
                 }
             }
         }
-        ToggleRow("Allow more than one choice", null, draft.multi, vm.onMulti)
+        ToggleRow("Allow more than one choice", null, draft.multi, onChange = { multi ->
+            if (multi && quizMode) {
+                quizMode = false
+                vm.onCorrectOption(null)
+            }
+            vm.onMulti(multi)
+        })
         draft.error?.let { StatusLine(StatusKind.Error, it) }
         PrimaryButton(if (draft.busy) "Posting..." else "Post poll", vm.onCreate, enabled = draft.canCreate, modifier = Modifier.fillMaxWidth())
     }
@@ -344,7 +460,8 @@ fun PollSheet(
 
 class PollSheetActions(
     val onQuestion: (String) -> Unit, val onOption: (Int, String) -> Unit, val onAdd: () -> Unit,
-    val onRemove: (Int) -> Unit, val onMulti: (Boolean) -> Unit, val onCreate: () -> Unit
+    val onRemove: (Int) -> Unit, val onMulti: (Boolean) -> Unit, val onCreate: () -> Unit,
+    val onCorrectOption: (Int?) -> Unit = {}, val onExplanation: (String) -> Unit = {}
 )
 
 @Composable
@@ -609,7 +726,7 @@ fun ChainSheet(initialTitle: String, onStart: (String) -> Unit, onDismiss: () ->
 
 @Composable
 fun CelebrateSheet(companionId: String?, onCelebrate: (CelebrationKind, String) -> Unit, onDismiss: () -> Unit, space: String = "faith") {
-    val isFaith = space == "faith"
+    val isFaith = space.equals("faith", ignoreCase = true)
     var kind by remember { mutableStateOf(CelebrationKind.Milestone) }
     var text by remember { mutableStateOf("") }
     val form = CompanionForm.entries.firstOrNull { it.name.equals(companionId, ignoreCase = true) }
@@ -619,6 +736,30 @@ fun CelebrateSheet(companionId: String?, onCelebrate: (CelebrationKind, String) 
     }
     val cheeringText = if (form != null) " Your companion will cheer." else ""
     val subtitle = if (isFaith) "Tell the circle something good.$cheeringText" else "Share a win with the group.$cheeringText"
+    val quickKudos = remember(space) {
+        when (space.lowercase()) {
+            "work" -> listOf(
+                "Shipped it!" to CelebrationKind.Milestone,
+                "Great assist" to CelebrationKind.Milestone,
+                "Unblocked the team" to CelebrationKind.Milestone
+            )
+            "study", "learning" -> listOf(
+                "Study Streak" to CelebrationKind.Streak,
+                "Exam Ready" to CelebrationKind.Milestone,
+                "Concept Clicked" to CelebrationKind.Milestone
+            )
+            "faith" -> listOf(
+                "Answered Prayer" to CelebrationKind.Answered,
+                "Grateful Today" to CelebrationKind.Milestone,
+                "Keep Believing" to CelebrationKind.Streak
+            )
+            else -> listOf(
+                "Big Milestone" to CelebrationKind.Milestone,
+                "Appreciate You" to CelebrationKind.Milestone,
+                "Count Me In" to CelebrationKind.Streak
+            )
+        }
+    }
     CircleSheet(onDismiss) {
         Text("Celebrate", style = MM.type.title, color = MM.colors.ink)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
@@ -628,6 +769,31 @@ fun CelebrateSheet(companionId: String?, onCelebrate: (CelebrationKind, String) 
         @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
             kinds.forEach { k -> MMChip(k.label, kind == k, { kind = k }) }
+        }
+        Text("Quick kudos", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+        ) {
+            quickKudos.forEach { (label, pickKind) ->
+                val isSelected = text == label && kind == pickKind
+                Surface(
+                    shape = MM.radius.pill,
+                    color = if (isSelected) MM.colors.accentWash else MM.colors.surfaceSunk,
+                    border = BorderStroke(MMSize.hairline, if (isSelected) MM.colors.accent else MM.colors.lineSoft),
+                    modifier = Modifier.clickable {
+                        kind = pickKind
+                        text = if (text.isBlank()) label else if (text == label) label else "$text · $label"
+                    }
+                ) {
+                    Text(
+                        label,
+                        style = MM.type.caption.copy(fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium),
+                        color = if (isSelected) MM.colors.accent else MM.colors.ink,
+                        modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                    )
+                }
+            }
         }
         CircleField(text, { text = it.take(140) }, "A few words (optional)", maxLines = 3)
         PrimaryButton("Celebrate", { onCelebrate(kind, text); onDismiss() }, modifier = Modifier.fillMaxWidth())

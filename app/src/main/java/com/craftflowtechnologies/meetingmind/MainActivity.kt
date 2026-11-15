@@ -1079,7 +1079,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
                 onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) },
-                onRecord = { navController.navigate(Routes.RECORDING) }
+                onRecord = { navController.navigate(Routes.RECORDING) },
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
             )
         }
 
@@ -1109,6 +1110,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 onStartCircle = { navController.navigate(Routes.circleCreateRoute("work")) },
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) },
                 onNavigateBottomNav = navigateToPrimary
             )
         }
@@ -1251,7 +1253,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenNotebook = { navController.navigate(Routes.notebookRoute(it)) },
                 onOpenArchive = { navController.navigate(Routes.NOTES_ARCHIVE) },
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateBottomNav = navigateToPrimary
+                onNavigateBottomNav = navigateToPrimary,
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
             )
         }
         composable(Routes.NOTES_ARCHIVE) {
@@ -1294,7 +1297,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenTasks = { navController.navigate(Routes.TASKS) },
                 startWithMediaPicker = media,
                 onCreateCircle = { navController.navigate(Routes.circleCreateRoute("faith")) },
-                onOpenStudyStudio = { id -> navController.navigate(Routes.learningSessionRoute(id)) }
+                onOpenStudyStudio = { id -> navController.navigate(Routes.learningSessionRoute(id)) },
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
             )
         }
 
@@ -1392,7 +1396,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     else navController.navigate(Routes.noteRoute(noteId))
                 },
                 onStudy = { noteId, mId -> navController.navigate(Routes.studyRoute(noteId, meetingId = mId)) },
-                onCreateBrief = { mId -> navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.MEETING, mId)) }
+                onCreateBrief = { mId -> navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.MEETING, mId)) },
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
             )
         }
 
@@ -1695,14 +1700,7 @@ private fun LearnHomeHost(
             onBack = { navController.popBackStack() },
             onAssistant = { assistantOpen = true },
             onStartDailyRecall = {
-                val brief = vm.dailyBrief.value
-                val activities = brief?.dueReviews?.map { it.activity }.orEmpty()
-                if (activities.isNotEmpty()) {
-                    vm.startPracticeSession(activities)
-                    navController.navigate(Routes.learnPracticeRoute())
-                } else {
-                    navController.navigate(Routes.learnPracticeRoute())
-                }
+                navController.navigate(Routes.learnPracticeRoute())
             },
             onRecordLecture = { navController.navigate(Routes.recordTypeRoute(RecordingType.LECTURE)) },
             onAudioCram = {

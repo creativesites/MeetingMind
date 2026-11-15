@@ -7,6 +7,7 @@ import com.craftflowtechnologies.meetingmind.ai.cloud.ThinkingLevel
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import com.craftflowtechnologies.meetingmind.ai.faith.Prompts
+import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
 import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -89,14 +90,18 @@ class AskEverythingEngine(
     /** On-device search: one query in, candidate sources out (keys are reassigned here). */
     private val search: suspend (String) -> List<AskSource>,
     private val dateLabel: (Long) -> String,
-    private val maxSources: Int = 14
+    private val maxSources: Int = 14,
+    private val localModelProvider: (suspend () -> LanguageModel?)? = null,
+    private val preferLocal: Boolean = false,
+    private val onLocalFinished: (() -> Unit)? = null
 ) {
     fun askStream(question: String): Flow<AskEverythingStreamEvent> = flow {
-        if (!transport.refreshConfigured()) {
-            emit(AskEverythingStreamEvent.Complete(AiResult.ModelUnavailable(DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "Ask needs Internet mode or the backup AI. Search still works offline.")))
+        val cloudReady = !preferLocal && transport.refreshConfigured()
+        if (!cloudReady && localModelProvider == null) {
+            emit(AskEverythingStreamEvent.Complete(AiResult.ModelUnavailable(DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "Ask needs Internet mode or an on-device language model. Search still works offline.")))
             return@flow
         }
-        val sources = retrieveSources(question)
+        val sources = retrieveSources(question, allowCloud = cloudReady)
         if (sources.isEmpty()) {
             emit(AskEverythingStreamEvent.Complete(AiResult.Success(AskAnswer("I couldn't find anything about that in your notes, recordings or tasks.", emptyList(), emptyList(), emptyList()))))
             return@flow
@@ -106,59 +111,146 @@ class AskEverythingEngine(
         val raw = StringBuilder()
         var doneText: String? = null
         var failureMsg: String? = null
-        transport.stream(
-            GeminiRequest(
-                model,
-                system,
-                "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question",
-                thinkingLevel = ThinkingLevel.LOW,
-                timeoutMs = 60_000
-            )
-        ).collect { ev ->
-            when (ev) {
-                is AiStreamEvent.TextDelta -> {
-                    raw.append(ev.text)
-                    emit(AskEverythingStreamEvent.Streaming(raw.toString(), sources))
+        var emittedText = false
+
+        if (cloudReady) {
+            transport.stream(
+                GeminiRequest(
+                    model,
+                    system,
+                    "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question",
+                    thinkingLevel = ThinkingLevel.LOW,
+                    timeoutMs = 60_000
+                )
+            ).collect { ev ->
+                when (ev) {
+                    is AiStreamEvent.TextDelta -> {
+                        emittedText = true
+                        raw.append(ev.text)
+                        emit(AskEverythingStreamEvent.Streaming(raw.toString(), sources))
+                    }
+                    is AiStreamEvent.Completed -> doneText = ev.text
+                    is AiStreamEvent.Failed -> failureMsg = ev.error.describeFailure()
+                    else -> Unit
                 }
-                is AiStreamEvent.Completed -> doneText = ev.text
-                is AiStreamEvent.Failed -> failureMsg = ev.error.describeFailure()
-                else -> Unit
             }
         }
-        val finalRaw = (doneText ?: raw.toString()).takeIf { it.isNotBlank() }
-        if (finalRaw != null) {
-            emit(AskEverythingStreamEvent.Complete(AiResult.Success(AskEverything.parse(finalRaw, sources))))
-        } else {
-            emit(AskEverythingStreamEvent.Complete(AiResult.Failed(failureMsg ?: "Ask failed.")))
+
+        val cloudText = (doneText ?: raw.toString()).takeIf { it.isNotBlank() }
+        if (cloudText != null) {
+            emit(AskEverythingStreamEvent.Complete(AiResult.Success(AskEverything.parse(cloudText, sources))))
+            return@flow
+        }
+
+        val local = if (!emittedText) localModelProvider?.invoke() else null
+        if (local == null) {
+            val message = failureMsg ?: if (preferLocal) {
+                "No on-device language model is installed yet. Download one in Settings → AI Engine."
+            } else {
+                "Ask needs Internet mode or an on-device language model. Search still works offline."
+            }
+            emit(AskEverythingStreamEvent.Complete(AiResult.Failed(message)))
+            return@flow
+        }
+
+        try {
+            val localSources = capSourcesForLocal(sources)
+            val localPrompt = buildString {
+                appendLine(system)
+                appendLine()
+                appendLine("Sources:")
+                appendLine(AskEverything.render(localSources, dateLabel))
+                appendLine()
+                append("Question: $question")
+            }
+            val localRaw = StringBuilder()
+            var localDone: String? = null
+            var localErr: String? = null
+            local.generateStream(localPrompt, maxOutputTokens = 512).collect { ev ->
+                when (ev) {
+                    is AiStreamEvent.TextDelta -> {
+                        localRaw.append(ev.text)
+                        emit(AskEverythingStreamEvent.Streaming(localRaw.toString(), localSources))
+                    }
+                    is AiStreamEvent.Completed -> localDone = ev.text
+                    is AiStreamEvent.Failed -> localErr = ev.error.describeFailure()
+                    else -> Unit
+                }
+            }
+            val finalLocal = (localDone ?: localRaw.toString()).takeIf { it.isNotBlank() }
+            if (finalLocal != null) {
+                emit(AskEverythingStreamEvent.Complete(AiResult.Success(AskEverything.parse(finalLocal, localSources))))
+            } else {
+                emit(AskEverythingStreamEvent.Complete(AiResult.Failed(localErr ?: "Ask failed on device.")))
+            }
+        } finally {
+            onLocalFinished?.invoke()
         }
     }
 
     suspend fun ask(question: String): AiResult<AskAnswer> {
-        if (!transport.refreshConfigured()) {
-            return AiResult.ModelUnavailable(DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "Ask needs Internet mode or the backup AI. Search still works offline.")
+        val cloudReady = !preferLocal && transport.refreshConfigured()
+        if (!cloudReady && localModelProvider == null) {
+            return AiResult.ModelUnavailable(DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "Ask needs Internet mode or an on-device language model. Search still works offline.")
         }
         val model = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL
-        val sources = retrieveSources(question)
+        val sources = retrieveSources(question, allowCloud = cloudReady)
         if (sources.isEmpty()) {
             return AiResult.Success(AskAnswer("I couldn't find anything about that in your notes, recordings or tasks.", emptyList(), emptyList(), emptyList()))
         }
         // 3. Answer from those sources only.
         val system = (if (sources.any { it.faith }) Prompts.faithContract + "\n\n" else "") + Prompts.get("ask_everything").system()
-        val res = transport.execute(GeminiRequest(model, system, "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question", timeoutMs = 60_000))
-        if (res !is AiResult.Success) return AiResult.Failed(res.describeFailure() ?: "Ask failed.")
-        return AiResult.Success(AskEverything.parse(res.value, sources))
+        if (cloudReady) {
+            val res = transport.execute(GeminiRequest(model, system, "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question", timeoutMs = 60_000))
+            if (res is AiResult.Success) return AiResult.Success(AskEverything.parse(res.value, sources))
+            val local = localModelProvider?.invoke() ?: return AiResult.Failed(res.describeFailure() ?: "Ask failed.")
+            return runLocalAsk(local, system, question, sources)
+        }
+        val local = localModelProvider?.invoke()
+            ?: return AiResult.ModelUnavailable("local-llm", "No on-device language model is installed yet. Download one in Settings → AI Engine.")
+        return runLocalAsk(local, system, question, sources)
     }
 
-    private suspend fun retrieveSources(question: String): List<AskSource> {
+    private suspend fun runLocalAsk(
+        local: LanguageModel,
+        system: String,
+        question: String,
+        sources: List<AskSource>
+    ): AiResult<AskAnswer> = try {
+        val localSources = capSourcesForLocal(sources)
+        val prompt = "$system\n\nSources:\n\n${AskEverything.render(localSources, dateLabel)}\n\nQuestion: $question"
+        when (val res = local.generate(prompt, maxOutputTokens = 512)) {
+            is AiResult.Success -> AiResult.Success(AskEverything.parse(res.value, localSources))
+            else -> AiResult.Failed(res.describeFailure() ?: "Ask failed.")
+        }
+    } finally {
+        onLocalFinished?.invoke()
+    }
+
+    private fun capSourcesForLocal(sources: List<AskSource>): List<AskSource> {
+        val out = mutableListOf<AskSource>()
+        var chars = 0
+        for (s in sources.take(6)) {
+            val trimmed = s.copy(text = s.text.take(450))
+            if (out.isNotEmpty() && chars + trimmed.text.length > 2600) break
+            out += trimmed
+            chars += trimmed.text.length
+        }
+        return out
+    }
+
+    private suspend fun retrieveSources(question: String, allowCloud: Boolean): List<AskSource> {
         val model = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL
         // 1. Widen the question into searches (synonyms, names, references) — the recall step.
-        val expanded = (transport.execute(
-            GeminiRequest(
-                model,
-                "You turn a question about someone's personal notes and recordings into 2 to 5 short keyword searches (1-3 words each): the key nouns, names, synonyms and any Bible references. Reply with JSON only: {\"queries\":[...]}",
-                question, responseSchema = QUERIES_SCHEMA, timeoutMs = 30_000
-            )
-        ) as? AiResult.Success)?.value?.let(AskEverything::parseQueries).orEmpty()
+        val expanded = if (allowCloud) {
+            (transport.execute(
+                GeminiRequest(
+                    model,
+                    "You turn a question about someone's personal notes and recordings into 2 to 5 short keyword searches (1-3 words each): the key nouns, names, synonyms and any Bible references. Reply with JSON only: {\"queries\":[...]}",
+                    question, responseSchema = QUERIES_SCHEMA, timeoutMs = 30_000
+                )
+            ) as? AiResult.Success)?.value?.let(AskEverything::parseQueries).orEmpty()
+        } else emptyList()
         val queries = (listOf(question) + expanded + AskEverything.terms(question)).distinct()
         // 2. Search on the phone, keep the best few, number them.
         val found = LinkedHashMap<String, AskSource>()

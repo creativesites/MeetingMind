@@ -83,6 +83,7 @@ fun WorkPageScreen(
     onOpenCircle: (String) -> Unit = {},
     onOpenCircles: () -> Unit = {},
     onStartCircle: () -> Unit = {},
+    onOpenPaywall: (com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger) -> Unit = {},
     /** Set when Work is the bar's fourth slot: the page then carries the bar, with Work current. */
     onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null
 ) {
@@ -138,6 +139,7 @@ fun WorkPageScreen(
 
     var recordPicker by remember { mutableStateOf(false) }
     var writePicker by remember { mutableStateOf(false) }
+    var showAutopilotSheet by remember { mutableStateOf(false) }
     var newProject by remember { mutableStateOf(false) }
     var filterPicker by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf<List<WorkNoteItem>>(emptyList()) }
@@ -266,7 +268,8 @@ fun WorkPageScreen(
             onOpenInbox = onOpenInbox,
             onOpenWeeklyReview = onOpenWeeklyReview,
             onOpenBrief = { onOpenBrief(BriefTarget.weekly) },
-            onOpenPeople = { onOpenAll(WorkTab.PEOPLE) }
+            onOpenPeople = { onOpenAll(WorkTab.PEOPLE) },
+            onOpenAutopilot = { showAutopilotSheet = true }
         )
     }
 
@@ -311,6 +314,7 @@ fun WorkPageScreen(
         WorkMenuAction("Team circles", onClick = onOpenCircles),
         WorkMenuAction("Weekly review", onClick = onOpenWeeklyReview),
         WorkMenuAction("Brief") { onOpenBrief(BriefTarget.weekly) },
+        WorkMenuAction("Autopilot Workflows · Pro") { showAutopilotSheet = true },
         WorkMenuAction("People & ${terms.organisations.lowercase()}") { onOpenAll(WorkTab.PEOPLE) },
         WorkMenuAction("Decision log") { onOpenAll(WorkTab.DECISIONS) },
         WorkMenuAction("Open questions") { onOpenAll(WorkTab.QUESTIONS) },
@@ -398,6 +402,20 @@ fun WorkPageScreen(
     savedFilter?.let { f ->
         val answer by androidx.compose.runtime.produceState<com.craftflowtechnologies.meetingmind.core.work.SavedAnswer?>(null, f) { value = viewModel.savedViews.answer(f) }
         SavedAnswerSheet(answer, f.label, viewModel, onOpenMeeting, onOpenPerson, onDismiss = { savedFilter = null })
+    }
+    if (showAutopilotSheet) {
+        com.craftflowtechnologies.meetingmind.feature.automation.AutopilotSheet(
+            target = com.craftflowtechnologies.meetingmind.feature.automation.AutopilotTarget.LatestSession,
+            onDismiss = { showAutopilotSheet = false },
+            onOpenPaywall = { trigger ->
+                showAutopilotSheet = false
+                onOpenPaywall(trigger)
+            },
+            onOpenNote = { nId ->
+                showAutopilotSheet = false
+                onOpenNote(nId)
+            }
+        )
     }
 }
 

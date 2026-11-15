@@ -30,7 +30,7 @@ class DeviceWorkModels(
     override suspend fun forPack(sensitive: Boolean): LanguageModel? {
         val factory = LanguageModelFactory(context, modelStorage, transport)
         if (sensitive) return factory.resolveLocal(ModelCapability.SYNTHESIS, ModelTier.RECOMMENDED)?.languageModel
-        return factory.resolve(profile(), ModelCapability.SYNTHESIS, ModelTier.RECOMMENDED)?.languageModel
+        return factory.resolveWithFallback(profile(), ModelCapability.SYNTHESIS, ModelTier.RECOMMENDED)?.languageModel
     }
 }
 

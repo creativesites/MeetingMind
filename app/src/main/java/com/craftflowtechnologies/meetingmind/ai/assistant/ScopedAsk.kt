@@ -51,7 +51,8 @@ class ScopedAsk(
     private val privacy: PackPrivacy = PackPrivacy { _, _ -> false },
     private val clock: () -> Long = System::currentTimeMillis,
     private val dateLabel: (Long) -> String = { it.toString() },
-    private val maxSources: Int = 14
+    private val maxSources: Int = 14,
+    private val onModelFinished: suspend () -> Unit = {}
 ) {
     private val context = ContextRepository(database, clock)
 
@@ -61,8 +62,11 @@ class ScopedAsk(
         // Privacy is decided on everything that will actually be shown to a model.
         val meetingIds = sources.mapNotNull { it.meetingId }.distinct()
         val model = models?.forPack(privacy.mustStayOnDevice(meetingIds, scope.packScope)) ?: return@withContext ScopedAnswer(null, emptyList(), sources, ScopedReason.NO_MODEL)
-        val raw = (model.generate(prompt(question, sources), maxOutputTokens = 400) as? AiResult.Success)?.value
-            ?: return@withContext ScopedAnswer(null, emptyList(), sources, ScopedReason.FAILED)
+        val raw = try {
+            (model.generate(prompt(question, sources), maxOutputTokens = 400) as? AiResult.Success)?.value
+        } finally {
+            runCatching { onModelFinished() }
+        } ?: return@withContext ScopedAnswer(null, emptyList(), sources, ScopedReason.FAILED)
         val parsed = AskEverything.parse(raw, sources)
         if (parsed.cited.isEmpty()) return@withContext ScopedAnswer(null, emptyList(), sources, ScopedReason.UNCITED)
         ScopedAnswer(parsed.text, parsed.cited, sources)
@@ -83,16 +87,20 @@ class ScopedAsk(
         val raw = StringBuilder()
         var doneText: String? = null
         var failed = false
-        model.generateStream(prompt(question, sources), maxOutputTokens = 400).collect { ev ->
-            when (ev) {
-                is AiStreamEvent.TextDelta -> {
-                    raw.append(ev.text)
-                    emit(ScopedAskStreamEvent.Partial(raw.toString(), sources))
+        try {
+            model.generateStream(prompt(question, sources), maxOutputTokens = 400).collect { ev ->
+                when (ev) {
+                    is AiStreamEvent.TextDelta -> {
+                        raw.append(ev.text)
+                        emit(ScopedAskStreamEvent.Partial(raw.toString(), sources))
+                    }
+                    is AiStreamEvent.Completed -> doneText = ev.text
+                    is AiStreamEvent.Failed -> failed = true
+                    else -> Unit
                 }
-                is AiStreamEvent.Completed -> doneText = ev.text
-                is AiStreamEvent.Failed -> failed = true
-                else -> Unit
             }
+        } finally {
+            runCatching { onModelFinished() }
         }
         val finalRaw = (doneText ?: raw.toString()).takeIf { it.isNotBlank() }
         if (finalRaw == null || failed) {

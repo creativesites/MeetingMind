@@ -86,6 +86,10 @@ You MUST:
                 "expand an abbreviation, correct a spelling, or add anyone you infer was present but " +
                 "who is never named."
 
+        TranscriptAiToolType.FIND_RISKS_BLOCKERS ->
+            "List any risks, open disagreements, blockers, unanswered dependencies, or ambiguous " +
+                "commitments raised in the recording. Say briefly who raised it or what it affects."
+
         TranscriptAiToolType.CREATE_NOTES ->
             "Write structured notes on this recording in Markdown: short headed sections, bullet points " +
                 "under them, nothing that was not discussed."
@@ -93,6 +97,15 @@ You MUST:
         TranscriptAiToolType.CREATE_OUTLINE ->
             "Write a hierarchical outline of this recording in Markdown, following the order it was " +
                 "actually discussed in."
+
+        TranscriptAiToolType.DRAFT_FOLLOW_UP ->
+            "Draft a crisp follow-up email or recap message in Markdown based ONLY on this recording: " +
+                "a clear Subject line, 2-sentence context recap, agreed decisions, and numbered next steps " +
+                "with owners/dates where stated. Never invent recipients, deadlines, or commitments."
+
+        TranscriptAiToolType.TRANSLATE_TRANSCRIPT ->
+            "Translate the spoken content of each transcript turn faithfully into natural prose in " +
+                "Markdown, preserving speaker labels and original meaning without omitting details."
 
         TranscriptAiToolType.GENERATE_TITLE ->
             "Suggest a short, specific title for this recording — at most eight words, describing what " +
@@ -193,11 +206,14 @@ You MUST:
 
         TranscriptAiToolType.EXTRACT_KEY_POINTS,
         TranscriptAiToolType.FIND_IMPORTANT_MOMENTS,
-        TranscriptAiToolType.FIND_NAMES_ORGANIZATIONS -> OutputShape.FINDINGS
+        TranscriptAiToolType.FIND_NAMES_ORGANIZATIONS,
+        TranscriptAiToolType.FIND_RISKS_BLOCKERS -> OutputShape.FINDINGS
 
         TranscriptAiToolType.EXPLAIN_THIS,
         TranscriptAiToolType.CREATE_NOTES,
-        TranscriptAiToolType.CREATE_OUTLINE -> OutputShape.DOCUMENT
+        TranscriptAiToolType.CREATE_OUTLINE,
+        TranscriptAiToolType.DRAFT_FOLLOW_UP,
+        TranscriptAiToolType.TRANSLATE_TRANSCRIPT -> OutputShape.DOCUMENT
 
         TranscriptAiToolType.GENERATE_TITLE -> OutputShape.TITLE
 
@@ -211,10 +227,17 @@ You MUST:
         OutputShape.TITLE -> TITLE_SCHEMA
     }
 
-    fun build(tool: TranscriptAiToolType, segments: List<TranscriptSegment>): String = buildString {
+    fun build(
+        tool: TranscriptAiToolType,
+        segments: List<TranscriptSegment>,
+        targetLanguageDisplay: String? = null
+    ): String = buildString {
         appendLine(FIDELITY_CONTRACT.trim())
         appendLine()
-        appendLine("Task: ${instructionFor(tool)}")
+        val extra = if (tool == TranscriptAiToolType.TRANSLATE_TRANSCRIPT && !targetLanguageDisplay.isNullOrBlank()) {
+            " Target language: $targetLanguageDisplay."
+        } else ""
+        appendLine("Task: ${instructionFor(tool)}$extra")
         appendLine()
         appendLine("Answer with JSON matching this schema, and nothing else:")
         appendLine(schemaFor(tool).trim())

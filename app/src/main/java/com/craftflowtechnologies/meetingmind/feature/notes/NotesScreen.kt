@@ -163,7 +163,8 @@ fun NotesScreen(
     @Suppress("UNUSED_PARAMETER") onOpenFaith: (() -> Unit)? = null,
     @Suppress("UNUSED_PARAMETER") onOpenWork: (() -> Unit)? = null,
     onOpenTrash: () -> Unit = {},
-    onRecord: (() -> Unit)? = null
+    onRecord: (() -> Unit)? = null,
+    onOpenPaywall: (com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger) -> Unit = {}
 ) {
     val library = viewModel.library
     val holder = viewModel<NotesStateHolder>(key = "notes-library-" + viewModel.scope.toString())
@@ -191,6 +192,7 @@ fun NotesScreen(
     val folders = isRoot && view == LibraryView.FOLDERS && !query.isSearching && searchText.isBlank()
 
     var showAiMenu by remember { mutableStateOf(false) }
+    var showDeepSynthesis by remember { mutableStateOf(false) }
     var showAsk by remember { mutableStateOf(false) }
     var aiSheetOpen by remember { mutableStateOf(false) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
@@ -481,8 +483,25 @@ fun NotesScreen(
             if (tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.ASK) showAsk = true else { viewModel.runAi(tool); aiSheetOpen = true }
         },
         onRelated = null,
+        onDeepSynthesis = { showAiMenu = false; showDeepSynthesis = true },
         onDismiss = { showAiMenu = false }
     )
+    if (showDeepSynthesis) {
+        currentNotebook?.let { nb ->
+            com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisSheet(
+                target = com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisTarget.Notebook(nb.id),
+                onDismiss = { showDeepSynthesis = false },
+                onOpenPaywall = { trigger ->
+                    showDeepSynthesis = false
+                    onOpenPaywall(trigger)
+                },
+                onOpenNote = { nId ->
+                    showDeepSynthesis = false
+                    onOpenNote(nId)
+                }
+            )
+        }
+    }
     if (showAsk) com.craftflowtechnologies.meetingmind.feature.notes.ai.AskDialog(
         forNotebook = true,
         onAsk = { q -> showAsk = false; viewModel.runAi(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.ASK, q); aiSheetOpen = true },

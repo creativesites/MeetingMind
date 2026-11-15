@@ -198,4 +198,76 @@ class CirclesApiTest {
         val jNoDeadline = JSONObject(c.sent)
         assertFalse(jNoDeadline.has("closesAt"))
     }
+
+    @Test fun `createPost serializes tags and checklist in meta`() {
+        val meta = PostMeta(
+            tags = listOf("backend", "worker"),
+            checklist = listOf(
+                ChecklistItem("c0", "Task A", true),
+                ChecklistItem("c1", "Task B", false)
+            )
+        )
+        val json = CirclesJson.createPost(CreatePostRequest("c1", PostType.Task, "Do work", meta = meta))
+        assertTrue(json.has("meta"))
+        val metaObj = json.getJSONObject("meta")
+        val tagsArr = metaObj.getJSONArray("tags")
+        assertEquals(2, tagsArr.length())
+        assertEquals("backend", tagsArr.getString(0))
+        assertEquals("worker", tagsArr.getString(1))
+
+        val checkArr = metaObj.getJSONArray("checklist")
+        assertEquals(2, checkArr.length())
+        assertEquals("c0", checkArr.getJSONObject(0).getString("id"))
+        assertEquals("Task A", checkArr.getJSONObject(0).getString("text"))
+        assertTrue(checkArr.getJSONObject(0).getBoolean("done"))
+        assertEquals("c1", checkArr.getJSONObject(1).getString("id"))
+        assertEquals("Task B", checkArr.getJSONObject(1).getString("text"))
+        assertFalse(checkArr.getJSONObject(1).getBoolean("done"))
+    }
+
+    @Test fun `createPoll serializes correctIndex and explanation for quiz polls`() = runBlocking {
+        val c = Canned()
+        api(c).createPoll(
+            circleId = "c1",
+            question = "Capital of France?",
+            options = listOf("London", "Paris", "Berlin"),
+            multi = false,
+            correctOptionIndex = 1,
+            explanation = "Paris is the capital."
+        )
+        assertEquals("https://circles.example.workers.dev/v1/createPoll", c.request?.url.toString())
+        val j = JSONObject(c.sent)
+        assertEquals(1, j.getInt("correctIndex"))
+        assertEquals("Paris is the capital.", j.getString("explanation"))
+
+        // Without quiz fields
+        api(c).createPoll("c1", "Normal?", listOf("A", "B"), multi = false)
+        val j2 = JSONObject(c.sent)
+        assertFalse(j2.has("correctIndex"))
+        assertFalse(j2.has("explanation"))
+    }
+
+    @Test fun `toggleChecklistItem posts to endpoint with proper payload`() = runBlocking {
+        val c = Canned()
+        val r = api(c).toggleChecklistItem("c1", "p1", "item-1")
+        assertTrue(r is CirclesResult.Ok)
+        assertEquals("https://circles.example.workers.dev/v1/toggleChecklistItem", c.request?.url.toString())
+        val j = JSONObject(c.sent)
+        assertEquals("c1", j.getString("circleId"))
+        assertEquals("p1", j.getString("postId"))
+        assertEquals("item-1", j.getString("itemId"))
+        assertFalse(j.has("done"))
+
+        // Explicit done
+        api(c).toggleChecklistItem("c1", "p1", "item-1", done = true)
+        val j2 = JSONObject(c.sent)
+        assertTrue(j2.getBoolean("done"))
+
+        api(c).toggleChecklistItem("c1", "p1", "item-1", done = false)
+        val j3 = JSONObject(c.sent)
+        assertFalse(j3.getBoolean("done"))
+
+        val notConnected = NotConfiguredCirclesApi.toggleChecklistItem("c1", "p1", "item-1")
+        assertEquals(FailureKind.NotConnected, notConnected.failureOrNull?.kind)
+    }
 }

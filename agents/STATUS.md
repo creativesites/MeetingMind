@@ -1,6 +1,98 @@
 # Status
 
-Updated: 2026-11-14. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+Updated: 2026-11-15. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+
+## Local LLM Parity Round 2, Vital Editor/Reminder Tools & Paid Killer Feature #2: Post-Session Autopilot Workflows (`Capability.AUTOMATION_RECIPES`) (2026-11-15)
+- **Pass 1 — Eliminated Remaining Cloud-Only & Privacy-Bypass Gaps:**
+  - `CreateEngineApi.kt` (`GeminiCreateModel`) & `CreateGenerator.kt`: Added `UserPreferencesManager.processingProfile` awareness + automatic one-way fallback to local `LanguageModelFactory.resolveLocal(ModelCapability.SUMMARIZATION, ModelTier.RECOMMENDED)` (supporting both `generateStructured` and `generate` with `LlmEngineManager.release()` cleanup) so Create cards work offline and on Free tier.
+  - `NoteEditorViewModel.kt` (`runAiEdit`): Added `UserPreferencesManager.processingProfile` + `WorkPrivacy.forNote(...)` enforcement and streaming fallback via `localResolved.languageModel.generateStream(...)` with `LlmEngineManager.release()` cleanup.
+  - `RecordingTitleBackfill.kt`: Enforced `UserPreferencesManager.processingProfile` and per-meeting `WorkPrivacy.forMeeting(...)` before selecting online vs local title engine.
+  - `Changes.kt` (`DeviceChangeModels`) & `SessionAi.kt` (`ModelSessionAi`): Switched `Changes.kt` to `factory.resolveWithFallback(...)` and made `SessionAi.candidates()` honor `ProcessingProfile.OFFLINE` before trying cloud.
+  - `MeetingProcessingPipeline.kt` (`runPolishPass`, sermon extraction, lecture synthesis): Upgraded `runPolishPass` and sermon extraction to `resolveWithFallback(...)` with `ResilientLanguageModel.lastRanLocally` release handling, and switched lecture synthesis fallback resolver to `resolveLocal(...)`.
+  - `ScopedAsk.kt` & `WorkViewModel.kt`: Added `onModelFinished` `finally` cleanup in `ask` & `askStream`, wired to `LlmEngineManager.release()`.
+- **Pass 2 — Vital Inline Editor & Reminder Tools + Sparkles Icon Fix:**
+  - `AiEditSheet.kt` (`AI_EDIT_ACTIONS`): Added `"Proofread & polish"`, `"Turn into callout"`, and `"Explain key terms"` inline editor actions (cloud + local LLM compatible).
+  - `Assistant.kt` & `AssistantHost.kt`: Added `AssistantTool.LIST_UPCOMING_REMINDERS` (`Read`, surfacing scheduled task reminders and dated tasks with overdue/due status via `TaskRepository.upcomingReminders()`).
+  - `WorkPageToday.kt` & `InboxScreen.kt`: Replaced lingering `Icons.Filled.AutoAwesome` usages with `AiMark` so `AssistantTest.noSparklesIconAnywhere` stays green.
+- **Pass 3 — Paid-Plan Killer Feature #2 End-to-End (`Capability.AUTOMATION_RECIPES`):**
+  - `ai/automation/PostSessionAutopilot.kt`: Implemented 4 grounded workflow recipes (`EXECUTIVE_DEBRIEF`, `CLIENT_CRM_LOG`, `STUDY_FLASHCARD_DRILL`, `SERMON_SMALL_GROUP_PACK` with Faith Contract), `AutopilotPreferences` (`SharedPreferences`-backed post-recording auto-run toggles), `AutopilotWorkspace` (enforcing `Capability.AUTOMATION_RECIPES`, `WorkPrivacy`, Cloud + local `resolveWithFallback`, `saveRecapAsNote`, `commitTasks`, and `maybeAutoRunForReadyMeeting`).
+  - `feature/automation/AutopilotSheet.kt`: Built token-compliant `AutopilotSheet` (`MM.*` tokens) supporting `AutopilotTarget.Meeting`, `.Note`, and `.LatestSession`, recipe selector, auto-run trigger switches, Pro paywall upgrade prompt (`PaywallTrigger.PREMIUM_ACTION`), task commitment, clipboard copy, share, and Save-as-Note flow.
+  - Wired entry points in `MeetingDetailScreen.kt` (`Autopilot` button), `NoteAiSheets.kt` & `NoteEditorScreen.kt` (`Autopilot Workflows · Pro`), `WorkPageToday.kt`, `WorkPageScreen.kt`, `MainActivity.kt`, and optional post-processing hook in `MeetingProcessingPipeline.kt`.
+- **Verification:** Added `PostSessionAutopilotTest` and extended `AssistantTest` (`LIST_UPCOMING_REMINDERS`) and `BillingModelTest` (`Capability.AUTOMATION_RECIPES`). Re-ran static guard checks: zero `AutoAwesome` across `src/main/java`, zero `Color`/`sp`/`RoundedCornerShape` literals in `AutopilotSheet.kt`, and balanced delimiters across all 25+ touched Kotlin files. Per `AGENTS.md`, `./gradlew` was not run locally; Kotlin compilation and unit tests await remote runner verification.
+
+## Circles 4-Round Polish, Daily Habit Loops & Power Features Upgrade (2026-11-15)
+- **Round 1 — Visual UX & Micro-Interactions (`CirclesListScreen.kt`, `CircleHomeScreen.kt`, `CircleSettingsScreen.kt`, `ChatTab.kt`, `MediaViews.kt`):**
+  - Added space-aware aurora covers/icons/counts (`spaceTint`, `spaceIcon`), animated search (`circles.size >= 3`), and `.animateItem()` in `CirclesListScreen`.
+  - Upgraded `CircleHomeScreen` header actions to tonal circular `Surface` buttons, added space/engagement subtitle pills, wired search jump-to-message (`targetChatMessageId`), and added a mini hero cover preview in `CircleSettingsScreen`.
+  - Added double-tap quick-react with space-tailored reaction emoji + burst animation + haptics and unread Jump-to-Latest badge in `ChatTab`; added swipeable multi-photo `FullScreenGalleryDialog`, `1x/1.5x/2x` playback speed pills, and duration timecodes in `MediaViews`.
+- **Round 2 — Daily Habit Loops (`LocalCircleStore.kt`, `CirclesListViewModel.kt`, `CircleHomeViewModel.kt`, `ChatViewModel.kt`, `CirclesListScreen.kt`, `CircleHomeScreen.kt`, `FeedTab.kt`, `FunCards.kt`):**
+  - Added local multi-day streak tracking, today check-in state, saved post bookmarks, per-circle last-visit timestamps, and prompt dismissal in `LocalCircleStore` (`InMemoryLocalCircleStore` + `SharedPrefsLocalCircleStore`) plus `CircleStreakUi` and habit unit tests in `CircleViewModelsTest.kt`.
+  - Surfaced `DailyCirclePulseCard` on `CirclesListScreen`, collapsible `CatchUpCard` ("Catch me up · N new"), dismissible space-tailored `TodayPromptCard`, `"Saved (N)"` filter chip + post bookmark toggles in `FeedTab`, and 1-tap vertical kudos chips in `CelebrateSheet`.
+- **Round 3 — Power-User & Multi-Vertical Features (`server/circles-api/`, `core/circles2/`, `feature/circles2/`):**
+  - **Post `#tags` & Interactive Checklists:** Added `PostMeta.tags` (up to 4) and `PostMeta.checklist` (`ChecklistItem(id, text, done)`, up to 8) across the Cloudflare Worker (`cleanPostMeta`, `POST /v1/toggleChecklistItem`), Android models/parsing/API/repository, `ComposerSheet` editor, and interactive `PostCard` checklist + clickable `#tag` filtering in `FeedTab`.
+  - **Quiz/Trivia Polls:** Extended `shapePoll`/`createPoll`, `Poll`/`PollDraft`/`ChatViewModel`, `PollSheet`, and `PollBody` with single-choice `correctOptionId`/`correctIndex` and `explanation` reveal UX.
+  - **Vertical Templates, Activity Badges & Categorized Search:** Added 1-tap vertical `EventTemplate` chips and `"Join"` meeting link pill in `EventsSection`, contributor post count/top-contributor badges in `MembersTab`, and `All`/`Posts`/`Messages`/`Tasks`/`Media` category filter chips in `CircleSearchSheet`.
+- **Round 4 — Cohesion Audit, Token Sweep & Live Worker Redeploy:**
+  - Verified 0 `fontSize`/`Color(0x...)`/`RoundedCornerShape(...)` literal violations across all of `core/circles2/` and `feature/circles2/`, verified trailing default compatibility across `CirclesScreenshotTest` and all sheet/tab signatures.
+  - Ran `bash server/circles-api/scripts/deploy-and-verify.sh`: 81/81 Worker unit tests passed (`npm test`), deployed Cloudflare Worker `meetingmind-circles` (`https://meetingmind-circles.meetingmind.workers.dev`, Version ID `a2829b9d-4e3e-4f7d-b9ed-d291e6495d04`), released `firestore.rules`, and verified live smoke checks (`/health` 200, `/ready` 200, `/v1/createCircle` 401). Per `AGENTS.md`, `./gradlew` was not run locally; Android compilation and unit/screenshot tests await remote CI.
+
+## Learning Vertical Round 2 — 4-Pass Deep Polish: Tab Badges, Concept Filters, Note Intuition Save, Missed-Card Drill & Exam Cram Preview (2026-11-15)
+- **Pass 1 — Learn Home & Courses Deep Polish (`LearnHomeScreen.kt`, `LearnViewModel.kt`, `MainActivity.kt`):**
+  - Added live count badges to `LearnTabSegmentedControl` (`Courses` count, `Practice` due count, `Exam` goals count) while keeping `EntryPoints.*` labels and `learn_tab_*` testTags intact.
+  - Added 1-tap **"Drill All"** header pill and per-concept **"Drill"** pills on `HighYieldWeakSection` wired to `LearnViewModel.loadWeakConceptsPractice(...)`.
+  - Upgraded `RecentSessionsSection` with **Course / Unassigned filter chips**, **live lecture search** (`displayLectures.size > 4`), and a **"Show All N Lectures" / "Show Less"** toggle (`filteredLectures.size > 6`).
+  - Enhanced `CoursesSection` expandable lecture drawer rows with lecture duration (`Xm`) and mastered concept ratios (`strong/total mastered`).
+- **Pass 2 — Lecture Studio Concepts, Intuition-to-Note Save & Diagnostics (`LearningSessionScreen.kt`, `LearnViewModel.kt`):**
+  - Upgraded `SessionTab.CONCEPTS` with interactive **Concept Filter Chips** (`All (N)`, `To Review (N)`, `High-Yield (N)`, `Mastered (N)`), live concept search (`sessionDetail.concepts.size > 4`), and an empty-filter reset card.
+  - Added 1-tap **"+ Save Intuition to Note"** / **"✓ Saved to Lecture Note"** (`LearnViewModel.saveSimpleExplanationToNote`) inside `ConceptCard`'s `Explain Simply (ELI12)` drawer, appending a structured `NoteBlockType.CALLOUT` (`BlockSource.ENRICHED`) directly to the lecture's `NoteDocument`.
+  - Upgraded `DiagnosticsCard` (`SessionTab.DIAGNOSTICS`) into a rich **Session Intelligence & Signals** dashboard with a segmented mastery bar, `Flashcards` / `Problems` / `Teach-Back` counts, and 1-tap `Practice Session` + `Ask Tutor` CTAs.
+- **Pass 3 — Practice Arena Bidirectional Navigation, Schedule Confirmation & Missed-Card Drill (`PracticeArenaScreen.kt`, `LearnViewModel.kt`):**
+  - Added `LearnViewModel.previousCard()` and a **`← Prev`** button (`practice_prev_button`) in the Practice Arena footer when `currentIndex > 0`.
+  - Added selected-state styling on `RecallButton` and a spaced-repetition schedule confirmation banner (`"✓ Scheduled for review in X"`) on `RecallFlashcard`.
+  - Added a **"Try Again"** reset button inside `InteractiveProblemCard`'s feedback box when answered wrong (`!gotItRight`).
+  - Added `missedActivityIds: StateFlow<Set<String>>` in `LearnViewModel` (`!isCorrect || rating == AGAIN || rating == HARD`) and surfaced a primary **"Drill Missed Cards (N)"** (`practice_drill_missed`) CTA on `AllDoneScreen`.
+- **Pass 4 — Exam Prep Studio Matrix Counts, 1-Tap Concept Drill & Cram Sheet Preview (`ExamPrepScreen.kt`):**
+  - Updated High-Yield Priority Matrix filter pills (`All (N)`, `Priority Gaps (N)`, `High-Yield (N)`, `Mastered (N)`) to show exact counts and true filtered lists (with a `"Show All (N)"` empty-filter state instead of silently resetting).
+  - Added a 1-tap **"Drill →"** pill on every `ExamPriorityRow` wired to `onDrillConcept`.
+  - Added a **"Preview"** button and 2-line preview snippet on `CramSheetActionCard` when a cram sheet is already generated, plus a 1-tap **"Copy" / "✓ Copied"** clipboard action inside `CramSheetPreviewDialog`.
+
+## Local LLM Parity Audit, Vital AI Tools Expansion & Paid Killer Feature: Cross-Session Deep Synthesis (`Capability.DEEP_SYNTHESIS`) (2026-11-15)
+- **Pass 1 — Local LLM Parity Across All AI Tools & Engines:**
+  - `LanguageModelFactory.kt`: Added `ResilientLanguageModel` and `resolveWithFallback(...)` so Internet-mode cloud calls fall back automatically to an installed local LLM (MediaPipe / AICore) when offline or quota-limited, while preserving `resolve(...)` contracts.
+  - `TranscriptToolEngine.kt` & `AiToolWorker.kt`: Added token-budgeted chunking (`contextLengthTokens` + `actualEngineName`) so all `REVISION`, `FINDINGS`, `DOCUMENT`, and sampled `TITLE` transcript tools execute cleanly on 4K-context local models without overflow, releasing `LlmEngineManager` in `finally`.
+  - `Assistant.kt` & `AssistantSession.kt`: Added `localModelProvider`, `forceLocal`, and `runLocalRounds(...)` so Ask Assistant works offline or on the Free tier via local JSON tool-calling instead of blocking when cloud is unconfigured.
+  - `AskEverything.kt` & `SearchScreen.kt`: Added `localModelProvider`, `preferLocal`, `capSourcesForLocal(...)`, and cloud-to-local fallback so Ask Everything runs offline and on the Free tier.
+  - `GeminiTranslationEngine.kt`: Added `fallbackModelProvider`, `preferLocal`, and batched `translateWithLocalModel(...)` (batches of 8 segments) with cleanup callback.
+  - `LearningAiEngine.kt` & `LearnViewModel.kt`: Wired `fallbackModelProvider`, `preferLocal`, `12_000`-char local cap, and `LlmEngineManager.release()`.
+  - `NoteAiJobs.kt`, `NoteEditorViewModel.kt` (`polishWholeNote`), `WorkModels.kt` (`DeviceWorkModels`), `Scenes.kt`, and `MeetingProcessingPipeline.kt`: Switched to `resolveWithFallback(...)` / `fallbackModel` with `LlmEngineManager.release()` cleanup when running locally.
+- **Pass 2 — Vital AI Tools Added Across Assistant, Transcript & Notes:**
+  - **Assistant Tools (`Assistant.kt`, `AssistantHost.kt`):** Added `LIST_TASKS` (`Read`) and `COMPLETE_TASK` (`Write`, backed by `TaskRepository.toggleDone` with undo support).
+  - **Transcript Tools (`TranscriptAiTool.kt`, `TranscriptToolPrompts.kt`, `AiToolWorker.kt`):** Added `FIND_RISKS_BLOCKERS`, `DRAFT_FOLLOW_UP`, and `TRANSLATE_TRANSCRIPT` (all `MODEL_BACKED`).
+  - **Note & Notebook AI Tools (`NoteAiEngine.kt`, `NoteAiApply.kt`, `NoteAiSheets.kt`, `NotesViewModel.kt`, `NoteEditorViewModel.kt`, `NoteEditorScreen.kt`):** Added `UNRESOLVED_GAPS` ("Open questions & gaps") and `FOLLOW_UP_BRIEF` ("Recap & follow-up") across both single notes and entire notebooks.
+- **Pass 3 — Paid-Plan Killer Feature End-to-End: Cross-Session Deep Intelligence & Executive Action Pack (`Capability.DEEP_SYNTHESIS`):**
+  - **Billing & Paywall (`Plan.kt`, `PaywallCopy.kt`, `BillingModelTest.kt`, `PaywallCopyTest.kt`):** Added `Capability.DEEP_SYNTHESIS` across `BYOK`, `PRO`, and `CHURCH` tiers with matching `PaywallCopy.includedRows` row.
+  - **Engine & Workspace (`ai/synthesis/DeepSynthesisEngine.kt`):** Implemented `DeepSynthesisEngine` (4 modes: `EXECUTIVE_PACK`, `PRE_SESSION_BRIEF`, `SERIES_SYNTHESIS`, `EXAM_MASTER_CRAM`), cross-session workspace gatherer (`DeepSynthesisWorkspace`: related notes/recordings, open tasks/action items, `WorkPrivacy` confidential on-device enforcement, instant zero-AI `DeepSynthesisPreview`), strict citation grounding (`parseAndValidate`), cloud + local LLM parity, and 1-tap `saveAsNote` / `addCommitmentsAsTasks`.
+  - **UI & Navigation (`feature/synthesis/DeepSynthesisSheet.kt`, `MeetingDetailScreen.kt`, `NotesScreen.kt`, `NoteEditorScreen.kt`, `MainActivity.kt`):** Built `DeepSynthesisSheet` strictly with `MM.*` design tokens (including an instant Free-tier preview & `PaywallTrigger.PREMIUM_ACTION` upgrade card in `PRODUCTION` tiering) and wired launch points from Recording Detail (`Deep Pack`), Note AI Menu, and Notebook AI Menu.
+- **Verification:** Added `DeepSynthesisEngineTest` and extended `AssistantTest`, `GeminiTranslationEngineTest`, `TranscriptToolEngineTest`, `NoteAiEngineTest`, `BillingModelTest`, and `PaywallCopyTest`. Static checks passed (zero `AutoAwesome` / style-literal / color-literal violations across all new & edited files; `PaywallCopy` and `TranscriptAiTool` contract checks clean). Per `AGENTS.md`, `./gradlew` was not run locally; Kotlin compilation and test execution await remote runner verification.
+
+## Learning Vertical 4-Pass Iterative Polish: Micro-Interactions, Course Drawers, Lecture Studio Filters, Animated Practice & Exam Readiness (2026-11-15)
+- **Pass 1 — Learn Home & Courses UX + Micro-Animations (`LearnHomeScreen.kt`, `MainActivity.kt`):**
+  - Deduplicated `learn_mastery_ring` Compose `testTag` on `LearnHomeScreen` and replaced instant layout pops with smooth `animateContentSize()`, `animateFloatAsState()` (500ms `FastOutSlowInEasing`), and `animateColorAsState()` transitions.
+  - Upgraded `RecentSessionsSection` cards with lecture duration badges (`Xm`), mastered concept ratios (`strong/total mastered`), and 1-tap `+ Course` assignment pills.
+  - Upgraded `CoursesSection` cards with an inline expandable **`View Lectures (N)` drawer** (`expandedCourseIds`, rotating chevron, direct click-to-open lecture rows, and 1-tap `+ LectureTitle` assignment chips for unassigned recorded lessons), plus `strong/total concepts` labels.
+  - Added 1-tap starter topic chips (`Cellular Respiration`, `Linear Algebra Eigenvalues`, `Contract Law Remedies`, `Macroeconomic Policy`) to the Instant Topic Deck Generator on the Practice tab.
+- **Pass 2 — Lecture Session Studio Deep Polish (`LearningSessionScreen.kt`):**
+  - Replaced static tab buttons with an animated segmented tab bar (`animateColorAsState` + subtle active border) and added a 1-tap **"Ask Tutor"** action in `UnderstandTabHeader` alongside `Open Editor`, `Read Aloud`, and `Practice This Lecture`.
+  - Added interactive **Note Block Filter Chips** (`All Notes`, `Exam Hints & Definitions`, `Formulas & Diagrams`) and `animateContentSize` callout unpacking inside `RecordedLectureNotesCard`.
+  - Added live **inline Transcript Search** (`OutlinedTextField` filtering speaker segments in real time) inside `RecordedLectureTranscriptCard`.
+  - Added an expandable **"Peek Answer" / "Hide Answer"** toggle (`AnimatedVisibility`) to `ActivitySummaryCard` in the Lecture Studio's Practice tab.
+- **Pass 3 — Practice Arena & Exam Prep Studio Choreography (`PracticeArenaScreen.kt`, `ExamPrepScreen.kt`):**
+  - `PracticeArenaScreen`: added directional `AnimatedContent` slide+fade card transitions when advancing/going back, animated `LinearProgressIndicator` (`animateFloatAsState`), animated mode filter pills, side-by-side **"Your Attempt"** comparison box on flipped `RecallFlashcard`s, and animated option border/background colors + smooth feedback reveal on `InteractiveProblemCard`.
+  - `ExamPrepScreen`: added `animateIntAsState` readiness score counter and animated mastery breakdown bar on `ExamReadinessDashboardCard`, interactive **High-Yield Priority Matrix filter pills** (`All`, `Priority Gaps`, `High-Yield & Flagged`, `Mastered`), and **Share** + **Regenerate** actions on `CramSheetActionCard`.
+- **Pass 4 — Cross-Vertical Edge Cases & Guardrail Audit (`NoteEditorScreen.kt`, `AssistantSession.kt`, `LearnViewModel.kt`):**
+  - Fixed `Color.White` in `NoteEditorScreen.kt`'s `Study Studio` pill to `MM.colors.onAccent` (`ColorLiteralGuardTest` compliance).
+  - Updated `AssistantSession.resolveScope()` so opening the Socratic Learning Assistant from a `sessionId`-routed `LearningSessionScreen` (e.g., from `ExamPriorityRow` or `CourseCard`'s lecture drawer) resolves the underlying `noteId` via `learningSessionDao.getSessionById(sessionId)` and exposes full lecture note blocks and tools.
+  - Updated `LearnViewModel.saveCramSheetAsNote(...)` to parse Cram Sheet markdown into structured `NoteBlock`s (`HEADING`, `BULLET`, `PARAGRAPH`, `CALLOUT`) via `MarkdownImport.parse(...)` instead of a single raw paragraph block.
 
 ## Learning Vertical Overhaul: Learn Home, Courses from Recorded Notes, Lecture Notes Linking, Practice Arena, Exam Prep & Socratic Learning Assistant (2026-11-14)
 - **Recorded Lecture Notes <-> Lecture Studio & Courses Linking (`LearningRepository.kt`, `MeetingProcessingPipeline.kt`, `LearnViewModel.kt`, `LearningSessionScreen.kt`):**

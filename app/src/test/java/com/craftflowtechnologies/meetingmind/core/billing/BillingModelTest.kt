@@ -54,6 +54,16 @@ class BillingModelTest {
         assertTrue(FeatureGate.can(paid(), Capability.BYOK_KEY, now))
         assertTrue(FeatureGate.can(paid(), Capability.MANAGED_CLOUD_AI, now))
         assertTrue(FeatureGate.can(paid(Plan.BYOK), Capability.BYOK_KEY, now))
+        assertTrue(FeatureGate.can(paid(Plan.PRO), Capability.DEEP_SYNTHESIS, now))
+        assertTrue(FeatureGate.can(paid(Plan.BYOK), Capability.DEEP_SYNTHESIS, now))
+        assertTrue(FeatureGate.can(paid(Plan.CHURCH), Capability.DEEP_SYNTHESIS, now))
+        assertFalse(FeatureGate.can(Entitlements(), Capability.DEEP_SYNTHESIS, now))
+        assertFalse(FeatureGate.can(lapsed, Capability.DEEP_SYNTHESIS, now))
+        assertTrue(FeatureGate.can(paid(Plan.PRO), Capability.AUTOMATION_RECIPES, now))
+        assertTrue(FeatureGate.can(paid(Plan.BYOK), Capability.AUTOMATION_RECIPES, now))
+        assertTrue(FeatureGate.can(paid(Plan.CHURCH), Capability.AUTOMATION_RECIPES, now))
+        assertFalse(FeatureGate.can(Entitlements(), Capability.AUTOMATION_RECIPES, now))
+        assertFalse(FeatureGate.can(lapsed, Capability.AUTOMATION_RECIPES, now))
     }
 
     @Test fun `trial and grace count as paid, expired does not`() {

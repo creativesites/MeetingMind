@@ -78,6 +78,11 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
         lastWorkStatus = postId to status
         return reply("setWorkStatus", Unit)
     }
+    var lastToggleChecklist: Triple<String, String, Boolean?>? = null
+    override suspend fun toggleChecklistItem(circleId: String, postId: String, itemId: String, done: Boolean?): CirclesResult<Unit> {
+        lastToggleChecklist = Triple(postId, itemId, done)
+        return reply("toggleChecklistItem", Unit)
+    }
     override suspend fun deletePost(circleId: String, postId: String) = reply("deletePost", Unit)
     override suspend fun prayed(circleId: String, postId: String) = reply("prayed", alreadyPrayed)
     override suspend fun react(circleId: String, postId: String, kind: ReactionKind?) = reply("react", Unit)
@@ -85,8 +90,12 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
     override suspend fun report(circleId: String, postId: String, reason: String) = reply("report", Unit)
     override suspend fun reportMessage(circleId: String, messageId: String, reason: String) = reply("reportMessage", Unit)
     var lastPollClosesAt: Long? = null
-    override suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean, closesAt: Long?): CirclesResult<Unit> {
+    var lastPollCorrectOptionIndex: Int? = null
+    var lastPollExplanation: String? = null
+    override suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean, closesAt: Long?, correctOptionIndex: Int?, explanation: String?): CirclesResult<Unit> {
         lastPollClosesAt = closesAt
+        lastPollCorrectOptionIndex = correctOptionIndex
+        lastPollExplanation = explanation
         return reply("createPoll", Unit)
     }
     override suspend fun closePoll(circleId: String, pollId: String) = reply("closePoll", Unit)

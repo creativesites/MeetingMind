@@ -1,5 +1,11 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -23,8 +29,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.BusinessCenter
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.School
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -43,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +95,21 @@ fun circleSpace(c: Circle): String = when {
     else -> "Faith"
 }
 
+@Composable
+fun spaceTint(c: Circle): Color = when (circleSpace(c)) {
+    "Work" -> MM.colors.accent
+    "Study" -> MM.colors.speaker2
+    "Faith" -> MM.colors.gold
+    else -> MM.colors.speaker3
+}
+
+fun spaceIcon(c: Circle): ImageVector = when (circleSpace(c)) {
+    "Work" -> Icons.Rounded.BusinessCenter
+    "Study" -> Icons.Rounded.School
+    "Faith" -> Icons.Rounded.VolunteerActivism
+    else -> Icons.Rounded.Groups
+}
+
 /** Entry point: wires the view model. [initialCode] comes from a tapped invite link. */
 @Composable
 fun CirclesListScreen(
@@ -97,6 +125,7 @@ fun CirclesListScreen(
     val vm: CirclesListViewModel = viewModel(factory = CirclesListViewModel.Factory(repo))
     val list by vm.list.collectAsState()
     val join by vm.join.collectAsState()
+    val streak by vm.streak.collectAsState()
     val account: AccountViewModel = viewModel(factory = AccountViewModel.Factory(repo))
     val accountState by account.state.collectAsState()
     val askNotifications = rememberNotificationAsk()
@@ -105,6 +134,7 @@ fun CirclesListScreen(
     var diagnostics by rememberSaveable { mutableStateOf("Not run") }
     var checking by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { vm.refreshEngagement() }
     LaunchedEffect(initialCode) {
         if (initialCode != null) { vm.onPaste(initialCode); showJoin = true; onInitialCodeHandled() }
     }
@@ -116,9 +146,10 @@ fun CirclesListScreen(
         // The first circle is when "tell me when something happens" makes sense, so that is when we ask.
         onJoin = { vm.join { id -> showJoin = false; vm.resetJoin(); if (repo.isFirstCircle()) askNotifications { onOpenCircle(id) } else onOpenCircle(id) } },
         onRefresh = vm::refresh,
-        onDiagnostics = { showDiagnostics = true },
         account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict,
-        onCreateInSpace = onCreateInSpace
+        onDiagnostics = { showDiagnostics = true },
+        onCreateInSpace = onCreateInSpace,
+        streak = streak
     )
     if (showDiagnostics) {
         val firebaseProject = remember { runCatching { com.google.firebase.FirebaseApp.getInstance().options.projectId }.getOrNull() ?: "Firebase not initialized" }
@@ -173,9 +204,13 @@ fun CirclesListContent(
     onSwitch: () -> Unit = {},
     onDismissConflict: () -> Unit = {},
     onDiagnostics: () -> Unit = {},
-    onCreateInSpace: ((String?) -> Unit)? = null
+    onCreateInSpace: ((String?) -> Unit)? = null,
+    streak: CircleStreakUi = CircleStreakUi()
 ) {
     val canAct = state !is CirclesListState.NotConnected
+    val hasManyCircles = (state as? CirclesListState.Ready)?.circles?.let { it.size >= 3 } == true
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedSpace by rememberSaveable { mutableStateOf("All") }
     val createForActiveSpace: () -> Unit = {
         val mapped = when (selectedSpace) {
@@ -195,6 +230,27 @@ fun CirclesListContent(
             leading = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.inkSecondary) } },
             actions = {
                 if (canAct) {
+                    if (hasManyCircles) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (searchOpen) MM.colors.accentWash else MM.colors.surfaceRaised,
+                            border = BorderStroke(MMSize.hairline, if (searchOpen) MM.colors.accent else MM.colors.lineSoft),
+                            modifier = Modifier.size(34.dp).clickable {
+                                searchOpen = !searchOpen
+                                if (!searchOpen) searchQuery = ""
+                            }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Rounded.Search,
+                                    "Search circles",
+                                    tint = if (searchOpen) MM.colors.accent else MM.colors.inkSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(6.dp))
+                    }
                     Surface(
                         shape = MM.radius.pill,
                         color = MM.colors.accentWash,
@@ -220,6 +276,21 @@ fun CirclesListContent(
                 }
             }
         )
+        AnimatedVisibility(
+            visible = searchOpen && hasManyCircles,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = MM.space.l, vertical = MM.space.xs)) {
+                CircleField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = "Search circles",
+                    placeholder = "Filter by name or description…",
+                    leadingIcon = { Icon(Icons.Rounded.Search, null, tint = MM.colors.inkSecondary) }
+                )
+            }
+        }
         when (state) {
             CirclesListState.NotConnected -> EmptyState(
                 title = "Circles isn't connected yet",
@@ -244,9 +315,14 @@ fun CirclesListContent(
                     )
                 }
             } else {
-                val filteredCircles = remember(state.circles, selectedSpace) {
-                    if (selectedSpace == "All") state.circles
+                val filteredCircles = remember(state.circles, selectedSpace, searchQuery) {
+                    val q = searchQuery.trim()
+                    val spaceFiltered = if (selectedSpace == "All") state.circles
                     else state.circles.filter { circleSpace(it) == selectedSpace }
+                    if (q.isBlank()) spaceFiltered
+                    else spaceFiltered.filter { c ->
+                        c.name.contains(q, ignoreCase = true) || c.description.contains(q, ignoreCase = true)
+                    }
                 }
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
@@ -273,6 +349,39 @@ fun CirclesListContent(
                                     "Small groups, teams, and family spaces where you share and stay close.",
                                     style = MM.type.secondary, color = MM.colors.inkSecondary
                                 )
+                                Spacer(Modifier.height(2.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val distinctSpacesCount = remember(state.circles) {
+                                        state.circles.map { circleSpace(it) }.distinct().size
+                                    }
+                                    Surface(
+                                        shape = MM.radius.pill,
+                                        color = MM.colors.surfaceSunk,
+                                        border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
+                                    ) {
+                                        Text(
+                                            "${state.circles.size} ${if (state.circles.size == 1) "circle" else "circles"}",
+                                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MM.colors.inkSecondary,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                    Surface(
+                                        shape = MM.radius.pill,
+                                        color = MM.colors.surfaceSunk,
+                                        border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
+                                    ) {
+                                        Text(
+                                            "$distinctSpacesCount ${if (distinctSpacesCount == 1) "space" else "spaces"}",
+                                            style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                            color = MM.colors.inkMuted,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                         if (state.circles.size > 1) {
@@ -282,8 +391,10 @@ fun CirclesListContent(
                                     horizontalArrangement = Arrangement.spacedBy(MM.space.s)
                                 ) {
                                     listOf("All", "Work", "Study", "Faith", "Community").forEach { spaceName ->
+                                        val count = if (spaceName == "All") state.circles.size else state.circles.count { circleSpace(it) == spaceName }
+                                        val label = if (count > 0 && spaceName != "All") "$spaceName · $count" else spaceName
                                         MMChip(
-                                            spaceName,
+                                            label,
                                             selected = selectedSpace == spaceName,
                                             onClick = { selectedSpace = spaceName }
                                         )
@@ -292,21 +403,44 @@ fun CirclesListContent(
                             }
                         }
                         if (filteredCircles.isEmpty()) {
-                            item {
-                                EmptyState(
-                                    title = "No $selectedSpace circles",
-                                    body = "You don't have any $selectedSpace circles yet. You can create one or join with an invite code.",
-                                    modifier = Modifier.padding(vertical = MM.space.l)
-                                )
+                            item(key = "empty_circles_filter") {
+                                Box(Modifier.animateItem()) {
+                                    if (searchQuery.isNotBlank()) {
+                                        EmptyState(
+                                            title = "No circles found",
+                                            body = "No circles match \"$searchQuery\". Try checking the spelling or clearing the search filter.",
+                                            modifier = Modifier.padding(vertical = MM.space.l)
+                                        )
+                                    } else {
+                                        EmptyState(
+                                            title = "No $selectedSpace circles",
+                                            body = "You don't have any $selectedSpace circles yet. You can create one or join with an invite code.",
+                                            modifier = Modifier.padding(vertical = MM.space.l)
+                                        )
+                                    }
+                                }
                             }
                         } else {
                             val featured = filteredCircles.first()
                             item(key = "featured_${featured.id}") {
-                                FeaturedCircleCard(featured) { onOpen(featured.id) }
+                                FeaturedCircleCard(featured, modifier = Modifier.animateItem()) { onOpen(featured.id) }
+                            }
+                            item(key = "daily_circle_pulse") {
+                                DailyCirclePulseCard(
+                                    streak = streak,
+                                    onOpenCircle = { onOpen(featured.id) },
+                                    modifier = Modifier.animateItem()
+                                )
                             }
                             if (filteredCircles.size > 1) {
-                                item { SectionHeader("All circles", count = filteredCircles.size) }
-                                items(filteredCircles.drop(1), key = { it.id }) { c -> CircleRow(c) { onOpen(c.id) } }
+                                item(key = "all_circles_section_header") {
+                                    Box(Modifier.animateItem()) {
+                                        SectionHeader("All circles", count = filteredCircles.size)
+                                    }
+                                }
+                                items(filteredCircles.drop(1), key = { it.id }) { c ->
+                                    CircleRow(c, modifier = Modifier.animateItem()) { onOpen(c.id) }
+                                }
                             }
                         }
                         if (account != null) item { KeepCirclesOffer(account, onLink, onSwitch, onDismissConflict) }
@@ -333,15 +467,16 @@ private fun Note(f: CirclesFailure, onRefresh: () -> Unit) {
     Column(Modifier.padding(horizontal = MM.space.l)) { StatusLine(StatusKind.Warning, f.message, actionLabel = "Retry", onAction = onRefresh) }
 }
 
-/** Featured Circle hero card matching `circles_home.html` (`170dp` cover + `#5B5BD6` lower banner + white `Open` pill). */
+/** Featured Circle hero card matching `circles_home.html` (`170dp` cover + space-adapted lower banner + white `Open` pill). */
 @Composable
-private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
+private fun FeaturedCircleCard(c: Circle, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val memberLabel = "${c.groupWord} · ${if (c.memberCount == 1) "1 member" else "${c.memberCount} members"}"
     val spaceLabel = circleSpace(c)
+    val tint = spaceTint(c)
     Surface(
         shape = MM.radius.card,
-        color = MM.colors.accent,
-        modifier = Modifier.fillMaxWidth().clip(MM.radius.card).clickable(onClick = onClick)
+        color = tint,
+        modifier = modifier.fillMaxWidth().clip(MM.radius.card).clickable(onClick = onClick)
     ) {
         Column {
             Box(
@@ -350,7 +485,7 @@ private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
                     .height(156.dp)
                     .background(
                         Brush.linearGradient(
-                            listOf(CirclesPalette.CoverStart, MM.colors.accent, CirclesPalette.CoverEnd)
+                            listOf(CirclesPalette.CoverStart, tint, CirclesPalette.CoverEnd)
                         )
                     )
             ) {
@@ -366,7 +501,7 @@ private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
                         .matchParentSize()
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))
+                                listOf(Color.Transparent, MM.colors.scrim.copy(alpha = 0.75f))
                             )
                         )
                 )
@@ -379,12 +514,18 @@ private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
                         shape = MM.radius.pill,
                         color = MM.colors.scrim
                     ) {
-                        Text(
-                            spaceLabel,
-                            style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
-                            color = FixedWhite,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(spaceIcon(c), contentDescription = null, tint = FixedWhite, modifier = Modifier.size(13.dp))
+                            Text(
+                                spaceLabel,
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                color = FixedWhite
+                            )
+                        }
                     }
                     Surface(
                         shape = MM.radius.pill,
@@ -422,8 +563,8 @@ private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text("Open", style = MM.type.secondary.copy(fontWeight = FontWeight.Bold), color = MM.colors.accent)
-                            Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.accent, modifier = Modifier.size(16.dp))
+                            Text("Open", style = MM.type.secondary.copy(fontWeight = FontWeight.Bold), color = tint)
+                            Icon(Icons.Rounded.ChevronRight, null, tint = tint, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -433,10 +574,11 @@ private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CircleRow(c: Circle, onClick: () -> Unit) {
+private fun CircleRow(c: Circle, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val memberLabel = "${c.groupWord} · ${if (c.memberCount == 1) "1 member" else "${c.memberCount} members"}"
     val spaceLabel = circleSpace(c)
-    MMCard(onClick = onClick) {
+    val tint = spaceTint(c)
+    MMCard(onClick = onClick, modifier = modifier) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -466,14 +608,20 @@ private fun CircleRow(c: Circle, onClick: () -> Unit) {
                     )
                     Surface(
                         shape = MM.radius.pill,
-                        color = MM.colors.accentWash
+                        color = tint.copy(alpha = 0.14f)
                     ) {
-                        Text(
-                            spaceLabel,
-                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                            color = MM.colors.accent,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(spaceIcon(c), null, tint = tint, modifier = Modifier.size(11.dp))
+                            Text(
+                                spaceLabel,
+                                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                color = tint
+                            )
+                        }
                     }
                 }
                 Text(memberLabel, style = MM.type.caption, color = MM.colors.inkSecondary)
@@ -513,5 +661,99 @@ fun JoinSheet(join: JoinUiState, onDismiss: () -> Unit, onPaste: (String) -> Uni
         join.error?.let { StatusLine(StatusKind.Error, it) }
         if (join.pending) StatusLine(StatusKind.Info, "Request sent. An admin will let you in once they've checked it.")
         if (!join.pending) PrimaryButton(if (join.busy) "Joining..." else "Join", onJoin, enabled = join.canJoin, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun DailyCirclePulseCard(
+    streak: CircleStreakUi,
+    onOpenCircle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val fireTint = if (streak.checkedInToday) MM.colors.gold else MM.colors.accent
+    MMCard(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(
+                modifier = Modifier.weight(1f).padding(end = MM.space.s),
+                verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    Icon(
+                        Icons.Rounded.LocalFireDepartment,
+                        contentDescription = null,
+                        tint = fireTint,
+                        modifier = Modifier.size(MMSize.iconSmall)
+                    )
+                    Text(
+                        if (streak.days > 0) "${streak.days}-day streak" else "Start your streak today",
+                        style = MM.type.bodyStrong,
+                        color = MM.colors.ink
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    if (streak.checkedInToday) {
+                        Surface(
+                            shape = MM.radius.pill,
+                            color = MM.colors.accentWash,
+                            border = BorderStroke(MMSize.hairline, MM.colors.accent.copy(alpha = 0.35f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MM.colors.accent,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    "Checked in today",
+                                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MM.colors.accent
+                                )
+                            }
+                        }
+                    } else {
+                        Surface(
+                            shape = MM.radius.pill,
+                            color = MM.colors.surfaceSunk,
+                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
+                        ) {
+                            Text(
+                                "Open a circle to check in",
+                                style = MM.type.caption,
+                                color = MM.colors.inkSecondary,
+                                modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                            )
+                        }
+                    }
+                }
+            }
+            Surface(
+                shape = MM.radius.pill,
+                color = MM.colors.accentWash,
+                border = BorderStroke(MMSize.hairline, MM.colors.accent),
+                modifier = Modifier.clickable(onClick = onOpenCircle)
+            ) {
+                Text(
+                    if (streak.checkedInToday) "Continue" else "Check in now",
+                    style = MM.type.secondary.copy(fontWeight = FontWeight.SemiBold),
+                    color = MM.colors.accent,
+                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                )
+            }
+        }
     }
 }

@@ -10,6 +10,7 @@ import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import com.craftflowtechnologies.meetingmind.ai.common.isRetryable
 import com.craftflowtechnologies.meetingmind.ai.faith.Prompts
 import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
+import com.craftflowtechnologies.meetingmind.ai.routing.ResolvedLanguageModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -36,7 +37,10 @@ enum class AssistantTool(val id: String, val kind: Kind, val signature: String, 
     INSERT_SCRIPTURE("insert_scripture", Kind.WRITE, "{\"reference\": string}", "Add a Bible passage block; the app fills in the real text."),
     REPLACE_BLOCKS("replace_blocks", Kind.CONFIRM, "{\"block_ids\": [string], \"markdown\": string}", "Replace blocks with new Markdown. The person confirms first."),
     DELETE_BLOCKS("delete_blocks", Kind.CONFIRM, "{\"block_ids\": [string]}", "Remove blocks. The person confirms first."),
+    LIST_TASKS("list_tasks", Kind.READ, "{}", "Open tasks from the person's task list, with ids, due dates and people."),
+    LIST_UPCOMING_REMINDERS("list_upcoming_reminders", Kind.READ, "{}", "Upcoming scheduled task reminders and due items sorted chronologically."),
     CREATE_TASK("create_task", Kind.WRITE, "{\"title\": string, \"due\": \"YYYY-MM-DD\"|null, \"remind_at\": \"YYYY-MM-DDTHH:MM\"|null, \"person\": string|null, \"kind\": \"task\"|\"apply\"|\"prayer\"|\"follow_up\"|null}", "Add a task (with an optional reminder)."),
+    COMPLETE_TASK("complete_task", Kind.WRITE, "{\"task_id\": string}", "Mark an open task (an id from list_tasks) as completed."),
     CREATE_NOTE("create_note", Kind.WRITE, "{\"title\": string, \"markdown\": string}", "Create a new note."),
     LIST_PRAYER_REQUESTS("list_prayer_requests", Kind.READ, "{}", "The person's open prayer requests from their prayer list, with ids."),
     CREATE_PRAYER_REQUEST("create_prayer_request", Kind.WRITE, "{\"title\": string, \"markdown\": string|null}", "Add a new prayer request to the person's prayer list."),
@@ -73,7 +77,7 @@ enum class AssistantTool(val id: String, val kind: Kind, val signature: String, 
                 if (req) required.put(name)
             }
             when (tool) {
-                READ_NOTE, LIST_PRAYER_REQUESTS, LIST_COURSES -> Unit
+                READ_NOTE, LIST_PRAYER_REQUESTS, LIST_COURSES, LIST_TASKS, LIST_UPCOMING_REMINDERS -> Unit
                 SEARCH_NOTES -> str("query", "Keywords to search in the user's other notes.", req = true)
                 READ_TRANSCRIPT -> str("query", "Topic or question to focus on, or omit for an overview.")
                 GET_STUDY_CONCEPTS -> str("query", "Optional topic, concept name, or course filter.")
@@ -103,6 +107,7 @@ enum class AssistantTool(val id: String, val kind: Kind, val signature: String, 
                     str("person", "Optional owner or person involved.")
                     str("kind", "Optional task kind: task, apply, prayer, or follow_up.")
                 }
+                COMPLETE_TASK -> str("task_id", "Id returned by list_tasks.", req = true)
                 CREATE_NOTE -> {
                     str("title", "Title for the new note.", req = true)
                     str("markdown", "Body content in clean Markdown.", req = true)
@@ -255,7 +260,9 @@ class AssistantEngine(
     private val transport: GeminiTransport,
     private val host: AssistantHost,
     private val maxRounds: Int = 5,
-    private val model: String = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL
+    private val model: String = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
+    private val localModelProvider: (suspend () -> ResolvedLanguageModel?)? = null,
+    private val forceLocal: Boolean = false
 ) {
     fun scopedTools(): List<AssistantTool> {
         val scope = host.scope
@@ -354,7 +361,14 @@ class AssistantEngine(
         var finalSay = ""
         var currentStatus = "Thinking"
 
-        fun snapshot(text: String = finalSay, streaming: Boolean = true, done: Boolean = false, error: Boolean = false, retryable: Boolean = true): AssistantTurnState {
+        fun snapshot(
+            text: String = finalSay,
+            streaming: Boolean = true,
+            done: Boolean = false,
+            error: Boolean = false,
+            retryable: Boolean = true,
+            providerOverride: String? = null
+        ): AssistantTurnState {
             val shownText = if (done && !error) {
                 val guarded = if (scope.faith) FaithGuard.clean(text) else text
                 guarded.ifBlank { if (actions.isNotEmpty()) "Done." else "I'm not sure how to help with that — could you say a bit more?" }
@@ -367,7 +381,7 @@ class AssistantEngine(
                     actions = actions.toList(),
                     error = error,
                     retryable = retryable,
-                    provider = com.craftflowtechnologies.meetingmind.ai.cloud.DeepSeek.lastProvider,
+                    provider = providerOverride ?: com.craftflowtechnologies.meetingmind.ai.cloud.DeepSeek.lastProvider,
                     thinking = thinkingAccum.toString().takeIf { it.isNotBlank() },
                     toolSteps = toolSteps.toList(),
                     streaming = streaming
@@ -378,6 +392,45 @@ class AssistantEngine(
         }
 
         emit(snapshot(text = "", streaming = true))
+
+        val canUseCloud = !forceLocal && transport.refreshConfigured()
+        if (!canUseCloud) {
+            val local = localModelProvider?.invoke()
+            if (local == null) {
+                emit(
+                    snapshot(
+                        text = if (forceLocal) {
+                            "This note stays on your device, and no on-device language model is installed yet. Download one in Settings → AI Engine."
+                        } else {
+                            "No AI model is ready yet. Enable Internet mode or download an on-device model in Settings → AI Engine."
+                        },
+                        streaming = false,
+                        done = true,
+                        error = true,
+                        retryable = false
+                    )
+                )
+                return@flow
+            }
+            runLocalRounds(
+                local = local,
+                tools = tools,
+                scope = scope,
+                outline = outline,
+                history = history,
+                message = message,
+                activity = activity,
+                actions = actions,
+                toolSteps = toolSteps,
+                results = results,
+                onStatus = { currentStatus = it },
+                onSay = { finalSay = it },
+                emitSnapshot = { text, streaming, done, err ->
+                    emit(snapshot(text = text, streaming = streaming, done = done, error = err, providerOverride = "On-device (${local.modelId})"))
+                }
+            )
+            return@flow
+        }
 
         for (round in 1..maxRounds) {
             val isLastRound = round == maxRounds
@@ -436,6 +489,27 @@ class AssistantEngine(
 
             if (streamFailure != null) {
                 val err = streamFailure!!
+                val local = if (round == 1 && finalSay.isBlank() && actions.isEmpty()) localModelProvider?.invoke() else null
+                if (local != null) {
+                    runLocalRounds(
+                        local = local,
+                        tools = tools,
+                        scope = scope,
+                        outline = outline,
+                        history = history,
+                        message = message,
+                        activity = activity,
+                        actions = actions,
+                        toolSteps = toolSteps,
+                        results = results,
+                        onStatus = { currentStatus = it },
+                        onSay = { finalSay = it },
+                        emitSnapshot = { text, streaming, done, errFlag ->
+                            emit(snapshot(text = text, streaming = streaming, done = done, error = errFlag, providerOverride = "On-device (${local.modelId})"))
+                        }
+                    )
+                    return@flow
+                }
                 emit(
                     snapshot(
                         text = err.describeFailure() ?: "The assistant couldn't answer just now.",
@@ -546,6 +620,118 @@ class AssistantEngine(
         emit(snapshot(text = finalSay, streaming = false, done = true))
     }
 
+    private suspend fun runLocalRounds(
+        local: ResolvedLanguageModel,
+        tools: List<AssistantTool>,
+        scope: AssistantScope,
+        outline: String,
+        history: List<AssistantMessage>,
+        message: String,
+        activity: MutableList<String>,
+        actions: MutableList<AssistantAction>,
+        toolSteps: MutableList<AssistantToolStep>,
+        results: StringBuilder,
+        onStatus: (String) -> Unit,
+        onSay: (String) -> Unit,
+        emitSnapshot: suspend (text: String, streaming: Boolean, done: Boolean, error: Boolean) -> Unit
+    ) {
+        val localMaxRounds = maxRounds.coerceAtMost(3)
+        val systemPrompt = buildString {
+            if (scope.faith) appendLine(Prompts.faithContract.trim())
+            appendLine(Prompts.get(if (scope.faith) "faith_assistant" else "notes_assistant").system())
+            if (scope.learning) appendLine("Tutor mode: ground answers in lecture notes/concepts and explain clearly.")
+            appendLine("Available tools (JSON):")
+            tools.forEach { t -> appendLine("- ${t.id} ${t.signature}: ${t.doc}") }
+            appendLine("Reply ONLY with JSON: {\"say\": string, \"calls\": [{\"tool\": string, \"args\": object}]}")
+            append("When no tool is needed, reply with \"calls\": [] and your answer in \"say\".")
+        }
+        val compactHistory = history.takeLast(4).joinToString("\n") { m ->
+            (if (m.fromUser) "User: " else "Assistant: ") + m.text.take(350)
+        }
+        val compactOutline = outline.lines().take(30).joinToString("\n").take(2400)
+        var latestSay = ""
+
+        try {
+            for (round in 1..localMaxRounds) {
+                val isLast = round == localMaxRounds
+                val prompt = buildString {
+                    appendLine(systemPrompt)
+                    appendLine("\nToday: ${scope.today}")
+                    appendLine("Scope: ${scope.kindLabel} — \"${scope.title}\"")
+                    if (scope.noteId != null && compactOutline.isNotBlank()) {
+                        appendLine("Note outline:\n$compactOutline")
+                    }
+                    if (compactHistory.isNotBlank()) appendLine("\nRecent conversation:\n$compactHistory")
+                    appendLine("\nUser: $message")
+                    if (results.isNotEmpty()) {
+                        appendLine("\nTool results so far:\n${results.toString().take(3200)}")
+                        if (isLast) appendLine("Final turn: answer the user directly in \"say\" with \"calls\": [].")
+                    }
+                }
+                val gen = local.languageModel.generate(prompt, maxOutputTokens = 640)
+                if (gen !is AiResult.Success) {
+                    val errText = gen.describeFailure() ?: "On-device model couldn't answer just now."
+                    emitSnapshot(errText, false, true, true)
+                    return
+                }
+                val turn = AssistantProtocol.parse(gen.value)
+                if (turn.say.isNotBlank()) {
+                    latestSay = turn.say
+                    onSay(latestSay)
+                }
+                if (turn.calls.isEmpty() || isLast) break
+
+                val calls = turn.calls.take(4)
+                val stepIds = calls.mapIndexed { idx, c ->
+                    val stepId = "local_${round}_$idx"
+                    toolSteps += AssistantToolStep(stepId, labelForRunningTool(c), AssistantToolStep.State.RUNNING)
+                    stepId
+                }
+                onStatus(toolSteps.lastOrNull()?.label ?: "Running tools")
+                emitSnapshot(latestSay, true, false, false)
+
+                val readIndices = calls.indices.filter { calls[it].tool.kind == AssistantTool.Kind.READ }
+                val readOutcomes: Map<Int, ToolResult> = if (readIndices.isEmpty()) emptyMap() else coroutineScope {
+                    readIndices.map { i ->
+                        async {
+                            val call = calls[i]
+                            i to runCatching { host.read(call) }.getOrElse { ToolResult("Couldn't ${call.tool.id}", "error: ${it.message}", ok = false) }
+                        }
+                    }.awaitAll().toMap()
+                }
+                var needsAnother = false
+                for (i in calls.indices) {
+                    val call = calls[i]
+                    val stepId = stepIds[i]
+                    val (resTool, action) = if (call.tool.kind == AssistantTool.Kind.READ) {
+                        needsAnother = true
+                        readOutcomes.getValue(i) to null
+                    } else {
+                        val pair = runCatching { host.write(call) }.getOrElse {
+                            ToolResult("Couldn't ${call.tool.id}", "error: ${it.message}", ok = false) to
+                                AssistantAction("err", "Couldn't ${call.tool.id.replace('_', ' ')}", state = AssistantAction.State.DISCARDED)
+                        }
+                        if (!pair.first.ok) needsAnother = true
+                        pair
+                    }
+                    if (action != null && resTool.ok) actions += action
+                    activity += resTool.chip
+                    onStatus(resTool.chip)
+                    val sIdx = toolSteps.indexOfFirst { it.id == stepId }
+                    if (sIdx >= 0) {
+                        toolSteps[sIdx] = AssistantToolStep(stepId, resTool.chip, if (resTool.ok) AssistantToolStep.State.DONE else AssistantToolStep.State.FAILED)
+                    }
+                    results.append("[${call.tool.id}]\n${resTool.text.take(2000)}\n\n")
+                }
+                emitSnapshot(latestSay, true, false, false)
+                if (!needsAnother && latestSay.isNotBlank()) break
+            }
+            emitSnapshot(latestSay, false, true, false)
+        } finally {
+            runCatching { com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release() }
+        }
+    }
+
     private fun labelForRunningTool(call: ToolCall): String = when (call.tool) {
         AssistantTool.READ_NOTE -> "Reading note…"
         AssistantTool.SEARCH_NOTES -> "Searching notes…"
@@ -560,7 +746,10 @@ class AssistantEngine(
         AssistantTool.INSERT_SCRIPTURE -> "Adding scripture…"
         AssistantTool.REPLACE_BLOCKS -> "Preparing edit…"
         AssistantTool.DELETE_BLOCKS -> "Preparing removal…"
+        AssistantTool.LIST_TASKS -> "Checking tasks…"
+        AssistantTool.LIST_UPCOMING_REMINDERS -> "Checking reminders…"
         AssistantTool.CREATE_TASK -> "Adding task…"
+        AssistantTool.COMPLETE_TASK -> "Completing task…"
         AssistantTool.CREATE_NOTE -> "Creating note…"
         AssistantTool.CREATE_PRAYER_REQUEST -> "Adding prayer…"
         AssistantTool.MARK_PRAYER_ANSWERED -> "Updating prayer…"

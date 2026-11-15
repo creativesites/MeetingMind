@@ -8,6 +8,8 @@ import {
   LEARNING_REACTIONS,
   GENERAL_REACTIONS,
   TEMPLATES,
+  cleanPostMeta,
+  shapePoll,
 } from "../../src/logic.js";
 import { FakeDb, FakeKv, FakeFcm, makeCtx } from "./fakes.js";
 
@@ -33,6 +35,7 @@ test("work circle: create with work space and project_team template", async () =
   assert.equal(circle.vocab, "Team");
   assert.equal(circle.settings.prayerApproval, false);
   assert.deepEqual(circle.settings.allowedTypes, TEMPLATES.project_team);
+  assert.ok(circle.settings.allowedTypes.includes("blocker"));
   assert.ok(circle.settings.reactions.includes("ack"));
   assert.ok(circle.settings.reactions.includes("approved"));
 });
@@ -85,6 +88,9 @@ test("work circle: accepts work post types and work reactions", async () => {
     requestId: crypto.randomUUID()
   });
 
+  const circle = W.db.dump(`circles/${circleId}`);
+  assert.ok(circle.settings.allowedTypes.includes("blocker"));
+
   // Post a task
   const postRes = await W.call("lead", "createPost", {
     circleId,
@@ -98,6 +104,20 @@ test("work circle: accepts work post types and work reactions", async () => {
   const savedPost = W.db.dump(`circles/${circleId}/posts/${postRes.postId}`);
   assert.equal(savedPost.type, "task");
   assert.equal(savedPost.body, "Implement the OAuth 2.0 PKCE flow for mobile clients");
+
+  // Post a blocker
+  const blockerRes = await W.call("lead", "createPost", {
+    circleId,
+    type: "blocker",
+    body: "Staging deployment pipeline failing",
+    anonymous: false,
+    requestId: crypto.randomUUID()
+  });
+  assert.ok(blockerRes.postId);
+
+  const savedBlocker = W.db.dump(`circles/${circleId}/posts/${blockerRes.postId}`);
+  assert.equal(savedBlocker.type, "blocker");
+  assert.equal(savedBlocker.body, "Staging deployment pipeline failing");
 
   // React with work reaction "ack" (👍 On it)
   await W.call("lead", "react", { circleId, postId: postRes.postId, kind: "ack" });
@@ -310,4 +330,216 @@ test("work circle: createPoll supports closesAt deadline", async () => {
   });
   assert.equal(badPoll.code, "bad_request");
   assert.equal(badPoll.message, "Poll deadline must be a valid time.");
+});
+
+test("cleanPostMeta: sanitizes tags and checklist", () => {
+  // Tags: trim, strip leading #, max 24 chars, max 4 items, dedupe case-insensitively, filter empty
+  const metaWithTags = cleanPostMeta({
+    tags: [
+      "  #backend  ",
+      "##Frontend",
+      "BACKEND", // duplicate case-insensitive
+      "   ",
+      "#",
+      "a".repeat(30), // truncated to 24 chars
+      "mobile",
+      "extra-tag-5", // exceeds max 4
+    ],
+  });
+  assert.deepEqual(metaWithTags.tags, ["backend", "Frontend", "a".repeat(24), "mobile"]);
+
+  // Empty tags array or all blank tags leaves tags undefined
+  assert.equal(cleanPostMeta({ tags: ["#", "   "] }), null);
+
+  // Checklist: max 8 items, trimmed text <= 120, id string trimmed <= 32 (default c{idx}), done boolean
+  const metaWithChecklist = cleanPostMeta({
+    checklist: [
+      { id: "step-1", text: "  Design schema  ", done: true },
+      { text: "Implement endpoint", done: false }, // defaults id to c1
+      { id: "  custom-id  ", text: "b".repeat(150), done: "not-bool" }, // text trimmed to 120, done false
+      { id: "bad", text: "   " }, // skipped because empty text
+      { text: "Item 4" },
+      { text: "Item 5" },
+      { text: "Item 6" },
+      { text: "Item 7" },
+      { text: "Item 8" },
+      { text: "Item 9" }, // exceeds max 8 items
+    ],
+  });
+  assert.equal(metaWithChecklist.checklist.length, 8);
+  assert.deepEqual(metaWithChecklist.checklist[0], { id: "step-1", text: "Design schema", done: true });
+  assert.deepEqual(metaWithChecklist.checklist[1], { id: "c1", text: "Implement endpoint", done: false });
+  assert.deepEqual(metaWithChecklist.checklist[2], { id: "custom-id", text: "b".repeat(120), done: false });
+  assert.equal(metaWithChecklist.checklist[3].id, "c3");
+  assert.equal(metaWithChecklist.checklist[7].id, "c7");
+});
+
+test("toggleChecklistItem: membership, toggle boolean, explicit done, and 404 handling", async () => {
+  const W = world();
+  const { circleId } = await W.call("lead", "createCircle", {
+    name: "Engineering Team",
+    template: "project_team",
+    space: "work",
+    displayName: "Tech Lead",
+    requestId: crypto.randomUUID(),
+  });
+
+  // Create post with checklist
+  const post = await W.call("lead", "createPost", {
+    circleId,
+    type: "task",
+    body: "Deployment steps",
+    anonymous: false,
+    requestId: crypto.randomUUID(),
+    meta: {
+      checklist: [
+        { id: "item-1", text: "Run migrations", done: false },
+        { id: "item-2", text: "Deploy workers", done: true },
+      ],
+    },
+  });
+  const postId = post.postId;
+
+  // Toggle item-1 from false to true (omitting done)
+  const res1 = await W.call("lead", "toggleChecklistItem", {
+    circleId,
+    postId,
+    itemId: "item-1",
+  });
+  assert.equal(res1.ok, true);
+  assert.equal(res1.checklist[0].done, true);
+  assert.equal(res1.checklist[1].done, true);
+  let saved = W.db.dump(`circles/${circleId}/posts/${postId}`);
+  assert.equal(saved.meta.checklist[0].done, true);
+
+  // Toggle item-1 from true to false (omitting done)
+  const res2 = await W.call("lead", "toggleChecklistItem", {
+    circleId,
+    postId,
+    itemId: "item-1",
+  });
+  assert.equal(res2.checklist[0].done, false);
+
+  // Explicit done: true
+  const res3 = await W.call("lead", "toggleChecklistItem", {
+    circleId,
+    postId,
+    itemId: "item-1",
+    done: true,
+  });
+  assert.equal(res3.checklist[0].done, true);
+
+  // Explicit done: false
+  const res4 = await W.call("lead", "toggleChecklistItem", {
+    circleId,
+    postId,
+    itemId: "item-1",
+    done: false,
+  });
+  assert.equal(res4.checklist[0].done, false);
+
+  // 404 for missing checklist item
+  const missingItem = await W.err("lead", "toggleChecklistItem", {
+    circleId,
+    postId,
+    itemId: "non-existent-item",
+  });
+  assert.equal(missingItem.code, "not_found");
+
+  // 404 for missing post
+  const missingPost = await W.err("lead", "toggleChecklistItem", {
+    circleId,
+    postId: "missing-post-id",
+    itemId: "item-1",
+  });
+  assert.equal(missingPost.code, "not_found");
+
+  // 403 for non-member
+  const nonMember = await W.err("outsider", "toggleChecklistItem", {
+    circleId,
+    postId,
+    itemId: "item-1",
+  });
+  assert.equal(nonMember.code, "not_a_member");
+});
+
+test("quiz polls: shapePoll and createPoll support correctOptionId, correctIndex, and explanation", async () => {
+  // shapePoll with valid correctIndex
+  const p1 = shapePoll({
+    question: "What is 2+2?",
+    options: ["3", "4", "5"],
+    correctIndex: 1,
+    explanation: "Basic arithmetic: 2 + 2 = 4.",
+  });
+  assert.equal(p1.correctOptionId, "o1");
+  assert.equal(p1.explanation, "Basic arithmetic: 2 + 2 = 4.");
+
+  // shapePoll with valid correctOptionId
+  const p2 = shapePoll({
+    question: "Select capital of France",
+    options: ["Berlin", "London", "Paris"],
+    correctOptionId: "o2",
+  });
+  assert.equal(p2.correctOptionId, "o2");
+  assert.equal("explanation" in p2, false);
+
+  // Rejects quiz poll when multi is true
+  assert.throws(() => shapePoll({
+    question: "Quiz question",
+    options: ["A", "B"],
+    multi: true,
+    correctIndex: 0,
+  }), /Quiz polls cannot be multiple choice/);
+
+  // Rejects invalid correctIndex
+  assert.throws(() => shapePoll({
+    question: "Quiz question",
+    options: ["A", "B"],
+    correctIndex: 5,
+  }), /Invalid correctIndex/);
+
+  assert.throws(() => shapePoll({
+    question: "Quiz question",
+    options: ["A", "B"],
+    correctIndex: -1,
+  }), /Invalid correctIndex/);
+
+  // Rejects invalid correctOptionId
+  assert.throws(() => shapePoll({
+    question: "Quiz question",
+    options: ["A", "B"],
+    correctOptionId: "o99",
+  }), /Invalid correctOptionId/);
+
+  // Explanation max 240 chars
+  assert.throws(() => shapePoll({
+    question: "Quiz question",
+    options: ["A", "B"],
+    correctIndex: 0,
+    explanation: "x".repeat(241),
+  }), /explanation is too long/);
+
+  // createPoll end to end in world
+  const W = world();
+  const { circleId } = await W.call("teacher", "createCircle", {
+    name: "Biology 101",
+    template: "project_team",
+    space: "work",
+    displayName: "Prof Smith",
+    requestId: crypto.randomUUID(),
+  });
+
+  const pollRes = await W.call("teacher", "createPoll", {
+    circleId,
+    question: "What organelle produces ATP?",
+    options: ["Nucleus", "Mitochondria", "Ribosome"],
+    correctIndex: 1,
+    explanation: "Mitochondria are the powerhouses of the cell.",
+  });
+
+  assert.ok(pollRes.pollId);
+  const pollDoc = W.db.dump(`circles/${circleId}/polls/${pollRes.pollId}`);
+  assert.equal(pollDoc.correctOptionId, "o1");
+  assert.equal(pollDoc.explanation, "Mitochondria are the powerhouses of the cell.");
+  assert.equal(pollDoc.multi, false);
 });

@@ -244,4 +244,29 @@ class TranscriptToolEngineTest {
             )
         }
     }
+
+    @Test
+    fun `chunks long transcripts for small 4K local models and runs new vital tools`() = runBlocking {
+        val manySegments = (1..18).map { i ->
+            segment("s$i", "Discussion point number $i with blocker on budget $i " + "detail ".repeat(40), i * 10_000L)
+        }
+        val calls = mutableListOf<String>()
+        val chunkModel = object : LanguageModel {
+            override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> {
+                calls += prompt
+                return AiResult.Success("""{"items":[{"text":"Budget blocker spotted","detail":"Owner needed","sources":["s1"]}]}""")
+            }
+        }
+        val localEngine = TranscriptToolEngine(chunkModel, engineName = "test-local", contextLengthTokens = 4096)
+        val result = localEngine.run(TranscriptAiToolType.FIND_RISKS_BLOCKERS, manySegments)
+
+        assertTrue(calls.size > 1)
+        assertTrue(result is AiResult.Success)
+        val docModel = object : LanguageModel {
+            override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> =
+                AiResult.Success("""{"markdown":"## Follow-up Email\nThanks everyone."}""")
+        }
+        val email = TranscriptToolEngine(docModel, engineName = "test-local", contextLengthTokens = 4096).run(TranscriptAiToolType.DRAFT_FOLLOW_UP, manySegments.take(2))
+        assertTrue((email as AiResult.Success).value is ToolOutcome.TextDocument)
+    }
 }

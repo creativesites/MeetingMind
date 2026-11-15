@@ -8,6 +8,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -18,9 +19,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.PictureAsPdf
@@ -46,6 +52,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import com.craftflowtechnologies.meetingmind.core.circles2.ChecklistItem
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.Comment
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
@@ -67,6 +74,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.feature.scripture.rememberPassage
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -705,6 +713,251 @@ fun ComposerSheet(
                         style = MM.type.caption,
                         color = if (state.body.length > 3800) CirclesPalette.RoseInk else MM.colors.inkMuted
                     )
+                }
+            }
+        }
+
+        // Collapsible compact Tags & Checklist section
+        var tagsChecklistExpanded by remember { mutableStateOf(localMeta.tags.isNotEmpty() || localMeta.checklist.isNotEmpty()) }
+        var tagInput by remember { mutableStateOf("") }
+        var checklistInput by remember { mutableStateOf("") }
+        val quickPickTags = remember(circle.isWork, circle.isLearning) {
+            when {
+                circle.isWork -> listOf("sprint", "shipped", "blocked", "decision")
+                circle.isLearning -> listOf("exam", "summary", "formula", "review")
+                else -> listOf("gratitude", "prayer", "event", "resource")
+            }
+        }
+
+        Surface(
+            shape = MM.radius.card,
+            color = MM.colors.surfaceSunk,
+            border = BorderStroke(MMSize.hairline, MM.colors.line),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                Modifier.padding(MM.space.m),
+                verticalArrangement = Arrangement.spacedBy(MM.space.s)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().clip(MM.radius.card).clickable { tagsChecklistExpanded = !tagsChecklistExpanded },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs / 2)) {
+                        Text(
+                            "Tags & Checklist",
+                            style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold),
+                            color = MM.colors.ink
+                        )
+                        val summaryParts = listOfNotNull(
+                            "${localMeta.tags.size}/4 tags".takeIf { localMeta.tags.isNotEmpty() },
+                            "${localMeta.checklist.size}/8 items".takeIf { localMeta.checklist.isNotEmpty() }
+                        )
+                        if (summaryParts.isNotEmpty()) {
+                            Text(
+                                summaryParts.joinToString(" · "),
+                                style = MM.type.caption,
+                                color = MM.colors.inkSecondary
+                            )
+                        } else {
+                            Text(
+                                "Add labels or action items",
+                                style = MM.type.caption,
+                                color = MM.colors.inkMuted
+                            )
+                        }
+                    }
+                    Icon(
+                        if (tagsChecklistExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = if (tagsChecklistExpanded) "Collapse" else "Expand",
+                        tint = MM.colors.inkSecondary
+                    )
+                }
+
+                if (tagsChecklistExpanded) {
+                    // --- Tags (up to 4) ---
+                    Text(
+                        "Tags (${localMeta.tags.size}/4)",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = MM.colors.inkSecondary
+                    )
+                    if (localMeta.tags.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            localMeta.tags.forEach { tag ->
+                                Surface(
+                                    shape = MM.radius.pill,
+                                    color = MM.colors.accentWash,
+                                    border = BorderStroke(MMSize.hairline, MM.colors.accent.copy(alpha = 0.35f)),
+                                    modifier = Modifier.clip(MM.radius.pill).clickable {
+                                        updateMeta { it.copy(tags = it.tags.filter { t -> t != tag }) }
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(start = MM.space.s, top = MM.space.xs / 2, end = MM.space.xs, bottom = MM.space.xs / 2),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
+                                    ) {
+                                        Text(
+                                            "#$tag",
+                                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MM.colors.accent
+                                        )
+                                        Icon(
+                                            Icons.Rounded.Close,
+                                            contentDescription = "Remove tag $tag",
+                                            tint = MM.colors.accent,
+                                            modifier = Modifier.size(MMSize.iconSmall - MM.space.xs)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Space-specific quick-pick chips
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        quickPickTags.forEach { qTag ->
+                            val isSelected = qTag in localMeta.tags
+                            MMChip(
+                                label = "#$qTag",
+                                selected = isSelected,
+                                onClick = {
+                                    if (isSelected) {
+                                        updateMeta { it.copy(tags = it.tags.filter { t -> t != qTag }) }
+                                    } else if (localMeta.tags.size < 4) {
+                                        updateMeta { it.copy(tags = (it.tags + qTag).distinct().take(4)) }
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    // Inline tag input
+                    if (localMeta.tags.size < 4) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                        ) {
+                            Box(Modifier.weight(1f)) {
+                                CircleField(
+                                    value = tagInput,
+                                    onValueChange = { tagInput = it.take(24) },
+                                    label = "Custom tag",
+                                    placeholder = "e.g. launch, meeting"
+                                )
+                            }
+                            SecondaryButton(
+                                text = "Add",
+                                onClick = {
+                                    val clean = tagInput.trim().lowercase().removePrefix("#")
+                                    if (clean.isNotEmpty() && clean !in localMeta.tags && localMeta.tags.size < 4) {
+                                        updateMeta { it.copy(tags = (it.tags + clean).distinct().take(4)) }
+                                        tagInput = ""
+                                    }
+                                },
+                                enabled = tagInput.trim().isNotEmpty() && localMeta.tags.size < 4
+                            )
+                        }
+                    }
+
+                    // --- Checklist (up to 8 items) ---
+                    Text(
+                        "Checklist (${localMeta.checklist.size}/8)",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = MM.colors.inkSecondary
+                    )
+                    if (localMeta.checklist.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                            localMeta.checklist.forEach { item ->
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .clip(MM.radius.small)
+                                        .background(MM.colors.surface)
+                                        .padding(horizontal = MM.space.s, vertical = MM.space.xs),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            updateMeta { m ->
+                                                m.copy(checklist = m.checklist.map {
+                                                    if (it.id == item.id) it.copy(done = !it.done) else it
+                                                })
+                                            }
+                                        },
+                                        modifier = Modifier.size(MMSize.iconSmall + MM.space.s)
+                                    ) {
+                                        Icon(
+                                            if (item.done) Icons.Rounded.CheckCircle else Icons.Rounded.CheckCircleOutline,
+                                            contentDescription = if (item.done) "Mark incomplete" else "Mark complete",
+                                            tint = if (item.done) MM.colors.accent else MM.colors.inkMuted,
+                                            modifier = Modifier.size(MMSize.iconSmall)
+                                        )
+                                    }
+                                    Text(
+                                        item.text,
+                                        style = if (item.done) MM.type.caption.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough) else MM.type.caption,
+                                        color = if (item.done) MM.colors.inkMuted else MM.colors.ink,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            updateMeta { m -> m.copy(checklist = m.checklist.filter { it.id != item.id }) }
+                                        },
+                                        modifier = Modifier.size(MMSize.iconSmall + MM.space.s)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Close,
+                                            contentDescription = "Remove item",
+                                            tint = MM.colors.inkSecondary,
+                                            modifier = Modifier.size(MMSize.iconSmall - MM.space.xs)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Inline checklist input
+                    if (localMeta.checklist.size < 8) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                        ) {
+                            Box(Modifier.weight(1f)) {
+                                CircleField(
+                                    value = checklistInput,
+                                    onValueChange = { checklistInput = it.take(120) },
+                                    label = "Add action item",
+                                    placeholder = "Add action item…"
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    val clean = checklistInput.trim()
+                                    if (clean.isNotEmpty() && localMeta.checklist.size < 8) {
+                                        val id = "chk_${System.currentTimeMillis()}_${localMeta.checklist.size}"
+                                        updateMeta { it.copy(checklist = it.checklist + ChecklistItem(id = id, text = clean, done = false)) }
+                                        checklistInput = ""
+                                    }
+                                },
+                                enabled = checklistInput.trim().isNotEmpty() && localMeta.checklist.size < 8
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = "Add item", tint = MM.colors.accent)
+                            }
+                        }
+                    }
                 }
             }
         }

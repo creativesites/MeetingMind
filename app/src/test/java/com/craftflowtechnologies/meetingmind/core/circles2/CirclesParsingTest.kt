@@ -174,4 +174,47 @@ class CirclesParsingTest {
         ))
         assertNull(pollZeroDeadline?.closesAt)
     }
+
+    @Test fun `post meta parses tags and checklist items with defaults`() {
+        val metaMap = mapOf(
+            "tags" to listOf("engineering", "kotlin", "mobile"),
+            "checklist" to listOf(
+                mapOf("id" to "step-1", "text" to "Schema", "done" to true),
+                mapOf("text" to "Endpoint", "done" to false),
+                mapOf("id" to "blank-step", "text" to "   ")
+            )
+        )
+        val meta = CirclesParsing.postMeta(metaMap)
+        assertFalse(meta?.isEmpty == true)
+        assertEquals(listOf("engineering", "kotlin", "mobile"), meta?.tags)
+        assertEquals(2, meta?.checklist?.size)
+        assertEquals(ChecklistItem("step-1", "Schema", true), meta?.checklist?.get(0))
+        assertEquals(ChecklistItem("c1", "Endpoint", false), meta?.checklist?.get(1))
+
+        val post = CirclesParsing.post("p-check", mapOf(
+            "type" to "task",
+            "body" to "Do the thing",
+            "meta" to metaMap
+        ))
+        assertEquals(listOf("engineering", "kotlin", "mobile"), post?.meta?.tags)
+        assertEquals(2, post?.meta?.checklist?.size)
+    }
+
+    @Test fun `quiz poll parses correctOptionId and explanation`() {
+        val quizPoll = CirclesParsing.poll("p-quiz", mapOf(
+            "question" to "What is Kotlin?",
+            "options" to listOf(mapOf("id" to "o0", "text" to "Language"), mapOf("id" to "o1", "text" to "Database")),
+            "correctOptionId" to "o0",
+            "explanation" to "Kotlin is a modern programming language."
+        ))
+        assertEquals("o0", quizPoll?.correctOptionId)
+        assertEquals("Kotlin is a modern programming language.", quizPoll?.explanation)
+
+        val normalPoll = CirclesParsing.poll("p-normal", mapOf(
+            "question" to "Regular question",
+            "options" to listOf(mapOf("id" to "o0", "text" to "A"), mapOf("id" to "o1", "text" to "B"))
+        ))
+        assertNull(normalPoll?.correctOptionId)
+        assertNull(normalPoll?.explanation)
+    }
 }

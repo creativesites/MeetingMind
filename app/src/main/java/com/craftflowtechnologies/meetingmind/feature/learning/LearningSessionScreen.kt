@@ -2,14 +2,19 @@ package com.craftflowtechnologies.meetingmind.feature.learning
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation. fadeIn
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -144,6 +149,7 @@ fun LearningSessionScreen(
     val visualError by viewModel.visualError.collectAsState()
     val simpleExplanations by viewModel.simpleExplanations.collectAsState()
     val explainingSimpleConceptId by viewModel.explainingSimpleConceptId.collectAsState()
+    val savedConceptExplanationIds by viewModel.savedConceptExplanationIds.collectAsState()
     var isLoadingSession by remember(noteId) { mutableStateOf(true) }
     var isCreatingSession by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -223,6 +229,10 @@ fun LearningSessionScreen(
         onExplainConceptSimply = { concept ->
             viewModel.explainConceptSimply(concept, sessionDetail?.session?.domain ?: SubjectDomain.GENERAL)
         },
+        savedConceptExplanationIds = savedConceptExplanationIds,
+        onSaveExplanationToNote = { concept, explanation ->
+            viewModel.saveSimpleExplanationToNote(concept, explanation)
+        },
         onRetry = {
             scope.launch {
                 isLoadingSession = true
@@ -282,6 +292,8 @@ fun LearningSessionContent(
     explainingSimpleConceptId: String? = null,
     onGenerateVisual: (LearningConcept, LearningVisualKind) -> Unit = { _, _ -> },
     onExplainConceptSimply: (LearningConcept) -> Unit = {},
+    savedConceptExplanationIds: Set<String> = emptySet(),
+    onSaveExplanationToNote: (LearningConcept, SimpleExplanation) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val c = MM.colors
@@ -290,6 +302,8 @@ fun LearningSessionContent(
     var showCourseLinkDialog by remember { mutableStateOf(false) }
     var showAddConceptDialog by remember { mutableStateOf(false) }
     var selectedPracticeFilter by remember { mutableStateOf(PracticeArenaFilter.ALL) }
+    var selectedConceptFilter by remember { mutableStateOf("ALL") }
+    var conceptSearchQuery by remember { mutableStateOf("") }
 
     if (showCourseLinkDialog && sessionDetail != null) {
         CourseFromLectureDialog(
@@ -426,6 +440,11 @@ fun LearningSessionContent(
             ) {
                 SessionTab.entries.forEach { tab ->
                     val isSelected = tab == activeTab
+                    val tabBg by animateColorAsState(
+                        targetValue = if (isSelected) c.surfaceRaised else c.surfaceSunk,
+                        animationSpec = MM.motion.quick(),
+                        label = "session_tab_bg_${tab.name}"
+                    )
                     val label = when (tab) {
                         SessionTab.UNDERSTAND -> "Lecture Notes"
                         SessionTab.CONCEPTS -> "Concepts (${sessionDetail.concepts.size})"
@@ -437,7 +456,7 @@ fun LearningSessionContent(
                             .weight(1f)
                             .heightIn(min = MMSize.minTouch)
                             .clip(MM.radius.small)
-                            .background(if (isSelected) c.surface else c.surfaceSunk)
+                            .background(tabBg)
                             .semantics {
                                 role = Role.Tab
                                 selected = isSelected
@@ -512,68 +531,138 @@ fun LearningSessionContent(
                         }
 
                         SessionTab.CONCEPTS -> {
+                            val filteredConcepts = sessionDetail.concepts.filter { concept ->
+                                val matchesFilter = when (selectedConceptFilter) {
+                                    "REVIEW" -> concept.state == LearningMasteryState.NEEDS_REVIEW || concept.state == LearningMasteryState.NEW
+                                    "HIGH_YIELD" -> concept.examImportance != ExamImportance.NORMAL
+                                    "STRONG" -> concept.state == LearningMasteryState.STRONG
+                                    else -> true
+                                }
+                                val matchesQuery = conceptSearchQuery.isBlank() ||
+                                    concept.name.contains(conceptSearchQuery.trim(), ignoreCase = true) ||
+                                    concept.definition.contains(conceptSearchQuery.trim(), ignoreCase = true)
+                                matchesFilter && matchesQuery
+                            }
+
                             item(key = "concepts_toolbar") {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "${sessionDetail.concepts.size} Key Concepts",
-                                        style = MM.type.bodyStrong,
-                                        color = c.ink
-                                    )
-                                    Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(MM.radius.pill)
-                                                .background(c.surfaceSunk)
-                                                .clickable(enabled = !isSynthesizing, onClick = onRegenerateMaterials)
-                                                .padding(horizontal = MM.space.m, vertical = MM.space.xs)
-                                                .testTag("session_extract_concepts")
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                                Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${sessionDetail.concepts.size} Key Concepts",
+                                            style = MM.type.bodyStrong,
+                                            color = c.ink
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(MM.radius.pill)
+                                                    .background(c.surfaceSunk)
+                                                    .clickable(enabled = !isSynthesizing, onClick = onRegenerateMaterials)
+                                                    .padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                                                    .testTag("session_extract_concepts")
                                             ) {
-                                                Icon(
-                                                    Icons.Rounded.Refresh,
-                                                    contentDescription = null,
-                                                    tint = c.accent,
-                                                    modifier = Modifier.size(MM.space.m)
-                                                )
-                                                Text(
-                                                    text = if (isSynthesizing) "Extracting…" else "AI Extract",
-                                                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                                    color = c.accent
-                                                )
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Rounded.Refresh,
+                                                        contentDescription = null,
+                                                        tint = c.accent,
+                                                        modifier = Modifier.size(MM.space.m)
+                                                    )
+                                                    Text(
+                                                        text = if (isSynthesizing) "Extracting…" else "AI Extract",
+                                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                                        color = c.accent
+                                                    )
+                                                }
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(MM.radius.pill)
+                                                    .background(c.accent)
+                                                    .clickable { showAddConceptDialog = true }
+                                                    .padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                                                    .testTag("session_add_concept")
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Rounded.Add,
+                                                        contentDescription = null,
+                                                        tint = c.onAccent,
+                                                        modifier = Modifier.size(MM.space.m)
+                                                    )
+                                                    Text(
+                                                        text = "Add Concept",
+                                                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                                        color = c.onAccent
+                                                    )
+                                                }
                                             }
                                         }
-                                        Box(
+                                    }
+
+                                    if (sessionDetail.concepts.size > 2) {
+                                        val reviewCount = sessionDetail.concepts.count {
+                                            it.state == LearningMasteryState.NEEDS_REVIEW || it.state == LearningMasteryState.NEW
+                                        }
+                                        val highYieldCount = sessionDetail.concepts.count {
+                                            it.examImportance != ExamImportance.NORMAL
+                                        }
+                                        val strongCount = sessionDetail.concepts.count {
+                                            it.state == LearningMasteryState.STRONG
+                                        }
+                                        Row(
                                             modifier = Modifier
-                                                .clip(MM.radius.pill)
-                                                .background(c.accent)
-                                                .clickable { showAddConceptDialog = true }
-                                                .padding(horizontal = MM.space.m, vertical = MM.space.xs)
-                                                .testTag("session_add_concept")
+                                                .fillMaxWidth()
+                                                .horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
                                         ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.Add,
-                                                    contentDescription = null,
-                                                    tint = c.onAccent,
-                                                    modifier = Modifier.size(MM.space.m)
+                                            listOf(
+                                                "ALL" to "All (${sessionDetail.concepts.size})",
+                                                "REVIEW" to "To Review ($reviewCount)",
+                                                "HIGH_YIELD" to "High-Yield ($highYieldCount)",
+                                                "STRONG" to "Mastered ($strongCount)"
+                                            ).forEach { (key, label) ->
+                                                val isSel = selectedConceptFilter == key
+                                                val chipBg by animateColorAsState(
+                                                    targetValue = if (isSel) c.accent else c.surfaceSunk,
+                                                    animationSpec = MM.motion.quick(),
+                                                    label = "concept_filter_$key"
                                                 )
-                                                Text(
-                                                    text = "Add Concept",
-                                                    style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
-                                                    color = c.onAccent
-                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(MM.radius.pill)
+                                                        .background(chipBg)
+                                                        .clickable { selectedConceptFilter = key }
+                                                        .padding(horizontal = MM.space.m, vertical = MM.space.xs / 2)
+                                                ) {
+                                                    Text(
+                                                        text = label,
+                                                        style = MM.type.caption.copy(fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium),
+                                                        color = if (isSel) c.onAccent else c.inkSecondary
+                                                    )
+                                                }
                                             }
                                         }
+                                    }
+
+                                    if (sessionDetail.concepts.size > 4) {
+                                        OutlinedTextField(
+                                            value = conceptSearchQuery,
+                                            onValueChange = { conceptSearchQuery = it },
+                                            label = { Text("Search concepts or definitions…") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
                                     }
                                 }
                             }
@@ -604,8 +693,33 @@ fun LearningSessionContent(
                                         }
                                     }
                                 }
+                            } else if (filteredConcepts.isEmpty()) {
+                                item(key = "empty_filtered_concepts") {
+                                    MMCard(contentPadding = MM.space.m) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "No concepts match this filter.",
+                                                style = MM.type.secondary,
+                                                color = c.inkSecondary
+                                            )
+                                            Text(
+                                                text = "Show All",
+                                                style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                                color = c.accent,
+                                                modifier = Modifier.clickable {
+                                                    selectedConceptFilter = "ALL"
+                                                    conceptSearchQuery = ""
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
                             } else {
-                                items(sessionDetail.concepts, key = { it.id }) { concept ->
+                                items(filteredConcepts, key = { it.id }) { concept ->
                                     val linkedActivities = sessionDetail.activities.filter { it.conceptId == concept.id }
                                     ConceptCard(
                                         concept = concept,
@@ -614,8 +728,10 @@ fun LearningSessionContent(
                                         visualError = if (generatingVisualConceptId == concept.id || conceptVisuals.containsKey(concept.id)) null else visualError,
                                         simpleExplanation = simpleExplanations[concept.id],
                                         isExplainingSimple = explainingSimpleConceptId == concept.id,
+                                        isSavedToNote = concept.id in savedConceptExplanationIds,
                                         onGenerateVisual = { kind -> onGenerateVisual(concept, kind) },
                                         onExplainSimply = { onExplainConceptSimply(concept) },
+                                        onSaveExplanationToNote = { exp -> onSaveExplanationToNote(concept, exp) },
                                         onToggleImportance = { onToggleConceptImportance(concept) },
                                         onPracticeConcept = if (linkedActivities.isNotEmpty()) {
                                             { onStartPractice(linkedActivities) }
@@ -709,7 +825,9 @@ fun LearningSessionContent(
                                     concepts = sessionDetail.concepts,
                                     activities = sessionDetail.activities,
                                     attemptsCount = sessionDetail.attempts.size,
-                                    onTogglePause = onTogglePause
+                                    onTogglePause = onTogglePause,
+                                    onStartPractice = { onStartPractice(sessionDetail.activities) },
+                                    onAskTutor = onOpenAssistant
                                 )
                             }
                         }
@@ -872,6 +990,11 @@ private fun UnderstandTabHeader(
                     onClick = onOpenEditor,
                     modifier = Modifier.weight(1f).testTag("session_open_editor")
                 )
+                SecondaryButton(
+                    text = "Ask Tutor",
+                    onClick = onAskTutor,
+                    modifier = Modifier.weight(1f).testTag("session_ask_tutor")
+                )
                 PrimaryButton(
                     text = "Read Aloud",
                     onClick = onReadAloud,
@@ -968,8 +1091,12 @@ private fun RecordedLectureNotesCard(
 ) {
     val c = MM.colors
     val unpackedState = remember { mutableStateMapOf<String, Boolean>() }
+    var noteBlockFilter by remember { mutableStateOf("ALL") }
 
-    MMCard(contentPadding = MM.space.l) {
+    MMCard(
+        modifier = Modifier.animateContentSize(animationSpec = MM.motion.standard()),
+        contentPadding = MM.space.l
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1001,11 +1128,51 @@ private fun RecordedLectureNotesCard(
             }
 
             val blocks = noteDocument?.blocks.orEmpty()
+            val calloutCount = remember(blocks) { blocks.count { it.type == NoteBlockType.CALLOUT } }
+            val mathCount = remember(blocks) { blocks.count { it.type == NoteBlockType.MATH || it.type == NoteBlockType.DIAGRAM } }
+            if (blocks.size > 3 && (calloutCount > 0 || mathCount > 0)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    val filterOptions = buildList {
+                        add("ALL" to "All Notes (${blocks.size})")
+                        if (calloutCount > 0) add("CALLOUTS" to "Exam Hints & Definitions ($calloutCount)")
+                        if (mathCount > 0) add("FORMULAS" to "Formulas & Diagrams ($mathCount)")
+                    }
+                    filterOptions.forEach { (key, label) ->
+                        val isSel = noteBlockFilter == key
+                        Box(
+                            modifier = Modifier
+                                .clip(MM.radius.pill)
+                                .background(if (isSel) c.accent else c.surfaceSunk)
+                                .clickable { noteBlockFilter = key }
+                                .padding(horizontal = MM.space.s, vertical = MM.space.xs / 2)
+                        ) {
+                            Text(
+                                text = label,
+                                style = MM.type.caption.copy(fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium),
+                                color = if (isSel) c.onAccent else c.inkSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
+            val visibleBlocks = remember(blocks, noteBlockFilter) {
+                when (noteBlockFilter) {
+                    "CALLOUTS" -> blocks.filter { it.type == NoteBlockType.CALLOUT }
+                    "FORMULAS" -> blocks.filter { it.type == NoteBlockType.MATH || it.type == NoteBlockType.DIAGRAM }
+                    else -> blocks
+                }
+            }
             val summary = noteDocument?.note?.metadata?.get("summary")
                 ?: noteDocument?.blocks?.firstOrNull { it.sectionKey == "overview" || it.sectionKey == "summary" }?.content?.text.orEmpty().trim()
             val plainText = noteDocument?.note?.plainText.orEmpty().trim()
 
-            if (summary.isNotBlank()) {
+            if (summary.isNotBlank() && noteBlockFilter == "ALL") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1028,9 +1195,9 @@ private fun RecordedLectureNotesCard(
                 }
             }
 
-            if (blocks.isNotEmpty()) {
+            if (visibleBlocks.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                    blocks.forEach { block ->
+                    visibleBlocks.forEach { block ->
                         LectureBlockItem(
                             block = block,
                             isUnpacked = unpackedState[block.id] ?: (block.payload[NoteBlock.PAYLOAD_UNPACKED] == "1"),
@@ -1128,6 +1295,7 @@ private fun LectureBlockItem(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .animateContentSize(animationSpec = MM.motion.standard())
                     .clip(MM.radius.small)
                     .background(calloutColor.copy(alpha = 0.10f))
                     .border(MMSize.hairline, calloutColor.copy(alpha = 0.35f), MM.radius.small)
@@ -1267,9 +1435,22 @@ private fun RecordedLectureTranscriptCard(
 ) {
     val c = MM.colors
     var expanded by remember { mutableStateOf(false) }
-    val previewSegments = if (expanded) segments else segments.take(5)
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredSegments = remember(segments, searchQuery) {
+        if (searchQuery.isBlank()) segments
+        else {
+            val q = searchQuery.trim().lowercase()
+            segments.filter {
+                it.text.lowercase().contains(q) || (it.speakerName?.lowercase()?.contains(q) == true)
+            }
+        }
+    }
+    val previewSegments = if (expanded || searchQuery.isNotBlank()) filteredSegments else filteredSegments.take(5)
 
-    MMCard(contentPadding = MM.space.l) {
+    MMCard(
+        modifier = Modifier.animateContentSize(animationSpec = MM.motion.standard()),
+        contentPadding = MM.space.l
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
             Row(
                 modifier = Modifier
@@ -1305,6 +1486,16 @@ private fun RecordedLectureTranscriptCard(
                     imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
                     contentDescription = if (expanded) "Show less" else "Show all",
                     tint = c.inkSecondary
+                )
+            }
+
+            if (segments.size > 3) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Search lecture transcript…") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -1371,8 +1562,10 @@ private fun ConceptCard(
     visualError: String? = null,
     simpleExplanation: SimpleExplanation? = null,
     isExplainingSimple: Boolean = false,
+    isSavedToNote: Boolean = false,
     onGenerateVisual: (LearningVisualKind) -> Unit = {},
     onExplainSimply: () -> Unit = {},
+    onSaveExplanationToNote: (SimpleExplanation) -> Unit = {},
     onToggleImportance: () -> Unit = {},
     onPracticeConcept: (() -> Unit)? = null
 ) {
@@ -1744,6 +1937,25 @@ private fun ConceptCard(
                                         )
                                     }
                                 }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = MM.space.xs),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(MM.radius.pill)
+                                            .background(if (isSavedToNote) LearningFixedColors.MasteryStrong.copy(alpha = 0.16f) else c.surface)
+                                            .clickable(enabled = !isSavedToNote) { onSaveExplanationToNote(simpleExplanation) }
+                                            .padding(horizontal = MM.space.m, vertical = MM.space.xs / 2)
+                                    ) {
+                                        Text(
+                                            text = if (isSavedToNote) "✓ Saved to Lecture Note" else "+ Save Intuition to Note",
+                                            style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                            color = if (isSavedToNote) LearningFixedColors.MasteryStrong else c.accent
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1773,10 +1985,13 @@ private fun ActivitySummaryCard(
     onClick: () -> Unit = {}
 ) {
     val c = MM.colors
+    var showAnswerPeek by remember { mutableStateOf(false) }
 
     MMCard(
         contentPadding = MM.space.m,
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier
+            .animateContentSize(animationSpec = MM.motion.standard())
+            .clickable(onClick = onClick)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
             Row(
@@ -1785,7 +2000,7 @@ private fun ActivitySummaryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = activity.type.name.replace("_", " "),
+                    text = activity.type.label.uppercase(),
                     style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
                     color = c.accent
                 )
@@ -1801,11 +2016,44 @@ private fun ActivitySummaryCard(
                 color = c.ink
             )
             if (activity.expectedAnswer.isNotBlank()) {
-                Text(
-                    text = "Tap to practice this card",
-                    style = MM.type.caption,
-                    color = c.inkSecondary
-                )
+                AnimatedVisibility(
+                    visible = showAnswerPeek,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = MM.space.xs)
+                            .clip(MM.radius.small)
+                            .background(c.surfaceSunk)
+                            .padding(MM.space.s)
+                    ) {
+                        Text(
+                            text = activity.expectedAnswer.replace("**", ""),
+                            style = MM.type.caption,
+                            color = c.ink
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = MM.space.xs / 2),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (showAnswerPeek) "Hide Answer" else "Peek Answer",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = c.inkSecondary,
+                        modifier = Modifier.clickable { showAnswerPeek = !showAnswerPeek }
+                    )
+                    Text(
+                        text = "Practice Card →",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                        color = c.accent,
+                        modifier = Modifier.clickable(onClick = onClick)
+                    )
+                }
             }
         }
     }
@@ -1817,13 +2065,129 @@ private fun DiagnosticsCard(
     concepts: List<LearningConcept> = emptyList(),
     activities: List<LearningActivity> = emptyList(),
     attemptsCount: Int = 0,
-    onTogglePause: () -> Unit
+    onTogglePause: () -> Unit,
+    onStartPractice: () -> Unit = {},
+    onAskTutor: () -> Unit = {}
 ) {
     val c = MM.colors
+    val strongCount = concepts.count { it.state == LearningMasteryState.STRONG }
+    val developingCount = concepts.count { it.state == LearningMasteryState.DEVELOPING || it.state == LearningMasteryState.LEARNING }
+    val reviewCount = concepts.count { it.state == LearningMasteryState.NEEDS_REVIEW || it.state == LearningMasteryState.NEW }
+    val totalConcepts = concepts.size.coerceAtLeast(1)
+    val masteryPercent = if (concepts.isNotEmpty()) {
+        (((strongCount * 100f) + (developingCount * 55f) + (reviewCount * 15f)) / totalConcepts).toInt().coerceIn(0, 100)
+    } else 0
+
+    val flashcardCount = activities.count { it.type == LearningActivityType.RECALL }
+    val quizCount = activities.count {
+        it.type in setOf(LearningActivityType.MULTIPLE_CHOICE, LearningActivityType.WORKED_PROBLEM, LearningActivityType.APPLICATION)
+    }
+    val teachBackCount = activities.count { it.type == LearningActivityType.TEACH_BACK }
 
     MMCard(contentPadding = MM.space.l) {
         Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
-            Text("Session Diagnostics", style = MM.type.heading.copy(fontWeight = FontWeight.Bold), color = c.ink)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Session Intelligence & Signals", style = MM.type.heading.copy(fontWeight = FontWeight.Bold), color = c.ink)
+                    Text(
+                        text = if (concepts.isNotEmpty()) "$masteryPercent% concept readiness across ${concepts.size} concepts" else "Session telemetry & spaced review controls",
+                        style = MM.type.caption,
+                        color = c.inkSecondary
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(MM.radius.pill)
+                        .background(
+                            if (session.status == "ACTIVE") LearningFixedColors.MasteryStrong.copy(alpha = 0.14f)
+                            else LearningFixedColors.MasteryDeveloping.copy(alpha = 0.14f)
+                        )
+                        .padding(horizontal = MM.space.s, vertical = MM.space.xs / 2)
+                ) {
+                    Text(
+                        text = session.status,
+                        style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
+                        color = if (session.status == "ACTIVE") LearningFixedColors.MasteryStrong else LearningFixedColors.MasteryDeveloping
+                    )
+                }
+            }
+
+            if (concepts.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(MM.radius.pill)
+                            .background(c.surfaceSunk)
+                    ) {
+                        if (strongCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(strongCount.toFloat())
+                                    .height(8.dp)
+                                    .background(LearningFixedColors.MasteryStrong)
+                            )
+                        }
+                        if (developingCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(developingCount.toFloat())
+                                    .height(8.dp)
+                                    .background(LearningFixedColors.MasteryDeveloping)
+                            )
+                        }
+                        if (reviewCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(reviewCount.toFloat())
+                                    .height(8.dp)
+                                    .background(LearningFixedColors.MasteryNeedsReview)
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("$strongCount Strong", style = MM.type.overline, color = LearningFixedColors.MasteryStrong)
+                        Text("$developingCount Developing", style = MM.type.overline, color = LearningFixedColors.MasteryDeveloping)
+                        Text("$reviewCount To Review", style = MM.type.overline, color = LearningFixedColors.MasteryNeedsReview)
+                    }
+                }
+            }
+
+            if (activities.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    MasteryStatPill(
+                        label = "Flashcards",
+                        count = flashcardCount,
+                        color = c.accent,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MasteryStatPill(
+                        label = "Problems",
+                        count = quizCount,
+                        color = LearningFixedColors.MasteryDeveloping,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MasteryStatPill(
+                        label = "Teach-Back",
+                        count = teachBackCount,
+                        color = LearningFixedColors.MasteryStrong,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = c.line)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1860,20 +2224,25 @@ private fun DiagnosticsCard(
                 Text("$attemptsCount", style = MM.type.bodyStrong, color = c.ink)
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Session Status", style = MM.type.secondary, color = c.ink)
-                Text(
-                    session.status,
-                    style = MM.type.bodyStrong,
-                    color = if (session.status == "ACTIVE") LearningFixedColors.MasteryStrong else LearningFixedColors.MasteryDeveloping
-                )
-            }
-
             HorizontalDivider(color = c.line)
+
+            if (activities.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                ) {
+                    PrimaryButton(
+                        text = "Practice Session",
+                        onClick = onStartPractice,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SecondaryButton(
+                        text = "Ask Tutor",
+                        onClick = onAskTutor,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
 
             SecondaryButton(
                 text = if (session.status == "ACTIVE") "Pause Spaced Reviews" else "Resume Spaced Reviews",

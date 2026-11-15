@@ -236,4 +236,7 @@ class CirclesRepository(
         if (r is CirclesResult.Ok) store.addPrayed(circleId, postId)
         return r
     }
+
+    suspend fun toggleChecklistItem(circleId: String, postId: String, itemId: String, done: Boolean? = null): CirclesResult<Unit> =
+        if (!api.isConfigured) CirclesFailure.notConnected.asResult() else api.toggleChecklistItem(circleId, postId, itemId, done)
 }
