@@ -28,7 +28,10 @@ import com.craftflowtechnologies.meetingmind.core.model.Note
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.scripture.ChapterAudio
 import com.craftflowtechnologies.meetingmind.ai.voice.read.PassageSpeech
+import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingCoordinator
 import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore
+import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingUiState
+import com.craftflowtechnologies.meetingmind.feature.readtome.AndroidReadingHost
 import com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe
 import com.craftflowtechnologies.meetingmind.core.scripture.ChapterResult
 import com.craftflowtechnologies.meetingmind.core.scripture.ChapterVerse
@@ -36,6 +39,7 @@ import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
@@ -81,6 +85,9 @@ data class GuidedUi(
     val session: SessionState? = null,
     val help: Map<String, StepHelp> = emptyMap(),
     val canListen: Boolean = false,
+    val bibleId: Int? = null,
+    val audioPreloaded: Boolean = false,
+    val audioPreloading: Boolean = false,
     val savedNoteId: String? = null,
     val addedTo: String? = null
 )
@@ -111,9 +118,21 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
     // Journal saves run on their own scope, in order, and drain when the screen goes: nothing typed is lost.
     private val saver = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pending = Channel<SessionState>(Channel.CONFLATED)
+    private var preloadJob: Job? = null
 
     init {
-        saver.launch { for (s in pending) runCatching { journal?.onChanged(s) } }
+        saver.launch {
+            for (s in pending) {
+                runCatching {
+                    journal?.onChanged(s)
+                    journal?.noteId?.let { id ->
+                        if (_ui.value.savedNoteId != id) {
+                            _ui.value = _ui.value.copy(savedNoteId = id)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /** Starts the session for [request]. [walk] means the person chooses SOAP or Verse by verse first. */
@@ -140,11 +159,13 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
                     val to = p.verseEnd ?: p.verseStart ?: Int.MAX_VALUE
                     val verses = r.content.verses.filter { it.number in from..to }
                     _ui.value = _ui.value.copy(
-                        load = SessionLoad.Ready(r.content.text(p.verseStart, p.verseEnd ?: p.verseStart), verses, "${r.content.abbreviation} · ${r.content.attribution}")
+                        load = SessionLoad.Ready(r.content.text(p.verseStart, p.verseEnd ?: p.verseStart), verses, "${r.content.abbreviation} · ${r.content.attribution}"),
+                        canListen = true,
+                        bibleId = bibleId
                     )
                     if (!walk && _ui.value.session == null) begin(request.kind)
-                    // Every translation can be read aloud: the passage is generated when no narration exists.
-                    _ui.value = _ui.value.copy(canListen = true)
+                    // Preload passage audio quietly in the background so "Read aloud" starts right away.
+                    prewarmPassageAudio(ScriptureReference(p.book, p.chapter), bibleId)
                 }
             }
         }
@@ -175,6 +196,9 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
         val s = _ui.value.session ?: return
         val moved = change(s)
         _ui.value = _ui.value.copy(session = moved)
+        if (moved.touched && (moved.current.type == StepType.CLOSE || journal?.noteId != null)) {
+            persistIfContentAdded(moved)
+        }
         enter(moved.current)
     }
 
@@ -225,17 +249,46 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
 
     // ---------------------------------------------------------------- writing
 
-    /** Called on every change to an answer. The first non-blank one creates the journal entry. */
+    /**
+     * Records what the person wrote for [stepId].
+     * A new study journal note is only created at the end (or when saved on exit) if there is actual content.
+     */
     fun answer(stepId: String, text: String) {
         val s = _ui.value.session ?: return
         val updated = s.answer(stepId, text)
         _ui.value = _ui.value.copy(session = updated)
-        pending.trySend(updated)
-        // The note id becomes known a moment after the first keystroke.
-        viewModelScope.launch {
-            repeat(20) {
-                journal?.noteId?.let { id -> if (_ui.value.savedNoteId != id) _ui.value = _ui.value.copy(savedNoteId = id); return@launch }
-                kotlinx.coroutines.delay(100)
+        if (journal?.noteId != null && updated.touched) {
+            pending.trySend(updated)
+        }
+    }
+
+    private fun persistIfContentAdded(state: SessionState? = _ui.value.session) {
+        val s = state ?: return
+        if (!s.touched) return
+        pending.trySend(s)
+    }
+
+    /** Preloads the chapter's audio into disk cache using an isolated coordinator so "Read aloud" starts without stalling. */
+    private fun prewarmPassageAudio(chapterRef: ScriptureReference, versionId: Int) {
+        preloadJob?.cancel()
+        val passageId = ReadToMe.passageId(chapterRef, versionId)
+        preloadJob = viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val coordinator = ReadingCoordinator(AndroidReadingHost(app), this)
+                val offer = coordinator.offer(passageId) ?: return@runCatching
+                if (offer.locked || offer.empty) return@runCatching
+                if (offer.savedTotal > 0 && offer.savedReady >= offer.savedTotal) {
+                    _ui.value = _ui.value.copy(audioPreloaded = true, audioPreloading = false)
+                    return@runCatching
+                }
+                _ui.value = _ui.value.copy(audioPreloading = true)
+                val endState = coordinator.generateInBackground(passageId)
+                _ui.value = _ui.value.copy(
+                    audioPreloading = false,
+                    audioPreloaded = endState is ReadingUiState.Finished
+                )
+            }.onFailure {
+                _ui.value = _ui.value.copy(audioPreloading = false)
             }
         }
     }
@@ -261,8 +314,9 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
         return "“${ready.passageText}”\n— ${request.passage.display()} (${ready.attribution.substringBefore(" · ")})"
     }
 
-    /** Marks a reading-plan day read when the person finishes its session. */
+    /** Persists the study note (only if content was added) and marks any reading-plan day read. */
     fun finish() {
+        persistIfContentAdded()
         val r = _ui.value.request ?: return
         if (r.planId != null && r.planDay != null) viewModelScope.launch(Dispatchers.IO) { runCatching { FaithStore.get(app).setDone(r.planId, r.planDay, true) } }
     }
@@ -300,6 +354,8 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
     }
 
     override fun onCleared() {
+        preloadJob?.cancel()
+        persistIfContentAdded()
         pending.close()
         // Let the saver finish the last save; it ends on its own when the channel drains.
         (ai as? ModelSessionAi)?.let { m -> CoroutineScope(Dispatchers.IO).launch { m.release() } }

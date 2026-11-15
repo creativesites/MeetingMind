@@ -14,6 +14,14 @@ interface CreateTextModel {
     /** False when there is no model to ask (no Internet mode, no key): the studio then offers the editor and starters. */
     suspend fun available(): Boolean
     suspend fun complete(system: String, prompt: String, timeoutMs: Long = 40_000L): AiResult<String>
+
+    /** Schema-enforced completion when supported by the backing cloud transport. */
+    suspend fun completeStructured(
+        system: String,
+        prompt: String,
+        responseSchema: String,
+        timeoutMs: Long = 40_000L
+    ): AiResult<String> = complete(system, prompt, timeoutMs)
 }
 
 /** Gemini (with DeepSeek fallback) behind the app's own transport. */
@@ -25,14 +33,31 @@ class GeminiCreateModel(private val context: Context) : CreateTextModel {
     }.getOrDefault(false)
 
     override suspend fun complete(system: String, prompt: String, timeoutMs: Long): AiResult<String> =
+        completeWithSchema(system, prompt, responseSchema = null, timeoutMs = timeoutMs)
+
+    override suspend fun completeStructured(
+        system: String,
+        prompt: String,
+        responseSchema: String,
+        timeoutMs: Long
+    ): AiResult<String> = completeWithSchema(system, prompt, responseSchema = responseSchema, timeoutMs = timeoutMs)
+
+    private suspend fun completeWithSchema(
+        system: String,
+        prompt: String,
+        responseSchema: String?,
+        timeoutMs: Long
+    ): AiResult<String> =
         transport.execute(
             GeminiRequest(
                 modelId = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
                 systemInstruction = system,
                 prompt = prompt,
+                responseSchema = responseSchema,
                 jsonOutput = true,
                 temperature = 0.9f,
-                timeoutMs = timeoutMs
+                timeoutMs = timeoutMs,
+                thinkingLevel = com.craftflowtechnologies.meetingmind.ai.cloud.ThinkingLevel.LOW
             )
         )
 }

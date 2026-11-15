@@ -44,6 +44,7 @@ import com.craftflowtechnologies.meetingmind.core.work.OPEN_TASK_LIMIT
 import com.craftflowtechnologies.meetingmind.core.work.WorkRepository
 import com.craftflowtechnologies.meetingmind.core.work.WorkSettings
 import com.craftflowtechnologies.meetingmind.core.work.WorkTask
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -59,6 +60,21 @@ import org.json.JSONObject
 
 /** A project hub's figures, for its card. */
 data class ProjectCard(val notebook: Notebook, val notes: Int, val openTasks: Int, val org: String?, val lastActivity: Long? = null)
+
+/** Rich linked recording, summary, and note metadata for an Inbox item. */
+data class InboxLinkedMeeting(
+    val meetingId: String?,
+    val noteId: String?,
+    val title: String,
+    val summaryText: String?,
+    val transcriptPreview: String?,
+    val status: String,
+    val audioFilePath: String?,
+    val durationMs: Long,
+    val participantCount: Int,
+    val actionItems: List<String> = emptyList(),
+    val decisions: List<String> = emptyList()
+)
 
 /**
  * The Work space, project hubs, person pages and the professional home all read from here
@@ -239,6 +255,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     private val inbox = com.craftflowtechnologies.meetingmind.core.work.InboxRepository(database)
     val inboxItems: StateFlow<List<com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity>> = inbox.observeOpen().state(emptyList())
+    val inboxFiledItems: StateFlow<List<com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity>> = inbox.observeFiled().state(emptyList())
     val inboxCount: StateFlow<Int> = inbox.observeOpenCount().state(0)
     private fun proposer() = com.craftflowtechnologies.meetingmind.core.work.InboxProposer(database, workModels, settings.value.keepOnDevice)
     suspend fun inboxCandidates() = proposer().candidates()
@@ -249,7 +266,80 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissInbox(item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity) = viewModelScope.launch { inbox.dismiss(item.id) }
     /** Adds what a document scan or a picker returned, the same way a share does. */
     fun addToInbox(parts: List<com.craftflowtechnologies.meetingmind.core.work.SharedPart>) = viewModelScope.launch {
-        inbox.add(parts) { com.craftflowtechnologies.meetingmind.core.work.ShareIn.copy(getApplication(), it) }
+        val added = inbox.add(parts) { com.craftflowtechnologies.meetingmind.core.work.ShareIn.copy(getApplication(), it) }
+        added.forEach { proposeInbox(it) }
+    }
+    /** Imports a single file URI (e.g. a WhatsApp voice note, video, or PDF) directly into the Work Inbox. */
+    fun importUriToInbox(uri: android.net.Uri, sourceHint: String? = null, onAdded: (Int) -> Unit = {}) = viewModelScope.launch {
+        val added = com.craftflowtechnologies.meetingmind.core.work.ShareIn.importUriToInbox(getApplication(), uri, sourceHint)
+        added.forEach { proposeInbox(it) }
+        onAdded(added.size)
+    }
+    /** Adds pasted text or a link directly into the Work Inbox. */
+    fun addTextToInbox(text: String, title: String? = null, source: String = "Quick Capture") = viewModelScope.launch {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return@launch
+        val isUrl = trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)
+        val host = if (isUrl) trimmed.substringAfter("://").substringBefore('/').removePrefix("www.") else null
+        val part = com.craftflowtechnologies.meetingmind.core.work.SharedPart(
+            kind = if (isUrl) com.craftflowtechnologies.meetingmind.core.work.InboxKind.URL else com.craftflowtechnologies.meetingmind.core.work.InboxKind.TEXT,
+            text = trimmed,
+            title = title?.trim()?.ifBlank { null } ?: host ?: trimmed.lineSequence().first().take(60),
+            source = host ?: source
+        )
+        val added = inbox.add(listOf(part))
+        added.forEach { proposeInbox(it) }
+    }
+    /** Starts 1-tap background transcription for an audio or video item right inside the Inbox. */
+    fun transcribeInboxItem(
+        item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity,
+        onResult: (Boolean, String?) -> Unit = { _, _ -> }
+    ) = viewModelScope.launch(Dispatchers.IO) {
+        val path = item.uri?.takeIf { it.isNotBlank() } ?: run {
+            kotlinx.coroutines.withContext(Dispatchers.Main) { onResult(false, "Audio file is missing") }
+            return@launch
+        }
+        val file = java.io.File(path)
+        if (!file.exists()) {
+            kotlinx.coroutines.withContext(Dispatchers.Main) { onResult(false, "Audio file could not be found") }
+            return@launch
+        }
+        try {
+            inbox.updateTranscription(item.id, "TRANSCRIBING")
+            val app = getApplication<Application>()
+            val meetingId = java.util.UUID.randomUUID().toString()
+            val extractor = com.craftflowtechnologies.meetingmind.core.audio.AudioExtractor(app)
+            val info = extractor.importAndExtract(android.net.Uri.fromFile(file), meetingId) {}
+            val importedName = (item.title?.takeIf { it.isNotBlank() } ?: info.fileName.substringBeforeLast("."))
+            val meetingRepo = com.craftflowtechnologies.meetingmind.core.repository.MeetingRepository(app, database)
+            val meeting = meetingRepo.createInitialMeeting(
+                id = meetingId,
+                title = importedName,
+                source = if (info.isVideo) com.craftflowtechnologies.meetingmind.core.model.MeetingSource.IMPORTED_VIDEO else com.craftflowtechnologies.meetingmind.core.model.MeetingSource.IMPORTED_AUDIO,
+                audioFilePath = info.outputFile.absolutePath,
+                titleSource = if (com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator.isUsableImportedTitle(importedName)) {
+                    com.craftflowtechnologies.meetingmind.core.model.TitleSource.IMPORT
+                } else {
+                    com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI
+                }
+            )
+            inbox.updateTranscription(
+                id = item.id,
+                status = "TRANSCRIBING",
+                meetingId = meeting.id,
+                durationMs = info.durationMs.takeIf { it > 0L }
+            )
+            com.craftflowtechnologies.meetingmind.ai.pipeline.ProcessingScheduler.enqueue(
+                context = app,
+                meetingId = meeting.id,
+                audioPath = info.outputFile.absolutePath,
+                durationMs = info.durationMs
+            )
+            kotlinx.coroutines.withContext(Dispatchers.Main) { onResult(true, meeting.id) }
+        } catch (e: Exception) {
+            inbox.updateTranscription(item.id, "FAILED")
+            kotlinx.coroutines.withContext(Dispatchers.Main) { onResult(false, e.localizedMessage ?: "Failed to start transcription") }
+        }
     }
     /** Updates transcription status, text, meeting link and automatically re-proposes filing on completion. */
     fun updateInboxTranscription(
@@ -264,6 +354,82 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             inbox.get(id)?.let { updated -> proposeInbox(updated) }
         }
     }
+
+    /**
+     * Live map from Inbox item ID to its linked Meeting, Note, AI Summary, and extracted Tasks/Decisions.
+     * Also reconciles any Inbox item whose linked Meeting finished processing in the background.
+     */
+    val inboxLinkedMeetings: StateFlow<Map<String, InboxLinkedMeeting>> = combine(
+        inboxItems,
+        inboxFiledItems,
+        database.meetingDao().getAllMeetings()
+    ) { open, filed, allMeetings ->
+        val byId = allMeetings.associateBy { it.id }
+        val allInbox = open + filed
+        val result = mutableMapOf<String, InboxLinkedMeeting>()
+        for (item in allInbox) {
+            val mid = item.meetingId
+            val filedNoteId = runCatching {
+                item.resultRefJson?.let { org.json.JSONObject(it).optString("noteId").ifBlank { null } }
+            }.getOrNull()
+            val meeting = mid?.let { byId[it] }
+            if (meeting != null) {
+                val actions = runCatching {
+                    database.actionItemDao().getActionItemsForMeetingDirect(meeting.id).map { it.task }
+                }.getOrDefault(emptyList())
+                val decisions = runCatching {
+                    database.decisionDao().getDecisionsForMeetingDirect(meeting.id).map { it.text }
+                }.getOrDefault(emptyList())
+                val segments = if (meeting.status == "READY" && (item.transcriptionStatus != "COMPLETED" || item.text.isNullOrBlank())) {
+                    runCatching { database.transcriptDao().getSegmentsForMeetingDirect(meeting.id) }.getOrDefault(emptyList())
+                } else emptyList()
+                val transcriptText = segments.joinToString("\n") { (it.cleanedText ?: it.text).trim() }.trim()
+                if (meeting.status == "READY" && item.transcriptionStatus != "COMPLETED") {
+                    val syncedText = transcriptText.ifBlank { item.text ?: meeting.summaryText }
+                    inbox.updateTranscription(
+                        id = item.id,
+                        status = "COMPLETED",
+                        transcript = syncedText,
+                        meetingId = meeting.id,
+                        durationMs = meeting.durationMs.takeIf { it > 0L }
+                    )
+                    inbox.get(item.id)?.let { updated ->
+                        if (updated.status == com.craftflowtechnologies.meetingmind.core.work.InboxStatus.NEW.name) {
+                            runCatching { proposeInbox(updated) }
+                        }
+                    }
+                } else if (meeting.status == "ERROR" && item.transcriptionStatus == "TRANSCRIBING") {
+                    inbox.updateTranscription(id = item.id, status = "FAILED")
+                }
+                result[item.id] = InboxLinkedMeeting(
+                    meetingId = meeting.id,
+                    noteId = meeting.noteId ?: filedNoteId,
+                    title = meeting.title,
+                    summaryText = meeting.summaryText?.takeIf { it.isNotBlank() },
+                    transcriptPreview = item.text?.takeIf { it.isNotBlank() } ?: transcriptText.takeIf { it.isNotBlank() },
+                    status = meeting.status,
+                    audioFilePath = meeting.audioFilePath ?: item.uri,
+                    durationMs = meeting.durationMs.takeIf { it > 0L } ?: item.mediaDurationMs ?: 0L,
+                    participantCount = meeting.participantCount,
+                    actionItems = actions,
+                    decisions = decisions
+                )
+            } else if (filedNoteId != null) {
+                result[item.id] = InboxLinkedMeeting(
+                    meetingId = null,
+                    noteId = filedNoteId,
+                    title = item.title ?: "Filed note",
+                    summaryText = null,
+                    transcriptPreview = item.text,
+                    status = "FILED",
+                    audioFilePath = item.uri,
+                    durationMs = item.mediaDurationMs ?: 0L,
+                    participantCount = 0
+                )
+            }
+        }
+        result
+    }.state(emptyMap())
 
     val context = ContextRepository(database)
     val prepare = Prepare(database)

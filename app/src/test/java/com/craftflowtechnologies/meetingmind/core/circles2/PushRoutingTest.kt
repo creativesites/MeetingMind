@@ -23,7 +23,11 @@ class PushRoutingTest {
     }
 
     @Test fun `chat pushes open the chat tab`() {
-        for (k in listOf("poll", "chain", "celebration")) assertEquals(CircleTarget("c1", CircleDestination.Chat), PushRouting.fromData(data(k)))
+        for (k in listOf("chat", "poll", "chain", "celebration")) assertEquals(CircleTarget("c1", CircleDestination.Chat), PushRouting.fromData(data(k)))
+    }
+
+    @Test fun `comment pushes open that post in its circle`() {
+        assertEquals(CircleTarget("c1", CircleDestination.Feed, "p9"), PushRouting.fromData(data("comment", post = "p9")))
     }
 
     @Test fun `the daily digest has no circle and opens the list`() {
@@ -69,5 +73,26 @@ class PushRoutingTest {
         val a = PushRouting.notificationId(data("post", post = "p1"))
         assertEquals(a, PushRouting.notificationId(data("post", post = "p1")))
         assertFalse(a == PushRouting.notificationId(data("post", post = "p2")))
+    }
+
+    @Test fun `https app links for circle opens parse identically to custom scheme`() {
+        assertEquals(
+            CircleTarget("c1", CircleDestination.Feed, "p9"),
+            PushRouting.fromUri("https://meetingmind.app/c/open?circle=c1&post=p9")
+        )
+        assertEquals(
+            CircleTarget("c1", CircleDestination.Chat),
+            PushRouting.fromUri("https://meetingmind.app/c/open?circle=c1&tab=chat")
+        )
+    }
+
+    @Test fun `foreground push suppression respects active circle and destination tab`() {
+        val feedPost = data("post", circle = "c1", post = "p9")
+        val chatMsg = data("chat", circle = "c1")
+        assertTrue(CirclesNotifier.shouldSuppressForeground(feedPost, "c1", CircleDestination.Feed))
+        assertFalse(CirclesNotifier.shouldSuppressForeground(feedPost, "c1", CircleDestination.Chat))
+        assertTrue(CirclesNotifier.shouldSuppressForeground(chatMsg, "c1", CircleDestination.Chat))
+        assertFalse(CirclesNotifier.shouldSuppressForeground(chatMsg, "c2", CircleDestination.Chat))
+        assertFalse(CirclesNotifier.shouldSuppressForeground(feedPost, null, null))
     }
 }

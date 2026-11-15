@@ -10,16 +10,25 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Row
@@ -118,6 +127,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 import com.craftflowtechnologies.meetingmind.core.share.ShareCardContent
 import com.craftflowtechnologies.meetingmind.feature.share.ShareRequest
@@ -225,62 +235,77 @@ fun BibleScreen(
             }
         }
 
+        val ref = if (page == Page.READ) viewModel.selectedReference() else null
+        val ready = content as? ChapterState.Ready
+        val sel = selection
+        val selectionVisible = ref != null && sel != null
+
         Box(Modifier.weight(1f)) {
             when (page) {
-                Page.READ -> Reader(viewModel, content, selection, onOpenNote)
+                Page.READ -> Reader(viewModel, content, sel, onOpenNote, selectionActive = selectionVisible)
                 Page.BOOKS -> BookPicker(current, book, onPick = { b, c -> viewModel.open(b, c); page = Page.READ })
-                Page.SEARCH -> SearchPage(viewModel, download, onOpen = { ref ->
-                    viewModel.open(ref.book, ref.chapter, ref.verseStart, ref.verseEnd); page = Page.READ
+                Page.SEARCH -> SearchPage(viewModel, download, onOpen = { r ->
+                    viewModel.open(r.book, r.chapter, r.verseStart, r.verseEnd); page = Page.READ
                 })
             }
-        }
 
-        // Selection actions
-        val ref = if (page == Page.READ) viewModel.selectedReference() else null
-        if (ref != null && selection != null) {
-            val ready = content as? ChapterState.Ready
-            SelectionBar(
-                reference = ref,
-                insertLabel = if (onInsert != null) "Insert into note" else "Guide me",
-                insertIcon = if (onInsert != null) Icons.AutoMirrored.Filled.NoteAdd else Icons.Filled.AutoStories,
-                onPrimary = {
-                    val id = current?.id ?: return@SelectionBar
-                    if (onInsert != null) onInsert(ref, id) else onGuide?.invoke(ref)
-                    viewModel.clearSelection()
-                },
-                onSave = { collectionFor = ref },
-                onCopy = {
-                    val text = ready?.result?.content?.let { quote(it, ref) } ?: ref.display()
-                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(ref.display(), text))
-                    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
-                },
-                onHighlight = { color -> viewModel.highlight(color) },
-                onStudy = { viewModel.openStudy(ref) },
-                onListenHere = {
-                    com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.coordinator(context).startPassage(ref, current?.id, fromVerse = ref.verseStart)
-                    viewModel.clearSelection()
-                },
-                onCard = if (onShareCard != null && ready != null) ({
-                    val chapter = ready.result.content
-                    onShareCard(
-                        ShareRequest(
-                            content = ShareCardContent(
-                                eyebrow = "Scripture", text = chapter.text(ref.verseStart, ref.verseEnd),
-                                reference = ref.display(), attribution = chapter.abbreviation
-                            ),
-                            theme = ref.display()
-                        )
+            // Floating compact selection dock — keeps almost the entire passage unobstructed for multi-verse tapping.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = selectionVisible,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = slideInVertically { it / 2 } + fadeIn(),
+                exit = slideOutVertically { it / 2 } + fadeOut()
+            ) {
+                if (ref != null && sel != null) {
+                    val maxVerse = ready?.result?.content?.verses?.maxOfOrNull { it.number } ?: Int.MAX_VALUE
+                    SelectionBar(
+                        reference = ref,
+                        insertLabel = if (onInsert != null) "Insert into note" else "Guide me",
+                        insertIcon = if (onInsert != null) Icons.AutoMirrored.Filled.NoteAdd else Icons.Filled.AutoStories,
+                        onPrimary = {
+                            val id = current?.id ?: return@SelectionBar
+                            if (onInsert != null) onInsert(ref, id) else onGuide?.invoke(ref)
+                            viewModel.clearSelection()
+                        },
+                        onSave = { collectionFor = ref },
+                        onCopy = {
+                            val text = ready?.result?.content?.let { quote(it, ref) } ?: ref.display()
+                            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(ref.display(), text))
+                            Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                        },
+                        onHighlight = { color -> viewModel.highlight(color) },
+                        onStudy = { viewModel.openStudy(ref) },
+                        onListenHere = {
+                            com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.coordinator(context).startPassage(ref, current?.id, fromVerse = ref.verseStart)
+                            viewModel.clearSelection()
+                        },
+                        onCard = if (onShareCard != null && ready != null) ({
+                            val chapter = ready.result.content
+                            onShareCard(
+                                ShareRequest(
+                                    content = ShareCardContent(
+                                        eyebrow = "Scripture", text = chapter.text(ref.verseStart, ref.verseEnd),
+                                        reference = ref.display(), attribution = chapter.abbreviation
+                                    ),
+                                    theme = ref.display()
+                                )
+                            )
+                            viewModel.clearSelection()
+                        }) else null,
+                        onShare = {
+                            val text = ready?.result?.content?.let { quote(it, ref) } ?: ref.display()
+                            runCatching {
+                                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share ${ref.display()}"))
+                            }
+                        },
+                        onClear = { viewModel.clearSelection() },
+                        canExtendNext = sel.last < maxVerse,
+                        canTrimLast = sel.last > sel.first,
+                        onExtendNext = { viewModel.extendSelection(1) },
+                        onTrimLast = { viewModel.extendSelection(-1) }
                     )
-                    viewModel.clearSelection()
-                }) else null,
-                onShare = {
-                    val text = ready?.result?.content?.let { quote(it, ref) } ?: ref.display()
-                    runCatching {
-                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share ${ref.display()}"))
-                    }
-                },
-                onClear = { viewModel.clearSelection() }
-            )
+                }
+            }
         }
     }
 
@@ -339,7 +364,13 @@ private fun quote(content: ChapterContent, ref: ScriptureReference): String =
     "“${content.text(ref.verseStart, ref.verseEnd)}”\n— ${ref.display()} (${content.abbreviation})"
 
 @Composable
-private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: IntRange?, onOpenNote: ((String) -> Unit)? = null) {
+private fun Reader(
+    viewModel: BibleViewModel,
+    content: ChapterState,
+    selection: IntRange?,
+    onOpenNote: ((String) -> Unit)? = null,
+    selectionActive: Boolean = false
+) {
     val focus by viewModel.focus.collectAsState()
     val extras by viewModel.extras.collectAsState()
     val reading by viewModel.readingVerse.collectAsState()
@@ -376,7 +407,16 @@ private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: 
                     paragraphs.getOrNull((i - 1).coerceAtLeast(0))?.firstOrNull()?.let { viewModel.rememberVerse(it.number) }
                 }
             }
-            LazyColumn(state = listState, contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 24.dp), modifier = Modifier.fillMaxSize().testTag("bible_reader")) {
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(
+                    start = 22.dp,
+                    end = 22.dp,
+                    top = 8.dp,
+                    bottom = if (selectionActive) 136.dp else 24.dp
+                ),
+                modifier = Modifier.fillMaxSize().testTag("bible_reader")
+            ) {
                 item {
                     Text(
                         "${bookLabel(c.book)} ${c.chapter}", fontSize = 28.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold,
@@ -499,59 +539,189 @@ internal fun SelectionBar(
     onHighlight: (String?) -> Unit = {},
     onStudy: () -> Unit = {},
     onListenHere: (() -> Unit)? = null,
-    onCard: (() -> Unit)? = null
+    onCard: (() -> Unit)? = null,
+    canExtendNext: Boolean = false,
+    canTrimLast: Boolean = false,
+    onExtendNext: (() -> Unit)? = null,
+    onTrimLast: (() -> Unit)? = null
 ) {
-    Surface(color = SurfaceBase, shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(reference.display(), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
-                IconButton(onClick = onClear) { Icon(Icons.Filled.Close, contentDescription = "Clear selection", tint = InkSecondary) }
+    val verseCount = (reference.verseEnd?.let { (it - (reference.verseStart ?: it) + 1).coerceAtLeast(1) }) ?: 1
+    Surface(
+        shape = MM.radius.card,
+        color = SurfaceBase,
+        shadowElevation = 10.dp,
+        border = BorderStroke(1.dp, Line),
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .testTag("bible_selection_bar")
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Compact top row: verse reference (+count badge), quick -1/+1 range steppers, primary CTA, and close.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        reference.display(),
+                        style = MM.type.title,
+                        color = Ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (verseCount > 1) {
+                        Surface(shape = MM.radius.pill, color = SurfaceSunk, border = BorderStroke(1.dp, Line)) {
+                            Text(
+                                "${verseCount}v",
+                                style = MM.type.caption,
+                                color = InkSecondary,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    if (onTrimLast != null && canTrimLast) {
+                        RangeStepPill(
+                            icon = Icons.Filled.Remove,
+                            contentDescription = "Trim last verse",
+                            tag = "bible_trim_verse",
+                            onClick = onTrimLast
+                        )
+                    }
+                    if (onExtendNext != null && canExtendNext) {
+                        RangeStepPill(
+                            icon = Icons.Filled.Add,
+                            contentDescription = "Include next verse",
+                            tag = "bible_extend_verse",
+                            onClick = onExtendNext
+                        )
+                    }
+                }
+                Surface(
+                    onClick = onPrimary,
+                    shape = MM.radius.pill,
+                    color = Ink,
+                    modifier = Modifier.testTag("bible_insert")
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(insertIcon, contentDescription = null, tint = OnInk, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(insertLabel, color = OnInk, style = MM.type.caption, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
+                }
+                Surface(
+                    onClick = onClear,
+                    shape = CircleShape,
+                    color = SurfaceSunk,
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Close, contentDescription = "Clear selection", tint = InkSecondary, modifier = Modifier.size(16.dp))
+                    }
+                }
             }
-            // Highlight colours, then study and listen.
-            Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+            // Single horizontal utility rail: highlight dots + compact action pills (fits 360dp cleanly with scroll fallback).
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 HighlightColors.forEach { (name, color) ->
-                    Box(Modifier.size(28.dp).clip(CircleShape).background(color).border(1.dp, Color(0x22000000).forTheme(), CircleShape).clickable { onHighlight(name) }.testTag("highlight_$name"))
+                    Box(
+                        Modifier
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(color)
+                            .border(1.dp, Line, CircleShape)
+                            .clickable { onHighlight(name) }
+                            .testTag("highlight_$name")
+                    )
                 }
-                Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, Line, CircleShape).clickable { onHighlight(null) }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Close, contentDescription = "Remove highlight", tint = InkMuted, modifier = Modifier.size(14.dp))
+                Box(
+                    Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .border(1.dp, Line, CircleShape)
+                        .clickable { onHighlight(null) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Close, contentDescription = "Remove highlight", tint = InkMuted, modifier = Modifier.size(12.dp))
                 }
-                Spacer(Modifier.weight(1f))
-                Surface(onClick = onStudy, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("bible_study")) {
-                    Text("Explain", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                Box(Modifier.padding(horizontal = 2.dp).width(1.dp).height(18.dp).background(Line))
+                DockActionChip(label = "Explain", icon = null, tag = "bible_study", onClick = onStudy)
+                onListenHere?.let { go ->
+                    DockActionChip(label = "Listen", icon = Icons.Filled.GraphicEq, tag = "verse_listen", onClick = go)
                 }
                 onCard?.let { make ->
-                    Surface(onClick = make, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("bible_card")) {
-                        Text("Card", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                    }
+                    DockActionChip(label = "Card", icon = null, tag = "bible_card", onClick = make)
                 }
-                onListenHere?.let { go ->
-                    Surface(onClick = go, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line)) {
-                        Text("Read from here", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                    }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Surface(onClick = onPrimary, shape = RoundedCornerShape(12.dp), color = Ink, modifier = Modifier.weight(1.6f).testTag("bible_insert")) {
-                    Row(Modifier.padding(vertical = 11.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(insertIcon, contentDescription = null, tint = OnInk, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(insertLabel, color = OnInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                SmallAction(Icons.Filled.BookmarkAdd, "Note", onSave, Modifier.weight(1f))
-                SmallAction(Icons.Filled.ContentCopy, "Copy", onCopy, Modifier.weight(1f))
-                SmallAction(Icons.Filled.Share, "Share", onShare, Modifier.weight(1f))
+                DockActionChip(label = "Save", icon = Icons.Filled.BookmarkAdd, tag = null, onClick = onSave)
+                DockActionChip(label = "Copy", icon = Icons.Filled.ContentCopy, tag = null, onClick = onCopy)
+                DockActionChip(label = "Share", icon = Icons.Filled.Share, tag = null, onClick = onShare)
             }
         }
     }
 }
 
 @Composable
-private fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit, modifier: Modifier) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(12.dp), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = modifier) {
-        Column(Modifier.padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp))
-            Text(label, fontSize = 11.sp, color = InkSecondary)
+private fun RangeStepPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    tag: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = MM.radius.pill,
+        color = SurfaceSunk,
+        border = BorderStroke(1.dp, Line),
+        modifier = Modifier.size(26.dp).testTag(tag)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = contentDescription, tint = Ink, modifier = Modifier.size(14.dp))
+        }
+    }
+}
+
+@Composable
+private fun DockActionChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
+    tag: String?,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = MM.radius.pill,
+        color = SurfaceSunk,
+        border = BorderStroke(1.dp, Line),
+        modifier = if (tag != null) Modifier.testTag(tag) else Modifier
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = Ink, modifier = Modifier.size(13.dp))
+            }
+            Text(label, style = MM.type.caption, fontWeight = FontWeight.Medium, color = Ink, maxLines = 1)
         }
     }
 }

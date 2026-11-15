@@ -94,6 +94,9 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND workflow IN (:workflows) ORDER BY pinned DESC, updatedAt DESC")
     fun observeByWorkflows(workflows: List<String>): Flow<List<NoteEntity>>
 
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 1 AND deletedAt IS NULL AND workflow = :workflow ORDER BY updatedAt DESC")
+    fun observeDraftsByWorkflow(workflow: String): Flow<List<NoteEntity>>
+
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
     suspend fun getActiveOnce(): List<NoteEntity>
 

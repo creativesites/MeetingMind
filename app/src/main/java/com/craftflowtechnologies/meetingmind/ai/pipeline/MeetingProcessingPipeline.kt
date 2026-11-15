@@ -66,8 +66,10 @@ import com.craftflowtechnologies.meetingmind.core.database.TranscriptSegmentEnti
 import com.craftflowtechnologies.meetingmind.ai.llm.RecordingTitles
 import com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator
 import com.craftflowtechnologies.meetingmind.core.repository.toWordsJson
+import com.craftflowtechnologies.meetingmind.core.model.BlockSource
 import com.craftflowtechnologies.meetingmind.core.model.MeetingStatus
 import com.craftflowtechnologies.meetingmind.core.model.MeetingSummary
+import com.craftflowtechnologies.meetingmind.core.repository.NoteCodec.toDomain
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingStage
 import com.craftflowtechnologies.meetingmind.core.model.Transcript
@@ -659,7 +661,10 @@ class MeetingProcessingPipeline(
                 singleSpeakerMode = expectedSpeakerCount == 1,
                 onStatus = { step -> updateJob(step, if (step.startsWith("Refining")) ProcessingProgress.cleanup(0.5f) else ProcessingProgress.CLEANUP_START, ProcessingStage.CLEANING_TRANSCRIPT) },
                 processingProfile = processingProfile,
-                audioDurationMs = totalDurationMs
+                audioDurationMs = totalDurationMs,
+                vocabularyHints = vocabularyHints,
+                recordingTitle = existingMeeting.title,
+                customContext = existingMeeting.customContext
             )
 
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
@@ -845,7 +850,7 @@ class MeetingProcessingPipeline(
                 com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context)
                     .preferencesFlow.first().notePolishMode
             }.getOrDefault(com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP)
-            if (!noSpeech && notePolishMode != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.OFF) {
+            if (!noSpeech) {
                 runCatching {
                     writeStructuredNoteSections(
                         meetingId = meetingId,
@@ -891,6 +896,31 @@ class MeetingProcessingPipeline(
             // The recording's note picks up its generated title and summary. A failure here must
             // never fail a recording that processed successfully.
             runCatching { com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database).syncFromRecording(meetingId) }
+            runCatching {
+                val inboxDao = database.inboxDao()
+                val linkedInbox = inboxDao.getByMeetingId(meetingId)
+                if (linkedInbox != null) {
+                    val transcriptText = diarizedSegments.joinToString("\n") { (it.cleanedText ?: it.text).trim() }
+                        .trim()
+                        .ifBlank { summary?.summary.orEmpty() }
+                    val newTitle = if (
+                        linkedInbox.title.isNullOrBlank() ||
+                        !MeetingTitleGenerator.isUsableImportedTitle(linkedInbox.title)
+                    ) {
+                        generatedTitle
+                    } else {
+                        linkedInbox.title
+                    }
+                    val updatedInbox = linkedInbox.copy(
+                        title = newTitle,
+                        text = transcriptText.ifBlank { linkedInbox.text },
+                        transcriptionStatus = "COMPLETED",
+                        mediaDurationMs = totalDurationMs.takeIf { it > 0L } ?: linkedInbox.mediaDurationMs
+                    )
+                    inboxDao.update(updatedInbox)
+                    com.craftflowtechnologies.meetingmind.core.work.InboxProposer(database).propose(updatedInbox)
+                }
+            }
             runCatching { com.craftflowtechnologies.meetingmind.feature.moments.onNoteProcessed(context, meetingId) }
 
             updateJob(
@@ -917,6 +947,11 @@ class MeetingProcessingPipeline(
                 LlmEngineManager.release()
                 updateJob("Cancelled", 0, ProcessingStage.CANCELLED, failed = true, error = "Processing was cancelled by user")
                 meetingDao.updateMeeting(existingMeeting.copy(status = MeetingStatus.ERROR.name))
+                runCatching {
+                    database.inboxDao().getByMeetingId(meetingId)?.let { linked ->
+                        database.inboxDao().updateTranscription(linked.id, "FAILED")
+                    }
+                }
             }
             throw e
         } catch (e: Throwable) {
@@ -966,6 +1001,11 @@ class MeetingProcessingPipeline(
                     }
                 }
                 meetingDao.updateMeeting(failedMeeting)
+                runCatching {
+                    database.inboxDao().getByMeetingId(meetingId)?.let { linked ->
+                        database.inboxDao().updateTranscription(linked.id, "FAILED")
+                    }
+                }
             }
             throw e
         }
@@ -999,7 +1039,10 @@ class MeetingProcessingPipeline(
          * wants cloud refinement must ask for it. */
         processingProfile: ProcessingProfile = ProcessingProfile.OFFLINE,
         /** Sizes the AI pass's time budget; 0 (unknown) gets the minimum budget. */
-        audioDurationMs: Long = 0L
+        audioDurationMs: Long = 0L,
+        vocabularyHints: List<String> = emptyList(),
+        recordingTitle: String? = null,
+        customContext: String? = null
     ): List<TranscriptSegment> = withContext(Dispatchers.Default) {
         // Nothing to clean: no words means no paragraphs, and no model call to make.
         if (structuredSegments.isEmpty()) {
@@ -1041,7 +1084,14 @@ class MeetingProcessingPipeline(
         // thrown error) the rule-based result below is used, exactly as for an AiResult failure.
         val aiResult: AiResult<TranscriptAiCleanupResult> = try {
             withTimeoutOrNull(cleanupBudgetMs(audioDurationMs)) {
-                aiCleanupEngine.clean(ruleCleanedSegments, profile, singleSpeakerMode)
+                aiCleanupEngine.cleanWithContext(
+                    segments = ruleCleanedSegments,
+                    profile = profile,
+                    singleSpeakerMode = singleSpeakerMode,
+                    vocabularyHints = vocabularyHints,
+                    recordingTitle = recordingTitle,
+                    customContext = customContext
+                )
             } ?: AiResult.Failed("AI cleanup exceeded its time budget")
         } catch (e: CancellationException) {
             throw e
@@ -1259,8 +1309,11 @@ class MeetingProcessingPipeline(
             val model = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS) ?: return emptyList()
             progress(if (model.isCloud) "Polishing note formatting with Google's AI..." else "Polishing note formatting...", 97)
             return try {
+                val existingUserBlocks = database.noteDao().getBlocks(noteId).map { it.toDomain() }
+                    .filter { it.source == BlockSource.USER && it.content.text.isNotBlank() }
+                val marks = runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.forMeeting(database, meetingId) }.getOrDefault(emptyList())
                 val res = com.craftflowtechnologies.meetingmind.ai.notes.NotePolishEngine(model.languageModel, model.contextLengthTokens)
-                    .polish(noteId, meetingId, recordingType, targetSegments, summary)
+                    .polish(noteId, meetingId, recordingType, targetSegments, summary, userNotes = existingUserBlocks, marks = marks)
                 (res as? AiResult.Success)?.value.orEmpty()
             } catch (e: CancellationException) {
                 throw e
@@ -1341,7 +1394,7 @@ class MeetingProcessingPipeline(
                     title = meeting.title.ifBlank { "Lecture Notes" },
                     meetingId = meetingId,
                     domain = domain,
-                    courseName = meeting.title.ifBlank { "Course" }
+                    courseName = null
                 )
                 val resolvedFallback = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS)
                 val aiEngine = com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine(
@@ -1357,6 +1410,14 @@ class MeetingProcessingPipeline(
                 }
                 if (synthesis != null) {
                     learningRepo.saveConceptsAndActivities(session.id, synthesis.concepts, synthesis.activities)
+                    learningRepo.updateSessionSignals(
+                        sessionId = session.id,
+                        examSignalCount = (synthesis.examHints.size + synthesis.concepts.count {
+                            it.examImportance != com.craftflowtechnologies.meetingmind.core.model.ExamImportance.NORMAL
+                        }).coerceAtLeast(synthesis.examHints.size),
+                        unresolvedConfusionCount = synthesis.confusionUnpacks.size,
+                        domain = domain
+                    )
                 }
                 val polished = runPolishPass(segments)
                 val generatedLecture = com.craftflowtechnologies.meetingmind.ai.learning.LectureNoteBuilder.build(

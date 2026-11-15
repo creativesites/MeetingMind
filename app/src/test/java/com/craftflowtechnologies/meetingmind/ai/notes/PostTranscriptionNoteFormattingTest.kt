@@ -221,4 +221,25 @@ class PostTranscriptionNoteFormattingTest {
         assertEquals(CalloutKind.APPLICATION, CalloutKind.fromKey("APPLICATION"))
         assertEquals(CalloutKind.DECISION, CalloutKind.fromKey("DECISION"))
     }
+
+    @Test
+    fun `RecordingNoteBuilder extracts overview highlights and questions immediately even without AI summary`() {
+        val segments = listOf(
+            TranscriptSegment("s1", "m9", "spk_0", "Alex", 0L, 6_000L, "We decided today to move the product launch to October fifteenth for extra QA testing."),
+            TranscriptSegment("s2", "m9", "spk_1", "Sam", 6_500L, 12_000L, "Can we also verify the offline battery benchmark before Friday evening?"),
+            TranscriptSegment("s3", "m9", "spk_0", "Alex", 12_500L, 19_000L, "Yes, the engineering team will finalize all crash recovery checkpoints before release.")
+        )
+        val generated = RecordingNoteBuilder.build(
+            noteId = "n9",
+            meetingId = "m9",
+            recordingType = RecordingType.MEETING,
+            segments = segments,
+            summary = null,
+            speakers = listOf(Speaker("spk_0", "m9", 0, "Speaker 1", "Alex", "#000000"))
+        )
+        assertTrue(generated.blocks.any { it.type == NoteBlockType.CALLOUT && it.sectionKey == RecordingNoteBuilder.KEY_SUMMARY })
+        assertTrue(generated.blocks.any { it.type == NoteBlockType.BULLET && it.sectionKey == RecordingNoteBuilder.KEY_TOPICS })
+        assertTrue(generated.blocks.any { it.type == NoteBlockType.NUMBERED && it.content.text.contains("offline battery benchmark?") })
+        assertTrue(generated.blocks.any { it.sectionKey == RecordingNoteBuilder.KEY_TRANSCRIPT })
+    }
 }

@@ -151,8 +151,21 @@ export async function handle(request, env, deps = {}) {
     return new Response(await up.text(), { status: up.status, headers: { 'content-type': up.headers.get('content-type') ?? 'application/json', ...headers() } });
   }
 
-  // generate
-  const up = await fetchImpl(L.withKey(`${google}${route.path}`, key), { method: 'POST', headers: { 'content-type': 'application/json' }, body: bodyText });
+  // generate / streamGenerateContent
+  const upstreamTarget = new URL(`${google}${route.path}`);
+  if (route.stream) upstreamTarget.searchParams.set('alt', url.searchParams.get('alt') || 'sse');
+  const up = await fetchImpl(L.withKey(upstreamTarget.toString(), key), { method: 'POST', headers: { 'content-type': 'application/json' }, body: bodyText });
+  if (route.stream) {
+    if (!up.ok) {
+      return new Response(await up.text(), { status: up.status, headers: { 'content-type': up.headers.get('content-type') ?? 'application/json', ...headers() } });
+    }
+    const opId = OP_ID.test(request.headers.get('X-Operation-Id') ?? '') ? request.headers.get('X-Operation-Id') : null;
+    usage = await call(env.LEDGER, subject, '/commit', { period: period.id, meter, amount: 1, opId });
+    return new Response(up.body, {
+      status: up.status,
+      headers: { 'content-type': up.headers.get('content-type') ?? 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', ...headers() }
+    });
+  }
   const text = await up.text();
   if (up.ok) {
     let amount = 1;

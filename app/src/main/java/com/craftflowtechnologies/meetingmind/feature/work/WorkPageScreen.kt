@@ -99,6 +99,7 @@ fun WorkPageScreen(
     val projects by viewModel.projects.collectAsState()
     val recentNotes by viewModel.workNotes.collectAsState()
     val titles by viewModel.titles.collectAsState()
+    val inboxItems by viewModel.inboxItems.collectAsState()
     val inboxCount by viewModel.inboxCount.collectAsState()
     val pulse by viewModel.pulse.collectAsState()
     val upNext by today.upNext.collectAsState()
@@ -235,6 +236,9 @@ fun WorkPageScreen(
             val e = (item.target as DeepTarget.Event).event
             return ScheduleRow(item.id, item.title, e.otherPeople.take(3).joinToString(", ").ifEmpty { e.location }, timeLabel(item, fmt)) { today.noteForEvent(e) { id, _ -> onOpenNote(id) } }
         }
+        val latestInbox = inboxItems.firstOrNull()
+        val latestInboxSource = latestInbox?.let { formatSource(it.source) }
+        val latestInboxTitle = latestInbox?.let { formatInboxDisplayTitle(it.title, it.kind, latestInboxSource) }
         TodayModel(
             hero = hero,
             needs = if (hero is TodayHero.Attention) needs.drop(1) else needs,
@@ -254,7 +258,15 @@ fun WorkPageScreen(
             ),
             circles = workCircles,
             onStartCircle = onStartCircle,
-            onAllCircles = onOpenCircles
+            onAllCircles = onOpenCircles,
+            inboxCount = inboxCount,
+            latestInboxTitle = latestInboxTitle,
+            latestInboxSource = latestInboxSource,
+            latestInboxTranscribed = latestInbox?.transcriptionStatus == "COMPLETED",
+            onOpenInbox = onOpenInbox,
+            onOpenWeeklyReview = onOpenWeeklyReview,
+            onOpenBrief = { onOpenBrief(BriefTarget.weekly) },
+            onOpenPeople = { onOpenAll(WorkTab.PEOPLE) }
         )
     }
 
@@ -325,7 +337,8 @@ fun WorkPageScreen(
                 } else {
                     WorkPageHeader(
                         contextLine = contextLine(now, meetings.size, needs.size), addActions = addActions, moreActions = moreActions,
-                        onSearch = onSearch, onBack = if (onNavigateBottomNav != null && settings.tabSlot == TabSlot.WORK) null else onNavigateBack
+                        onSearch = onSearch, onBack = if (onNavigateBottomNav != null && settings.tabSlot == TabSlot.WORK) null else onNavigateBack,
+                        onOpenInbox = onOpenInbox
                     )
                 }
                 SegmentedControl(WorkSegment.entries.map { it.label }, segment?.ordinal ?: -1, { page.select(WorkSegment.entries[it]) })

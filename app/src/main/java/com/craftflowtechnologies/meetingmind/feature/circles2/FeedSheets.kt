@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.material.icons.rounded.Videocam
 import android.content.Intent
@@ -50,7 +51,9 @@ import com.craftflowtechnologies.meetingmind.core.circles2.Comment
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
 import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
+import com.craftflowtechnologies.meetingmind.core.circles2.PostMeta
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
+import com.craftflowtechnologies.meetingmind.core.circles2.WorkPriority
 import com.craftflowtechnologies.meetingmind.core.scripture.PassageResult
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser
 import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
@@ -58,11 +61,15 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.SegmentedControl
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.feature.scripture.rememberPassage
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 
 /** Which kind of post to write. Admin-only kinds are hidden from members. */
 @Composable
@@ -223,8 +230,13 @@ fun ComposerSheet(
     onTypeChange: (PostType) -> Unit = {},
     onPhoto: (PickedFile) -> Unit = {},
     onPhotoRefused: () -> Unit = {},
-    uploading: Boolean = state.uploading
+    onDiscardDraft: () -> Unit = {},
+    uploading: Boolean = state.uploading,
+    members: List<Member> = emptyList(),
+    meta: PostMeta? = null,
+    onMetaChange: (PostMeta?) -> Unit = {}
 ) {
+    BackHandler(enabled = state.open) { onDismiss() }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var videoNotice by remember { mutableStateOf<String?>(null) }
@@ -234,6 +246,15 @@ fun ComposerSheet(
     var selectedStudyNote by remember { mutableStateOf<Triple<String, String?, String>?>(null) }
     val isUploading = uploading || state.uploading
     val attachmentsFull = state.attachments.size >= 4
+
+    var localMeta by remember(state.type, meta, state.meta) {
+        mutableStateOf(meta ?: state.meta ?: PostMeta())
+    }
+    fun updateMeta(transform: (PostMeta) -> PostMeta) {
+        val updated = transform(localMeta)
+        localMeta = updated
+        onMetaChange(updated)
+    }
 
     // Multi-modal media pickers
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
@@ -311,8 +332,14 @@ fun ComposerSheet(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val spaceBadge = when {
+                        circle.isWork -> "WORK POST"
+                        circle.isLearning -> "STUDY POST"
+                        circle.space.equals("community", ignoreCase = true) || circle.space.equals("general", ignoreCase = true) -> "COMMUNITY POST"
+                        else -> "FAITH POST"
+                    }
                     Text(
-                        if (circle.isWork) "WORK POST" else "FAITH POST",
+                        spaceBadge,
                         style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
                         color = CirclesPalette.Accent
                     )
@@ -328,9 +355,26 @@ fun ComposerSheet(
                     color = MM.colors.inkSecondary
                 )
             }
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Rounded.Close, "Cancel", tint = MM.colors.inkSecondary)
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (state.hasText) {
+                    TextAction("Discard", onClick = onDiscardDraft)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, if (state.hasText) "Save draft & close" else "Cancel", tint = MM.colors.inkSecondary)
+                }
             }
+        }
+
+        if (state.hasText || state.draftRestored) {
+            StatusLine(
+                StatusKind.Info,
+                if (state.draftRestored) "Draft restored — automatically saved as you type."
+                else "Auto-saving draft — pressing Back won't lose your words."
+            )
+        }
+
+        if (circle.template == "client_engagement") {
+            StatusLine(StatusKind.Info, "External client space — visible to client members.")
         }
 
         // Type switcher chips
@@ -345,6 +389,189 @@ fun ComposerSheet(
 
         if (state.fromAnswered) {
             StatusLine(StatusKind.Info, "Thank God with the group! Edit this testimony however you like.")
+        }
+
+        // Work metadata inputs
+        if (circle.isWork && type in setOf(PostType.Task, PostType.Blocker, PostType.Decision)) {
+            Surface(
+                shape = MM.radius.card,
+                color = MM.colors.surfaceSunk,
+                border = BorderStroke(1.dp, MM.colors.line),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    Modifier.padding(MM.space.m),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.s)
+                ) {
+                    // Assignee or Decision owner
+                    if (type == PostType.Decision) {
+                        Text(
+                            "Decision owner",
+                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = MM.colors.inkSecondary
+                        )
+                        if (members.isNotEmpty()) {
+                            Row(
+                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                            ) {
+                                members.forEach { m ->
+                                    val isSel = localMeta.decisionOwner == m.displayName
+                                    MMChip(
+                                        label = m.displayName,
+                                        selected = isSel,
+                                        onClick = {
+                                            updateMeta { it.copy(decisionOwner = if (isSel) null else m.displayName) }
+                                        }
+                                    )
+                                }
+                            }
+                        } else {
+                            CircleField(
+                                value = localMeta.decisionOwner.orEmpty(),
+                                onValueChange = { owner -> updateMeta { it.copy(decisionOwner = owner.ifBlank { null }) } },
+                                label = "Decision owner (person or team)",
+                                placeholder = "e.g. Jane, Product Lead"
+                            )
+                        }
+                    } else {
+                        Text(
+                            "Assignee",
+                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = MM.colors.inkSecondary
+                        )
+                        if (members.isNotEmpty()) {
+                            Row(
+                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                            ) {
+                                members.forEach { m ->
+                                    val isSel = localMeta.assigneeUid == m.uid
+                                    MMChip(
+                                        label = "@${m.displayName}",
+                                        selected = isSel,
+                                        onClick = {
+                                            updateMeta { curr ->
+                                                if (isSel) curr.copy(assigneeUid = null, assigneeName = null)
+                                                else curr.copy(assigneeUid = m.uid, assigneeName = m.displayName)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        } else {
+                            CircleField(
+                                value = localMeta.assigneeName.orEmpty(),
+                                onValueChange = { name -> updateMeta { it.copy(assigneeName = name.ifBlank { null }) } },
+                                label = "Assignee name",
+                                placeholder = "e.g. Jane"
+                            )
+                        }
+                    }
+
+                    // Quick due pills + custom due text
+                    if (type in setOf(PostType.Task, PostType.Blocker)) {
+                        Text(
+                            "Due date",
+                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = MM.colors.inkSecondary
+                        )
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf("Today", "Tomorrow", "Friday").forEach { pill ->
+                                val isSel = localMeta.dueText == pill
+                                MMChip(
+                                    label = pill,
+                                    selected = isSel,
+                                    onClick = {
+                                        val nextDue = if (isSel) null else pill
+                                        updateMeta { it.copy(dueText = nextDue) }
+                                    }
+                                )
+                            }
+                        }
+                        CircleField(
+                            value = localMeta.dueText.orEmpty(),
+                            onValueChange = { text -> updateMeta { it.copy(dueText = text.ifBlank { null }) } },
+                            label = "Custom due date or milestone (optional)",
+                            placeholder = "e.g. Today, by Friday, End of Q3"
+                        )
+                    }
+
+                    // Priority chips (Normal, High, Urgent)
+                    Text(
+                        "Priority",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = MM.colors.inkSecondary
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf(WorkPriority.Normal, WorkPriority.High, WorkPriority.Urgent).forEach { pr ->
+                            val isSel = localMeta.priority == pr
+                            val (bg, fg) = when (pr) {
+                                WorkPriority.Urgent -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
+                                WorkPriority.High -> CirclesPalette.WarmBg to CirclesPalette.WarmInk
+                                WorkPriority.Normal -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
+                                else -> MM.colors.surfaceSunk to MM.colors.inkSecondary
+                            }
+                            Surface(
+                                shape = MM.radius.pill,
+                                color = if (isSel) bg else MM.colors.surfaceSunk,
+                                border = BorderStroke(1.dp, if (isSel) fg.copy(alpha = 0.35f) else MM.colors.line),
+                                modifier = Modifier.clickable {
+                                    updateMeta { it.copy(priority = if (isSel) null else pr) }
+                                }
+                            ) {
+                                Text(
+                                    pr.label,
+                                    style = MM.type.caption.copy(fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium),
+                                    color = if (isSel) fg else MM.colors.inkSecondary,
+                                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // For Blocker: Blocked on field
+                    if (type == PostType.Blocker) {
+                        CircleField(
+                            value = localMeta.blockedOn.orEmpty(),
+                            onValueChange = { blocked -> updateMeta { it.copy(blockedOn = blocked.ifBlank { null }) } },
+                            label = "Blocked on (person or dependency)",
+                            placeholder = "e.g. Waiting on API credentials from DevOps"
+                        )
+                    }
+                }
+            }
+        }
+
+        // Standup helper template
+        if (type == PostType.Standup) {
+            Surface(
+                shape = MM.radius.pill,
+                color = CirclesPalette.AccentSoft,
+                border = BorderStroke(1.dp, CirclesPalette.Accent.copy(alpha = 0.25f)),
+                modifier = Modifier.clickable {
+                    onBody("Done:\n- \n\nNext:\n- \n\nBlockers:\n- None")
+                }
+            ) {
+                Row(
+                    Modifier.padding(horizontal = MM.space.m, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        "Use Done / Next / Blockers template",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = CirclesPalette.AccentDeep
+                    )
+                }
+            }
         }
 
         // Devotional selector & preview card
@@ -709,9 +936,16 @@ fun ThreadSheet(
     onMemberClick: ((String) -> Unit)? = null,
     circleId: String? = null,
     members: List<Member> = emptyList(),
-    isWorkOrLearning: Boolean = false
+    isWorkOrLearning: Boolean = false,
+    draft: String? = null,
+    onDraftChange: ((String) -> Unit)? = null
 ) {
-    var text by remember { mutableStateOf("") }
+    var localText by remember(thread?.postId) { mutableStateOf("") }
+    val text = draft ?: localText
+    val setText: (String) -> Unit = { v ->
+        val clean = v.take(2000)
+        if (onDraftChange != null) onDraftChange(clean) else localText = clean
+    }
     val clipboard = LocalClipboardManager.current
     CircleSheet(onDismiss) {
         Row(
@@ -938,7 +1172,7 @@ fun ThreadSheet(
         ) {
             CircleField(
                 text,
-                { text = it.take(2000) },
+                setText,
                 label = "Add a comment",
                 placeholder = "Write an encouraging comment…",
                 modifier = Modifier.weight(1f),
@@ -954,7 +1188,7 @@ fun ThreadSheet(
                         val toSend = text.trim()
                         if (toSend.isNotBlank()) {
                             onSend(toSend)
-                            text = ""
+                            setText("")
                         }
                     }
             ) {
@@ -973,27 +1207,89 @@ fun ThreadSheet(
 
 /** The invite code and a share button. The code is always written out so a pasted message works anywhere. */
 @Composable
-fun InviteSheet(state: InviteUiState, onCreate: () -> Unit, onDismiss: () -> Unit) {
+fun InviteSheet(
+    state: InviteUiState,
+    onCreate: () -> Unit,
+    onDismiss: () -> Unit,
+    onCreateEmailInvite: ((String) -> Unit)? = null
+) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    var selectedTab by remember { mutableStateOf(0) }
+    var emailInput by remember { mutableStateOf("") }
+
     CircleSheet(onDismiss) {
         Text("Invite people", style = MM.type.title, color = MM.colors.ink)
-        val invite = state.invite
-        when {
-            state.busy -> StatusLine(StatusKind.Info, "Making a code...")
-            invite != null && state.shareText != null -> {
-                InsetPanel { SelectionContainer { Text(invite.code, style = MM.type.title, color = MM.colors.ink) } }
-                Text("Works for one week and up to ${invite.maxUses ?: 50} people. Anyone with the code can join, so share it only with people you know.", style = MM.type.secondary, color = MM.colors.inkSecondary)
+
+        if (onCreateEmailInvite != null) {
+            SegmentedControl(
+                options = listOf("Invite code", "By email"),
+                selectedIndex = selectedTab,
+                onSelect = { selectedTab = it }
+            )
+        }
+
+        if (onCreateEmailInvite != null && selectedTab == 1) {
+            if (state.invitedEmail != null) {
+                StatusLine(StatusKind.Ok, "Invite created for ${state.invitedEmail}")
+            }
+            CircleField(
+                value = emailInput,
+                onValueChange = { emailInput = it },
+                label = "Email address",
+                placeholder = "colleague@company.com",
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    capitalization = KeyboardCapitalization.None
+                )
+            )
+            PrimaryButton(
+                "Send email invite",
+                onClick = {
+                    val trimmed = emailInput.trim()
+                    if (trimmed.isNotBlank()) {
+                        onCreateEmailInvite(trimmed)
+                    }
+                },
+                enabled = emailInput.isNotBlank() && !state.busy,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            val invite = state.invite
+            if (invite != null && state.shareText != null) {
+                InsetPanel {
+                    SelectionContainer {
+                        Text(invite.code, style = MM.type.title, color = MM.colors.ink)
+                    }
+                }
                 PrimaryButton("Share invite", {
                     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, state.shareText)
                     runCatching { context.startActivity(Intent.createChooser(send, "Share invite").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 }, modifier = Modifier.fillMaxWidth())
                 SecondaryButton("Copy message", { clipboard.setText(AnnotatedString(state.shareText)) }, modifier = Modifier.fillMaxWidth())
             }
-            else -> {
-                state.error?.let { StatusLine(StatusKind.Error, it) }
-                Text("Make a code to share on WhatsApp, SMS or in person.", style = MM.type.secondary, color = MM.colors.inkSecondary)
-                PrimaryButton(if (state.error != null) "Try again" else "Make a code", onCreate, modifier = Modifier.fillMaxWidth())
+
+            if (state.busy) StatusLine(StatusKind.Info, "Sending invite...")
+            state.error?.let { StatusLine(StatusKind.Error, it) }
+        } else {
+            val invite = state.invite
+            when {
+                state.busy -> StatusLine(StatusKind.Info, "Making a code...")
+                invite != null && state.shareText != null -> {
+                    InsetPanel { SelectionContainer { Text(invite.code, style = MM.type.title, color = MM.colors.ink) } }
+                    Text("Works for one week and up to ${invite.maxUses ?: 50} people. Anyone with the code can join, so share it only with people you know.", style = MM.type.secondary, color = MM.colors.inkSecondary)
+                    PrimaryButton("Share invite", {
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, state.shareText)
+                        runCatching { context.startActivity(Intent.createChooser(send, "Share invite").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    }, modifier = Modifier.fillMaxWidth())
+                    SecondaryButton("Copy message", { clipboard.setText(AnnotatedString(state.shareText)) }, modifier = Modifier.fillMaxWidth())
+                }
+                else -> {
+                    state.error?.let { StatusLine(StatusKind.Error, it) }
+                    Text("Make a code to share on WhatsApp, SMS or in person.", style = MM.type.secondary, color = MM.colors.inkSecondary)
+                    PrimaryButton(if (state.error != null) "Try again" else "Make a code", onCreate, modifier = Modifier.fillMaxWidth())
+                }
             }
         }
     }

@@ -3,21 +3,16 @@ package com.craftflowtechnologies.meetingmind.feature.work
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material3.Checkbox
@@ -42,9 +37,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState
+import com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult
+import com.craftflowtechnologies.meetingmind.core.circles2.PostMeta
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
@@ -59,7 +55,9 @@ import com.craftflowtechnologies.meetingmind.feature.circles2.CircleSheet
 import com.craftflowtechnologies.meetingmind.feature.circles2.CirclesPalette
 import com.craftflowtechnologies.meetingmind.feature.circles2.PostTypeBadge
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 @Composable
 fun ShareToCircleSheet(
@@ -70,7 +68,9 @@ fun ShareToCircleSheet(
     meetingId: String? = null,
     onDismiss: () -> Unit,
     onNavigateCreateCircle: () -> Unit,
-    onShared: (circleName: String, count: Int) -> Unit
+    onShared: (circleName: String, count: Int) -> Unit,
+    meetingDate: String? = null,
+    onOpenCircle: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val repo = remember { Circles2.repository(context) }
@@ -89,7 +89,7 @@ fun ShareToCircleSheet(
     var selectedCircleId by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
-    var showClientConfirmDialog by remember { mutableStateOf(false) }
+    var publishedCount by remember { mutableStateOf<Int?>(null) }
 
     CircleSheet(onDismiss) {
         Row(
@@ -97,10 +97,10 @@ fun ShareToCircleSheet(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                 Text(
                     "Share to Team Circle",
-                    style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                    style = MM.type.title.copy(fontWeight = FontWeight.Bold),
                     color = MM.colors.ink
                 )
                 Text(
@@ -158,179 +158,232 @@ fun ShareToCircleSheet(
                     }
                     val currentCircle = workCircles.firstOrNull { it.id == selectedCircleId } ?: workCircles.first()
 
-                    SectionHeader("Target Circle")
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        workCircles.forEach { c ->
-                            val isSelected = c.id == currentCircle.id
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isSelected) CirclesPalette.AccentSoft else MM.colors.surfaceSunk,
-                                border = BorderStroke(1.dp, if (isSelected) CirclesPalette.Accent else MM.colors.line),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .clickable { selectedCircleId = c.id }
-                            ) {
-                                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                    Text(
-                                        c.name,
-                                        style = MM.type.bodyStrong.copy(fontSize = 13.5.sp),
-                                        color = if (isSelected) CirclesPalette.AccentDeep else MM.colors.ink,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        c.groupWord,
-                                        style = MM.type.caption,
-                                        color = if (isSelected) CirclesPalette.AccentDeep.copy(alpha = 0.8f) else MM.colors.inkSecondary
-                                    )
-                                }
-                            }
+                    if (publishedCount != null) {
+                        val count = publishedCount ?: 0
+                        StatusLine(
+                            StatusKind.Ok,
+                            "Published $count items to ${currentCircle.name}"
+                        )
+                        Column(
+                            Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(MM.space.s)
+                        ) {
+                            PrimaryButton(
+                                text = "Open ${currentCircle.name}",
+                                onClick = { onOpenCircle?.invoke(currentCircle.id) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            SecondaryButton(
+                                text = "Done",
+                                onClick = onDismiss,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
-                    }
-
-                    SectionHeader("Select content to publish")
-                    LazyColumn(
-                        Modifier.fillMaxWidth().heightIn(max = 280.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (!summary.isNullOrBlank()) {
-                            item {
-                                MMCard(onClick = { shareSummary = !shareSummary }) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(
-                                            checked = shareSummary,
-                                            onCheckedChange = { shareSummary = it },
-                                            colors = CheckboxDefaults.colors(checkedColor = CirclesPalette.Accent)
+                    } else {
+                        SectionHeader("Target Circle")
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                        ) {
+                            workCircles.forEach { c ->
+                                val isSelected = c.id == currentCircle.id
+                                Surface(
+                                    shape = MM.radius.card,
+                                    color = if (isSelected) CirclesPalette.AccentSoft else MM.colors.surfaceSunk,
+                                    border = BorderStroke(MMSize.hairline, if (isSelected) CirclesPalette.Accent else MM.colors.line),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(MM.radius.card)
+                                        .clickable { selectedCircleId = c.id }
+                                ) {
+                                    Column(Modifier.padding(horizontal = MM.space.m, vertical = MM.space.s)) {
+                                        Text(
+                                            c.name,
+                                            style = MM.type.bodyStrong,
+                                            color = if (isSelected) CirclesPalette.AccentDeep else MM.colors.ink,
+                                            maxLines = 1
                                         )
-                                        Spacer(Modifier.width(8.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                Text("Meeting Brief", style = MM.type.bodyStrong, color = MM.colors.ink)
-                                                PostTypeBadge(PostType.Brief)
-                                            }
-                                            Text(summary.take(120) + if (summary.length > 120) "…" else "", style = MM.type.secondary, color = MM.colors.inkSecondary, maxLines = 2)
-                                        }
+                                        Text(
+                                            c.groupWord,
+                                            style = MM.type.caption,
+                                            color = if (isSelected) CirclesPalette.AccentDeep.copy(alpha = 0.8f) else MM.colors.inkSecondary
+                                        )
                                     }
                                 }
                             }
                         }
 
-                        if (decisions.isNotEmpty()) {
-                            item { SectionHeader("Decisions", count = decisions.size) }
-                            items(decisions, key = { "d_${it.id}" }) { d ->
-                                val isChecked = d.id in selectedDecisions
-                                MMCard(onClick = {
-                                    if (isChecked) selectedDecisions.remove(d.id) else selectedDecisions.add(d.id)
-                                }) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(
-                                            checked = isChecked,
-                                            onCheckedChange = {
-                                                if (it) selectedDecisions.add(d.id) else selectedDecisions.remove(d.id)
-                                            },
-                                            colors = CheckboxDefaults.colors(checkedColor = CirclesPalette.Accent)
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(d.text, style = MM.type.body, color = MM.colors.ink)
-                                        }
-                                        PostTypeBadge(PostType.Decision)
-                                    }
-                                }
-                            }
-                        }
-
-                        if (tasks.isNotEmpty()) {
-                            item { SectionHeader("Action Items", count = tasks.size) }
-                            items(tasks, key = { "t_${it.id}" }) { t ->
-                                val isChecked = t.id in selectedTasks
-                                MMCard(onClick = {
-                                    if (isChecked) selectedTasks.remove(t.id) else selectedTasks.add(t.id)
-                                }) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(
-                                            checked = isChecked,
-                                            onCheckedChange = {
-                                                if (it) selectedTasks.add(t.id) else selectedTasks.remove(t.id)
-                                            },
-                                            colors = CheckboxDefaults.colors(checkedColor = CirclesPalette.Accent)
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(t.text, style = MM.type.body, color = MM.colors.ink)
-                                            if (!t.ownerName.isNullOrBlank() || !t.dueText.isNullOrBlank()) {
-                                                val meta = listOfNotNull(
-                                                    t.ownerName?.let { "@$it" },
-                                                    t.dueText?.let { "Due: $it" }
-                                                ).joinToString(" · ")
-                                                Text(meta, style = MM.type.caption, color = MM.colors.inkMuted)
+                        SectionHeader("Select content to publish")
+                        LazyColumn(
+                            Modifier.fillMaxWidth().heightIn(max = 280.dp),
+                            verticalArrangement = Arrangement.spacedBy(MM.space.s)
+                        ) {
+                            if (!summary.isNullOrBlank()) {
+                                item {
+                                    MMCard(onClick = { shareSummary = !shareSummary }) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Checkbox(
+                                                checked = shareSummary,
+                                                onCheckedChange = { shareSummary = it },
+                                                colors = CheckboxDefaults.colors(checkedColor = CirclesPalette.Accent)
+                                            )
+                                            Spacer(Modifier.width(MM.space.s))
+                                            Column(Modifier.weight(1f)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                                                ) {
+                                                    Text("Meeting Brief", style = MM.type.bodyStrong, color = MM.colors.ink)
+                                                    PostTypeBadge(PostType.Brief)
+                                                }
+                                                Text(
+                                                    summary.take(120) + if (summary.length > 120) "…" else "",
+                                                    style = MM.type.secondary,
+                                                    color = MM.colors.inkSecondary,
+                                                    maxLines = 2
+                                                )
                                             }
                                         }
-                                        PostTypeBadge(PostType.Task)
+                                    }
+                                }
+                            }
+
+                            if (decisions.isNotEmpty()) {
+                                item { SectionHeader("Decisions", count = decisions.size) }
+                                items(decisions, key = { "d_${it.id}" }) { d ->
+                                    val isChecked = d.id in selectedDecisions
+                                    MMCard(onClick = {
+                                        if (isChecked) selectedDecisions.remove(d.id) else selectedDecisions.add(d.id)
+                                    }) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Checkbox(
+                                                checked = isChecked,
+                                                onCheckedChange = {
+                                                    if (it) selectedDecisions.add(d.id) else selectedDecisions.remove(d.id)
+                                                },
+                                                colors = CheckboxDefaults.colors(checkedColor = CirclesPalette.Accent)
+                                            )
+                                            Spacer(Modifier.width(MM.space.s))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(d.text, style = MM.type.body, color = MM.colors.ink)
+                                            }
+                                            PostTypeBadge(PostType.Decision)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (tasks.isNotEmpty()) {
+                                item { SectionHeader("Action Items", count = tasks.size) }
+                                items(tasks, key = { "t_${it.id}" }) { t ->
+                                    val isChecked = t.id in selectedTasks
+                                    MMCard(onClick = {
+                                        if (isChecked) selectedTasks.remove(t.id) else selectedTasks.add(t.id)
+                                    }) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Checkbox(
+                                                checked = isChecked,
+                                                onCheckedChange = {
+                                                    if (it) selectedTasks.add(t.id) else selectedTasks.remove(t.id)
+                                                },
+                                                colors = CheckboxDefaults.colors(checkedColor = CirclesPalette.Accent)
+                                            )
+                                            Spacer(Modifier.width(MM.space.s))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(t.text, style = MM.type.body, color = MM.colors.ink)
+                                                if (!t.ownerName.isNullOrBlank() || !t.dueText.isNullOrBlank()) {
+                                                    val meta = listOfNotNull(
+                                                        t.ownerName?.let { "@$it" },
+                                                        t.dueText?.let { "Due: $it" }
+                                                    ).joinToString(" · ")
+                                                    Text(meta, style = MM.type.caption, color = MM.colors.inkMuted)
+                                                }
+                                            }
+                                            PostTypeBadge(PostType.Task)
+                                        }
                                     }
                                 }
                             }
                         }
+
+                        errorMsg?.let { StatusLine(StatusKind.Error, it) }
+
+                        val totalSelected = (if (shareSummary) 1 else 0) + selectedDecisions.size + selectedTasks.size
+                        val buttonLabel = if (sending) "Publishing…" else "Publish $totalSelected items to ${currentCircle.name}"
+
+                        PrimaryButton(
+                            buttonLabel,
+                            onClick = {
+                                if (totalSelected == 0) return@PrimaryButton
+                                sending = true
+                                errorMsg = null
+                                scope.launch {
+                                    var count = 0
+                                    if (shareSummary && !summary.isNullOrBlank()) {
+                                        val briefContent = "📋 Meeting Brief: $meetingTitle\n\n$summary"
+                                        val r = repo.createPost(
+                                            circleId = currentCircle.id,
+                                            body = briefContent,
+                                            type = PostType.Brief,
+                                            anonymous = false,
+                                            requestId = UUID.randomUUID().toString(),
+                                            meta = PostMeta(
+                                                sourceKind = "meeting",
+                                                sourceId = meetingId,
+                                                meetingDate = meetingDate?.take(40)
+                                            )
+                                        )
+                                        if (r is CirclesResult.Ok) count++
+                                    }
+                                    decisions.filter { it.id in selectedDecisions }.forEach { d ->
+                                        val r = repo.createPost(
+                                            circleId = currentCircle.id,
+                                            body = d.text.trim(),
+                                            type = PostType.Decision,
+                                            anonymous = false,
+                                            requestId = UUID.randomUUID().toString(),
+                                            meta = PostMeta(
+                                                sourceKind = "meeting",
+                                                sourceId = meetingId,
+                                                meetingDate = meetingDate?.take(40)
+                                            )
+                                        )
+                                        if (r is CirclesResult.Ok) count++
+                                    }
+                                    tasks.filter { it.id in selectedTasks }.forEach { t ->
+                                        val r = repo.createPost(
+                                            circleId = currentCircle.id,
+                                            body = t.text.trim(),
+                                            type = PostType.Task,
+                                            anonymous = false,
+                                            requestId = UUID.randomUUID().toString(),
+                                            meta = PostMeta(
+                                                sourceKind = "meeting",
+                                                sourceId = meetingId,
+                                                assigneeName = t.ownerName?.take(60),
+                                                dueText = t.dueText?.take(40),
+                                                meetingDate = meetingDate?.take(40)
+                                            )
+                                        )
+                                        if (r is CirclesResult.Ok) count++
+                                    }
+                                    sending = false
+                                    if (count > 0) {
+                                        onShared(currentCircle.name, count)
+                                        if (onOpenCircle != null) {
+                                            publishedCount = count
+                                        } else {
+                                            onDismiss()
+                                        }
+                                    } else {
+                                        errorMsg = "Could not publish to circle. Please try again."
+                                    }
+                                }
+                            },
+                            enabled = !sending && totalSelected > 0 && privacyCheck != null,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
-
-                    errorMsg?.let { StatusLine(StatusKind.Error, it) }
-
-                    val totalSelected = (if (shareSummary) 1 else 0) + selectedDecisions.size + selectedTasks.size
-                    val buttonLabel = if (sending) "Publishing…" else "Publish $totalSelected items to ${currentCircle.name}"
-
-                    PrimaryButton(
-                        buttonLabel,
-                        onClick = {
-                            if (totalSelected == 0) return@PrimaryButton
-                            sending = true
-                            errorMsg = null
-                            scope.launch {
-                                var count = 0
-                                if (shareSummary && !summary.isNullOrBlank()) {
-                                    val briefContent = "📋 Meeting Brief: $meetingTitle\n\n$summary"
-                                    repo.createPost(
-                                        circleId = currentCircle.id,
-                                        body = briefContent,
-                                        type = PostType.Brief,
-                                        anonymous = false,
-                                        requestId = java.util.UUID.randomUUID().toString()
-                                    )
-                                    count++
-                                }
-                                decisions.filter { it.id in selectedDecisions }.forEach { d ->
-                                    repo.createPost(
-                                        circleId = currentCircle.id,
-                                        body = d.text,
-                                        type = PostType.Decision,
-                                        anonymous = false,
-                                        requestId = java.util.UUID.randomUUID().toString()
-                                    )
-                                    count++
-                                }
-                                tasks.filter { it.id in selectedTasks }.forEach { t ->
-                                    val ownerTag = if (!t.ownerName.isNullOrBlank()) " · Assigned to @${t.ownerName}" else ""
-                                    val dueTag = if (!t.dueText.isNullOrBlank()) " (Due: ${t.dueText})" else ""
-                                    val taskContent = "${t.text}$ownerTag$dueTag"
-                                    repo.createPost(
-                                        circleId = currentCircle.id,
-                                        body = taskContent,
-                                        type = PostType.Task,
-                                        anonymous = false,
-                                        requestId = java.util.UUID.randomUUID().toString()
-                                    )
-                                    count++
-                                }
-                                sending = false
-                                onShared(currentCircle.name, count)
-                                onDismiss()
-                            }
-                        },
-                        enabled = !sending && totalSelected > 0 && privacyCheck != null,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             }
         }

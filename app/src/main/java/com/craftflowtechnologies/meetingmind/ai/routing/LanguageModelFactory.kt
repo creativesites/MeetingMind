@@ -3,6 +3,8 @@ package com.craftflowtechnologies.meetingmind.ai.routing
 import android.content.Context
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiLanguageModel
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport
+import com.craftflowtechnologies.meetingmind.ai.llm.AiCoreLanguageModel
+import com.craftflowtechnologies.meetingmind.ai.llm.AiCoreRuntime
 import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
 import com.craftflowtechnologies.meetingmind.ai.llm.MediaPipeLanguageModel
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmModelResolver
@@ -69,14 +71,24 @@ class LanguageModelFactory(
     /** The on-device model only — for callers that must never use the network. */
     fun resolveLocal(capability: ModelCapability, preferredTier: ModelTier): ResolvedLanguageModel? {
         val modelId = LlmModelResolver.resolveForModeOrNull(modelStorage, capability, preferredTier)
-            ?: return null
-        return ResolvedLanguageModel(
-            languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = modelId),
-            modelId = modelId,
-            contextLengthTokens = ModelCatalog.entries.find { it.id == modelId }?.contextLengthTokens
-                ?: DEFAULT_LOCAL_CONTEXT_TOKENS,
-            isCloud = false
-        )
+        if (modelId != null) {
+            return ResolvedLanguageModel(
+                languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = modelId),
+                modelId = modelId,
+                contextLengthTokens = ModelCatalog.entries.find { it.id == modelId }?.contextLengthTokens
+                    ?: DEFAULT_LOCAL_CONTEXT_TOKENS,
+                isCloud = false
+            )
+        }
+        if (AiCoreRuntime.isReady(context)) {
+            return ResolvedLanguageModel(
+                languageModel = AiCoreLanguageModel(context),
+                modelId = AiCoreLanguageModel.MODEL_ID,
+                contextLengthTokens = AiCoreLanguageModel.CONTEXT_TOKENS,
+                isCloud = false
+            )
+        }
+        return null
     }
 
     companion object {

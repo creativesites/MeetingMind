@@ -32,6 +32,13 @@ object NoteContent {
         hasRecordings: Boolean = false
     ): Boolean {
         if (hasAttachments || hasTags || hasRecordings) return true
+        val testimonyKeys = listOf(
+            "testimony_category",
+            "testimony_verse_ref",
+            "testimony_rejoice_count",
+            "testimony_prayer_id"
+        )
+        if (testimonyKeys.any { !note.metadata[it].isNullOrBlank() }) return true
         val title = note.title.trim()
         if (title.isNotEmpty() && title != note.metadata[DRAFT_TITLE].orEmpty().trim()) return true
         val templateTitles = Workflows.template(note.workflow).sections.map { it.title.trim() }.toSet()

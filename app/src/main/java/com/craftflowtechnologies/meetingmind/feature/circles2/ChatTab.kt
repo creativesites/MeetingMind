@@ -41,6 +41,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Celebration
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -58,6 +60,7 @@ import androidx.compose.material.icons.rounded.Reply
 import androidx.compose.material.icons.rounded.Style
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.VolunteerActivism
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -100,6 +103,7 @@ import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.MessageKind
 import com.craftflowtechnologies.meetingmind.core.circles2.MessageReaction
 import com.craftflowtechnologies.meetingmind.core.circles2.PollState
+import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
@@ -114,8 +118,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class ChatActions(
     val onDraft: (String) -> Unit = {},
@@ -146,7 +148,8 @@ class ChatActions(
     val onSendAttachment: (MediaKind, PickedFile) -> Unit = { _, _ -> },
     val onCancelUpload: () -> Unit = {},
     /** A one-line notice for the snackbar. */
-    val onNotice: (String) -> Unit = {}
+    val onNotice: (String) -> Unit = {},
+    val onPromoteToPost: (ChatMessage, PostType) -> Unit = { _, _ -> }
 ) { companion object { val None = ChatActions() } }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -157,7 +160,8 @@ fun ChatTab(
     now: Long,
     actions: ChatActions,
     modifier: Modifier = Modifier,
-    isFaith: Boolean = true
+    isFaith: Boolean = true,
+    space: String = "faith"
 ) {
     val listState = rememberLazyListState()
     var sheetFor by remember { mutableStateOf<ChatMessage?>(null) }
@@ -235,10 +239,16 @@ fun ChatTab(
                 .background(MM.colors.canvas)
         ) {
             if (state.messages.isEmpty() && !state.loading) {
+                val emptyBody = when (space) {
+                    "work" -> "Say hello, share an update, or start a poll to align with the team."
+                    "learning", "study" -> "Say hello, ask a study question, or start a poll to schedule a study session."
+                    "faith" -> "Say hello, ask a question, or start a poll to pick a night for your next meeting."
+                    else -> "Say hello, share a thought, or start a poll to pick a time for your next hangout."
+                }
                 Box(Modifier.fillMaxSize()) {
                     EmptyState(
                         title = "No messages yet",
-                        body = "Say hello, ask a question, or start a poll to pick a night for your next meeting.",
+                        body = emptyBody,
                         modifier = Modifier
                             .padding(horizontal = MM.space.l)
                             .align(Alignment.Center)
@@ -378,8 +388,10 @@ fun ChatTab(
             draft = draft,
             actions = actions,
             recording = recording,
-            isFaith = isFaith,
+            isFaith = isFaith && space == "faith",
+            space = space,
             stagedAttachment = stagedAttachment,
+            onSampleAmplitude = { recorder.amplitude() },
             onClearAttachment = { stagedAttachment = null },
             onAttachPhoto = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             onAttachVideo = { pickVideo.launch("video/*") },
@@ -399,7 +411,7 @@ fun ChatTab(
     sheetFor?.let { m ->
         MessageActionsSheet(
             m, mine = m.authorUid == state.myUid, isAdmin = state.isAdmin, canModerate = state.canModerate || state.isAdmin, actions = actions,
-            reactions = actions.reactionsFor(m.id), pinnedId = state.pinned?.id, onDismiss = { sheetFor = null }
+            reactions = actions.reactionsFor(m.id), pinnedId = state.pinned?.id, space = space, onDismiss = { sheetFor = null }
         )
     }
 }
@@ -475,7 +487,7 @@ private fun MessageItem(
     var hapticTriggered by remember { mutableStateOf(false) }
 
     val mine = m.authorUid == state.myUid
-    val isAccentBubble = mine && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply || m.kind == MessageKind.Image)
+    val isAccentBubble = mine && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply || m.kind == MessageKind.Image || m.kind == MessageKind.Video || m.kind == MessageKind.Voice)
     val normalBubbleBg = if (isAccentBubble) c.accent else c.surface
     val targetBubbleBg = if (isHighlighted) {
         if (isAccentBubble) c.accent.copy(alpha = 0.75f) else c.accentWash
@@ -598,7 +610,7 @@ private fun MessageItem(
                                 onLongClickLabel = "Message actions"
                             )
                     ) {
-                        if (m.kind == MessageKind.Image) {
+                        if (m.kind == MessageKind.Image || m.kind == MessageKind.Video) {
                             Column {
                                 val quoted = state.byId(m.replyTo)
                                 if (m.replyTo != null && quoted != null) {
@@ -627,57 +639,92 @@ private fun MessageItem(
                                     }
                                 }
                                 m.attachment?.let { a ->
-                                    if (m.text.isBlank()) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(max = 260.dp)
-                                        ) {
+                                    if (m.kind == MessageKind.Image) {
+                                        if (m.text.isBlank()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(max = 260.dp)
+                                            ) {
+                                                MediaImage(
+                                                    circleId = state.circleId,
+                                                    path = a.path,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentDescription = "Photo from ${m.authorName}",
+                                                    allowFullscreen = true
+                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomEnd)
+                                                        .padding(MM.space.s)
+                                                        .clip(MM.radius.pill)
+                                                        .background(c.scrim.copy(alpha = 0.65f))
+                                                        .padding(horizontal = MM.space.s, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
+                                                        style = MM.type.caption,
+                                                        color = FixedWhite
+                                                    )
+                                                }
+                                            }
+                                        } else {
                                             MediaImage(
                                                 circleId = state.circleId,
                                                 path = a.path,
-                                                modifier = Modifier.fillMaxSize(),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(max = 260.dp),
                                                 contentDescription = "Photo from ${m.authorName}",
                                                 allowFullscreen = true
                                             )
-                                            Box(
+                                            Column(
                                                 modifier = Modifier
-                                                    .align(Alignment.BottomEnd)
-                                                    .padding(MM.space.s)
-                                                    .clip(MM.radius.pill)
-                                                    .background(c.scrim.copy(alpha = 0.65f))
-                                                    .padding(horizontal = MM.space.s, vertical = 2.dp)
+                                                    .fillMaxWidth()
+                                                    .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
                                             ) {
+                                                Text(m.text, style = MM.type.body, color = bubbleFg)
+                                                Spacer(Modifier.height(2.dp))
                                                 Text(
                                                     text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
                                                     style = MM.type.caption,
-                                                    color = FixedWhite
+                                                    color = if (isAccentBubble) c.onAccent.copy(alpha = 0.75f) else c.inkMuted,
+                                                    modifier = Modifier.align(Alignment.End)
                                                 )
                                             }
                                         }
                                     } else {
-                                        MediaImage(
-                                            circleId = state.circleId,
-                                            path = a.path,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(max = 260.dp),
-                                            contentDescription = "Photo from ${m.authorName}",
-                                            allowFullscreen = true
-                                        )
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-                                        ) {
-                                            Text(m.text, style = MM.type.body, color = bubbleFg)
-                                            Spacer(Modifier.height(2.dp))
-                                            Text(
-                                                text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
-                                                style = MM.type.caption,
-                                                color = if (isAccentBubble) c.onAccent.copy(alpha = 0.75f) else c.inkMuted,
-                                                modifier = Modifier.align(Alignment.End)
-                                            )
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            VideoBubble(state.circleId, a)
+                                        }
+                                        if (m.text.isNotBlank()) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                                            ) {
+                                                Text(m.text, style = MM.type.body, color = bubbleFg)
+                                                Spacer(Modifier.height(2.dp))
+                                                Text(
+                                                    text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
+                                                    style = MM.type.caption,
+                                                    color = if (isAccentBubble) c.onAccent.copy(alpha = 0.75f) else c.inkMuted,
+                                                    modifier = Modifier.align(Alignment.End)
+                                                )
+                                            }
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
+                                            ) {
+                                                Text(
+                                                    text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
+                                                    style = MM.type.caption,
+                                                    color = if (isAccentBubble) c.onAccent.copy(alpha = 0.75f) else c.inkMuted,
+                                                    modifier = Modifier.align(Alignment.CenterEnd)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -713,13 +760,6 @@ private fun MessageItem(
                                     }
                                 }
                                 when (m.kind) {
-                                    MessageKind.Video -> {
-                                        m.attachment?.let { VideoBubble(state.circleId, it) }
-                                        if (m.text.isNotBlank()) {
-                                            Spacer(Modifier.height(4.dp))
-                                            Text(m.text, style = MM.type.body, color = bubbleFg)
-                                        }
-                                    }
                                     MessageKind.Voice -> m.attachment?.let { VoiceBubble(state.circleId, it, onAccent = isAccentBubble) }
                                     MessageKind.File -> m.attachment?.let { FileBubble(state.circleId, it) }
                                     MessageKind.Card -> m.card?.let { ChatCard(it) }
@@ -737,7 +777,6 @@ private fun MessageItem(
                                     }
                                 }
                                 val isTextOrReplyOrMedia = m.kind == MessageKind.Text || m.kind == MessageKind.Reply ||
-                                    m.kind == MessageKind.Video ||
                                     m.kind == MessageKind.Voice || m.kind == MessageKind.File
                                 if (isTextOrReplyOrMedia) {
                                     Spacer(Modifier.height(2.dp))
@@ -800,7 +839,9 @@ private fun ChatInput(
     actions: ChatActions,
     recording: Boolean,
     isFaith: Boolean = true,
+    space: String = "faith",
     stagedAttachment: Pair<MediaKind, PickedFile>?,
+    onSampleAmplitude: () -> Float = { 0f },
     onClearAttachment: () -> Unit,
     onAttachPhoto: () -> Unit,
     onAttachVideo: () -> Unit,
@@ -992,12 +1033,10 @@ private fun ChatInput(
         if (recording) {
             var elapsedSeconds by remember(recording) { mutableIntStateOf(0) }
             LaunchedEffect(recording) {
-                if (recording) {
-                    elapsedSeconds = 0
-                    while (true) {
-                        kotlinx.coroutines.delay(1000L)
-                        elapsedSeconds++
-                    }
+                elapsedSeconds = 0
+                while (true) {
+                    kotlinx.coroutines.delay(1000L)
+                    elapsedSeconds++
                 }
             }
             val minutes = elapsedSeconds / 60
@@ -1015,6 +1054,20 @@ private fun ChatInput(
                 label = "pulse"
             )
 
+            val amplitudes = remember { mutableStateListOf<Float>() }
+            LaunchedEffect(recording) {
+                amplitudes.clear()
+                repeat(28) { amplitudes.add(0.08f) }
+                while (true) {
+                    kotlinx.coroutines.delay(70L)
+                    val sample = onSampleAmplitude().coerceIn(0f, 1f)
+                    if (amplitudes.size >= 28) {
+                        amplitudes.removeAt(0)
+                    }
+                    amplitudes.add(sample)
+                }
+            }
+
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -1028,25 +1081,46 @@ private fun ChatInput(
                         .size(MM.space.s)
                         .background(c.recording.copy(alpha = dotAlpha), CircleShape)
                 )
-                Text(timerText, style = MM.type.bodyStrong, color = c.ink)
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = onMicCancel) {
-                    Text("Cancel", style = MM.type.bodyStrong, color = c.inkSecondary)
-                }
-                Surface(
-                    onClick = onMicStop,
-                    shape = MM.radius.pill,
-                    color = c.accent,
-                    modifier = Modifier.size(38.dp)
+                Text(timerText, style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = c.ink)
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                        .padding(horizontal = MM.space.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.AutoMirrored.Rounded.Send,
-                            contentDescription = "Send",
-                            tint = c.onAccent,
-                            modifier = Modifier.size(MMSize.iconSmall)
+                    amplitudes.forEach { amp ->
+                        val barHeight = (4.dp + (20.dp * amp)).coerceIn(4.dp, 24.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(barHeight)
+                                .clip(MM.radius.pill)
+                                .background(c.accent.copy(alpha = (0.35f + amp * 0.65f).coerceIn(0.2f, 1f)))
                         )
                     }
+                }
+                IconButton(onClick = onMicCancel) {
+                    Icon(
+                        Icons.Rounded.DeleteOutline,
+                        contentDescription = "Cancel recording",
+                        tint = c.inkSecondary
+                    )
+                }
+                IconButton(
+                    onClick = onMicStop,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(c.accent)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = "Send",
+                        tint = c.onAccent,
+                        modifier = Modifier.size(MMSize.iconSmall)
+                    )
                 }
             }
         } else {
@@ -1356,14 +1430,23 @@ fun MessageActionsSheet(
     reactions: Flow<List<MessageReaction>>,
     pinnedId: String? = null,
     canModerate: Boolean = isAdmin,
+    space: String = "faith",
     onDismiss: () -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
     val current by remember(m.id) { reactions }.collectAsState(emptyList())
     val text = m.card?.text ?: m.text
+    val quickEmojis = remember(space) {
+        when (space) {
+            "work" -> listOf("👍", "🙌", "🎯", "🚀", "💡", "🔥")
+            "learning", "study" -> listOf("💡", "👏", "🎯", "📚", "👍", "🔥")
+            "faith" -> CHAT_EMOJI
+            else -> listOf("👍", "❤️", "😂", "🎉", "🙌", "🔥")
+        }
+    }
     CircleSheet(onDismiss) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            CHAT_EMOJI.forEach { e ->
+            quickEmojis.forEach { e ->
                 val selected = current.any { it.mine && it.emoji == e }
                 Surface(
                     shape = CircleShape,
@@ -1382,6 +1465,11 @@ fun MessageActionsSheet(
         if (text.isNotBlank()) ActionSheetRow(Icons.Rounded.ContentCopy, "Copy text") { clipboard.setText(AnnotatedString(text)); onDismiss() }
         if (mine && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply)) ActionSheetRow(Icons.Rounded.Edit, "Edit") { actions.onEdit(m); onDismiss() }
         if (m.kind == MessageKind.Text || m.kind == MessageKind.Reply) ActionSheetRow(Icons.Rounded.Forward, "Forward") { actions.onForward(m); onDismiss() }
+        if (space == "work" && !m.deleted && m.text.isNotBlank()) {
+            ActionSheetRow(Icons.Rounded.CheckCircle, "Create action item") { actions.onPromoteToPost(m, PostType.Task); onDismiss() }
+            ActionSheetRow(Icons.Rounded.CheckCircleOutline, "Log decision") { actions.onPromoteToPost(m, PostType.Decision); onDismiss() }
+            ActionSheetRow(Icons.Rounded.WarningAmber, "Flag blocker") { actions.onPromoteToPost(m, PostType.Blocker); onDismiss() }
+        }
         if (isAdmin) ActionSheetRow(Icons.Rounded.PushPin, if (pinnedId == m.id) "Unpin" else "Pin to top") { if (pinnedId == m.id) actions.onUnpin() else actions.onPin(m); onDismiss() }
         if (!mine) ActionSheetRow(Icons.Rounded.Flag, "Report") { actions.onReport(m); onDismiss() }
         if (mine || canModerate) {

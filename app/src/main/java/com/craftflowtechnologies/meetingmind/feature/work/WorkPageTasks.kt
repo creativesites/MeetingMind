@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.notes.PagedState
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
@@ -144,8 +146,13 @@ private fun TaskCard(row: WorkTaskRow, now: Long, waiting: Boolean, titles: Map<
     val overdue = due?.second == true
     val source = t.meetingId?.let { titles[it] }
     Row(
-        Modifier.fillMaxWidth().padding(bottom = MM.space.s).background(MM.colors.surface, MM.radius.card)
-            .clickable(role = Role.Button) { actions.onEdit(row) }.padding(start = MM.space.xs, end = MM.space.m, top = MM.space.xs, bottom = MM.space.xs),
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = MM.space.s)
+            .background(MM.colors.surface, MM.radius.card)
+            .border(1.dp, if (overdue) MM.colors.danger.copy(alpha = 0.28f) else MM.colors.lineSoft, MM.radius.card)
+            .clickable(role = Role.Button) { actions.onEdit(row) }
+            .padding(start = MM.space.xs, end = MM.space.m, top = MM.space.xs, bottom = MM.space.xs),
         verticalAlignment = Alignment.Top
     ) {
         IconButton(onClick = { actions.onDone(row) }) {

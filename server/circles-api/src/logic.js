@@ -2,14 +2,18 @@
 import { ApiError } from "./errors.js";
 
 export const LIMITS = { membersPerCircle: 50, circlesPerUser: 10, bodyMax: 4000, commentMax: 2000, nameMax: 60, descriptionMax: 300, maxTokensPerUser: 5, maxUpdates: 50 };
-// Post types for Faith and Work verticals. "note" is the universal free-form post.
+// Post types for Faith, Work, Learning, and General verticals. "note" is the universal free-form post.
 export const FAITH_POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note", "devotional"];
 export const WORK_POST_TYPES = ["task", "decision", "brief", "standup", "blocker", "announcement", "note"];
-export const POST_TYPES = [...new Set([...FAITH_POST_TYPES, ...WORK_POST_TYPES])];
+export const LEARNING_POST_TYPES = ["study", "announcement", "encouragement", "achievement", "note"];
+export const GENERAL_POST_TYPES = ["achievement", "encouragement", "reading", "announcement", "note"];
+export const POST_TYPES = [...new Set([...FAITH_POST_TYPES, ...WORK_POST_TYPES, ...LEARNING_POST_TYPES, ...GENERAL_POST_TYPES])];
 
 export const FAITH_REACTIONS = ["praying", "amen", "heart", "celebrate"];
 export const WORK_REACTIONS = ["ack", "approved", "priority", "reviewing", "win"];
-export const REACTIONS = [...new Set([...FAITH_REACTIONS, ...WORK_REACTIONS])];
+export const LEARNING_REACTIONS = ["ack", "heart", "celebrate", "priority"];
+export const GENERAL_REACTIONS = ["ack", "heart", "celebrate", "priority"];
+export const REACTIONS = [...new Set([...FAITH_REACTIONS, ...WORK_REACTIONS, ...LEARNING_REACTIONS, ...GENERAL_REACTIONS])];
 
 const ALL = POST_TYPES;
 export const TEMPLATES = {
@@ -32,6 +36,11 @@ export const TEMPLATES = {
   course_cohort: ["study", "announcement", "note"],
   exam_prep_room: ["study", "announcement", "achievement", "note"],
   custom_learning: ["study", "announcement", "encouragement", "achievement", "note"],
+  // General templates
+  friends_group: GENERAL_POST_TYPES,
+  community_club: GENERAL_POST_TYPES,
+  book_club: GENERAL_POST_TYPES,
+  custom_general: GENERAL_POST_TYPES,
 };
 
 const bad = (code, msg) => new ApiError(400, code, msg);
@@ -61,18 +70,19 @@ export function normalizeSettings(input, template, space = "faith") {
   const s = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const tpl = TEMPLATES[template];
   if (!tpl) throw bad("bad_request", "Unknown template");
+  const isGeneral = space === "general" || s.space === "general";
   const isWork = space === "work" || s.space === "work";
   const isLearning = space === "learning" || s.space === "learning";
-  const defaultReactions = isWork ? [...WORK_REACTIONS] : [...FAITH_REACTIONS];
+  const defaultReactions = isLearning ? [...LEARNING_REACTIONS] : isGeneral ? [...GENERAL_REACTIONS] : isWork ? [...WORK_REACTIONS] : [...FAITH_REACTIONS];
   // joinApproval defaults off so circles that exist today keep joining as they do.
   const out = {
     allowedTypes: [...tpl],
     whoCanInvite: "admins",
-    prayerApproval: (isWork || isLearning) ? false : true,
+    prayerApproval: (isWork || isLearning || isGeneral) ? false : true,
     joinApproval: false,
     reactions: defaultReactions,
     guidelines: "",
-    space: isLearning ? "learning" : isWork ? "work" : "faith"
+    space: isLearning ? "learning" : isWork ? "work" : isGeneral ? "general" : "faith"
   };
   if (s.allowedTypes !== undefined) {
     if (!Array.isArray(s.allowedTypes) || s.allowedTypes.length === 0 || s.allowedTypes.some((t) => !POST_TYPES.includes(t))) throw bad("bad_request", "Invalid post types");
@@ -102,8 +112,9 @@ export function normalizeSettings(input, template, space = "faith") {
 export const FAITH_CODE_WORDS = ["GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT", "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING", "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"];
 export const WORK_CODE_WORDS = ["SPRINT", "FOCUS", "LAUNCH", "ALIGN", "IMPACT", "STRIDE", "TALENT", "VISION", "TARGET", "MATRIX", "NEXUS", "VECTOR", "DELTA", "APEX", "SUMMIT", "PULSE", "BRIDGE", "PIVOT", "THRIVE", "FORGE", "CLIMB", "SCALE", "DRIVE", "RESOLVE", "QUEST", "SYNC", "PRISM", "SIGNAL", "CHORD", "SYNERGY"];
 export const LEARNING_CODE_WORDS = ["STUDY", "EXAM", "CLASS", "NOTES", "LEARN", "LOGIC", "ACADEMY", "THEORY", "CAMPUS", "SCHOLAR", "DEGREE", "HONOR", "TUTOR", "COURSE", "LECTURE", "THESIS", "REVISION", "RECALL", "FORMULA", "SYNTAX"];
+export const GENERAL_CODE_WORDS = ["CIRCLE", "CLUB", "SQUAD", "TRIBE", "CREW", "GUILD", "TABLE", "FORUM", "COMMON", "SPARK", "HARBOR", "HAVEN"];
 export const CODE_WORDS = FAITH_CODE_WORDS;
-export const ALL_CODE_WORDS = [...new Set([...FAITH_CODE_WORDS, ...WORK_CODE_WORDS, ...LEARNING_CODE_WORDS])];
+export const ALL_CODE_WORDS = [...new Set([...FAITH_CODE_WORDS, ...WORK_CODE_WORDS, ...LEARNING_CODE_WORDS, ...GENERAL_CODE_WORDS])];
 // No vowels (no accidental words), no 0/1/I/L/O lookalikes.
 export const CODE_ALPHABET = "23456789BCDFGHJKMNPQRSTVWXZ";
 
@@ -112,7 +123,7 @@ export function generateCode(randomBytes = (n) => crypto.getRandomValues(new Uin
     const lim = 256 - (256 % max);
     for (;;) { const b = randomBytes(1)[0]; if (b < lim) return b % max; }
   };
-  const words = space === "learning" ? LEARNING_CODE_WORDS : space === "work" ? WORK_CODE_WORDS : FAITH_CODE_WORDS;
+  const words = space === "learning" ? LEARNING_CODE_WORDS : space === "work" ? WORK_CODE_WORDS : space === "general" ? GENERAL_CODE_WORDS : FAITH_CODE_WORDS;
   let suffix = "";
   for (let i = 0; i < 4; i++) suffix += CODE_ALPHABET[pick(CODE_ALPHABET.length)];
   return `${words[pick(words.length)]}-${suffix}`;
@@ -189,6 +200,31 @@ export function cleanPostMeta(meta) {
   if (typeof meta.sourceId === "string") out.sourceId = meta.sourceId.slice(0, 64);
   if (typeof meta.assigneeName === "string") out.assigneeName = meta.assigneeName.slice(0, 60);
   if (typeof meta.dueText === "string") out.dueText = meta.dueText.slice(0, 40);
+  if (typeof meta.assigneeUid === "string") {
+    const s = meta.assigneeUid.trim();
+    if (s.length > 0) out.assigneeUid = s.slice(0, 64);
+  }
+  if (Number.isSafeInteger(meta.dueAt) && meta.dueAt > 0) {
+    out.dueAt = meta.dueAt;
+  }
+  if (typeof meta.priority === "string") {
+    const p = meta.priority.trim().toLowerCase();
+    if (["low", "normal", "high", "urgent"].includes(p)) {
+      out.priority = p;
+    }
+  }
+  if (typeof meta.blockedOn === "string") {
+    const s = meta.blockedOn.trim();
+    if (s.length > 0) out.blockedOn = s.slice(0, 80);
+  }
+  if (typeof meta.decisionOwner === "string") {
+    const s = meta.decisionOwner.trim();
+    if (s.length > 0) out.decisionOwner = s.slice(0, 60);
+  }
+  if (typeof meta.meetingDate === "string") {
+    const s = meta.meetingDate.trim();
+    if (s.length > 0) out.meetingDate = s.slice(0, 40);
+  }
   return Object.keys(out).length > 0 ? out : null;
 }
 
@@ -270,8 +306,8 @@ export const CHAT = { pollQuestionMax: 200, pollOptionMax: 80, pollOptionsMin: 2
 export const COMPANIONS = ["zuri", "nas", "wren", "page"];
 export const CELEBRATIONS = ["birthday", "answered", "streak", "milestone"];
 
-/** Validate and shape a poll. Returns { question, options:[{id,text}], optionIds, multi }. */
-export function shapePoll({ question, options, multi }) {
+/** Validate and shape a poll. Returns { question, options:[{id,text}], optionIds, multi, closesAt? }. */
+export function shapePoll({ question, options, multi, closesAt }) {
   const q = cleanText(question, "question", { max: CHAT.pollQuestionMax });
   if (!Array.isArray(options) || options.length < CHAT.pollOptionsMin || options.length > CHAT.pollOptionsMax) {
     throw bad("bad_request", `A poll needs ${CHAT.pollOptionsMin} to ${CHAT.pollOptionsMax} options`);
@@ -279,8 +315,17 @@ export function shapePoll({ question, options, multi }) {
   const texts = options.map((o) => cleanText(o, "option", { max: CHAT.pollOptionMax }));
   if (new Set(texts.map((t) => t.toLowerCase())).size !== texts.length) throw bad("bad_request", "Options must be different");
   if (multi !== undefined && typeof multi !== "boolean") throw bad("bad_request", "multi must be true or false");
+  if (closesAt !== undefined && closesAt !== null) {
+    if (!Number.isSafeInteger(closesAt) || closesAt <= 0) {
+      throw bad("bad_request", "Poll deadline must be a valid time.");
+    }
+  }
   const opts = texts.map((text, i) => ({ id: `o${i}`, text }));
-  return { question: q, options: opts, optionIds: opts.map((o) => o.id), multi: multi === true };
+  const res = { question: q, options: opts, optionIds: opts.map((o) => o.id), multi: multi === true };
+  if (closesAt !== undefined && closesAt !== null) {
+    res.closesAt = closesAt;
+  }
+  return res;
 }
 
 /** Validate a celebration. `kind` is one of CELEBRATIONS; companion falls back to null (client picks its own). */

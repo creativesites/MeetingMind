@@ -7,6 +7,8 @@ import com.craftflowtechnologies.meetingmind.core.model.MeetingSummary
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.Transcript
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 /**
  * Tries a preferred engine and falls back to another when the first cannot produce a result.
@@ -62,5 +64,34 @@ class FallbackMeetingIntelligenceEngine(
         val first = primary.askMeeting(question, transcript, relevantSegments, personalization)
         if (first is AiResult.Success || fallback == null) return first
         return fallback.askMeeting(question, transcript, relevantSegments, personalization)
+    }
+
+    override fun askMeetingStream(
+        question: String,
+        transcript: Transcript,
+        relevantSegments: List<TranscriptSegment>,
+        personalization: AskPersonalizationContext
+    ): Flow<AskStreamEvent> = flow {
+        var succeeded = false
+        var terminalEvent: AskStreamEvent.Complete? = null
+        primary.askMeetingStream(question, transcript, relevantSegments, personalization).collect { ev ->
+            when (ev) {
+                is AskStreamEvent.Partial -> emit(ev)
+                is AskStreamEvent.Complete -> {
+                    terminalEvent = ev
+                    if (ev.result is AiResult.Success) {
+                        succeeded = true
+                        emit(ev)
+                    }
+                }
+            }
+        }
+        if (!succeeded) {
+            if (fallback != null) {
+                fallback.askMeetingStream(question, transcript, relevantSegments, personalization).collect { emit(it) }
+            } else {
+                terminalEvent?.let { emit(it) }
+            }
+        }
     }
 }

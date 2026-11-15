@@ -52,6 +52,7 @@ class AppAssistantHost(
 ) : AssistantHost {
     private val db = MeetMindDatabase.getInstance(context)
     private val notes = NoteRepository(context, db)
+    private val learning = com.craftflowtechnologies.meetingmind.core.repository.LearningRepository(db)
     private val tasks = TaskReminders.repository(context)
     private val bible by lazy { ScriptureService.library(context) }
 
@@ -60,7 +61,8 @@ class AppAssistantHost(
     private val undos = mutableMapOf<String, suspend () -> Unit>()
 
     override suspend fun outline(): String {
-        val blocks = editor?.blocks().orEmpty()
+        val blocks = editor?.blocks()?.takeIf { it.isNotEmpty() }
+            ?: scope.noteId?.let { id -> notes.getDocument(id)?.blocks }.orEmpty()
         if (blocks.isEmpty()) return "(empty)"
         return blocks.take(120).joinToString("\n") { b ->
             val text = when (b.type) {
@@ -82,6 +84,8 @@ class AppAssistantHost(
         AssistantTool.COMPARE_TRANSLATIONS -> compare(call.str("reference"))
         AssistantTool.ORIGINAL -> original(call.str("reference"))
         AssistantTool.LIST_PRAYER_REQUESTS -> listPrayerRequests()
+        AssistantTool.LIST_COURSES -> listCourses()
+        AssistantTool.GET_STUDY_CONCEPTS -> getStudyConcepts(call.str("query"))
         else -> ToolResult("Skipped", "not a read tool", ok = false)
     }
 
@@ -89,14 +93,26 @@ class AppAssistantHost(
         val id = "act_" + UUID.randomUUID().toString().take(8)
         return when (call.tool) {
             AssistantTool.INSERT_BLOCKS -> {
-                val ed = editor ?: return noNote(id)
                 val md = call.str("markdown") ?: return fail(id, "insert_blocks needs markdown")
-                val blocks = scriptureSafe(MarkdownImport.parse(md, ed.noteId, BlockSource.AI), ed)
-                if (blocks.isEmpty()) return fail(id, "nothing to insert")
-                val ids = ed.insert(call.str("after_block_id"), blocks).toSet()
-                undos[id] = { ed.remove(ids) }
-                ToolResult("Added ${plural(blocks.size, "block")}", "inserted ${blocks.size} blocks: ${ids.joinToString()}") to
-                    AssistantAction(id, "Added ${plural(blocks.size, "block")} to the note", preview = md.take(400))
+                val ed = editor
+                if (ed != null) {
+                    val blocks = scriptureSafe(MarkdownImport.parse(md, ed.noteId, BlockSource.AI), ed)
+                    if (blocks.isEmpty()) return fail(id, "nothing to insert")
+                    val ids = ed.insert(call.str("after_block_id"), blocks).toSet()
+                    undos[id] = { ed.remove(ids) }
+                    ToolResult("Added ${plural(blocks.size, "block")}", "inserted ${blocks.size} blocks: ${ids.joinToString()}") to
+                        AssistantAction(id, "Added ${plural(blocks.size, "block")} to the note", preview = md.take(400))
+                } else {
+                    val targetNoteId = scope.noteId ?: return noNote(id)
+                    val existing = notes.getDocument(targetNoteId)?.blocks.orEmpty()
+                    val parsed = MarkdownImport.parse(md, targetNoteId, BlockSource.AI)
+                    if (parsed.isEmpty()) return fail(id, "nothing to insert")
+                    val combined = (existing + parsed).mapIndexed { index, block -> block.copy(position = index) }
+                    notes.saveBlocks(targetNoteId, combined)
+                    undos[id] = { notes.saveBlocks(targetNoteId, existing) }
+                    ToolResult("Added ${plural(parsed.size, "block")}", "inserted ${parsed.size} blocks into note $targetNoteId") to
+                        AssistantAction(id, "Added ${plural(parsed.size, "block")} to the note", preview = md.take(400), openNoteId = targetNoteId)
+                }
             }
             AssistantTool.INSERT_SCRIPTURE -> {
                 val ed = editor ?: return noNote(id)
@@ -183,6 +199,97 @@ class AppAssistantHost(
                 val title = entity.title.ifBlank { "Prayer request" }
                 ToolResult("Marked answered", "marked prayer request '$title' answered") to AssistantAction(id, "Answered: $title", openNoteId = requestId)
             }
+            AssistantTool.CREATE_FLASHCARDS -> {
+                val cardsArr = call.args.optJSONArray("cards")
+                val topic = call.str("topic")
+                val session = if (scope.noteId != null) {
+                    learning.ensureSessionForNote(scope.noteId, title = scope.title)
+                } else {
+                    val existing = db.learningSessionDao().getAllSessions().firstOrNull()?.toDomain()
+                    if (existing != null && topic.isNullOrBlank()) {
+                        existing
+                    } else {
+                        val deckTitle = topic?.takeIf { it.isNotBlank() } ?: "Study Flashcards"
+                        val note = notes.createNote(workflow = RecordingType.LECTURE, title = deckTitle, useTemplate = false)
+                        learning.ensureSessionForNote(note.id, title = deckTitle)
+                    }
+                }
+                val activities = mutableListOf<com.craftflowtechnologies.meetingmind.core.model.LearningActivity>()
+                if (cardsArr != null && cardsArr.length() > 0) {
+                    for (i in 0 until cardsArr.length()) {
+                        val item = cardsArr.optJSONObject(i) ?: continue
+                        val q = item.optString("prompt").trim()
+                        val a = item.optString("answer").trim()
+                        val t = when (item.optString("type", "RECALL").uppercase()) {
+                            "WORKED_PROBLEM" -> com.craftflowtechnologies.meetingmind.core.model.LearningActivityType.WORKED_PROBLEM
+                            "TEACH_BACK" -> com.craftflowtechnologies.meetingmind.core.model.LearningActivityType.TEACH_BACK
+                            "MULTIPLE_CHOICE" -> com.craftflowtechnologies.meetingmind.core.model.LearningActivityType.MULTIPLE_CHOICE
+                            else -> com.craftflowtechnologies.meetingmind.core.model.LearningActivityType.RECALL
+                        }
+                        if (q.isNotBlank() && a.isNotBlank()) {
+                            val now = System.currentTimeMillis()
+                            activities += com.craftflowtechnologies.meetingmind.core.model.LearningActivity(
+                                id = "act_${java.util.UUID.randomUUID()}",
+                                sessionId = session.id,
+                                type = t,
+                                prompt = q,
+                                expectedAnswer = a,
+                                difficulty = "MEDIUM",
+                                createdAt = now,
+                                updatedAt = now
+                            )
+                        }
+                    }
+                }
+                if (activities.isEmpty()) return fail(id, "create_flashcards needs at least one card with prompt and answer")
+                learning.saveConceptsAndActivities(sessionId = session.id, concepts = emptyList(), activities = activities)
+                val preview = activities.take(3).joinToString("\n") { "• ${it.prompt}" }
+                ToolResult("Created ${plural(activities.size, "flashcard")}", "saved ${activities.size} flashcards in session ${session.id}") to
+                    AssistantAction(id, "Added ${plural(activities.size, "flashcard")} to Practice Arena", preview = preview, openNoteId = session.noteId)
+            }
+            AssistantTool.CREATE_COURSE -> {
+                val name = call.str("name") ?: return fail(id, "create_course needs a course name")
+                val code = call.str("code").orEmpty()
+                val domain = call.str("domain")?.let { com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain.fromName(it) }
+                val course = if (scope.noteId != null) {
+                    learning.createCourseFromNotes(
+                        noteIds = listOf(scope.noteId),
+                        courseName = name,
+                        courseCode = code,
+                        domain = domain
+                    )
+                } else {
+                    val resolvedDomain = domain ?: com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain.detect(name, code)
+                    learning.createOrUpdateCourse(
+                        name = name,
+                        properties = com.craftflowtechnologies.meetingmind.core.model.CourseProperties(
+                            courseCode = code,
+                            domain = resolvedDomain
+                        )
+                    )
+                }
+                val label = if (course.properties.courseCode.isNotBlank()) "${course.properties.courseCode} · ${course.notebook.name}" else course.notebook.name
+                ToolResult("Created course $label", "created course ${course.notebook.id} '$label'") to
+                    AssistantAction(id, "Course: $label", openNoteId = scope.noteId)
+            }
+            AssistantTool.CREATE_EXAM_GOAL -> {
+                val title = call.str("title") ?: return fail(id, "create_exam_goal needs a title")
+                val days = call.str("days_from_now")?.toLongOrNull()?.coerceIn(1L, 365L) ?: 14L
+                val targetGrade = call.str("target_grade") ?: "A"
+                val examDateMs = System.currentTimeMillis() + days * 86_400_000L
+                val now = System.currentTimeMillis()
+                val goal = learning.saveGoal(
+                    com.craftflowtechnologies.meetingmind.core.model.LearningGoal(
+                        id = "",
+                        title = title,
+                        examDateMs = examDateMs,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                )
+                ToolResult("Added exam goal '$title'", "created exam goal ${goal.id} '$title' in $days days") to
+                    AssistantAction(id, "Exam goal: $title ($days days · Target $targetGrade)")
+            }
             else -> fail(id, "not a write tool")
         }
     }
@@ -212,7 +319,17 @@ class AppAssistantHost(
             val step = (segments.size / 40).coerceAtLeast(1)
             segments.filterIndexed { i, _ -> i % step == 0 }.take(40)
         } else {
-            com.craftflowtechnologies.meetingmind.ai.retrieval.TranscriptRetriever(com.craftflowtechnologies.meetingmind.ai.embeddings.LocalEmbeddingEngine(), topK = 14)
+            val prefs = runCatching { com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).preferencesFlow.first() }.getOrNull()
+            val effective = prefs?.processingProfile?.let {
+                com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(context, meetingId, it)
+            }
+            val embedder: com.craftflowtechnologies.meetingmind.ai.embeddings.EmbeddingEngine =
+                if (effective == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
+                    com.craftflowtechnologies.meetingmind.ai.embeddings.NeuralEmbeddingEngine(context)
+                } else {
+                    com.craftflowtechnologies.meetingmind.ai.embeddings.LocalEmbeddingEngine()
+                }
+            com.craftflowtechnologies.meetingmind.ai.retrieval.TranscriptRetriever(embedder, topK = 14)
                 .retrieve(segments, query).map { it.segment }.sortedBy { it.startMs }
         }
         return ToolResult(if (query.isNullOrBlank()) "Read the recording" else "Read the recording for “$query”", AskSermon.render(chosen))
@@ -276,6 +393,58 @@ class AppAssistantHost(
         if (open.isEmpty()) return ToolResult("No open prayer requests", "the prayer list has no open requests")
         val text = open.joinToString("\n") { "${it.id}: ${it.title.ifBlank { "A prayer request" }}" }
         return ToolResult("Read the prayer list · ${open.size} open", text)
+    }
+
+    private suspend fun listCourses(): ToolResult {
+        val courses = learning.observeCourses().first()
+        val sessions = db.learningSessionDao().getAllSessions()
+        if (courses.isEmpty() && sessions.isEmpty()) {
+            return ToolResult("No courses yet", "No courses or study sessions created yet.")
+        }
+        val lines = buildString {
+            if (courses.isNotEmpty()) {
+                appendLine("Courses (${courses.size}):")
+                courses.forEach { c ->
+                    val domain = c.properties.domain.displayName
+                    val code = c.properties.courseCode.ifBlank { "COURSE" }
+                    appendLine("- $code: ${c.notebook.name} ($domain) · ${c.sessionCount} lectures · ${c.conceptCount} concepts (${c.strongConceptCount} strong, ${c.dueReviewCount} due)")
+                }
+            }
+            if (sessions.isNotEmpty()) {
+                appendLine("\nRecent Lecture Sessions (${sessions.size.coerceAtMost(10)}):")
+                sessions.take(10).forEach { s ->
+                    appendLine("- ${s.title.ifBlank { "Untitled Lecture" }} [course=${s.courseName ?: "Unassigned"}, domain=${s.subjectDomain}, noteId=${s.noteId}]")
+                }
+            }
+        }
+        return ToolResult("Read ${courses.size} courses & ${sessions.size} lectures", lines.trim())
+    }
+
+    private suspend fun getStudyConcepts(query: String?): ToolResult {
+        val concepts = if (scope.noteId != null) {
+            val session = db.learningSessionDao().getByNoteId(scope.noteId)
+            if (session != null) db.learningConceptDao().getBySession(session.id)
+            else db.learningConceptDao().getAllActive()
+        } else {
+            db.learningConceptDao().getAllActive()
+        }
+        val filtered = if (!query.isNullOrBlank()) {
+            val q = query.trim().lowercase()
+            concepts.filter {
+                it.name.lowercase().contains(q) ||
+                    it.definition.lowercase().contains(q) ||
+                    (it.formulaLatex?.lowercase()?.contains(q) == true)
+            }.ifEmpty { concepts }
+        } else concepts
+
+        if (filtered.isEmpty()) {
+            return ToolResult("Read study concepts · 0", "No extracted concepts yet. Read the note or transcript directly and help the student extract key concepts or flashcards.")
+        }
+        val text = filtered.take(30).joinToString("\n") { c ->
+            val formula = c.formulaLatex?.takeIf { it.isNotBlank() }?.let { " | Formula: $it" }.orEmpty()
+            "- ${c.name} [${c.state}, exam=${c.examImportance}]: ${c.definition}$formula"
+        }
+        return ToolResult("Read ${filtered.size} study concepts", text)
     }
 
     private suspend fun compare(reference: String?): ToolResult {

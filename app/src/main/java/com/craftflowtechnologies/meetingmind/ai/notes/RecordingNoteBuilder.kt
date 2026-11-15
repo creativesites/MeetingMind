@@ -87,16 +87,33 @@ object RecordingNoteBuilder {
             )
         }
 
+        val summaryTitle = when (recordingType) {
+            RecordingType.DICTATION, RecordingType.JOURNAL -> "Overview"
+            RecordingType.BIBLE_STUDY, RecordingType.DEVOTIONAL, RecordingType.PRAYER, RecordingType.TESTIMONY -> "Reflection Overview"
+            else -> "Summary"
+        }
+
         if (polishedBlocks.isNotEmpty()) {
             blocks += polishedBlocks.map { it.copy(noteId = noteId, sectionKey = KEY_POLISHED) }
+            if (summary != null && summary.actionItems.isNotEmpty() && polishedBlocks.none { it.type == NoteBlockType.CHECKLIST }) {
+                heading(KEY_ACTIONS, "Action Items")
+                summary.actionItems.filter { it.task.isNotBlank() }.forEach { item ->
+                    val meta = listOfNotNull(
+                        item.assigneeName?.takeIf { it.isNotBlank() },
+                        item.deadline?.takeIf { it.isNotBlank() }
+                    ).joinToString(" · ")
+                    val line = if (meta.isNotEmpty()) "${item.task.trim()} ($meta)" else item.task.trim()
+                    addBlock(KEY_ACTIONS, NoteBlockType.CHECKLIST, line, checked = item.isCompleted)
+                }
+            }
         } else if (summary != null) {
-            if (summary.summary.isNotBlank()) {
-                val summaryTitle = if (recordingType == RecordingType.DICTATION) "Overview" else "Summary"
+            val summaryBody = summary.summary.trim().ifBlank { extractiveSummary(segments) }
+            if (summaryBody.isNotBlank()) {
                 heading(KEY_SUMMARY, summaryTitle)
                 addBlock(
                     KEY_SUMMARY,
                     NoteBlockType.CALLOUT,
-                    summary.summary.trim(),
+                    summaryBody,
                     payload = mapOf(
                         NoteBlock.PAYLOAD_MEETING_ID to meetingId,
                         NoteBlock.PAYLOAD_CALLOUT_KIND to "KEY_TAKEAWAY",
@@ -104,9 +121,12 @@ object RecordingNoteBuilder {
                     )
                 )
             }
-            if (summary.topics.isNotEmpty()) {
+            val topics = summary.topics.filter { it.isNotBlank() }.ifEmpty {
+                if (summary.decisions.isEmpty() && summary.actionItems.isEmpty()) extractiveHighlights(segments) else emptyList()
+            }
+            if (topics.isNotEmpty()) {
                 heading(KEY_TOPICS, "Key Topics")
-                summary.topics.filter { it.isNotBlank() }.forEach { topic ->
+                topics.forEach { topic ->
                     addBlock(KEY_TOPICS, NoteBlockType.BULLET, topic.trim())
                 }
             }
@@ -137,6 +157,38 @@ object RecordingNoteBuilder {
                 heading(KEY_FOLLOW_UPS, "Follow-ups")
                 summary.followUps.filter { it.description.isNotBlank() }.forEach { f ->
                     addBlock(KEY_FOLLOW_UPS, NoteBlockType.BULLET, f.description.trim())
+                }
+            }
+        } else if (segments.isNotEmpty()) {
+            // Honest deterministic structure when AI intelligence wasn't available: extract directly
+            // from what was actually said so the note is immediately readable on first open.
+            val overview = extractiveSummary(segments)
+            if (overview.isNotBlank()) {
+                heading(KEY_SUMMARY, summaryTitle)
+                addBlock(
+                    KEY_SUMMARY,
+                    NoteBlockType.CALLOUT,
+                    overview,
+                    source = BlockSource.TRANSCRIPT,
+                    payload = mapOf(
+                        NoteBlock.PAYLOAD_MEETING_ID to meetingId,
+                        NoteBlock.PAYLOAD_CALLOUT_KIND to "KEY_TAKEAWAY",
+                        NoteBlock.PAYLOAD_CALLOUT_TITLE to summaryTitle
+                    )
+                )
+            }
+            val highlights = extractiveHighlights(segments)
+            if (highlights.isNotEmpty()) {
+                heading(KEY_TOPICS, "Key Highlights")
+                highlights.forEach { point ->
+                    addBlock(KEY_TOPICS, NoteBlockType.BULLET, point, source = BlockSource.TRANSCRIPT)
+                }
+            }
+            val spokenQuestions = extractiveQuestions(segments)
+            if (spokenQuestions.isNotEmpty()) {
+                heading(KEY_QUESTIONS, "Questions Raised")
+                spokenQuestions.forEach { q ->
+                    addBlock(KEY_QUESTIONS, NoteBlockType.NUMBERED, q, source = BlockSource.TRANSCRIPT)
                 }
             }
         }
@@ -221,5 +273,48 @@ object RecordingNoteBuilder {
             keys = keys,
             endKeys = setOf(KEY_TRANSCRIPT)
         )
+    }
+
+    private fun extractiveSummary(segments: List<TranscriptSegment>): String {
+        val texts = segments.asSequence()
+            .map { (if (it.isUserEdited) it.text else it.cleanedText?.takeIf { c -> c.isNotBlank() } ?: it.text).trim() }
+            .filter { it.length >= 20 }
+            .toList()
+        if (texts.isEmpty()) return ""
+        val picked = if (texts.size <= 2) texts else listOf(texts.first(), texts[texts.size / 2])
+        return picked.joinToString(" ") { clipAtSentence(it, 180) }.trim()
+    }
+
+    private fun extractiveHighlights(segments: List<TranscriptSegment>): List<String> {
+        val substantive = segments
+            .map { (if (it.isUserEdited) it.text else it.cleanedText?.takeIf { c -> c.isNotBlank() } ?: it.text).trim() }
+            .filter { it.length >= 30 }
+        if (substantive.isEmpty()) return emptyList()
+        val count = minOf(4, substantive.size)
+        val step = if (count == 1) 1.0 else (substantive.size - 1).toDouble() / (count - 1)
+        val indices = (0 until count).map { (it * step).toInt().coerceIn(0, substantive.lastIndex) }.distinct()
+        return indices.map { clipAtSentence(substantive[it], 140) }.filter { it.isNotBlank() }.distinct()
+    }
+
+    private fun extractiveQuestions(segments: List<TranscriptSegment>): List<String> =
+        segments.asSequence()
+            .flatMap { seg ->
+                val txt = if (seg.isUserEdited) seg.text else seg.cleanedText?.takeIf { c -> c.isNotBlank() } ?: seg.text
+                txt.split(Regex("(?<=[?!.])\\s+")).asSequence()
+            }
+            .map { it.trim() }
+            .filter { it.endsWith("?") && it.length in 16..180 }
+            .distinct()
+            .take(5)
+            .toList()
+
+    private fun clipAtSentence(text: String, maxChars: Int): String {
+        val normalized = text.replace(Regex("\\s+"), " ").trim()
+        if (normalized.length <= maxChars) return normalized
+        val sentenceEnd = normalized.indexOfAny(charArrayOf('.', '!', '?'), startIndex = 40)
+        if (sentenceEnd in 40 until maxChars) return normalized.substring(0, sentenceEnd + 1)
+        val lastSpace = normalized.lastIndexOf(' ', startIndex = maxChars)
+        val cut = if (lastSpace > maxChars / 2) lastSpace else maxChars
+        return normalized.substring(0, cut).trimEnd(',', ';', ':', ' ') + "…"
     }
 }

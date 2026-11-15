@@ -271,4 +271,66 @@ class LearnViewModelTest {
         assertEquals(false, resumedDetail?.session?.isPaused)
         assertEquals("ACTIVE", resumedDetail?.session?.status)
     }
+
+    @Test
+    fun `createCourseFromNotes links recorded lecture note to course and bootstraps study materials`() = runTest {
+        val note = noteRepo.createNote(
+            workflow = com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE,
+            title = "MATH 204: Eigenvalues and Diagonalization"
+        )
+        noteRepo.saveBlocks(
+            note.id,
+            listOf(
+                com.craftflowtechnologies.meetingmind.core.model.NoteBlock(
+                    id = "b1",
+                    noteId = note.id,
+                    position = 0,
+                    type = com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.CALLOUT,
+                    content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain("Eigenvalue: A scalar lambda such that Av = lambda v for a nonzero eigenvector v."),
+                    payload = mapOf(
+                        com.craftflowtechnologies.meetingmind.core.model.NoteBlock.PAYLOAD_CALLOUT_TITLE to "Eigenvalue Definition"
+                    )
+                )
+            )
+        )
+
+        var createdCourseId: String? = null
+        viewModel.createCourseFromNotes(
+            noteIds = listOf(note.id),
+            courseName = "Linear Algebra",
+            courseCode = "MATH 204",
+            domain = SubjectDomain.MATH_QUANT
+        ) { course ->
+            createdCourseId = course.notebook.id
+        }
+        testScheduler.advanceUntilIdle()
+        awaitCondition { createdCourseId != null }
+
+        assertNotNull(createdCourseId)
+        val updatedNote = noteRepo.getNote(note.id)
+        assertEquals(createdCourseId, updatedNote?.notebookId)
+
+        val session = learningRepo.ensureSessionForNote(note.id)
+        val detail = learningRepo.getSessionDetail(session.id)
+        assertNotNull(detail)
+        assertEquals("Linear Algebra", detail?.session?.courseName)
+        assertTrue(detail!!.concepts.isNotEmpty())
+        assertTrue(detail.activities.isNotEmpty())
+    }
+
+    @Test
+    fun `generateQuickTopicDeck populates practiceActivities for instant practice`() = runTest {
+        var ready = false
+        viewModel.generateQuickTopicDeck(
+            topic = "Derivatives & Chain Rule",
+            domain = SubjectDomain.MATH_QUANT
+        ) {
+            ready = true
+        }
+        testScheduler.advanceUntilIdle()
+        awaitCondition(timeoutMs = 20_000) { ready && viewModel.practiceActivities.value.isNotEmpty() }
+
+        assertTrue(ready)
+        assertTrue(viewModel.practiceActivities.value.isNotEmpty())
+    }
 }

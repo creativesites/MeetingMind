@@ -1,12 +1,16 @@
 package com.craftflowtechnologies.meetingmind.ai.llm
 
+import com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
+import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import com.craftflowtechnologies.meetingmind.core.model.AskPersonalizationContext
 import com.craftflowtechnologies.meetingmind.core.model.ChatMessage
 import com.craftflowtechnologies.meetingmind.core.model.MeetingSummary
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.Transcript
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 /**
  * Low-level local language model primitive: raw prompt in, generated text out.
@@ -18,6 +22,36 @@ import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
  */
 interface LanguageModel {
     suspend fun generate(prompt: String, maxOutputTokens: Int = 512): AiResult<String>
+
+    /**
+     * Generates JSON strictly conforming to [responseSchema]. Cloud models enforce the schema at
+     * decoding time; on-device runtimes fall back cleanly to [generate].
+     */
+    suspend fun generateStructured(
+        prompt: String,
+        responseSchema: String,
+        maxOutputTokens: Int = 512
+    ): AiResult<String> = generate(prompt, maxOutputTokens)
+
+    /** Streams incremental prose tokens; defaults to wrapping [generate]. */
+    fun generateStream(prompt: String, maxOutputTokens: Int = 512): Flow<AiStreamEvent> = flow {
+        when (val res = generate(prompt, maxOutputTokens)) {
+            is AiResult.Success -> {
+                if (res.value.isNotEmpty()) emit(AiStreamEvent.TextDelta(res.value))
+                emit(AiStreamEvent.Completed(text = res.value))
+            }
+            is AiResult.Failed -> emit(AiStreamEvent.Failed(res))
+            is AiResult.ModelUnavailable -> emit(AiStreamEvent.Failed(res))
+            is AiResult.DeviceUnsupported -> emit(AiStreamEvent.Failed(res))
+            is AiResult.InsufficientMemory -> emit(AiStreamEvent.Failed(res))
+            is AiResult.InsufficientStorage -> emit(AiStreamEvent.Failed(res))
+        }
+    }
+}
+
+sealed interface AskStreamEvent {
+    data class Partial(val text: String, val readSegmentCount: Int) : AskStreamEvent
+    data class Complete(val result: AiResult<ChatMessage>) : AskStreamEvent
 }
 
 /** Default [LanguageModel] until a real on-device LLM runtime is integrated. */
@@ -85,6 +119,16 @@ interface MeetingIntelligenceEngine {
          * vocabulary is relevant to this one question. */
         personalization: AskPersonalizationContext = AskPersonalizationContext()
     ): AiResult<ChatMessage>
+
+    /** Streams incremental grounded Ask answers; defaults to wrapping [askMeeting]. */
+    fun askMeetingStream(
+        question: String,
+        transcript: Transcript,
+        relevantSegments: List<TranscriptSegment>,
+        personalization: AskPersonalizationContext = AskPersonalizationContext()
+    ): Flow<AskStreamEvent> = flow {
+        emit(AskStreamEvent.Complete(askMeeting(question, transcript, relevantSegments, personalization)))
+    }
 }
 
 /**

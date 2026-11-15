@@ -63,3 +63,10 @@ data class LectureSynthesis(
     val examHints: List<String> = emptyList(),
     val confusionUnpacks: List<String> = emptyList()
 )
+
+data class SimpleExplanation(
+    val analogy: String,
+    val everydayExample: String,
+    val keyTakeaway: String
+)
+

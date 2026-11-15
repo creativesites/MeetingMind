@@ -67,6 +67,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 
 /**
  * The redesigned Ask AI tab (docs/recording-page-implementation.md §2.8): no chat bubbles, the
@@ -87,7 +88,8 @@ fun AskAiPanel(
     onPlayFrom: (Long) -> Unit,
     onOpenInTranscript: (Long) -> Unit,
     modifier: Modifier = Modifier,
-    onStopQuestion: (() -> Unit)? = null
+    onStopQuestion: (() -> Unit)? = null,
+    streamingReply: String? = null
 ) {
     var inputText by remember { mutableStateOf("") }
     var openCitation by remember { mutableStateOf<Pair<String, String>?>(null) } // messageId to MM:SS label
@@ -196,7 +198,30 @@ fun AskAiPanel(
                 }
             }
 
-            if (isAnswering) {
+            if (isAnswering && !streamingReply.isNullOrBlank()) {
+                item {
+                    Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+                        AskAnswerText(content = streamingReply, onCitationClick = {})
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Streaming…", fontSize = 12.sp, color = Accent)
+                            onStopQuestion?.let { stop ->
+                                Surface(
+                                    onClick = stop,
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = SurfaceSunk
+                                ) {
+                                    Text("Stop", fontSize = 12.sp, color = InkSecondary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (isAnswering) {
                 item {
                     AiThinkingSkeleton(
                         label = pendingQuestion.ifBlank { "Reading the transcript…" },

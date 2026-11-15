@@ -12,6 +12,8 @@ import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
 import com.craftflowtechnologies.meetingmind.core.model.Workflows
 import com.craftflowtechnologies.meetingmind.core.notes.MarkdownImport
+import com.craftflowtechnologies.meetingmind.core.work.Mark
+import java.util.Locale
 
 /**
  * AI note-polishing pass run after transcription when [com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP]
@@ -31,10 +33,12 @@ class NotePolishEngine(
         meetingId: String,
         recordingType: RecordingType,
         segments: List<TranscriptSegment>,
-        summary: MeetingSummary? = null
+        summary: MeetingSummary? = null,
+        userNotes: List<NoteBlock> = emptyList(),
+        marks: List<Mark> = emptyList()
     ): AiResult<List<NoteBlock>> {
         if (segments.isEmpty()) return AiResult.Failed("There is no transcript to polish.")
-        val prompt = buildPrompt(recordingType, segments, summary)
+        val prompt = buildPrompt(recordingType, segments, summary, userNotes, marks)
         val raw = when (val res = languageModel.generate(prompt, maxOutputTokens = MAX_OUTPUT_TOKENS)) {
             is AiResult.Success -> res.value
             else -> return AiResult.Failed("Note polish could not run.")
@@ -90,7 +94,9 @@ class NotePolishEngine(
     internal fun buildPrompt(
         recordingType: RecordingType,
         segments: List<TranscriptSegment>,
-        summary: MeetingSummary?
+        summary: MeetingSummary?,
+        userNotes: List<NoteBlock> = emptyList(),
+        marks: List<Mark> = emptyList()
     ): String = buildString {
         appendLine(TranscriptToolPrompts.FIDELITY_CONTRACT.trim())
         if (recordingType in Workflows.faith) {
@@ -104,6 +110,27 @@ class NotePolishEngine(
         appendLine("- Use `##` for major sections and `###` for sub-topics.")
         appendLine("- Use `**bold**` for key terms, names, or emphasis; `- ` for bullet lists; `1. ` for ordered steps/points; `> ` for memorable verbatim quotes or key takeaways.")
         appendLine(workflowGuidance(recordingType))
+        val authored = userNotes.filter {
+            it.source == BlockSource.USER &&
+                it.type != NoteBlockType.RECORDING &&
+                it.type != NoteBlockType.DIVIDER &&
+                it.content.text.isNotBlank()
+        }
+        if (authored.isNotEmpty() || marks.isNotEmpty()) {
+            appendLine()
+            appendLine("Co-authoring anchors written by the person during the session:")
+            appendLine("- Keep and expand these exact priorities, topics, and questions using grounded facts from the transcript. Never invent facts not spoken in the transcript.")
+            authored.take(40).forEach { block ->
+                appendLine("- User note: ${block.content.text.trim().replace('\n', ' ')}")
+            }
+            marks.take(25).forEach { m ->
+                val mm = (m.atMs / 60_000L).toInt()
+                val ss = ((m.atMs / 1000L) % 60L).toInt()
+                val stamp = String.format(Locale.US, "%02d:%02d", mm, ss)
+                val note = m.text?.trim()?.takeIf { it.isNotEmpty() } ?: m.kind.name.lowercase()
+                appendLine("- Marked moment [$stamp]: $note")
+            }
+        }
         summary?.summary?.takeIf { it.isNotBlank() }?.let {
             appendLine()
             appendLine("Context summary:")

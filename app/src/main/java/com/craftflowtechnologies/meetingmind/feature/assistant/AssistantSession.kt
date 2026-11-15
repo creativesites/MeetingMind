@@ -9,6 +9,8 @@ import com.craftflowtechnologies.meetingmind.ai.assistant.AssistantMessage
 import com.craftflowtechnologies.meetingmind.ai.assistant.AssistantScope
 import com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi
 import com.craftflowtechnologies.meetingmind.ai.faith.AskSermon
+import com.craftflowtechnologies.meetingmind.ai.live.LiveSessionState
+import com.craftflowtechnologies.meetingmind.ai.live.LiveVoiceAudioBridge
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import kotlinx.coroutines.CoroutineScope
@@ -49,7 +51,24 @@ class AssistantSession(
     private val _busyActionIds = MutableStateFlow<Set<String>>(emptySet())
     val busyActionIds: StateFlow<Set<String>> = _busyActionIds.asStateFlow()
 
+    private val _liveState = MutableStateFlow(LiveSessionState.DISCONNECTED)
+    val liveState: StateFlow<LiveSessionState> = _liveState.asStateFlow()
+
+    private val _liveMuted = MutableStateFlow(false)
+    val liveMuted: StateFlow<Boolean> = _liveMuted.asStateFlow()
+
+    private val _liveAudioLevel = MutableStateFlow(0f)
+    val liveAudioLevel: StateFlow<Float> = _liveAudioLevel.asStateFlow()
+
+    private val _liveInputTranscript = MutableStateFlow("")
+    val liveInputTranscript: StateFlow<String> = _liveInputTranscript.asStateFlow()
+
+    private val _liveError = MutableStateFlow<String?>(null)
+    val liveError: StateFlow<String?> = _liveError.asStateFlow()
+
     private var host: AppAssistantHost? = null
+    private var voiceBridge: LiveVoiceAudioBridge? = null
+    private var voiceCollectJob: Job? = null
     private var job: Job? = null
     private var lastPrompt: String? = null
 
@@ -57,25 +76,41 @@ class AssistantSession(
 
     private fun fallbackScope(): AssistantScope {
         val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy"))
-        return AssistantScope(libraryLabel, faithLibrary, libraryLabel, today = today)
+        val isLearning = libraryLabel.equals("Learning", ignoreCase = true)
+        return AssistantScope(libraryLabel, faithLibrary, libraryLabel, today = today, learning = isLearning)
     }
 
     private suspend fun resolveScope(): AssistantScope {
         val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy"))
-        if (noteId == null) return AssistantScope(libraryLabel, faithLibrary, libraryLabel, today = today)
+        val isLearningLibrary = libraryLabel.equals("Learning", ignoreCase = true)
+        if (noteId == null) {
+            return AssistantScope(libraryLabel, faithLibrary, libraryLabel, today = today, learning = isLearningLibrary)
+        }
         val db = MeetMindDatabase.getInstance(app)
         val note = db.noteDao().getById(noteId)
         val workflow = note?.workflow?.let { runCatching { RecordingType.valueOf(it) }.getOrNull() } ?: RecordingType.GENERAL
         val meeting = db.noteDao().getMeetingsForNote(noteId).firstOrNull()
         val meetingType = meeting?.recordingType?.let { runCatching { RecordingType.valueOf(it) }.getOrNull() }
+        val learningSession = db.learningSessionDao().getByNoteId(noteId)
+        val notebook = note?.notebookId?.let { nbId -> db.notebookDao().getById(nbId) }
+        val isLearning = isLearningLibrary ||
+            workflow in setOf(RecordingType.LECTURE, RecordingType.RESEARCH) ||
+            meetingType in setOf(RecordingType.LECTURE, RecordingType.RESEARCH) ||
+            notebook?.space == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING.name ||
+            learningSession != null
+        val domainDisplay = learningSession?.subjectDomain?.let {
+            com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain.fromName(it).displayName
+        }
         return AssistantScope(
-            title = note?.title?.ifBlank { "Untitled note" } ?: "This note",
+            title = note?.title?.ifBlank { learningSession?.title ?: "Untitled lecture" } ?: learningSession?.title ?: "This lecture",
             faith = AskSermon.isFaith(workflow) || AskSermon.isFaith(meetingType),
-            kindLabel = workflow.displayName,
+            kindLabel = if (isLearning) (learningSession?.courseName ?: domainDisplay ?: "Lecture") else workflow.displayName,
             noteId = noteId,
-            meetingId = meeting?.id,
+            meetingId = meeting?.id ?: learningSession?.meetingId,
             sermon = meetingType in setOf(RecordingType.SERMON, RecordingType.BIBLE_STUDY, RecordingType.DEVOTIONAL, RecordingType.TESTIMONY),
-            today = today
+            today = today,
+            learning = isLearning,
+            subjectDomain = domainDisplay
         )
     }
 
@@ -86,6 +121,21 @@ class AssistantSession(
         val s = _scope.value
         return when {
             s == null -> emptyList()
+            s.learning && s.noteId != null -> listOf(
+                AssistantSuggestion("Generate 5 flashcards", "Read this lecture note and create 5 high-yield active-recall flashcards using create_flashcards."),
+                AssistantSuggestion("Unpack hardest concepts", "Read this lecture and unpack the hardest concepts and formulas step-by-step with intuition and exam tips."),
+                AssistantSuggestion("Quiz me Socratic-style", "Read the concepts in this lecture and quiz me Socratic-style one question at a time."),
+                AssistantSuggestion("Add exam cram summary", "Summarize the top exam takeaways, definitions, and formulas from this lecture and add them to the note."),
+                AssistantSuggestion("Create course from lecture", "Create a learning course from this lecture note using create_course."),
+                AssistantSuggestion("What did the lecturer say about…", "What did the lecturer say in the recording about ")
+            )
+            s.learning -> listOf(
+                AssistantSuggestion("What should I study today?", "Check my courses and study concepts and tell me the highest-priority topics to review today."),
+                AssistantSuggestion("Quiz me on weak concepts", "Check my study concepts that need review or are high-yield and quiz me on them one by one."),
+                AssistantSuggestion("Create flashcards on a topic…", "Create a study flashcard deck using create_flashcards on "),
+                AssistantSuggestion("Build an exam study plan", "Check my courses and study concepts and build a focused exam study plan."),
+                AssistantSuggestion("Explain a concept or formula…", "Explain the intuition, step-by-step derivation, and exam application of ")
+            )
             s.sermon -> listOf(
                 AssistantSuggestion("Outline the message", "Outline this message — big idea, main points and application — with timestamps, and add it to the note."),
                 AssistantSuggestion("Add the key passages", "Add the main Bible passages this sermon used to the note."),
@@ -123,37 +173,70 @@ class AssistantSession(
         if (_working.value != null) return
         lastPrompt = prompt
         val history = _messages.value
-        _messages.value = history + AssistantMessage(true, prompt)
+        val placeholderIndex = history.size + 1
+        _messages.value = history + AssistantMessage(true, prompt) + AssistantMessage(false, "", streaming = true)
         _working.value = "Thinking"
         job = scope.launch {
             try {
                 // One transport instance for both the configured-check and the engine, so they can
                 // never disagree about whether Gemini or the DeepSeek backup is reachable.
                 val transport = CloudAi.transport(app)
-                val reply = if (!transport.refreshConfigured()) {
-                    AssistantMessage(false, "The assistant needs Internet mode (a Gemini key) or the backup AI. You can set either up in Settings.", error = true, retryable = false)
+                if (!transport.refreshConfigured()) {
+                    val reply = AssistantMessage(false, "The assistant needs Internet mode (a Gemini key) or the backup AI. You can set either up in Settings.", error = true, retryable = false)
+                    replaceAt(placeholderIndex, reply)
                 } else {
                     val engine = AssistantEngine(transport, host())
-                    engine.reply(history.filterNot { it.error }, prompt) { chip -> _working.value = chip }
+                    var lastUiEmitMs = 0L
+                    var lastToolCount = -1
+                    var lastTextLen = 0
+                    engine.replyStream(history.filterNot { it.error }, prompt).collect { snap ->
+                        _working.value = if (snap.done) null else snap.statusLabel
+                        val now = System.currentTimeMillis()
+                        val toolsChanged = snap.message.toolSteps != _messages.value.getOrNull(placeholderIndex)?.toolSteps ||
+                            snap.message.actions.size != _messages.value.getOrNull(placeholderIndex)?.actions?.size
+                        val textChanged = snap.message.text.length != lastTextLen
+                        if (snap.done || toolsChanged || (textChanged && now - lastUiEmitMs >= 45L) || now - lastUiEmitMs >= 100L) {
+                            lastUiEmitMs = now
+                            lastToolCount = snap.message.toolSteps.size
+                            lastTextLen = snap.message.text.length
+                            replaceAt(placeholderIndex, snap.message)
+                        }
+                    }
                 }
-                _messages.value = _messages.value + reply
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Anything that escapes the engine (a database read building the scope, an
-                // unexpected tool exception) must still end in a visible, retryable error — never
+                // Anything that escapes the engine must still end in a visible, retryable error — never
                 // a silently cleared spinner with nothing to retry.
-                _messages.value = _messages.value + AssistantMessage(false, "Something went wrong before I could answer. Try again.", error = true)
+                replaceAt(placeholderIndex, AssistantMessage(false, "Something went wrong before I could answer. Try again.", error = true))
             } finally {
                 _working.value = null
             }
         }
     }
 
+    private fun replaceAt(index: Int, message: AssistantMessage) {
+        val current = _messages.value.toMutableList()
+        if (index in current.indices) current[index] = message else current += message
+        _messages.value = current
+    }
+
     fun stop() {
         job?.cancel()
         _working.value = null
-        _messages.value = _messages.value + AssistantMessage(false, "Stopped.", error = true)
+        val current = _messages.value.toMutableList()
+        val last = current.lastOrNull()
+        if (last != null && !last.fromUser && last.streaming) {
+            val hasContent = last.text.isNotBlank() || last.actions.isNotEmpty() || last.toolSteps.isNotEmpty()
+            current[current.lastIndex] = if (hasContent) {
+                last.copy(streaming = false)
+            } else {
+                AssistantMessage(false, "Stopped.", error = true)
+            }
+            _messages.value = current
+        } else {
+            _messages.value = current + AssistantMessage(false, "Stopped.", error = true)
+        }
     }
 
     fun retry() {
@@ -174,7 +257,66 @@ class AssistantSession(
         send(if (hadProgress) "Please continue — don't repeat anything you already did above, just finish the rest." else p)
     }
 
-    fun clear() { job?.cancel(); _working.value = null; _messages.value = emptyList() }
+    fun clear() { job?.cancel(); _working.value = null; _messages.value = emptyList(); stopVoice() }
+
+    fun startVoice() {
+        if (_liveState.value != LiveSessionState.DISCONNECTED && _liveState.value != LiveSessionState.ERROR) return
+        job?.cancel()
+        _working.value = null
+        _liveError.value = null
+        scope.launch {
+            val resolvedHost = host()
+            val engine = AssistantEngine(CloudAi.transport(app), resolvedHost)
+            val bridge = LiveVoiceAudioBridge(
+                context = app,
+                scope = scope,
+                host = resolvedHost,
+                tools = engine.scopedTools(),
+                onActionEmitted = { action ->
+                    _messages.value = _messages.value + AssistantMessage(
+                        fromUser = false,
+                        text = action.label,
+                        actions = listOf(action),
+                        provider = "Gemini Live"
+                    )
+                },
+                onTurnTranscript = { fromUser, text ->
+                    if (fromUser && text.isNotBlank()) {
+                        val last = _messages.value.lastOrNull()
+                        if (last == null || !last.fromUser || last.text != text) {
+                            _messages.value = _messages.value + AssistantMessage(fromUser = true, text = text)
+                        }
+                    }
+                }
+            )
+            voiceBridge = bridge
+            voiceCollectJob?.cancel()
+            voiceCollectJob = scope.launch {
+                launch { bridge.state.collect { _liveState.value = it } }
+                launch { bridge.muted.collect { _liveMuted.value = it } }
+                launch { bridge.audioLevel.collect { _liveAudioLevel.value = it } }
+                launch { bridge.inputTranscript.collect { _liveInputTranscript.value = it } }
+                launch { bridge.error.collect { _liveError.value = it } }
+            }
+            val voiceInstruction = engine.systemPrompt() +
+                "\n\nVoice mode instructions: Keep spoken responses concise and natural (1-3 sentences when conversational), call tools immediately when asked about notes or tasks, and confirm clearly when a write succeeds."
+            bridge.start(voiceInstruction)
+        }
+    }
+
+    fun toggleVoiceMute() { voiceBridge?.toggleMute() }
+
+    fun stopVoice() {
+        val current = voiceBridge
+        voiceBridge = null
+        voiceCollectJob?.cancel()
+        voiceCollectJob = null
+        _liveState.value = LiveSessionState.DISCONNECTED
+        _liveMuted.value = false
+        _liveAudioLevel.value = 0f
+        _liveInputTranscript.value = ""
+        scope.launch { runCatching { current?.stop() } }
+    }
 
     fun confirm(action: AssistantAction) = scope.launch {
         if (action.id in _busyActionIds.value) return@launch
@@ -207,8 +349,16 @@ class AssistantSession(
     }
 }
 
-/** The assistant across the whole library, for Faith home and elsewhere without a note open. */
-class LibraryAssistantViewModel(app: Application) : AndroidViewModel(app) {
+/** The assistant across the whole library, for Faith home, Learning home, and lecture sessions. */
+class LibraryAssistantViewModel(private val app: Application) : AndroidViewModel(app) {
     val faith = AssistantSession(app, viewModelScope, null, null, libraryLabel = "Faith", faithLibrary = true)
     val learning = AssistantSession(app, viewModelScope, null, null, libraryLabel = "Learning", faithLibrary = false)
+    private val learningNoteSessions = mutableMapOf<String, AssistantSession>()
+
+    fun forLearningNote(noteId: String): AssistantSession {
+        if (noteId.isBlank()) return learning
+        return learningNoteSessions.getOrPut(noteId) {
+            AssistantSession(app, viewModelScope, noteId = noteId, bridge = null, libraryLabel = "Learning", faithLibrary = false)
+        }
+    }
 }

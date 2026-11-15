@@ -166,17 +166,106 @@ object CreateCardRenderer {
         val availableH = (bottom - top) - footH - reserved
         val b = blocks(context, input, textWidth, availableH, unit, ink, accent, align)
 
-        val eyebrowH = if (input.eyebrow != null) 64f * unit else 0f
-        var y = top + (availableH - b.height - eyebrowH).coerceAtLeast(0f) / 2f
-        input.eyebrow?.let { e ->
+        val effectiveEyebrow = input.eyebrow?.takeIf { it.isNotBlank() }
+            ?: d.eyebrow?.takeIf { it.isNotBlank() }
+            ?: if (d.style == CreateCardStyle.BADGE_HOOK) "WORD TO CARRY" else null
+
+        val eyebrowH = if (effectiveEyebrow != null) 72f * unit else 0f
+        val quoteMarkH = if (d.style == CreateCardStyle.QUOTE_POSTER) 54f * unit else 0f
+        val contentH = b.height + eyebrowH + quoteMarkH
+        var y = top + (availableH - contentH).coerceAtLeast(0f) / 2f
+
+        // Gallery frame: inset architectural hairline border inside the safe zone.
+        if (d.style == CreateCardStyle.FRAMED) {
+            val inset = 28f * unit
+            val framePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = max(1.5f, 3f * unit)
+                color = Color.argb(120, Color.red(accent), Color.green(accent), Color.blue(accent))
+            }
+            val frameRect = android.graphics.RectF(
+                left - inset,
+                top - inset * 0.5f,
+                right + inset,
+                bottom - footH + inset * 0.35f
+            )
+            canvas.drawRoundRect(frameRect, 28f * unit, 28f * unit, framePaint)
+        }
+
+        // Frosted spotlight glass backing behind the typography block for high viral contrast.
+        if (d.style == CreateCardStyle.SPOTLIGHT) {
+            val padX = 34f * unit
+            val padY = 38f * unit
+            val panelColor = if (darkInk) Color.argb(185, 255, 255, 255) else Color.argb(95, 10, 14, 24)
+            val strokeColor = if (darkInk) Color.argb(65, 15, 23, 42) else Color.argb(85, 255, 255, 255)
+            val panelRect = android.graphics.RectF(
+                (left - padX).coerceAtLeast(16f * unit),
+                (y - padY).coerceAtLeast(top - 12f * unit),
+                (right + padX).coerceAtMost(w - 16f * unit),
+                (y + contentH + padY).coerceAtMost(bottom - footH + 12f * unit)
+            )
+            canvas.drawRoundRect(
+                panelRect,
+                34f * unit,
+                34f * unit,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = panelColor }
+            )
+            canvas.drawRoundRect(
+                panelRect,
+                34f * unit,
+                34f * unit,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = max(1f, 2f * unit); color = strokeColor }
+            )
+        }
+
+        effectiveEyebrow?.let { e ->
             val p = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = accent; textSize = 30f * unit; letterSpacing = 0.18f
+                color = accent; textSize = 28f * unit; letterSpacing = 0.16f
                 typeface = Typeface.create(ShareCardRenderer.typeface(context, com.craftflowtechnologies.meetingmind.core.share.ShareFont.INTER), Typeface.BOLD)
             }
-            val l = layout(e.uppercase(), p, textWidth, align, 1f, 1)
-            canvas.save(); canvas.translate(left, y); l.draw(canvas); canvas.restore(); y += eyebrowH
+            val labelText = e.uppercase()
+            val l = layout(labelText, p, textWidth, align, 1f, 1)
+            if (d.style == CreateCardStyle.BADGE_HOOK) {
+                val labelW = min(textWidth.toFloat(), p.measureText(labelText) + 44f * unit)
+                val pillLeft = if (d.centered) left + (textWidth - labelW) / 2f else left
+                val pillRect = android.graphics.RectF(pillLeft, y - 6f * unit, pillLeft + labelW, y + l.height + 16f * unit)
+                canvas.drawRoundRect(
+                    pillRect,
+                    32f * unit,
+                    32f * unit,
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.argb(52, Color.red(accent), Color.green(accent), Color.blue(accent))
+                    }
+                )
+            }
+            canvas.save(); canvas.translate(left, y + 4f * unit); l.draw(canvas); canvas.restore()
+            y += eyebrowH
         }
+
+        if (d.style == CreateCardStyle.QUOTE_POSTER) {
+            val quotePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = accent
+                textSize = 96f * unit
+                typeface = ShareCardRenderer.typeface(context, com.craftflowtechnologies.meetingmind.core.share.ShareFont.PLAYFAIR)
+                textAlign = if (d.centered) Paint.Align.CENTER else Paint.Align.LEFT
+            }
+            val qx = if (d.centered) left + textWidth / 2f else left
+            canvas.drawText("“", qx, y + 54f * unit, quotePaint)
+            y += quoteMarkH
+        }
+
         b.main?.let { canvas.save(); canvas.translate(left, y); it.draw(canvas); canvas.restore(); y += it.height + b.gap }
+        if (d.style == CreateCardStyle.QUOTE_POSTER && b.main != null) {
+            val barW = 110f * unit
+            val barX = if (d.centered) left + (textWidth - barW) / 2f else left
+            val barY = y - b.gap * 0.45f
+            canvas.drawRoundRect(
+                android.graphics.RectF(barX, barY, barX + barW, barY + max(2f, 5f * unit)),
+                4f * unit,
+                4f * unit,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accent }
+            )
+        }
         b.verse?.let { canvas.save(); canvas.translate(left, y); it.draw(canvas); canvas.restore(); y += it.height + (if (b.main == null) b.gap else 0f) }
         b.reference?.let { canvas.save(); canvas.translate(left, y); it.draw(canvas); canvas.restore() }
 

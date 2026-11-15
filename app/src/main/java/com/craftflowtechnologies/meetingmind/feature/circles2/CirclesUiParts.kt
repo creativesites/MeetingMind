@@ -1,5 +1,8 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -25,14 +28,17 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.circles2.Role
 import com.craftflowtechnologies.meetingmind.ui.theme.CirclesFixedColors
@@ -93,7 +99,8 @@ fun CircleField(
     maxLines: Int = if (minLines > 1) 8 else 1,
     singleLine: Boolean = maxLines == 1,
     keyboardOptions: KeyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-    leadingIcon: (@Composable () -> Unit)? = null
+    leadingIcon: (@Composable () -> Unit)? = null,
+    accentColor: Color = CirclesPalette.Accent
 ) {
     val c = MM.colors
     OutlinedTextField(
@@ -105,8 +112,8 @@ fun CircleField(
         minLines = minLines, maxLines = maxLines, singleLine = singleLine, keyboardOptions = keyboardOptions,
         colors = TextFieldDefaults.colors(
             focusedContainerColor = c.surfaceSunk, unfocusedContainerColor = c.surfaceSunk, disabledContainerColor = c.surfaceSunk,
-            focusedIndicatorColor = CirclesPalette.Accent, unfocusedIndicatorColor = c.line,
-            focusedLabelColor = CirclesPalette.Accent, unfocusedLabelColor = c.inkSecondary, cursorColor = CirclesPalette.Accent,
+            focusedIndicatorColor = accentColor, unfocusedIndicatorColor = c.line,
+            focusedLabelColor = accentColor, unfocusedLabelColor = c.inkSecondary, cursorColor = accentColor,
             focusedTextColor = c.ink, unfocusedTextColor = c.ink
         )
     )
@@ -253,8 +260,22 @@ fun MemberInfoSheet(
     onSetTitle: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null,
     onSetRole: ((com.craftflowtechnologies.meetingmind.core.circles2.Member, Role) -> Unit)? = null,
     onRemove: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null,
-    circleId: String? = null
+    circleId: String? = null,
+    onUpdatePhoto: ((PickedFile) -> Unit)? = null,
+    onRemovePhoto: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val f = readPickedAsync(context, uri)
+                if (f != null && onUpdatePhoto != null) {
+                    onUpdatePhoto(f)
+                }
+            }
+        }
+    }
     val canChangeRole = me?.role == Role.Owner && !isMe
     val canRemove = !isMe && me?.role?.isAdmin == true && member.role != Role.Owner && (member.role != Role.Admin || me.role == Role.Owner)
     val canEditTitle = me?.role?.isAdmin == true
@@ -301,6 +322,27 @@ fun MemberInfoSheet(
                     color = MM.colors.line
                 )
                 Text("Member since $joined", style = MM.type.caption, color = MM.colors.inkMuted)
+            }
+        }
+
+        if (isMe && onUpdatePhoto != null) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton(
+                    "Change profile photo",
+                    { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    modifier = Modifier.weight(1f)
+                )
+                if (member.avatarVersion != null && onRemovePhoto != null) {
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton(
+                        "Remove photo",
+                        onRemovePhoto,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
 

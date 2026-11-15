@@ -53,7 +53,8 @@ class TranscriptToolEngine(
         }
 
         val prompt = TranscriptToolPrompts.build(tool, segments)
-        val response = when (val generated = languageModel.generate(prompt, maxOutputTokens)) {
+        val schema = TranscriptToolPrompts.schemaFor(tool)
+        val response = when (val generated = languageModel.generateStructured(prompt, schema, maxOutputTokens)) {
             is AiResult.Success -> generated.value
             else -> return AiResult.Failed(
                 generated.describeFailure() ?: "\"${tool.label}\" could not run."

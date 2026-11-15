@@ -26,10 +26,16 @@ enum class AiRoute {
     /** Cloud reasoning over an already-built transcript. */
     GEMINI_INTELLIGENCE,
 
-    /** Low-latency bidirectional voice session. Reserved — see docs/TRANSCRIPTION_OVERHAUL.md §6. */
+    /** Fast interactive cloud model (low latency assistant turns, inline edits, search expansion). */
+    GEMINI_FAST,
+
+    /** Deep frontier reasoning tier for multi-document synthesis and complex study guides. */
+    GEMINI_DEEP_REASONING,
+
+    /** Low-latency bidirectional voice session. */
     GEMINI_LIVE,
 
-    /** Live with extended background reasoning. Reserved. */
+    /** Live with extended background reasoning. */
     GEMINI_LIVE_EXTENDED
 }
 
@@ -69,7 +75,9 @@ interface AiModelRouter {
 object DefaultAiModelRouter : AiModelRouter {
 
     const val GEMINI_TRANSCRIBE_MODEL = "gemini-3.5-transcribe"
-    const val GEMINI_INTELLIGENCE_MODEL = "gemini-3.6-flash"
+    const val GEMINI_FAST_MODEL = "gemini-3.8-flash"
+    const val GEMINI_INTELLIGENCE_MODEL = "gemini-3.8-flash"
+    const val GEMINI_DEEP_REASONING_MODEL = "gemini-4-argon"
     const val GEMINI_LIVE_MODEL = "gemini-3.8-live"
     const val GEMINI_LIVE_EXTENDED_MODEL = "gemini-3.8-live-extended-thinking"
 
@@ -78,7 +86,9 @@ object DefaultAiModelRouter : AiModelRouter {
         AiRoute.LOCAL_INTELLIGENCE -> ModelRoute(route, null, requiresNetwork = false)
         AiRoute.GEMINI_TRANSCRIPTION_VERBATIM -> ModelRoute(route, GEMINI_TRANSCRIBE_MODEL, requiresNetwork = true)
         AiRoute.GEMINI_TRANSCRIPTION_SMART -> ModelRoute(route, GEMINI_TRANSCRIBE_MODEL, requiresNetwork = true)
+        AiRoute.GEMINI_FAST -> ModelRoute(route, GEMINI_FAST_MODEL, requiresNetwork = true)
         AiRoute.GEMINI_INTELLIGENCE -> ModelRoute(route, GEMINI_INTELLIGENCE_MODEL, requiresNetwork = true)
+        AiRoute.GEMINI_DEEP_REASONING -> ModelRoute(route, GEMINI_DEEP_REASONING_MODEL, requiresNetwork = true)
         AiRoute.GEMINI_LIVE -> ModelRoute(route, GEMINI_LIVE_MODEL, requiresNetwork = true)
         AiRoute.GEMINI_LIVE_EXTENDED -> ModelRoute(route, GEMINI_LIVE_EXTENDED_MODEL, requiresNetwork = true)
     }
@@ -91,7 +101,9 @@ object DefaultAiModelRouter : AiModelRouter {
         ProcessingProfile.INTERNET -> setOf(
             AiRoute.GEMINI_TRANSCRIPTION_VERBATIM,
             AiRoute.GEMINI_TRANSCRIPTION_SMART,
+            AiRoute.GEMINI_FAST,
             AiRoute.GEMINI_INTELLIGENCE,
+            AiRoute.GEMINI_DEEP_REASONING,
             // Kept available so a cloud failure can fall back to on-device processing rather than
             // leaving the user with nothing — see the overhaul brief §38.
             AiRoute.LOCAL_TRANSCRIPTION,

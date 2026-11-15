@@ -1,12 +1,8 @@
 package com.craftflowtechnologies.meetingmind.feature.notes.ai
 
-import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -75,7 +70,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.ai.notes.CitedItem
 import com.craftflowtechnologies.meetingmind.ai.notes.NoteAiJob
 import com.craftflowtechnologies.meetingmind.ai.notes.NoteAiOutcome
@@ -89,13 +83,8 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.AiRecoveryBanner
 import com.craftflowtechnologies.meetingmind.core.ui.mm.AiThinkingSkeleton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.citedAnnotatedString
 import com.craftflowtechnologies.meetingmind.ui.icons.AiMark
-import com.craftflowtechnologies.meetingmind.ui.theme.Accent
-import com.craftflowtechnologies.meetingmind.ui.theme.Ink
-import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
-import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
-import com.craftflowtechnologies.meetingmind.ui.theme.Line
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 
 /** The AI tools a note or notebook offers. [onRelated] is for a single note only. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -109,23 +98,30 @@ fun NoteAiMenu(
     onPolishNote: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
+    val c = MM.colors
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = SurfaceBase
+        containerColor = c.surface
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp)
+                .padding(horizontal = MM.space.xl)
+                .padding(bottom = MM.space.xl)
                 .navigationBarsPadding()
         ) {
-            Text(if (forNotebook) "AI for this notebook" else "AI for this note", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(
+                if (forNotebook) "AI for this notebook" else "AI for this note",
+                style = MM.type.title,
+                color = c.ink
+            )
             Text(
                 "Works only from what's written here, and shows where each point came from. Uses your AI setting — on this phone, or Gemini in Internet mode.",
-                fontSize = 13.sp, lineHeight = 18.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
+                style = MM.type.secondary,
+                color = c.inkSecondary,
+                modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.m)
             )
             MenuRow(Icons.Filled.Summarize, "Summarize", if (forNotebook) "The main points across these notes" else "The main points, added at the top") { onPick(NoteAiTool.SUMMARIZE) }
             MenuRow(Icons.Filled.CheckBox, "Find action items", "Tasks and follow-ups the notes actually state") { onPick(NoteAiTool.EXTRACT_ACTIONS) }
@@ -152,29 +148,41 @@ fun NoteAiMenu(
 
 @Composable
 private fun MenuRow(icon: ImageVector, title: String, subtitle: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val c = MM.colors
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = MMSize.minTouch)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(MM.radius.card)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(vertical = 11.dp, horizontal = 4.dp),
+            .padding(vertical = MM.space.s, horizontal = MM.space.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(38.dp).clip(CircleShape), contentAlignment = Alignment.Center) {
-            Surface(shape = CircleShape, color = Accent.copy(alpha = if (enabled) 0.1f else 0.05f), modifier = Modifier.size(38.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = null, tint = if (enabled) Accent else InkMuted, modifier = Modifier.size(19.dp)) }
+        Surface(
+            shape = CircleShape,
+            color = if (enabled) c.accentWash else c.surfaceSunk,
+            border = BorderStroke(MMSize.hairline, if (enabled) c.lineSoft else c.lineFaint),
+            modifier = Modifier.size(40.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (enabled) c.accent else c.inkMuted,
+                    modifier = Modifier.size(MMSize.iconSmall)
+                )
             }
         }
-        Column(Modifier.padding(start = 14.dp)) {
-            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = if (enabled) Ink else InkMuted)
-            Text(subtitle, fontSize = 12.5.sp, color = InkSecondary)
+        Column(Modifier.padding(start = MM.space.m).weight(1f)) {
+            Text(title, style = MM.type.bodyStrong, color = if (enabled) c.ink else c.inkMuted)
+            Text(subtitle, style = MM.type.caption, color = c.inkSecondary)
         }
     }
 }
 
 @Composable
 fun AskDialog(forNotebook: Boolean, onAsk: (String) -> Unit, onDismiss: () -> Unit) {
+    val c = MM.colors
     var q by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -184,34 +192,37 @@ fun AskDialog(forNotebook: Boolean, onAsk: (String) -> Unit, onDismiss: () -> Un
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = SurfaceBase,
-        title = { Text(if (forNotebook) "Ask this notebook" else "Ask this note") },
+        containerColor = c.surface,
+        shape = MM.radius.card,
+        title = { Text(if (forNotebook) "Ask this notebook" else "Ask this note", style = MM.type.heading, color = c.ink) },
         text = {
             OutlinedTextField(
                 value = q,
                 onValueChange = { q = it },
+                textStyle = MM.type.body,
+                shape = MM.radius.card,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { submit() }),
                 trailingIcon = if (q.isNotEmpty()) {
                     {
                         IconButton(onClick = { q = "" }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Clear question", tint = InkMuted, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Filled.Close, contentDescription = "Clear question", tint = c.inkMuted, modifier = Modifier.size(MMSize.iconSmall))
                         }
                     }
                 } else null,
-                placeholder = { Text(if (forNotebook) "e.g. What did we decide about the budget?" else "e.g. What were the three points on grace?") },
+                placeholder = { Text(if (forNotebook) "e.g. What did we decide about the budget?" else "e.g. What were the three points on grace?", style = MM.type.body, color = c.inkMuted) },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("note_ai_question")
             )
         },
         confirmButton = {
             TextButton(enabled = q.isNotBlank(), onClick = ::submit, modifier = Modifier.heightIn(min = MMSize.minTouch)) {
-                Text("Ask")
+                Text("Ask", style = MM.type.bodyStrong, color = if (q.isNotBlank()) c.accent else c.inkMuted)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = MMSize.minTouch)) {
-                Text("Cancel")
+                Text("Cancel", style = MM.type.bodyStrong, color = c.inkSecondary)
             }
         }
     )
@@ -238,10 +249,11 @@ fun NoteAiResultSheet(
     onRetry: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val c = MM.colors
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = SurfaceBase
+        containerColor = c.surface
     ) {
         Column(
             Modifier
@@ -249,15 +261,27 @@ fun NoteAiResultSheet(
                 .imePadding()
                 .navigationBarsPadding()
                 .animateContentSize()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 16.dp)
+                .padding(horizontal = MM.space.xl)
+                .padding(bottom = MM.space.l)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))
+                Surface(
+                    shape = CircleShape,
+                    color = c.accentWash,
+                    border = BorderStroke(MMSize.hairline, c.lineSoft),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(AiMark, contentDescription = null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
+                    }
+                }
                 Text(
                     if (job.tool == NoteAiTool.ASK) job.question ?: "Ask" else job.tool.label,
-                    fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 8.dp).weight(1f)
+                    style = MM.type.heading,
+                    color = c.ink,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = MM.space.s).weight(1f)
                 )
             }
             when (job.status) {
@@ -265,17 +289,19 @@ fun NoteAiResultSheet(
                     AiThinkingSkeleton(
                         label = "Reading your notes…",
                         sublabel = "You can close this — it carries on, and the result waits here.",
-                        modifier = Modifier.padding(top = 14.dp),
+                        modifier = Modifier.padding(top = MM.space.m),
                         onStop = onCancel
                     )
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = onClose, modifier = Modifier.heightIn(min = MMSize.minTouch)) { Text("Keep in background") }
+                    Row(Modifier.fillMaxWidth().padding(top = MM.space.s), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onClose, modifier = Modifier.heightIn(min = MMSize.minTouch)) {
+                            Text("Keep in background", style = MM.type.bodyStrong, color = c.inkSecondary)
+                        }
                     }
                 }
                 NoteAiStatus.FAILED, NoteAiStatus.CANCELLED -> {
                     AiRecoveryBanner(
                         message = job.error ?: "Stopped before finishing.",
-                        modifier = Modifier.padding(top = 14.dp),
+                        modifier = Modifier.padding(top = MM.space.m),
                         onRetry = onRetry,
                         onDismiss = onDiscard,
                         dismissLabel = "Dismiss"
@@ -286,13 +312,18 @@ fun NoteAiResultSheet(
                     if (result == null) {
                         AiRecoveryBanner(
                             message = "The result couldn't be read.",
-                            modifier = Modifier.padding(top = 14.dp),
+                            modifier = Modifier.padding(top = MM.space.m),
                             onRetry = onRetry,
                             onDismiss = onDiscard,
                             dismissLabel = "Dismiss"
                         )
                     } else {
-                        Text(result.scope + (job.engine?.let { " · $it" } ?: ""), fontSize = 11.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
+                        Text(
+                            result.scope + (job.engine?.let { " · $it" } ?: ""),
+                            style = MM.type.overline,
+                            color = c.inkMuted,
+                            modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.s)
+                        )
                         when (val o = result.outcome) {
                             is NoteAiOutcome.Points -> PointsResult(job, o.items, result.sources, primaryLabel, onPrimary, onShowSource, onDiscard)
                             is NoteAiOutcome.Answer -> AnswerResult(o, result.sources, onShowSource, onDiscard)
@@ -316,52 +347,77 @@ private fun PointsResult(
     onDiscard: () -> Unit
 ) {
     val actions = job.tool == NoteAiTool.EXTRACT_ACTIONS
+    val c = MM.colors
     var chosen by remember(items) { mutableStateOf(items.toSet()) }
     var applying by remember(items) { mutableStateOf(false) }
 
     if (items.isEmpty()) {
-        Text(if (actions) "No tasks or follow-ups are written here." else "There wasn't enough here to summarize.", color = InkSecondary, modifier = Modifier.padding(vertical = 12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = onDiscard) { Text("OK") } }
+        Text(
+            if (actions) "No tasks or follow-ups are written here." else "There wasn't enough here to summarize.",
+            style = MM.type.body,
+            color = c.inkSecondary,
+            modifier = Modifier.padding(vertical = MM.space.m)
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDiscard, modifier = Modifier.heightIn(min = MMSize.minTouch)) {
+                Text("OK", style = MM.type.bodyStrong, color = c.accent)
+            }
+        }
         return
     }
     if (actions) {
         Text(
             "${chosen.size} of ${items.size} selected",
-            fontSize = 12.sp,
-            color = InkMuted,
-            modifier = Modifier.padding(bottom = 4.dp)
+            style = MM.type.caption,
+            color = c.inkMuted,
+            modifier = Modifier.padding(bottom = MM.space.xs)
         )
     }
-    LazyColumn(Modifier.heightIn(max = 420.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
-        items(items) { item ->
-            val checked = item in chosen
-            val rowModifier = if (actions) {
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = MMSize.minTouch)
-                    .clip(RoundedCornerShape(10.dp))
-                    .toggleable(value = checked, role = Role.Checkbox) {
-                        chosen = if (checked) chosen - item else chosen + item
-                    }
-                    .padding(vertical = 8.dp, horizontal = 4.dp)
-            } else {
-                Modifier.fillMaxWidth().padding(vertical = 6.dp)
-            }
-            Row(rowModifier, verticalAlignment = Alignment.Top) {
-                if (actions) {
-                    Icon(
-                        if (checked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank,
-                        contentDescription = null,
-                        tint = if (checked) Accent else InkMuted,
-                        modifier = Modifier.size(22.dp)
-                    )
+    Surface(
+        shape = MM.radius.card,
+        color = c.surfaceRaised,
+        border = BorderStroke(MMSize.hairline, c.lineSoft),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        LazyColumn(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 420.dp)
+                .padding(horizontal = MM.space.m, vertical = MM.space.s)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+        ) {
+            items(items) { item ->
+                val checked = item in chosen
+                val rowModifier = if (actions) {
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = MMSize.minTouch)
+                        .clip(MM.radius.small)
+                        .toggleable(value = checked, role = Role.Checkbox) {
+                            chosen = if (checked) chosen - item else chosen + item
+                        }
+                        .padding(vertical = MM.space.s, horizontal = MM.space.xs)
                 } else {
-                    Text("•", color = Accent, fontSize = 16.sp, modifier = Modifier.width(22.dp))
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = MM.space.s, horizontal = MM.space.xs)
                 }
-                Column(Modifier.padding(start = 8.dp).weight(1f)) {
-                    Text(item.text, fontSize = 15.sp, lineHeight = 21.sp, color = Ink)
-                    item.detail?.let { Text(it, fontSize = 12.5.sp, color = InkSecondary) }
-                    Citations(item.sourceIds, sources, onShowSource)
+                Row(rowModifier, verticalAlignment = Alignment.Top) {
+                    if (actions) {
+                        Icon(
+                            if (checked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank,
+                            contentDescription = null,
+                            tint = if (checked) c.accent else c.inkMuted,
+                            modifier = Modifier.size(MMSize.iconSmall)
+                        )
+                    } else {
+                        Text("•", color = c.accent, style = MM.type.bodyStrong, modifier = Modifier.width(MM.space.xl))
+                    }
+                    Column(Modifier.padding(start = MM.space.s).weight(1f)) {
+                        Text(item.text, style = MM.type.body, color = c.ink)
+                        item.detail?.let { Text(it, style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.padding(top = MM.space.xs)) }
+                        Citations(item.sourceIds, sources, onShowSource)
+                    }
                 }
             }
         }
@@ -372,8 +428,14 @@ private fun PointsResult(
             (if (actions) "☐ " else "• ") + it.text + (it.detail?.let { d -> " — $d" } ?: "")
         }
     }
-    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onDiscard, enabled = !applying) { Text("Discard", color = InkSecondary) }
+    Row(
+        Modifier.fillMaxWidth().padding(top = MM.space.m),
+        horizontalArrangement = Arrangement.spacedBy(MM.space.s, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextButton(onClick = onDiscard, enabled = !applying, modifier = Modifier.heightIn(min = MMSize.minTouch)) {
+            Text("Discard", style = MM.type.bodyStrong, color = c.inkSecondary)
+        }
         if (copyText.isNotBlank()) AiCopyButton(text = copyText)
         Surface(
             onClick = {
@@ -383,16 +445,15 @@ private fun PointsResult(
                 }
             },
             enabled = selected.isNotEmpty() && !applying,
-            shape = RoundedCornerShape(50),
-            color = if (selected.isEmpty() || applying) Line else Ink,
-            modifier = Modifier.heightIn(min = 42.dp).semantics { role = Role.Button }.testTag("note_ai_apply")
+            shape = MM.radius.pill,
+            color = if (selected.isEmpty() || applying) c.track else c.ink,
+            modifier = Modifier.heightIn(min = MMSize.minTouch).semantics { role = Role.Button }.testTag("note_ai_apply")
         ) {
             Text(
                 if (actions && selected.isEmpty()) "Select items" else primaryLabel,
-                color = OnInk,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                color = if (selected.isEmpty() || applying) c.inkMuted else c.onInk,
+                style = MM.type.bodyStrong,
+                modifier = Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s)
             )
         }
     }
@@ -400,19 +461,55 @@ private fun PointsResult(
 
 @Composable
 private fun AnswerResult(answer: NoteAiOutcome.Answer, sources: Map<String, SourcePassage>, onShowSource: (SourcePassage) -> Unit, onDiscard: () -> Unit) {
+    val c = MM.colors
     Column(Modifier.verticalScroll(rememberScrollState()).semantics { liveRegion = LiveRegionMode.Polite }) {
         if (!answer.found) {
-            Text("Your notes don't answer that. Nothing has been guessed.", color = InkSecondary, modifier = Modifier.padding(vertical = 12.dp))
+            Text(
+                "Your notes don't answer that. Nothing has been guessed.",
+                style = MM.type.body,
+                color = c.inkSecondary,
+                modifier = Modifier.padding(vertical = MM.space.m)
+            )
         } else {
-            Text(citedAnnotatedString(answer.text, Accent), fontSize = 16.sp, lineHeight = 24.sp, color = Ink)
+            Surface(
+                shape = MM.radius.card,
+                color = c.surfaceRaised,
+                border = BorderStroke(MMSize.hairline, c.lineSoft),
+                modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs)
+            ) {
+                Column(Modifier.padding(MM.space.l)) {
+                    Text(citedAnnotatedString(answer.text, c.accent), style = MM.type.body, color = c.ink)
+                }
+            }
             if (answer.sourceIds.isNotEmpty()) {
-                Text("From", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(top = 14.dp, bottom = 4.dp))
+                Text(
+                    "From",
+                    style = MM.type.overline,
+                    color = c.inkMuted,
+                    modifier = Modifier.padding(top = MM.space.m, bottom = MM.space.xs)
+                )
                 answer.sourceIds.mapNotNull { sources[it] }.forEach { p -> SourceRow(p, onShowSource) }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().padding(top = MM.space.s),
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             if (answer.found && answer.text.isNotBlank()) AiCopyButton(text = answer.text)
-            TextButton(onClick = onDiscard, modifier = Modifier.heightIn(min = MMSize.minTouch)) { Text("Done") }
+            Surface(
+                onClick = onDiscard,
+                shape = MM.radius.pill,
+                color = c.ink,
+                modifier = Modifier.heightIn(min = MMSize.minTouch).semantics { role = Role.Button }
+            ) {
+                Text(
+                    "Done",
+                    style = MM.type.bodyStrong,
+                    color = c.onInk,
+                    modifier = Modifier.padding(horizontal = MM.space.xl, vertical = MM.space.s)
+                )
+            }
         }
     }
 }
@@ -425,9 +522,14 @@ private fun SectionsResult(
     onDiscard: () -> Unit,
     context: Context
 ) {
+    val c = MM.colors
     if (o.sections.isEmpty()) {
-        Text("Nothing here fitted the sections, so the note is left as it is.", color = InkSecondary, modifier = Modifier.padding(vertical = 12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = onDiscard) { Text("OK") } }
+        Text("Nothing here fitted the sections, so the note is left as it is.", style = MM.type.body, color = c.inkSecondary, modifier = Modifier.padding(vertical = MM.space.m))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDiscard, modifier = Modifier.heightIn(min = MMSize.minTouch)) {
+                Text("OK", style = MM.type.bodyStrong, color = c.accent)
+            }
+        }
         return
     }
     var applying by remember(o) { mutableStateOf(false) }
@@ -445,41 +547,68 @@ private fun SectionsResult(
         }
     }
 
-    LazyColumn(Modifier.heightIn(max = 420.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
-        items(o.sections) { s ->
-            Text(s.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
-            s.items.forEachIndexed { idx, it ->
-                val prefix = if (isStudyGuide && (s.key.contains("question") || s.key.contains("points"))) "${idx + 1}. " else "• "
-                Text(prefix + it.text, fontSize = 14.sp, lineHeight = 20.sp, color = InkSecondary, modifier = Modifier.padding(vertical = 2.dp))
+    Surface(
+        shape = MM.radius.card,
+        color = c.surfaceRaised,
+        border = BorderStroke(MMSize.hairline, c.lineSoft),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        LazyColumn(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 420.dp)
+                .padding(horizontal = MM.space.l, vertical = MM.space.m)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+        ) {
+            items(o.sections) { s ->
+                Text(s.title, style = MM.type.heading, color = c.ink, modifier = Modifier.padding(top = MM.space.m, bottom = MM.space.xs))
+                s.items.forEachIndexed { idx, it ->
+                    val prefix = if (isStudyGuide && (s.key.contains("question") || s.key.contains("points"))) "${idx + 1}. " else "• "
+                    Text(prefix + it.text, style = MM.type.body, color = c.inkSecondary, modifier = Modifier.padding(vertical = MM.space.xs))
+                }
             }
         }
     }
     Text(
         if (isStudyGuide) "Formatted for small groups. Copy to WhatsApp, share directly, or add to your note."
         else "Anything not placed stays under “Other notes”. Undo restores the note exactly.",
-        fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 10.dp)
+        style = MM.type.caption,
+        color = c.inkMuted,
+        modifier = Modifier.padding(top = MM.space.s)
     )
-    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onDiscard, enabled = !applying) { Text("Discard", color = InkSecondary) }
+    Row(Modifier.fillMaxWidth().padding(top = MM.space.s), horizontalArrangement = Arrangement.spacedBy(MM.space.s, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = onDiscard, enabled = !applying, modifier = Modifier.heightIn(min = MMSize.minTouch)) {
+            Text("Discard", style = MM.type.bodyStrong, color = c.inkSecondary)
+        }
         AiCopyButton(text = formattedText)
         if (isStudyGuide) {
-            TextButton(onClick = {
-                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(android.content.Intent.EXTRA_TEXT, formattedText)
-                }
-                context.startActivity(android.content.Intent.createChooser(intent, "Share discussion guide"))
-            }) { Text("Share") }
+            TextButton(
+                onClick = {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, formattedText)
+                    }
+                    context.startActivity(android.content.Intent.createChooser(intent, "Share discussion guide"))
+                },
+                modifier = Modifier.heightIn(min = MMSize.minTouch)
+            ) {
+                Text("Share", style = MM.type.bodyStrong, color = c.accent)
+            }
         }
         if (onApply != null) {
             Surface(
                 onClick = { if (!applying) { applying = true; onApply(o) } },
                 enabled = !applying,
-                shape = RoundedCornerShape(50),
-                color = if (applying) Line else Ink,
-                modifier = Modifier.heightIn(min = 42.dp).semantics { role = Role.Button }.testTag("note_ai_apply")
+                shape = MM.radius.pill,
+                color = if (applying) c.track else c.ink,
+                modifier = Modifier.heightIn(min = MMSize.minTouch).semantics { role = Role.Button }.testTag("note_ai_apply")
             ) {
-                Text(if (isStudyGuide) "Add to note" else "Apply to note", color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                Text(
+                    if (isStudyGuide) "Add to note" else "Apply to note",
+                    color = if (applying) c.inkMuted else c.onInk,
+                    style = MM.type.bodyStrong,
+                    modifier = Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s)
+                )
             }
         }
     }
@@ -488,39 +617,46 @@ private fun SectionsResult(
 /** One quiet line under an item — "Sunday service · Key points +2" — that opens the passages it came from. */
 @Composable
 private fun Citations(ids: List<String>, sources: Map<String, SourcePassage>, onShowSource: (SourcePassage) -> Unit) {
+    val c = MM.colors
     var open by remember { mutableStateOf(false) }
     val cited = ids.mapNotNull { sources[it] }.distinctBy { it.id }
     if (cited.isEmpty()) return
     Row(
         Modifier
-            .padding(top = 4.dp)
+            .padding(top = MM.space.xs)
             .heightIn(min = 32.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(MM.radius.small)
             .clickable(role = Role.Button) { open = !open }
             .semantics { stateDescription = if (open) "Expanded" else "Collapsed" }
-            .padding(vertical = 4.dp, horizontal = 4.dp),
+            .padding(vertical = MM.space.xs, horizontal = MM.space.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null, tint = InkMuted, modifier = Modifier.size(15.dp))
+        Icon(if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null, tint = c.inkMuted, modifier = Modifier.size(MMSize.iconSmall))
         Text(
             cited.first().label.ifBlank { "Source" } + if (cited.size > 1) "  +${cited.size - 1}" else "",
-            fontSize = 12.sp, color = InkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp)
+            style = MM.type.caption, color = c.inkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = MM.space.xs)
         )
     }
-    if (open) cited.forEach { SourceRow(it, onShowSource) }
+    if (open) {
+        Column(Modifier.padding(top = MM.space.xs), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+            cited.forEach { SourceRow(it, onShowSource) }
+        }
+    }
 }
 
 @Composable
 private fun SourceRow(p: SourcePassage, onShowSource: (SourcePassage) -> Unit) {
+    val c = MM.colors
     Surface(
         onClick = { onShowSource(p) },
-        shape = RoundedCornerShape(12.dp),
-        color = SurfaceSunk,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).semantics { role = Role.Button }
+        shape = MM.radius.small,
+        color = c.surfaceSunk,
+        border = BorderStroke(MMSize.hairline, c.lineSoft),
+        modifier = Modifier.fillMaxWidth().semantics { role = Role.Button }
     ) {
-        Column(Modifier.padding(10.dp)) {
-            Text(p.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(p.text, fontSize = 13.sp, lineHeight = 18.sp, color = InkSecondary, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.padding(MM.space.m)) {
+            Text(p.label, style = MM.type.overline, color = c.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(p.text, style = MM.type.secondary, color = c.inkSecondary, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = MM.space.xs))
         }
     }
 }
@@ -529,39 +665,58 @@ private fun SourceRow(p: SourcePassage, onShowSource: (SourcePassage) -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RelatedNotesSheet(related: List<Pair<Note, RelatedNote>>?, onOpen: (String) -> Unit, onDismiss: () -> Unit) {
+    val c = MM.colors
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = SurfaceBase
+        containerColor = c.surface
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
                 .animateContentSize()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp)
+                .padding(horizontal = MM.space.xl)
+                .padding(bottom = MM.space.xl)
                 .navigationBarsPadding()
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))
-                Text("Related notes", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(start = 8.dp))
+                Surface(
+                    shape = CircleShape,
+                    color = c.accentWash,
+                    border = BorderStroke(MMSize.hairline, c.lineSoft),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
+                    }
+                }
+                Text("Related notes", style = MM.type.heading, color = c.ink, modifier = Modifier.padding(start = MM.space.s))
             }
-            Spacer(Modifier.padding(top = 6.dp))
+            Spacer(Modifier.padding(top = MM.space.s))
             when {
-                related == null -> AiThinkingSkeleton("Finding related notes…", lines = listOf(0.84f, 0.58f), modifier = Modifier.padding(top = 8.dp))
-                related.isEmpty() -> Text("Nothing else shares verses, tags or ideas with this note yet.", color = InkSecondary, modifier = Modifier.padding(vertical = 12.dp))
-                else -> LazyColumn(Modifier.heightIn(max = 460.dp)) {
+                related == null -> AiThinkingSkeleton("Finding related notes…", lines = listOf(0.84f, 0.58f), modifier = Modifier.padding(top = MM.space.s))
+                related.isEmpty() -> Text("Nothing else shares verses, tags or ideas with this note yet.", style = MM.type.body, color = c.inkSecondary, modifier = Modifier.padding(vertical = MM.space.m))
+                else -> LazyColumn(
+                    Modifier.heightIn(max = 460.dp),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.s)
+                ) {
                     items(related, key = { it.first.id }) { (note, r) ->
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = MMSize.minTouch)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable(role = Role.Button) { onOpen(note.id) }
-                                .padding(vertical = 10.dp, horizontal = 4.dp)
+                        Surface(
+                            shape = MM.radius.card,
+                            color = c.surfaceRaised,
+                            border = BorderStroke(MMSize.hairline, c.lineSoft),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(note.title.ifBlank { "Untitled" }, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(r.reasons.joinToString(" · "), fontSize = 12.5.sp, color = InkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = MMSize.minTouch)
+                                    .clickable(role = Role.Button) { onOpen(note.id) }
+                                    .padding(horizontal = MM.space.l, vertical = MM.space.m)
+                            ) {
+                                Text(note.title.ifBlank { "Untitled" }, style = MM.type.bodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(r.reasons.joinToString(" · "), style = MM.type.caption, color = c.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = MM.space.xs))
+                            }
                         }
                     }
                 }

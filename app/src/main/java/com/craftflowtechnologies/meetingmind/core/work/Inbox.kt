@@ -87,7 +87,12 @@ object ShareIntentParser {
 }
 
 /** A file copied into the app's own storage, so the share's permission needn't outlive the share. */
-data class CopiedFile(val path: String, val name: String)
+data class CopiedFile(
+    val path: String,
+    val name: String,
+    val durationMs: Long? = null,
+    val inferredSource: String? = null
+)
 
 class InboxRepository(private val database: MeetMindDatabase, private val clock: () -> Long = System::currentTimeMillis) {
     private val dao = database.inboxDao()
@@ -97,6 +102,9 @@ class InboxRepository(private val database: MeetMindDatabase, private val clock:
         parts.mapNotNull { p ->
             val copied = p.uri?.let { copy(it) }
             if (p.uri != null && copied == null) return@mapNotNull null
+            val resolvedSource = p.source?.takeIf { it.isNotBlank() && it != "Shared" }
+                ?: copied?.inferredSource
+                ?: ShareIn.inferSource(uri = p.uri, fileName = copied?.name ?: p.title, mime = p.mime, rawSource = p.source)
             InboxItemEntity(
                 id = "inbox_${UUID.randomUUID()}",
                 kind = p.kind.name,
@@ -105,8 +113,8 @@ class InboxRepository(private val database: MeetMindDatabase, private val clock:
                 title = p.title?.takeIf { it.isNotBlank() } ?: copied?.name?.substringBeforeLast('.'),
                 status = InboxStatus.NEW.name,
                 createdAt = clock(),
-                source = p.source,
-                mediaDurationMs = p.durationMs,
+                source = resolvedSource,
+                mediaDurationMs = p.durationMs ?: copied?.durationMs,
                 transcriptionStatus = if (p.kind == InboxKind.AUDIO || p.kind == InboxKind.VIDEO) "PENDING" else "NONE"
             ).also { dao.upsert(it) }
         }
@@ -127,7 +135,10 @@ class InboxRepository(private val database: MeetMindDatabase, private val clock:
 
     suspend fun dismiss(id: String) = withContext(Dispatchers.IO) { dao.get(id)?.let { dao.update(it.copy(status = InboxStatus.DISMISSED.name, processedAt = clock())) } }
     suspend fun get(id: String) = withContext(Dispatchers.IO) { dao.get(id) }
+    suspend fun getByUri(uri: String) = withContext(Dispatchers.IO) { dao.getByUri(uri) }
+    suspend fun getByMeetingId(meetingId: String) = withContext(Dispatchers.IO) { dao.getByMeetingId(meetingId) }
     fun observeOpen() = dao.observeOpen()
+    fun observeFiled() = dao.observeFiled()
     fun observeOpenCount() = dao.observeOpenCount()
 }
 
@@ -307,16 +318,26 @@ class InboxFiler(private val context: Context, private val database: MeetMindDat
             FilingTarget.EVENT -> filing.targetId?.let { key -> findEventNote(key) }?.notebookId
             else -> null
         }
-        val body = listOfNotNull(item.text?.takeIf { it.isNotBlank() }, item.uri?.let { "Attached: ${java.io.File(it).name}" }).joinToString("\n\n").ifBlank { item.title.orEmpty() }
-        val blocks = body.split("\n\n").filter { it.isNotBlank() }.map { NoteBlock(NoteRepository.newId("block"), "", 0, NoteBlockType.PARAGRAPH, RichText.plain(it.trim())) }
-        val meta = buildMap { item.uri?.let { put("sourceFile", it) }; put("fromInbox", item.id) }
-        val note = notes.createNote(workflow = RecordingType.GENERAL, title = filing.title ?: item.title ?: "Shared note", notebookId = notebook, metadata = meta, initialBlocks = blocks, useTemplate = false)
+        val existingNoteId = item.meetingId?.let { mid ->
+            database.meetingDao().getMeetingById(mid)?.noteId?.takeIf { nid ->
+                database.noteDao().getById(nid) != null
+            }
+        }
+        val noteId = if (existingNoteId != null) {
+            if (notebook != null) notes.moveToNotebook(existingNoteId, notebook)
+            existingNoteId
+        } else {
+            val body = listOfNotNull(item.text?.takeIf { it.isNotBlank() }, item.uri?.let { "Attached: ${java.io.File(it).name}" }).joinToString("\n\n").ifBlank { item.title.orEmpty() }
+            val blocks = body.split("\n\n").filter { it.isNotBlank() }.map { NoteBlock(NoteRepository.newId("block"), "", 0, NoteBlockType.PARAGRAPH, RichText.plain(it.trim())) }
+            val meta = buildMap { item.uri?.let { put("sourceFile", it) }; put("fromInbox", item.id) }
+            notes.createNote(workflow = RecordingType.GENERAL, title = filing.title ?: item.title ?: "Shared note", notebookId = notebook, metadata = meta, initialBlocks = blocks, useTemplate = false).id
+        }
         when (filing.target) {
-            FilingTarget.PERSON, FilingTarget.ORG -> filing.targetId?.let { database.peopleDao().link(NotePersonCrossRef(note.id, it)) }
-            FilingTarget.EVENT -> filing.targetId?.let { key -> findEventNote(key)?.let { en -> database.workDao().peopleIdsFor(en.id).forEach { database.peopleDao().link(NotePersonCrossRef(note.id, it)) } } }
+            FilingTarget.PERSON, FilingTarget.ORG -> filing.targetId?.let { database.peopleDao().link(NotePersonCrossRef(noteId, it)) }
+            FilingTarget.EVENT -> filing.targetId?.let { key -> findEventNote(key)?.let { en -> database.workDao().peopleIdsFor(en.id).forEach { database.peopleDao().link(NotePersonCrossRef(noteId, it)) } } }
             else -> Unit
         }
-        return note.id
+        return noteId
     }
 
     private suspend fun findEventNote(key: String) = database.noteDao().findByMetadata("%\"${NoteRepository.CALENDAR_EVENT_KEY}\":\"${key.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")}\"%")

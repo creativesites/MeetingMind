@@ -158,6 +158,21 @@ class ImportViewModel @JvmOverloads constructor(
                     }
                 )
 
+                // If this file came from the Work Inbox, link the new Meeting back to the Inbox item
+                // so transcription progress, AI summary, and Note links stay connected end-to-end.
+                runCatching {
+                    val inboxDao = MeetMindDatabase.getInstance(getApplication()).inboxDao()
+                    val matched = uri.path?.let { inboxDao.getByUri(it) } ?: inboxDao.getByUri(uri.toString())
+                    if (matched != null) {
+                        inboxDao.updateTranscription(
+                            id = matched.id,
+                            status = "TRANSCRIBING",
+                            meetingId = meeting.id,
+                            durationMs = info.durationMs.takeIf { it > 0L }
+                        )
+                    }
+                }
+
                 _importState.value = ImportMediaState(
                     uri = uri,
                     fileName = info.fileName,

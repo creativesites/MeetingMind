@@ -1,6 +1,12 @@
 package com.craftflowtechnologies.meetingmind.feature.assistant
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,6 +44,9 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,6 +60,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +73,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import com.craftflowtechnologies.meetingmind.ai.live.LiveSessionState
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -85,6 +97,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.ai.assistant.AssistantAction
 import com.craftflowtechnologies.meetingmind.ai.assistant.AssistantMessage
+import com.craftflowtechnologies.meetingmind.ai.assistant.AssistantToolStep
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.AiCopyButton
@@ -125,6 +138,28 @@ fun AssistantSheet(session: AssistantSession, onOpenNote: (String) -> Unit, onOp
     val working by session.working.collectAsState()
     val scope by session.assistantScope.collectAsState()
     val busyActionIds by session.busyActionIds.collectAsState()
+    val liveState by session.liveState.collectAsState()
+    val liveMuted by session.liveMuted.collectAsState()
+    val liveLevel by session.liveAudioLevel.collectAsState()
+    val liveTranscript by session.liveInputTranscript.collectAsState()
+    val liveError by session.liveError.collectAsState()
+    val context = LocalContext.current
+    val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) session.startVoice()
+    }
+    DisposableEffect(Unit) {
+        onDispose { session.stopVoice() }
+    }
+    fun onVoiceToggle() {
+        val active = liveState != LiveSessionState.DISCONNECTED && liveState != LiveSessionState.ERROR
+        if (active) {
+            session.stopVoice()
+        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            session.startVoice()
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
     var input by remember { mutableStateOf(TextFieldValue("")) }
     var confirmClear by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
@@ -185,9 +220,11 @@ fun AssistantSheet(session: AssistantSession, onOpenNote: (String) -> Unit, onOp
                     }
                 }
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text(form?.let { companionSettings.displayName(it) } ?: "Assistant", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    val baseName = form?.let { companionSettings.displayName(it) } ?: "Assistant"
+                    val titleLabel = if (scope?.learning == true) "$baseName · Study Tutor" else baseName
+                    Text(titleLabel, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                     Text(
-                        scope?.let { "${it.kindLabel} · ${it.title}" } ?: "", fontSize = 12.sp, color = InkMuted,
+                        scope?.let { if (it.kindLabel == it.title) it.title else "${it.kindLabel} · ${it.title}" } ?: "", fontSize = 12.sp, color = InkMuted,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
@@ -202,11 +239,24 @@ fun AssistantSheet(session: AssistantSession, onOpenNote: (String) -> Unit, onOp
                 if (messages.isEmpty()) item {
                     Column(Modifier.padding(top = 8.dp)) {
                         Text(
-                            if (scope?.noteId != null) "Ask about this note, or ask me to change it." else "Ask across your notes, sermons and the Bible.",
+                            when {
+                                scope?.learning == true && scope?.noteId != null ->
+                                    "Ask me to unpack concepts, walk through formulas step-by-step, quiz you on this lecture, or generate flashcards."
+                                scope?.learning == true ->
+                                    "Your Socratic study tutor across your courses, recorded lectures, concepts, and upcoming exams."
+                                scope?.noteId != null ->
+                                    "Ask about this note, or ask me to change it."
+                                else ->
+                                    "Ask across your notes, sermons and the Bible."
+                            },
                             fontSize = 15.sp, color = InkSecondary, lineHeight = 22.sp
                         )
                         Text(
-                            "I add things with Undo. Before I replace or remove anything of yours, I ask.",
+                            if (scope?.learning == true) {
+                                "I ground every explanation in your lecture notes and recordings, and can create flashcards, courses, and study blocks with Undo."
+                            } else {
+                                "I add things with Undo. Before I replace or remove anything of yours, I ask."
+                            },
                             fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 6.dp, bottom = 16.dp)
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -237,7 +287,20 @@ fun AssistantSheet(session: AssistantSession, onOpenNote: (String) -> Unit, onOp
                     val m = messages[i]
                     if (m.fromUser) UserBubble(m.text) else AssistantBubble(m, session, busyActionIds, onOpenNote, onOpenTasks, onRetry = if (m.error && m.retryable && i == messages.lastIndex) session::retry else null)
                 }
-                item("working") { if (working != null) Working(working!!) else Spacer(Modifier.height(1.dp)) }
+                val streamingHasContent = messages.lastOrNull()?.let { !it.fromUser && it.streaming && (it.text.isNotEmpty() || it.toolSteps.isNotEmpty() || !it.thinking.isNullOrBlank()) } == true
+                item("working") { if (working != null && !streamingHasContent) Working(working!!) else Spacer(Modifier.height(1.dp)) }
+            }
+            val voiceActive = liveState != LiveSessionState.DISCONNECTED
+            AnimatedVisibility(visible = voiceActive || liveError != null) {
+                LiveVoiceBar(
+                    state = liveState,
+                    muted = liveMuted,
+                    level = liveLevel,
+                    transcript = liveTranscript,
+                    error = liveError,
+                    onToggleMute = session::toggleVoiceMute,
+                    onStop = session::stopVoice
+                )
             }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).clip(RoundedCornerShape(24.dp)).background(SurfaceSunk).padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
@@ -262,6 +325,33 @@ fun AssistantSheet(session: AssistantSession, onOpenNote: (String) -> Unit, onOp
                 }
                 val busy = working != null
                 val canAct = busy || input.text.isNotBlank()
+                if (!busy && input.text.isBlank()) {
+                    val isLive = liveState != LiveSessionState.DISCONNECTED && liveState != LiveSessionState.ERROR
+                    Box(
+                        Modifier
+                            .sizeIn(minWidth = MMSize.minTouch, minHeight = MMSize.minTouch)
+                            .clip(CircleShape)
+                            .clickable(
+                                role = Role.Button,
+                                onClickLabel = if (isLive) "End voice session" else "Start live voice assistant"
+                            ) { onVoiceToggle() }
+                            .semantics { contentDescription = if (isLive) "End voice" else "Voice mode" }
+                            .testTag("assistant_voice_toggle"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            Modifier.size(38.dp).clip(CircleShape).background(if (isLive) Accent else AccentWash),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (isLive) Icons.Filled.GraphicEq else Icons.Filled.Mic,
+                                contentDescription = null,
+                                tint = if (isLive) OnInk else Accent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
                 Box(
                     Modifier
                         .sizeIn(minWidth = MMSize.minTouch, minHeight = MMSize.minTouch)
@@ -307,6 +397,7 @@ private fun Working(what: String) {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AssistantBubble(
     m: AssistantMessage,
@@ -316,11 +407,50 @@ private fun AssistantBubble(
     onOpenTasks: () -> Unit,
     onRetry: (() -> Unit)?
 ) {
+    var showThinking by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth().animateContentSize().semantics { liveRegion = LiveRegionMode.Polite },
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (m.activity.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        if (!m.thinking.isNullOrBlank()) {
+            Surface(
+                onClick = { showThinking = !showThinking },
+                shape = RoundedCornerShape(10.dp),
+                color = SurfaceSunk,
+                modifier = Modifier.semantics { role = Role.Button }
+            ) {
+                Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (m.streaming && m.text.isBlank()) {
+                            CircularProgressIndicator(Modifier.size(11.dp), strokeWidth = 1.6.dp, color = Accent)
+                        }
+                        Text(
+                            if (showThinking) "Hide reasoning" else if (m.streaming && m.text.isBlank()) "Reasoning…" else "View reasoning",
+                            fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = InkMuted
+                        )
+                    }
+                    if (showThinking) {
+                        Text(m.thinking, fontSize = 12.sp, lineHeight = 17.sp, color = InkSecondary, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
+        }
+        if (m.toolSteps.isNotEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                m.toolSteps.forEach { step ->
+                    Surface(shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, LineSoft)) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            when (step.state) {
+                                AssistantToolStep.State.RUNNING -> CircularProgressIndicator(Modifier.size(11.dp), strokeWidth = 1.6.dp, color = Accent)
+                                AssistantToolStep.State.DONE -> Icon(Icons.Filled.Check, null, tint = Success, modifier = Modifier.size(13.dp))
+                                AssistantToolStep.State.FAILED -> Icon(Icons.Filled.Close, null, tint = Danger, modifier = Modifier.size(13.dp))
+                            }
+                            Text(step.label, fontSize = 12.sp, color = InkMuted)
+                        }
+                    }
+                }
+            }
+        } else if (m.activity.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             m.activity.forEach { line ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Check, null, tint = InkFaint, modifier = Modifier.size(13.dp))
@@ -338,9 +468,15 @@ private fun AssistantBubble(
                 markdown(m.text), fontSize = 15.5.sp, lineHeight = 24.sp, color = Ink,
                 modifier = Modifier.padding(horizontal = 2.dp)
             )
+            if (m.streaming) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 2.dp)) {
+                    CircularProgressIndicator(Modifier.size(11.dp), strokeWidth = 1.5.dp, color = Accent)
+                    Text("Streaming…", fontSize = 11.5.sp, color = InkFaint)
+                }
+            }
         }
         m.actions.forEach { ActionCard(it, session, busy = it.id in busyActionIds, onOpenNote, onOpenTasks) }
-        if (m.text.isNotBlank() && !m.error) {
+        if (m.text.isNotBlank() && !m.error && !m.streaming) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 AiCopyButton(text = m.text)
                 m.provider?.let { Text("via $it", fontSize = 11.5.sp, color = InkFaint) }
@@ -466,6 +602,87 @@ private fun markdown(text: String): AnnotatedString {
                 i = m.range.last + 1
             }
             append(line.substring(i))
+        }
+    }
+}
+
+@Composable
+private fun LiveVoiceBar(
+    state: LiveSessionState,
+    muted: Boolean,
+    level: Float,
+    transcript: String,
+    error: String?,
+    onToggleMute: () -> Unit,
+    onStop: () -> Unit
+) {
+    val label = when {
+        !error.isNullOrBlank() -> error
+        muted -> "Microphone muted"
+        state == LiveSessionState.CONNECTING -> "Connecting Gemini Live…"
+        state == LiveSessionState.LISTENING -> "Listening…"
+        state == LiveSessionState.PROCESSING || state == LiveSessionState.BACKGROUND_REASONING -> "Thinking…"
+        state == LiveSessionState.MODEL_SPEAKING -> "Speaking…"
+        state == LiveSessionState.TOOL_EXECUTION -> "Running tool…"
+        else -> "Voice ready"
+    }
+    val hasError = !error.isNullOrBlank() || state == LiveSessionState.ERROR
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (hasError) Danger.copy(alpha = 0.08f) else AccentWash,
+        border = BorderStroke(1.dp, if (hasError) Danger.copy(alpha = 0.25f) else Accent.copy(alpha = 0.25f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(if (hasError) Danger.copy(alpha = 0.16f) else Accent.copy(alpha = (0.18f + level * 0.6f).coerceIn(0.18f, 0.85f))),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.GraphicEq,
+                    contentDescription = null,
+                    tint = if (hasError) Danger else Accent,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    label,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (hasError) Danger else Ink,
+                    maxLines = 2
+                )
+                if (transcript.isNotBlank() && !hasError) {
+                    Text(
+                        transcript,
+                        fontSize = 12.sp,
+                        color = InkMuted,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (!hasError) {
+                IconButton(onClick = onToggleMute, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        if (muted) Icons.Filled.MicOff else Icons.Filled.Mic,
+                        contentDescription = if (muted) "Unmute mic" else "Mute mic",
+                        tint = if (muted) Danger else InkSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            IconButton(onClick = onStop, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = "End voice session", tint = InkMuted, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }

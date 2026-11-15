@@ -970,7 +970,7 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
         SettingId.SHARE_APP -> SettingsNavRow("Share MeetingMind", "Invite friends, colleagues or study partners to try it", {
             val send = android.content.Intent().apply {
                 action = android.content.Intent.ACTION_SEND
-                putExtra(android.content.Intent.EXTRA_TEXT, "Hey! I'm testing MeetingMind — the intelligent offline-first app for faith and work meetings. Check it out here: https://github.com/creativesites/MeetingMind/releases")
+                putExtra(android.content.Intent.EXTRA_TEXT, "Hey! I'm using MeetingMind for daily devotionals, notes, and circles. Download it here: ${com.craftflowtechnologies.meetingmind.core.share.AppLinks.DOWNLOAD_URL}")
                 type = "text/plain"
             }
             context.startActivity(android.content.Intent.createChooser(send, "Share MeetingMind"))

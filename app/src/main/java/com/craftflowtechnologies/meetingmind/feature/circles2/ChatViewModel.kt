@@ -67,7 +67,14 @@ data class ChatUiState(
 }
 
 @Immutable
-data class PollDraft(val question: String = "", val options: List<String> = listOf("", ""), val multi: Boolean = false, val busy: Boolean = false, val error: String? = null) {
+data class PollDraft(
+    val question: String = "",
+    val options: List<String> = listOf("", ""),
+    val multi: Boolean = false,
+    val busy: Boolean = false,
+    val error: String? = null,
+    val closesAt: Long? = null
+) {
     val cleanOptions: List<String> get() = options.map { it.trim() }.filter { it.isNotEmpty() }
     val canCreate: Boolean get() = question.isNotBlank() && cleanOptions.size >= 2 && !busy
 }
@@ -79,7 +86,7 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
     private val reply = MutableStateFlow<ChatMessage?>(null)
     private val edit = MutableStateFlow<ChatMessage?>(null)
 
-    val draft = MutableStateFlow("")
+    val draft = MutableStateFlow(repo.store.chatDraft(circleId))
     val pollDraft = MutableStateFlow<PollDraft?>(null)
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
@@ -144,7 +151,12 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
     }
 
     // ---------- sending ----------
-    fun setDraft(v: String) { draft.value = v.take(2000); typingPing(v.isNotBlank()) }
+    fun setDraft(v: String) {
+        val clean = v.take(2000)
+        draft.value = clean
+        repo.store.setChatDraft(circleId, clean)
+        typingPing(v.isNotBlank())
+    }
 
     /** Tells the chat I'm typing, at most every four seconds. Clearing the draft tells it I've stopped. */
     private fun typingPing(on: Boolean) {
@@ -161,7 +173,7 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
         forward.value = m
         draft.value = (m.card?.text ?: m.text).take(2000)
     }
-    fun cancelForward() { forward.value = null; draft.value = "" }
+    fun cancelForward() { forward.value = null; draft.value = ""; repo.store.setChatDraft(circleId, "") }
 
     fun pin(m: ChatMessage) {
         viewModelScope.launch { repo.api.pinMessage(circleId, m.id).fold(onOk = { say("Pinned to the top of the chat.") }, onErr = ::fail) }
@@ -195,7 +207,7 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
                 when (val up = repo.uploadAttachment(circleId, kind, file.bytes, file.mime, file.name, file.durationMs)) {
                     is CirclesResult.Err -> fail(up.failure)
                     is CirclesResult.Ok -> when (val sent = repo.api.sendMessage(circleId, kind, up.value.path, caption, replyTo, file.durationMs, file.name, requestId)) {
-                        is CirclesResult.Ok -> { draft.value = ""; reply.value = null; typingPing(false) }
+                        is CirclesResult.Ok -> { draft.value = ""; repo.store.setChatDraft(circleId, ""); reply.value = null; typingPing(false) }
                         is CirclesResult.Err -> fail(sent.failure)
                     }
                 }
@@ -216,7 +228,7 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
         if (m.kind != MessageKind.Text && m.kind != MessageKind.Reply) return
         reply.value = null; edit.value = m; draft.value = m.text
     }
-    fun cancelEdit() { edit.value = null; draft.value = "" }
+    fun cancelEdit() { edit.value = null; draft.value = ""; repo.store.setChatDraft(circleId, "") }
 
     fun send() {
         val text = draft.value.trim()
@@ -224,7 +236,7 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
         val editing = edit.value
         val replyTo = reply.value
         val forwarded = forward.value
-        draft.value = ""; edit.value = null; reply.value = null; forward.value = null
+        draft.value = ""; repo.store.setChatDraft(circleId, ""); edit.value = null; reply.value = null; forward.value = null
         typingPing(false)
         val mentions = mentionsIn(text, state.value.members)
         viewModelScope.launch {
@@ -239,12 +251,16 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
                 repo.data.sendMessage(circleId, uid, repo.displayName.ifBlank { "Member" }, toSend)
             }
             if (result is CirclesResult.Err) { restore(text, replyTo, editing); forward.value = forwarded; fail(result.failure) }
+            else if (editing == null) { runCatching { repo.api.notifyChat(circleId, mentions.isNotEmpty()) } }
         }
     }
 
     /** A failed send puts the words back so nothing typed is lost. */
     private fun restore(text: String, replyTo: ChatMessage?, editing: ChatMessage?) {
-        if (draft.value.isEmpty()) draft.value = text
+        if (draft.value.isEmpty()) {
+            draft.value = text
+            repo.store.setChatDraft(circleId, text)
+        }
         reply.value = replyTo; edit.value = editing
     }
 
@@ -252,7 +268,8 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
         val text = card.text.trim(); if (text.isEmpty()) return
         viewModelScope.launch {
             val uid = (repo.uid() as? CirclesResult.Ok)?.value ?: return@launch fail(CirclesFailure.signedOut)
-            repo.data.sendMessage(circleId, uid, repo.displayName.ifBlank { "Member" }, MessageDraft.Card(card.copy(text = text.take(600)))).failureOrNull?.let(::fail)
+            val r = repo.data.sendMessage(circleId, uid, repo.displayName.ifBlank { "Member" }, MessageDraft.Card(card.copy(text = text.take(600))))
+            if (r is CirclesResult.Err) fail(r.failure) else runCatching { repo.api.notifyChat(circleId, false) }
         }
     }
 
@@ -302,13 +319,14 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
     fun addPollOption() = pollDraft.update { d -> if (d != null && d.options.size < 6) d.copy(options = d.options + "") else d }
     fun removePollOption(i: Int) = pollDraft.update { d -> if (d != null && d.options.size > 2) d.copy(options = d.options.filterIndexed { j, _ -> j != i }) else d }
     fun setPollMulti(v: Boolean) = pollDraft.update { it?.copy(multi = v) }
+    fun setPollClosesAt(closesAt: Long?) = pollDraft.update { it?.copy(closesAt = closesAt) }
 
     fun createPoll() {
         val d = pollDraft.value ?: return
         if (!d.canCreate) { pollDraft.update { it?.copy(error = "Add a question and at least two different options.") }; return }
         pollDraft.update { it?.copy(busy = true, error = null) }
         viewModelScope.launch {
-            repo.api.createPoll(circleId, d.question.trim(), d.cleanOptions, d.multi).fold(
+            repo.api.createPoll(circleId, d.question.trim(), d.cleanOptions, d.multi, d.closesAt).fold(
                 onOk = { pollDraft.value = null },
                 onErr = { f -> pollDraft.update { it?.copy(busy = false, error = f.message) } }
             )

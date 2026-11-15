@@ -82,4 +82,96 @@ class CirclesParsingTest {
         assertEquals(PostType.entries.toList(), CircleTemplate.byId("youth").types)
         assertEquals("custom", CircleTemplate.byId("unknown").id)
     }
+
+    @Test fun `post meta parses structured work fields and ignores empty meta`() {
+        assertNull(CirclesParsing.postMeta(null))
+        assertNull(CirclesParsing.postMeta(emptyMap<String, Any?>()))
+        assertNull(CirclesParsing.postMeta(mapOf("sourceKind" to "   ", "dueText" to "")))
+
+        val metaMap = mapOf(
+            "sourceKind" to "action_item",
+            "sourceId" to "act-123",
+            "assigneeUid" to "u-456",
+            "assigneeName" to "Sarah Connor",
+            "dueText" to "Tomorrow",
+            "dueAt" to Timestamp(Date(1800000000000L)),
+            "priority" to "urgent",
+            "blockedOn" to "design-review",
+            "decisionOwner" to "John",
+            "meetingDate" to "2026-11-14"
+        )
+        val m = CirclesParsing.postMeta(metaMap)
+        assertEquals("action_item", m?.sourceKind)
+        assertEquals("act-123", m?.sourceId)
+        assertEquals("u-456", m?.assigneeUid)
+        assertEquals("Sarah Connor", m?.assigneeName)
+        assertEquals("Tomorrow", m?.dueText)
+        assertEquals(1800000000000L, m?.dueAt)
+        assertEquals(WorkPriority.Urgent, m?.priority)
+        assertEquals("design-review", m?.blockedOn)
+        assertEquals("John", m?.decisionOwner)
+        assertEquals("2026-11-14", m?.meetingDate)
+        assertFalse(m?.isEmpty == true)
+
+        val p = CirclesParsing.post("p-work", mapOf("type" to "task", "body" to "Finish feature", "meta" to metaMap))
+        assertEquals("action_item", p?.meta?.sourceKind)
+        assertEquals(WorkPriority.Urgent, p?.meta?.priority)
+    }
+
+    @Test fun `work status and answered resolution`() {
+        assertEquals(WorkStatus.Open, WorkStatus.from("open"))
+        assertEquals(WorkStatus.InProgress, WorkStatus.from("in_progress"))
+        assertEquals(WorkStatus.Done, WorkStatus.from("answered"))
+        assertEquals(WorkStatus.Open, WorkStatus.from("other_status"))
+        assertEquals(WorkPriority.Low, WorkPriority.from("low"))
+        assertEquals(WorkPriority.Normal, WorkPriority.from("NORMAL"))
+        assertEquals(WorkPriority.High, WorkPriority.from("high"))
+        assertEquals(WorkPriority.Urgent, WorkPriority.from("Urgent"))
+        assertNull(WorkPriority.from("unknown"))
+
+        val inProgress = CirclesParsing.post("p1", mapOf("type" to "task", "body" to "WIP", "status" to "in_progress"))
+        assertEquals("in_progress", inProgress?.status)
+        assertEquals(WorkStatus.InProgress, inProgress?.workStatus)
+        assertFalse(inProgress?.answered == true)
+        assertFalse(inProgress?.isResolved == true)
+
+        val done = CirclesParsing.post("p2", mapOf("type" to "task", "body" to "Done item", "status" to "answered"))
+        assertEquals("answered", done?.status)
+        assertEquals(WorkStatus.Done, done?.workStatus)
+        assertTrue(done?.answered == true)
+        assertTrue(done?.isResolved == true)
+
+        val legacyAnswered = CirclesParsing.post("p3", mapOf("type" to "prayer", "body" to "Praise report", "answered" to true))
+        assertEquals("answered", legacyAnswered?.status)
+        assertEquals(WorkStatus.Done, legacyAnswered?.workStatus)
+        assertTrue(legacyAnswered?.answered == true)
+        assertTrue(legacyAnswered?.isResolved == true)
+
+        val defaultOpen = CirclesParsing.post("p4", mapOf("type" to "task", "body" to "Todo item"))
+        assertEquals("open", defaultOpen?.status)
+        assertEquals(WorkStatus.Open, defaultOpen?.workStatus)
+        assertFalse(defaultOpen?.isResolved == true)
+    }
+
+    @Test fun `poll closesAt parses timestamp or number and ignores zero or negative`() {
+        val pollWithDeadline = CirclesParsing.poll("p-poll", mapOf(
+            "question" to "Choose date",
+            "options" to listOf(mapOf("id" to "o1", "text" to "Mon"), mapOf("id" to "o2", "text" to "Tue")),
+            "closesAt" to 1731600000000L
+        ))
+        assertEquals(1731600000000L, pollWithDeadline?.closesAt)
+
+        val pollNoDeadline = CirclesParsing.poll("p-poll-2", mapOf(
+            "question" to "Choose date",
+            "options" to listOf(mapOf("id" to "o1", "text" to "Mon"), mapOf("id" to "o2", "text" to "Tue"))
+        ))
+        assertNull(pollNoDeadline?.closesAt)
+
+        val pollZeroDeadline = CirclesParsing.poll("p-poll-3", mapOf(
+            "question" to "Choose date",
+            "options" to listOf(mapOf("id" to "o1", "text" to "Mon"), mapOf("id" to "o2", "text" to "Tue")),
+            "closesAt" to 0L
+        ))
+        assertNull(pollZeroDeadline?.closesAt)
+    }
 }

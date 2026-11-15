@@ -126,6 +126,21 @@ fun noteMomentSubject(noteLoaded: Boolean, locked: Boolean, recordingIds: Collec
     if (!noteLoaded || locked) "" else recordingIds.firstOrNull() ?: noteId
 
 /**
+ * Chooses the moment subject for a note editor that may hold multiple recordings ("Record here"),
+ * preferring whichever attached recording has a pending note-ready event or is the newest.
+ */
+fun selectNoteMomentSubject(
+    noteLoaded: Boolean,
+    locked: Boolean,
+    recordingIds: Collection<String>,
+    noteId: String,
+    pendingIds: Set<String>
+): String {
+    if (!noteLoaded || locked) return ""
+    return recordingIds.lastOrNull { it in pendingIds } ?: recordingIds.lastOrNull() ?: noteId
+}
+
+/**
  * The First Keep over the already-rendered note (§2.2): the card shows only the note's verbatim title and
  * key points. "Open note" and Back dismiss it; the note is already there underneath. [onShare] opens Create
  * with the note's title.

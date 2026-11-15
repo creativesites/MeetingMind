@@ -1,8 +1,10 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
@@ -36,11 +38,13 @@ import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
+import com.craftflowtechnologies.meetingmind.core.circles2.PostMeta
 import com.craftflowtechnologies.meetingmind.core.circles2.WhoCanInvite
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
+import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SegmentedControl
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
@@ -48,6 +52,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
 enum class HomeTab(val label: String) { Feed("Feed"), Chat("Chat"), Members("Members") }
 
@@ -62,6 +67,8 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     val chatState by chat.state.collectAsState()
     val draft by chat.draft.collectAsState()
     val composer by home.composer.collectAsState()
+    val savedDraft by home.savedDraft.collectAsState()
+    val commentDraft by home.commentDraft.collectAsState()
     val thread by home.thread.collectAsState()
     val invite by home.invite.collectAsState()
     val pollDraft by chat.pollDraft.collectAsState()
@@ -98,6 +105,20 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
 
     LaunchedEffect(home) { home.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(chat) { chat.notices.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(circleId) {
+        com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.foregroundAlerts.collect { alert ->
+            if (alert.circleId == circleId) {
+                val res = snackbar.showSnackbar(
+                    message = "${alert.title}: ${alert.body}",
+                    actionLabel = "View"
+                )
+                if (res == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                    tab = if (alert.destination == com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat) HomeTab.Chat else HomeTab.Feed
+                    alert.postId?.let(home::openThread)
+                }
+            }
+        }
+    }
     // A tapped notification for this circle: land on the right tab, and open the post it is about.
     val target by com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.pendingTarget.collectAsState()
     LaunchedEffect(target) {
@@ -109,6 +130,19 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
         com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consumeTarget()
     }
     LaunchedEffect(tab, chatState.messages.size) { if (tab == HomeTab.Chat) chat.markRead() }
+    DisposableEffect(circleId, tab) {
+        com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.activeCircleId = circleId
+        com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.activeDestination = when (tab) {
+            HomeTab.Chat -> com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat
+            HomeTab.Feed, HomeTab.Members -> com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Feed
+        }
+        onDispose {
+            if (com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.activeCircleId == circleId) {
+                com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.activeCircleId = null
+                com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.activeDestination = null
+            }
+        }
+    }
     BackHandler(showSettings) { showSettings = false }
 
     val circle = state.circle
@@ -141,7 +175,10 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
                 activeMemberInfo = state.members.firstOrNull { it.uid == idOrName || it.displayName.equals(idOrName, ignoreCase = true) }
                     ?: Member(uid = idOrName, displayName = idOrName, role = com.craftflowtechnologies.meetingmind.core.circles2.Role.Member)
             },
-            onPhotoRefused = { msg -> scope.launch { snackbar.showSnackbar(msg) } }
+            onPhotoRefused = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
+            onResumeDraft = home::resumeSavedDraft,
+            onDiscardDraft = home::discardDraft,
+            onSetWorkStatus = home::setWorkStatus
         )
         val chatActions = ChatActions(
             onDraft = chat::setDraft, onSend = chat::send, onReply = chat::startReply, onCancelReply = chat::cancelReply,
@@ -149,16 +186,18 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             reactionsFor = chat::reactionsFor, onToggleReaction = chat::toggleReaction,
             pollFor = chat::pollFor, onVote = chat::vote, onClosePoll = chat::closePoll,
             chainFor = chat::chainFor, onClaim = chat::claimSlot, onRelease = chat::releaseSlot,
-            onNewPoll = chat::openPollDraft, onShareCard = {
-                // The real Create studio; the finished card is posted into this chat.
-                create.open(CreateSeed(), label = circle?.name ?: "the chat") { r ->
-                    CreateChatCard.toPayload(r.card, r.scripture)?.let(chat::shareCard)
-                }
-            }, onStartChain = { chainPost = null; chainTitle = "" }, onCelebrate = { showCelebrate = true },
+            onNewPoll = chat::openPollDraft, onShareCard = { showCard = true }, onStartChain = { chainPost = null; chainTitle = "" }, onCelebrate = { showCelebrate = true },
             onForward = chat::startForward, onCancelForward = chat::cancelForward,
             onPin = chat::pin, onUnpin = chat::unpin,
             onSendAttachment = chat::sendAttachment, onCancelUpload = chat::cancelUpload,
-            onNotice = chat::notice
+            onNotice = chat::notice,
+            onPromoteToPost = { msg, type ->
+                home.openWorkComposer(
+                    type,
+                    msg.text,
+                    com.craftflowtechnologies.meetingmind.core.circles2.PostMeta(sourceKind = "chat", sourceId = msg.id)
+                )
+            }
         )
         CircleHomeContent(
             state = state, chat = chatState, draft = draft, tab = tab, onTab = { tab = it }, now = now,
@@ -166,10 +205,13 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             members = MemberActions(
                 onInvite = { home.createInvite(); showInvite = true }, onSetRole = home::setRole, onRemove = home::remove,
                 onSetTitle = { titling = it }, onDecideJoin = home::decideJoin,
-                onMemberClick = { activeMemberInfo = it }
+                onMemberClick = { activeMemberInfo = it },
+                onUpdatePhoto = home::setProfilePhoto,
+                onRemovePhoto = home::removeProfilePhoto
             ),
             snackbar = snackbar, onBack = onBack, onSettings = { showSettings = true },
-            onInvite = { home.createInvite(); showInvite = true }, onSearch = { showSearch = true }, onRetry = { }
+            onInvite = { home.createInvite(); showInvite = true }, onSearch = { showSearch = true }, onRetry = { },
+            savedDraft = savedDraft
         )
     }
 
@@ -187,7 +229,11 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
         onTypeChange = home::openComposer,
         onPhoto = home::addPhoto,
         onPhotoRefused = { scope.launch { snackbar.showSnackbar("That file couldn't be read or is too large.") } },
-        uploading = composer.uploading
+        onDiscardDraft = home::discardDraft,
+        uploading = composer.uploading,
+        members = state.members,
+        meta = composer.meta,
+        onMetaChange = home::setMeta
     )
     val threadPost = thread?.let { t -> state.posts.firstOrNull { it.post.id == t.postId }?.post }
     if (thread != null) ThreadSheet(
@@ -205,7 +251,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
         },
         circleId = circle?.id,
         members = state.members,
-        isWorkOrLearning = circle?.let { it.isWork || it.settings.space == "learning" } ?: false
+        isWorkOrLearning = circle?.let { it.isWork || it.settings.space == "learning" } ?: false,
+        draft = commentDraft,
+        onDraftChange = home::setCommentDraft
     )
     activeMemberInfo?.let { m ->
         MemberInfoSheet(
@@ -221,7 +269,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onSetTitle = { targetMember -> titling = targetMember; activeMemberInfo = null },
             onSetRole = { mem, role -> home.setRole(mem, role); activeMemberInfo = null },
             onRemove = { mem -> home.remove(mem); activeMemberInfo = null },
-            circleId = circle?.id
+            circleId = circle?.id,
+            onUpdatePhoto = home::setProfilePhoto,
+            onRemovePhoto = home::removeProfilePhoto
         )
     }
     activeVerse?.let { ref ->
@@ -230,13 +280,24 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onDismiss = { activeVerse = null }
         )
     }
-    if (showInvite) InviteSheet(invite, home::createInvite) { showInvite = false; home.closeInvite() }
+    if (showInvite) InviteSheet(
+        state = invite,
+        onCreate = home::createInvite,
+        onDismiss = { showInvite = false; home.closeInvite() },
+        onCreateEmailInvite = home::createEmailInvite
+    )
     editing?.let { p -> TextEditSheet("Edit post", p.body, "Save", { home.editPost(p, it) }, { editing = null }) }
     updating?.let { p -> TextEditSheet("Post an update", "", "Post update", { home.addUpdate(p, it) }, { updating = null }) }
     reporting?.let { p -> ReportSheet({ home.report(p, it) }, { reporting = null }) }
     reportingMessage?.let { m -> ReportSheet({ chat.reportMessage(m, it) }, { reportingMessage = null }) }
     pollDraft?.let { d ->
-        PollSheet(d, PollSheetActions(chat::setPollQuestion, chat::setPollOption, chat::addPollOption, chat::removePollOption, chat::setPollMulti, chat::createPoll), chat::closePollDraft)
+        PollSheet(
+            d,
+            PollSheetActions(chat::setPollQuestion, chat::setPollOption, chat::addPollOption, chat::removePollOption, chat::setPollMulti, chat::createPoll),
+            chat::closePollDraft,
+            space = circle?.settings?.space ?: "faith",
+            onClosesAt = chat::setPollClosesAt
+        )
     }
     CreateHost(create)
     titling?.let { m -> TextEditSheet("Title for ${m.displayName}", m.title.orEmpty(), "Save", { home.setTitle(m, it); titling = null }, { titling = null }) }
@@ -257,10 +318,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onDismiss = { showEventForm = false; editingEvent = null }
         )
     }
-    // The simple card sheet is only a fallback for builds where the studio can't open.
-    if (showCard) CardShareSheet({ chat.shareCard(it) }, { showCard = false })
+    if (showCard) ChatCardComposerSheet(space = circle?.settings?.space ?: "faith", onShare = { chat.shareCard(it) }, onDismiss = { showCard = false })
     chainTitle?.let { t -> ChainSheet(t, { chat.startChain(it, chainPost) }, { chainTitle = null; chainPost = null }) }
-    if (showCelebrate) CelebrateSheet(companionId, { k, text -> chat.celebrate(k, text, companionId) }, { showCelebrate = false })
+    if (showCelebrate) CelebrateSheet(companionId, { k, text -> chat.celebrate(k, text, companionId) }, { showCelebrate = false }, space = circle?.settings?.space ?: "faith")
     if (showSearch) {
         CircleSearchSheet(
             state = state,
@@ -304,10 +364,25 @@ fun CircleHomeContent(
     onSettings: () -> Unit,
     onInvite: () -> Unit,
     onRetry: () -> Unit = {},
-    onSearch: () -> Unit = {}
+    onSearch: () -> Unit = {},
+    savedDraft: com.craftflowtechnologies.meetingmind.core.circles2.ComposerDraft? = null
 ) {
+    val context = LocalContext.current
     val circle = state.circle
     val canInvite = circle != null && state.me != null && (state.isAdmin || circle.settings.whoCanInvite == WhoCanInvite.Members)
+    var notifyDismissed by rememberSaveable(circle?.id) { mutableStateOf(false) }
+    var notificationsEnabled by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.canPost(context)) }
+    val permLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationsEnabled = granted || com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.canPost(context)
+        if (!granted) {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(intent) }
+        }
+    }
     Box(Modifier.fillMaxSize().background(MM.colors.background)) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             ScreenHeader(
@@ -329,20 +404,75 @@ fun CircleHomeContent(
                     else StatusLine(StatusKind.Info, "Opening your circle...")
                 }
                 else -> {
-                    Text("${circle.groupWord} · ${if (circle.memberCount == 1) "1 member" else "${circle.memberCount} members"}", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(horizontal = MM.space.l))
+                    Row(
+                        modifier = Modifier.padding(horizontal = MM.space.l),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                    ) {
+                        Text(
+                            "${circle.groupWord} · ${if (circle.memberCount == 1) "1 member" else "${circle.memberCount} members"}",
+                            style = MM.type.secondary,
+                            color = MM.colors.inkSecondary
+                        )
+                        if (circle.template == "client_engagement") {
+                            Surface(
+                                shape = MM.radius.pill,
+                                color = MM.colors.surfaceSunk,
+                                border = BorderStroke(MMSize.hairline, MM.colors.line)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = MM.space.s, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(6.dp)
+                                            .background(MM.colors.accent, CircleShape)
+                                    )
+                                    Text(
+                                        "External / Client space",
+                                        style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                        color = MM.colors.inkSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
                     SegmentedControl(
                         listOf("Feed", if (chat.unread > 0 && tab != HomeTab.Chat) "Chat · ${chat.unread}" else "Chat", "Members"),
                         tab.ordinal, { onTab(HomeTab.entries[it]) }, Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s)
                     )
+                    if (!notificationsEnabled && !notifyDismissed && state.me != null && !state.me.muted) {
+                        Box(Modifier.padding(horizontal = MM.space.l, vertical = MM.space.xs)) {
+                            StatusLine(
+                                StatusKind.Warning,
+                                "Notifications are off, so you may miss new posts here.",
+                                actionLabel = "Enable",
+                                onAction = {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                        permLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        runCatching { context.startActivity(intent) }
+                                    }
+                                    notifyDismissed = true
+                                }
+                            )
+                        }
+                    }
                     when (tab) {
-                        HomeTab.Feed -> FeedTab(state, now, feed, Modifier.weight(1f))
+                        HomeTab.Feed -> FeedTab(state, now, feed, Modifier.weight(1f), savedDraft = savedDraft)
                         HomeTab.Chat -> ChatTab(
                             chat,
                             draft,
                             now,
                             chatActions,
                             Modifier.weight(1f),
-                            isFaith = circle?.let { !it.isWork && it.settings.space != "learning" } ?: true
+                            isFaith = circle?.let { !it.isWork && it.settings.space != "learning" } ?: true,
+                            space = circle?.settings?.space ?: "faith"
                         )
                         HomeTab.Members -> MembersTab(state, members, Modifier.weight(1f))
                     }

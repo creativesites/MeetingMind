@@ -75,9 +75,25 @@ data class CircleTemplate(
     val space: String = "faith"
 ) {
     val isWork: Boolean get() = space.equals("work", ignoreCase = true)
+    val isGeneral: Boolean get() = space.equals("general", ignoreCase = true)
 
     companion object {
         private val everyType = PostType.entries.toList()
+        val generalTemplates: List<CircleTemplate> = listOf(
+            CircleTemplate("friends_group", "Friends & family", "Keep in touch, celebrate wins and share everyday updates.",
+                listOf(PostType.Achievement, PostType.Encouragement, PostType.Reading, PostType.Announcement, PostType.Note),
+                listOf("Group", "Circle", "Crew", "Squad"), space = "general"),
+            CircleTemplate("community_club", "Club or community", "Hobby groups, neighborhood clubs, associations and shared interests.",
+                listOf(PostType.Announcement, PostType.Achievement, PostType.Encouragement, PostType.Reading, PostType.Note),
+                listOf("Club", "Circle", "Community", "Group"), space = "general"),
+            CircleTemplate("book_club", "Book club", "Reading plans, chapter reflections, discussion notes and recommendations.",
+                listOf(PostType.Reading, PostType.Encouragement, PostType.Announcement, PostType.Achievement, PostType.Note),
+                listOf("Book club", "Reading group", "Circle"), space = "general"),
+            CircleTemplate("custom_general", "Custom group", "Configure your own community or personal circle.",
+                listOf(PostType.Achievement, PostType.Encouragement, PostType.Reading, PostType.Announcement, PostType.Note),
+                listOf("Group", "Circle", "Club"), space = "general")
+        )
+
         val faithTemplates: List<CircleTemplate> = listOf(
             CircleTemplate("small_group", "Small group", "A cell or home group that meets and prays together.",
                 listOf(PostType.Prayer, PostType.Testimony, PostType.Devotional, PostType.Study, PostType.Encouragement),
@@ -129,9 +145,10 @@ data class CircleTemplate(
         )
 
         val all: List<CircleTemplate> get() = faithTemplates
-        val allTemplates: List<CircleTemplate> get() = faithTemplates + workTemplates + learningTemplates
+        val allTemplates: List<CircleTemplate> get() = generalTemplates + faithTemplates + workTemplates + learningTemplates
 
         fun forSpace(space: String?): List<CircleTemplate> = when {
+            space.equals("general", ignoreCase = true) || space.equals("community", ignoreCase = true) -> generalTemplates
             space.equals("work", ignoreCase = true) -> workTemplates
             space.equals("learning", ignoreCase = true) -> learningTemplates
             else -> faithTemplates
@@ -158,16 +175,57 @@ data class Circle(
     val pinnedMessageId: String? = null,
     val space: String = "faith"
 ) {
+    val isGeneral: Boolean get() = space.equals("general", ignoreCase = true) || template in setOf("friends_group", "community_club", "book_club", "custom_general")
     val isWork: Boolean get() = space.equals("work", ignoreCase = true) || template in setOf("project_team", "client_engagement", "exec_board", "department", "custom_work")
     val isLearning: Boolean get() = space.equals("learning", ignoreCase = true) || template in setOf("study_group", "course_cohort", "exam_prep_room", "custom_learning")
     /** "Cell group" or "Team" for the header: the group's own word, never a generic one. */
-    val groupWord: String get() = vocab.ifBlank { if (isLearning) "Study group" else if (isWork) "Team" else "Circle" }
+    val groupWord: String get() = vocab.ifBlank { if (isGeneral) "Group" else if (isLearning) "Study group" else if (isWork) "Team" else "Circle" }
 }
 
 /** [title] is a display label such as "Pastor". It never changes what the person may do; [role] does. */
 @Immutable
 /** [avatarVersion] is null when the person has no profile photo. The photo itself is fetched by uid and version. */
 data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L, val title: String? = null, val lastReadAt: Long = 0L, val avatarVersion: Long? = null)
+
+@Immutable
+enum class WorkPriority(val wire: String, val label: String) {
+    Low("low", "Low"),
+    Normal("normal", "Normal"),
+    High("high", "High"),
+    Urgent("urgent", "Urgent");
+
+    companion object {
+        fun from(wire: String?): WorkPriority? = entries.firstOrNull { it.wire.equals(wire, ignoreCase = true) }
+    }
+}
+
+@Immutable
+enum class WorkStatus(val wire: String, val label: String) {
+    Open("open", "Open"),
+    InProgress("in_progress", "In progress"),
+    Done("answered", "Done");
+
+    companion object {
+        fun from(wire: String?): WorkStatus = entries.firstOrNull { it.wire == wire } ?: Open
+    }
+}
+
+@Immutable
+data class PostMeta(
+    val sourceKind: String? = null,
+    val sourceId: String? = null,
+    val assigneeUid: String? = null,
+    val assigneeName: String? = null,
+    val dueText: String? = null,
+    val dueAt: Long? = null,
+    val priority: WorkPriority? = null,
+    val blockedOn: String? = null,
+    val decisionOwner: String? = null,
+    val meetingDate: String? = null
+) {
+    val isEmpty: Boolean
+        get() = listOfNotNull(sourceKind, sourceId, assigneeUid, assigneeName, dueText, priority, blockedOn, decisionOwner, meetingDate).all { it.toString().isBlank() } && dueAt == null
+}
 
 @Immutable
 data class PostCounts(val prayed: Int = 0, val comments: Int = 0, val updates: Int = 0, val reactions: Map<ReactionKind, Int> = emptyMap())
@@ -188,8 +246,13 @@ data class Post(
     val createdAt: Long = 0L,
     val editedAt: Long? = null,
     /** Photos attached to this post (at most 4). */
-    val attachments: List<MediaAttachment> = emptyList()
-)
+    val attachments: List<MediaAttachment> = emptyList(),
+    val meta: PostMeta? = null,
+    val status: String = if (answered) "answered" else "open"
+) {
+    val workStatus: WorkStatus get() = WorkStatus.from(status)
+    val isResolved: Boolean get() = answered || status == "answered"
+}
 
 /** A prayer request waiting for an admin. Carries no author. */
 @Immutable
@@ -269,7 +332,7 @@ val CHAT_EMOJI: List<String> = listOf("🙏", "❤️", "😂", "🎉", "👍", 
 data class PollOption(val id: String, val text: String)
 
 @Immutable
-data class Poll(val id: String, val question: String, val options: List<PollOption>, val multi: Boolean, val closed: Boolean, val createdBy: String)
+data class Poll(val id: String, val question: String, val options: List<PollOption>, val multi: Boolean, val closed: Boolean, val createdBy: String, val closesAt: Long? = null)
 
 /** A poll plus live votes (uid to the option ids chosen). */
 @Immutable

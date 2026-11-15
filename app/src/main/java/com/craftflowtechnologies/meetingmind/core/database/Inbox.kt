@@ -50,6 +50,9 @@ interface InboxDao {
     @Query("SELECT * FROM inbox_items WHERE status IN ('NEW', 'PROPOSED') ORDER BY createdAt DESC")
     fun observeOpen(): Flow<List<InboxItemEntity>>
 
+    @Query("SELECT * FROM inbox_items WHERE status = 'FILED' ORDER BY COALESCE(processedAt, createdAt) DESC LIMIT 50")
+    fun observeFiled(): Flow<List<InboxItemEntity>>
+
     @Query("SELECT COUNT(*) FROM inbox_items WHERE status IN ('NEW', 'PROPOSED')")
     fun observeOpenCount(): Flow<Int>
 
@@ -58,6 +61,12 @@ interface InboxDao {
 
     @Query("SELECT * FROM inbox_items ORDER BY createdAt DESC")
     suspend fun all(): List<InboxItemEntity>
+
+    @Query("SELECT * FROM inbox_items WHERE uri = :uri ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByUri(uri: String): InboxItemEntity?
+
+    @Query("SELECT * FROM inbox_items WHERE meetingId = :meetingId ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByMeetingId(meetingId: String): InboxItemEntity?
 
     @Query("""
         UPDATE inbox_items

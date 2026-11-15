@@ -2,7 +2,7 @@ package com.craftflowtechnologies.meetingmind.core.circles2
 
 /** The push types the Worker sends (`data.kind`). Unknown kinds are shown as plain notifications that just open Circles. */
 enum class PushKind(val wire: String) {
-    Post("post"), Pending("pending"), Approved("approved"), Rejected("rejected"), Answered("answered"),
+    Post("post"), Comment("comment"), Chat("chat"), Pending("pending"), Approved("approved"), Rejected("rejected"), Answered("answered"),
     Digest("digest"), Poll("poll"), Chain("chain"), Celebration("celebration"), Unknown("");
 
     companion object { fun from(wire: String?): PushKind = entries.firstOrNull { it.wire.isNotEmpty() && it.wire == wire } ?: Unknown }
@@ -35,11 +35,11 @@ object PushRouting {
             PushKind.Unknown -> if (data["kind"] == null) null else CircleTarget(null, CircleDestination.CirclesList)
             PushKind.Digest -> CircleTarget(null, CircleDestination.CirclesList)
             // Everything else is about one circle; a push with a bad circle id still opens the list rather than nothing.
-            PushKind.Post, PushKind.Approved, PushKind.Answered ->
+            PushKind.Post, PushKind.Comment, PushKind.Approved, PushKind.Answered ->
                 if (circle == null) CircleTarget(null, CircleDestination.CirclesList) else CircleTarget(circle, CircleDestination.Feed, post)
             PushKind.Pending, PushKind.Rejected ->
                 if (circle == null) CircleTarget(null, CircleDestination.CirclesList) else CircleTarget(circle, CircleDestination.Feed)
-            PushKind.Poll, PushKind.Chain, PushKind.Celebration ->
+            PushKind.Chat, PushKind.Poll, PushKind.Chain, PushKind.Celebration ->
                 if (circle == null) CircleTarget(null, CircleDestination.CirclesList) else CircleTarget(circle, CircleDestination.Chat)
         }
     }
@@ -55,11 +55,16 @@ object PushRouting {
         if (q.isNotEmpty()) append('?').append(q.joinToString("&"))
     }
 
-    /** Parses [uri]. Null when it isn't an "open" link (an invite link `meetingmind://c/GRACE-7K2Q` is handled elsewhere). */
+    /** Parses [uri]. Supports both `meetingmind://c/open?...` and `https://meetingmind.app/c/open?...`. */
     fun fromUri(uri: String?): CircleTarget? {
         val u = uri?.trim() ?: return null
-        val prefix = "$SCHEME://$HOST/$OPEN"
-        if (!u.startsWith(prefix)) return null
+        val customPrefix = "$SCHEME://$HOST/$OPEN"
+        val webPrefix = "https://meetingmind.app/$HOST/$OPEN"
+        val prefix = when {
+            u.startsWith(customPrefix) -> customPrefix
+            u.startsWith(webPrefix, ignoreCase = true) -> u.substring(0, webPrefix.length)
+            else -> return null
+        }
         val rest = u.removePrefix(prefix)
         if (rest.isNotEmpty() && rest[0] != '?') return null
         val params = rest.removePrefix("?").split('&').filter { it.contains('=') }
@@ -76,6 +81,8 @@ object PushRouting {
     /** Notification text for a data-only push, or for when the OS gave us none. Never contains post text. */
     fun fallbackText(kind: PushKind): Pair<String, String> = when (kind) {
         PushKind.Post -> "Circles" to "Someone shared something new"
+        PushKind.Comment -> "Circles" to "Someone commented on a post"
+        PushKind.Chat -> "Circles" to "New message in chat"
         PushKind.Pending -> "Circles" to "A prayer request is waiting for approval"
         PushKind.Approved -> "Circles" to "Your prayer request was shared with the circle"
         PushKind.Rejected -> "Circles" to "Your prayer request wasn't shared this time"

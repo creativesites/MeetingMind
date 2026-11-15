@@ -18,7 +18,10 @@ import java.util.UUID
 class GeminiRoute(val baseUrl: String, private val key: String?, private val headers: Map<String, String>) {
     val managed: Boolean get() = key == null
 
-    fun url(path: String): String = baseUrl + path + (key?.let { "?key=$it" } ?: "")
+    fun url(path: String): String {
+        val sep = if ('?' in path) '&' else '?'
+        return baseUrl + path + (key?.let { "${sep}key=$it" } ?: "")
+    }
 
     /**
      * A request builder for [path]. With [operation] a managed request carries a fresh operation id, which

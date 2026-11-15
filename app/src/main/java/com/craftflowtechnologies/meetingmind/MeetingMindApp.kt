@@ -33,6 +33,7 @@ class MeetingMindApp : Application() {
                 com.google.firebase.FirebaseApp.initializeApp(this)
             }
         }
+        com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.ensureChannel(this)
         removeTeachBackFiles()
         setUpReadToMe()
         // Billing is set up once per process. With a RevenueCat key the Play store is used. A debug build

@@ -246,11 +246,13 @@ class MeetingRecordingService : Service() {
         _state.value = RecordingState.STOPPING
         val finalDurationMs = durationMs.value
         val file = audioRecorder.stopRecording()
+        if (file != null) outputFile = file
         val id = meetingId
 
         scope.launch {
             if (id != null && file != null) {
                 _state.value = RecordingState.SAVING
+                writeJournal()
                 val persisted = RecordingStopFinalizer.finalize(
                     persist = {
                         meetingRepository.createInitialMeeting(
@@ -394,6 +396,7 @@ class MeetingRecordingService : Service() {
             while (isActive) {
                 delay(10_000)
                 if (_state.value != RecordingState.RECORDING && _state.value != RecordingState.PAUSED) break
+                audioRecorder.checkpointSync()
                 writeJournal()
                 val freeMb = DeviceCapabilityDetector.getAvailableStorageMb()
                 _capacityWarning.value = RecordingCapacity.inFlightWarning(freeMb, currentBatteryPercent())

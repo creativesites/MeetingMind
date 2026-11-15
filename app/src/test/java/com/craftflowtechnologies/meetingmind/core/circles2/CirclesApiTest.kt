@@ -131,4 +131,71 @@ class CirclesApiTest {
         val j = JSONObject(c2.sent)
         assertEquals("birthday", j.getString("kind")); assertEquals("zuri", j.getString("companion"))
     }
+
+    @Test fun `createPost with meta serializes meta object and omits when empty or null`() {
+        val meta = PostMeta(
+            sourceKind = "action_item",
+            sourceId = "act-1",
+            assigneeUid = "u-99",
+            assigneeName = "Bob",
+            dueText = "Friday",
+            dueAt = 1731600000000L,
+            priority = WorkPriority.High,
+            blockedOn = "backend",
+            decisionOwner = "Alice",
+            meetingDate = "2026-11-14"
+        )
+        val reqWithMeta = CreatePostRequest("c1", PostType.Task, "Task body", meta = meta)
+        val json = CirclesJson.createPost(reqWithMeta)
+        assertTrue(json.has("meta"))
+        val metaObj = json.getJSONObject("meta")
+        assertEquals("action_item", metaObj.getString("sourceKind"))
+        assertEquals("act-1", metaObj.getString("sourceId"))
+        assertEquals("u-99", metaObj.getString("assigneeUid"))
+        assertEquals("Bob", metaObj.getString("assigneeName"))
+        assertEquals("Friday", metaObj.getString("dueText"))
+        assertEquals(1731600000000L, metaObj.getLong("dueAt"))
+        assertEquals("high", metaObj.getString("priority"))
+        assertEquals("backend", metaObj.getString("blockedOn"))
+        assertEquals("Alice", metaObj.getString("decisionOwner"))
+        assertEquals("2026-11-14", metaObj.getString("meetingDate"))
+
+        val reqEmptyMeta = CreatePostRequest("c1", PostType.Task, "Task body", meta = PostMeta())
+        assertFalse(CirclesJson.createPost(reqEmptyMeta).has("meta"))
+
+        val reqNullMeta = CreatePostRequest("c1", PostType.Task, "Task body", meta = null)
+        assertFalse(CirclesJson.createPost(reqNullMeta).has("meta"))
+    }
+
+    @Test fun `setWorkStatus posts to endpoint with proper status wire mapping`() = runBlocking {
+        val c = Canned()
+        val r = api(c).setWorkStatus("c1", "p1", WorkStatus.InProgress)
+        assertTrue(r is CirclesResult.Ok)
+        assertEquals("https://circles.example.workers.dev/v1/setWorkStatus", c.request?.url.toString())
+        val j = JSONObject(c.sent)
+        assertEquals("c1", j.getString("circleId"))
+        assertEquals("p1", j.getString("postId"))
+        assertEquals("in_progress", j.getString("status"))
+
+        api(c).setWorkStatus("c1", "p1", WorkStatus.Done)
+        assertEquals("answered", JSONObject(c.sent).getString("status"))
+
+        api(c).setWorkStatus("c1", "p1", WorkStatus.Open)
+        assertEquals("open", JSONObject(c.sent).getString("status"))
+
+        val notConnected = NotConfiguredCirclesApi.setWorkStatus("c1", "p1", WorkStatus.Open)
+        assertEquals(FailureKind.NotConnected, notConnected.failureOrNull?.kind)
+    }
+
+    @Test fun `createPoll includes closesAt only when specified`() = runBlocking {
+        val c = Canned()
+        api(c).createPoll("c1", "Deadline?", listOf("Yes", "No"), multi = false, closesAt = 1731600000000L)
+        assertEquals("https://circles.example.workers.dev/v1/createPoll", c.request?.url.toString())
+        val jWithDeadline = JSONObject(c.sent)
+        assertEquals(1731600000000L, jWithDeadline.getLong("closesAt"))
+
+        api(c).createPoll("c1", "No deadline?", listOf("Yes", "No"), multi = false)
+        val jNoDeadline = JSONObject(c.sent)
+        assertFalse(jNoDeadline.has("closesAt"))
+    }
 }

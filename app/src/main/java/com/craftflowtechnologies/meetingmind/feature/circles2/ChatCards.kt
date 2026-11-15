@@ -177,13 +177,14 @@ fun CardDetailSheet(card: CardPayload, image: ImageBitmap?, onDismiss: () -> Uni
         PrimaryButton(
             "Share card",
             {
-                val textToShare = buildString {
+                val rawText = buildString {
                     append(card.text)
                     if (!card.verseRef.isNullOrBlank()) {
                         append("\n\n— ")
                         append(card.verseRef)
                     }
                 }
+                val textToShare = com.craftflowtechnologies.meetingmind.core.share.AppLinks.withAppLink(rawText)
                 ShareHelper.shareText(context, "Card", textToShare, "Share Card")
             },
             leadingIcon = Icons.Rounded.Share,

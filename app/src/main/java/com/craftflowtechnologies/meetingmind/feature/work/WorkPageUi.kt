@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Badge
@@ -84,7 +85,8 @@ internal fun WorkPageHeader(
     moreActions: List<WorkMenuAction>,
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
+    onOpenInbox: (() -> Unit)? = null
 ) {
     val inbox = moreActions.sumOf { it.badge }
     val companionShown = rememberCompanionVisible(CompanionPage.HOME)
@@ -102,15 +104,32 @@ internal fun WorkPageHeader(
         ScreenHeader(title = "Work", leading = leading) {
             // Search in Work opens the app-wide search, so its label says exactly that.
             IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search everything", tint = MM.colors.ink) }
+            if (onOpenInbox != null) {
+                IconButton(onClick = onOpenInbox) {
+                    if (inbox > 0) {
+                        BadgedBox(badge = { Badge(containerColor = MM.colors.accent, contentColor = MM.colors.onAccent) { Text(inbox.toString(), style = MM.type.caption) } }) {
+                            Icon(Icons.Rounded.Inbox, "Work Inbox ($inbox)", tint = MM.colors.ink)
+                        }
+                    } else {
+                        Icon(Icons.Rounded.Inbox, "Work Inbox", tint = MM.colors.ink)
+                    }
+                }
+            }
             MenuButton(Icons.Rounded.Add, "New", addActions, badge = 0, tint = MM.colors.ink)
-            MenuButton(Icons.Rounded.MoreHoriz, if (inbox > 0) "More, $inbox in Inbox" else "More", moreActions, badge = inbox, tint = MM.colors.ink)
+            MenuButton(Icons.Rounded.MoreHoriz, if (inbox > 0) "More, $inbox in Inbox" else "More", moreActions, badge = if (onOpenInbox == null) inbox else 0, tint = MM.colors.ink)
         }
-        Text(
-            contextLine,
-            style = MM.type.secondary,
-            color = MM.colors.inkSecondary,
-            modifier = Modifier.padding(top = MM.space.xs)
-        )
+        Row(
+            Modifier.padding(top = MM.space.xs, bottom = MM.space.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+        ) {
+            Box(Modifier.size(6.dp).background(MM.colors.accent, MM.radius.pill))
+            Text(
+                contextLine,
+                style = MM.type.secondary,
+                color = MM.colors.inkSecondary
+            )
+        }
     }
 }
 

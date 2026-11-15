@@ -177,8 +177,9 @@ class MeetingDetailViewModel(
         // Ask follows the processing profile like every other AI stage: Gemini in Internet mode,
         // with the local model behind it so a cloud failure still gets an answer. Offline never
         // reaches the cloud engine at all.
+        val effectiveProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile)
         val engine: com.craftflowtechnologies.meetingmind.ai.llm.MeetingIntelligenceEngine =
-            if (com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile) == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
+            if (effectiveProfile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
                 com.craftflowtechnologies.meetingmind.ai.llm.FallbackMeetingIntelligenceEngine(
                     primary = com.craftflowtechnologies.meetingmind.ai.cloud.GeminiIntelligenceEngine(
                         com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(getApplication())
@@ -188,7 +189,13 @@ class MeetingDetailViewModel(
             } else {
                 localEngine
             }
-        return AskMeetingUseCase(transcriptRepository, engine, vocabularyRepository = vocabularyRepository)
+        val embeddings: com.craftflowtechnologies.meetingmind.ai.embeddings.EmbeddingEngine =
+            if (effectiveProfile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
+                com.craftflowtechnologies.meetingmind.ai.embeddings.NeuralEmbeddingEngine(getApplication())
+            } else {
+                com.craftflowtechnologies.meetingmind.ai.embeddings.LocalEmbeddingEngine()
+            }
+        return AskMeetingUseCase(transcriptRepository, engine, embeddingEngine = embeddings, vocabularyRepository = vocabularyRepository)
     }
     /** Display-only filler-word cleanup preference. The stored transcript is always verbatim; this
      * only decides how it is rendered, so flipping it takes effect immediately with no reprocessing. */
@@ -711,6 +718,8 @@ class MeetingDetailViewModel(
 
     private val _pendingQuestion = MutableStateFlow("")
     val pendingQuestion: StateFlow<String> = _pendingQuestion.asStateFlow()
+    private val _streamingReply = MutableStateFlow<String?>(null)
+    val streamingReply: StateFlow<String?> = _streamingReply.asStateFlow()
     private var askJob: kotlinx.coroutines.Job? = null
 
     fun askQuestion(questionText: String) {
@@ -718,11 +727,18 @@ class MeetingDetailViewModel(
         askJob?.cancel()
         askJob = viewModelScope.launch {
             _pendingQuestion.value = questionText
+            _streamingReply.value = null
             _isAnswering.value = true
             try {
                 val userName = userPrefs.preferencesFlow.first().userName
-                buildAskUseCase()(meetingId, questionText, userName, meeting.value?.recordingType)
+                buildAskUseCase().invokeStream(meetingId, questionText, userName, meeting.value?.recordingType).collect { ev ->
+                    when (ev) {
+                        is com.craftflowtechnologies.meetingmind.ai.llm.AskStreamEvent.Partial -> _streamingReply.value = ev.text
+                        is com.craftflowtechnologies.meetingmind.ai.llm.AskStreamEvent.Complete -> _streamingReply.value = null
+                    }
+                }
             } finally {
+                _streamingReply.value = null
                 _isAnswering.value = false
             }
         }
@@ -730,6 +746,7 @@ class MeetingDetailViewModel(
 
     fun cancelAsk() {
         askJob?.cancel()
+        _streamingReply.value = null
         _isAnswering.value = false
     }
 
@@ -1329,26 +1346,30 @@ fun MeetingDetailScreen(
                     cleanFillerWords = cleanFillerWords,
                     scenes = remember(meeting?.audioFilePath, meeting?.status) { meeting?.audioFilePath?.let { com.craftflowtechnologies.meetingmind.ai.scene.SceneMap.load(java.io.File(it)) } }
                 ) }
-                RecordingDetailTab.ASK_AI -> com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.AskAiPanel(
-                    chatMessages = chatMessages,
-                    allSegments = transcript.segments,
-                    speakers = speakers,
-                    totalSegmentCount = transcript.segments.size,
-                    isAnswering = isAnswering,
-                    pendingQuestion = pendingQuestion,
-                    onSendQuestion = { viewModel.askQuestion(it) },
-                    onStopQuestion = { viewModel.cancelAsk() },
-                    onPlayFrom = { viewModel.jumpToTimestamp(it) },
-                    onOpenInTranscript = { ts ->
-                        highlightedSegmentId = transcript.segments
-                            .filter { it.startMs <= ts }
-                            .maxByOrNull { it.startMs }
-                            ?.id
-                            ?: transcript.segments.minByOrNull { kotlin.math.abs(it.startMs - ts) }?.id
-                        currentTab = RecordingDetailTab.TRANSCRIPT
-                        viewModel.jumpToTimestamp(ts)
-                    }
-                )
+                RecordingDetailTab.ASK_AI -> {
+                    val streamingReply by viewModel.streamingReply.collectAsState()
+                    com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.AskAiPanel(
+                        chatMessages = chatMessages,
+                        allSegments = transcript.segments,
+                        speakers = speakers,
+                        totalSegmentCount = transcript.segments.size,
+                        isAnswering = isAnswering,
+                        pendingQuestion = pendingQuestion,
+                        streamingReply = streamingReply,
+                        onSendQuestion = { viewModel.askQuestion(it) },
+                        onStopQuestion = { viewModel.cancelAsk() },
+                        onPlayFrom = { viewModel.jumpToTimestamp(it) },
+                        onOpenInTranscript = { ts ->
+                            highlightedSegmentId = transcript.segments
+                                .filter { it.startMs <= ts }
+                                .maxByOrNull { it.startMs }
+                                ?.id
+                                ?: transcript.segments.minByOrNull { kotlin.math.abs(it.startMs - ts) }?.id
+                            currentTab = RecordingDetailTab.TRANSCRIPT
+                            viewModel.jumpToTimestamp(ts)
+                        }
+                    )
+                }
             }
         }
     }

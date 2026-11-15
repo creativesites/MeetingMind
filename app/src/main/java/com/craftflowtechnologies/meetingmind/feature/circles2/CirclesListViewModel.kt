@@ -9,6 +9,7 @@ import com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesRepository
 import com.craftflowtechnologies.meetingmind.core.circles2.InviteCodes
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
+import com.craftflowtechnologies.meetingmind.core.circles2.ReactionKind
 import com.craftflowtechnologies.meetingmind.core.circles2.WhoCanInvite
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -81,13 +82,31 @@ data class CreateUiState(
     val spaceTab: String = "work",
     val requestId: String? = null,
     val busy: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val description: String = "",
+    val joinApproval: Boolean = false
 ) {
     val canCreate: Boolean get() = name.isNotBlank() && displayName.isNotBlank() && types.isNotEmpty() && !busy
 }
 
+private fun normalizeSpaceArg(raw: String?): String? = when (raw?.trim()?.lowercase()) {
+    null, "", "{space}" -> null
+    "study", "learn", "learning" -> "learning"
+    "community", "general" -> "general"
+    "work" -> "work"
+    "faith" -> "faith"
+    else -> null
+}
+
+private fun defaultReactionsForSpace(space: String): List<ReactionKind> = when (space) {
+    "work" -> listOf(ReactionKind.Ack, ReactionKind.Approved, ReactionKind.Priority, ReactionKind.Reviewing, ReactionKind.Win)
+    "learning", "general" -> listOf(ReactionKind.Ack, ReactionKind.Heart, ReactionKind.Celebrate, ReactionKind.Priority)
+    else -> listOf(ReactionKind.Praying, ReactionKind.Amen, ReactionKind.Heart, ReactionKind.Celebrate)
+}
+
 class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: String? = null) : ViewModel() {
-    private val defaultTemplate = initialSpace?.let { sp -> CircleTemplate.forSpace(sp).firstOrNull() }
+    private val normalizedSpace = normalizeSpaceArg(initialSpace)
+    private val defaultTemplate = normalizedSpace?.let { sp -> CircleTemplate.forSpace(sp).firstOrNull() }
         ?: CircleTemplate.forSpace("work").firstOrNull()
         ?: CircleTemplate.forSpace("faith").first()
 
@@ -96,7 +115,7 @@ class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: S
             template = defaultTemplate,
             vocab = defaultTemplate.vocab.first(),
             types = defaultTemplate.types,
-            prayerApproval = !defaultTemplate.isWork,
+            prayerApproval = defaultTemplate.space == "faith",
             spaceTab = defaultTemplate.space,
             displayName = repo.displayName
         )
@@ -104,13 +123,14 @@ class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: S
     val state: StateFlow<CreateUiState> = _state
 
     fun setSpaceTab(space: String) = _state.update { s ->
-        val candidate = CircleTemplate.forSpace(space).firstOrNull() ?: s.template
+        val normalized = normalizeSpaceArg(space) ?: s.spaceTab
+        val candidate = CircleTemplate.forSpace(normalized).firstOrNull() ?: s.template
         s.copy(
-            spaceTab = space,
+            spaceTab = normalized,
             template = candidate,
             vocab = candidate.vocab.first(),
             types = candidate.types,
-            prayerApproval = if (candidate.isWork) false else s.prayerApproval,
+            prayerApproval = if (candidate.space != "faith") false else s.prayerApproval,
             error = null,
             requestId = null
         )
@@ -121,7 +141,7 @@ class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: S
             template = t,
             vocab = t.vocab.first(),
             types = t.types,
-            prayerApproval = if (t.isWork) false else it.prayerApproval,
+            prayerApproval = if (t.space != "faith") false else it.prayerApproval,
             spaceTab = t.space,
             error = null,
             requestId = null
@@ -129,12 +149,14 @@ class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: S
     }
     fun setName(v: String) = _state.update { it.copy(name = v.take(60), error = null, requestId = null) }
     fun setVocab(v: String) = _state.update { it.copy(vocab = v.take(40), requestId = null) }
+    fun setDescription(v: String) = _state.update { it.copy(description = v.take(300), requestId = null) }
     fun setDisplayName(v: String) = _state.update { it.copy(displayName = v.take(40), error = null, requestId = null) }
     fun toggleType(t: PostType) = _state.update { s ->
         val next = if (t in s.types) s.types - t else s.types + t
         s.copy(types = PostType.entries.filter { it in next }, requestId = null)
     }
     fun setApproval(on: Boolean) = _state.update { it.copy(prayerApproval = on, requestId = null) }
+    fun setJoinApproval(on: Boolean) = _state.update { it.copy(joinApproval = on, requestId = null) }
     fun setWhoCanInvite(w: WhoCanInvite) = _state.update { it.copy(whoCanInvite = w, requestId = null) }
 
     fun create(onCreated: (String) -> Unit) {
@@ -148,7 +170,9 @@ class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: S
         val settings = CircleSettings(
             allowedTypes = s.types,
             whoCanInvite = s.whoCanInvite,
-            prayerApproval = s.prayerApproval,
+            prayerApproval = if (s.template.space == "faith") s.prayerApproval else false,
+            joinApproval = s.joinApproval,
+            reactions = defaultReactionsForSpace(s.template.space),
             space = s.template.space
         )
         viewModelScope.launch {
@@ -159,10 +183,18 @@ class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: S
                 displayName = s.displayName,
                 settings = settings,
                 requestId = requestId,
+                description = s.description.trim(),
                 space = s.template.space
             ).fold(
                 onOk = { id -> _state.update { it.copy(busy = false, requestId = null) }; onCreated(id) },
-                onErr = { f -> _state.update { it.copy(busy = false, error = f.message) } }
+                onErr = { f ->
+                    val friendly = if (f.message.contains("unknown template", ignoreCase = true)) {
+                        "\"${s.template.label}\" isn't active on the connected Circles server yet. Redeploy server/circles-api to enable Work and Study templates."
+                    } else {
+                        f.message
+                    }
+                    _state.update { it.copy(busy = false, error = friendly) }
+                }
             )
         }
     }

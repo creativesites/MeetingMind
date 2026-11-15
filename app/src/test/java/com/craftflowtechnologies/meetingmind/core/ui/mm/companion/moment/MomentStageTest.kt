@@ -160,4 +160,32 @@ class MomentStageTest {
         assertEquals(null, scope!!.clock)
         assertEquals(0, rule.onAllNodes(liveRegions).fetchSemanticsNodes().size)
     }
+
+    @Test fun `all staggered body layers reach full opacity by the end of the reveal`() {
+        var scope: MomentScope? = null
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            CompositionLocalProvider(LocalCompanionReducedMotion provides false) {
+                MeetMindTheme(darkTheme = true, accent = MMAccent.Indigo) {
+                    NoteUnveil(
+                        MomentPlan.Unveil(UnveilVariant.LIFT, 1500, false, MomentSpace.EVERYDAY),
+                        CompanionForm.ZURI,
+                        "Title is ready."
+                    ) {
+                        scope = this
+                        Column {
+                            (0..9).forEach { idx ->
+                                Text("Line $idx", Modifier.momentLayer(StageTarget.BODY, idx))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        rule.mainClock.advanceTimeBy(2000)
+        for (idx in 0..9) {
+            assertEquals("body index $idx must reach full opacity", 1f, scope!!.value(StageTarget.BODY, StageProp.ALPHA, idx.toFloat()), 0.001f)
+            assertEquals("body index $idx must settle at 0 translation", 0f, scope!!.value(StageTarget.BODY, StageProp.Y_DP, idx.toFloat()), 0.001f)
+        }
+    }
 }

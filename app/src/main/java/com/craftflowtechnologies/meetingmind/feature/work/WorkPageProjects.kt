@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
@@ -78,14 +79,23 @@ private fun ProjectCardRow(p: ProjectCard, now: Long, onClick: () -> Unit) {
         Row(verticalAlignment = Alignment.Top) {
             Box(Modifier.width(MMSize.marker).fillMaxHeight().background(projectColor(p), MM.radius.pill))
             Column(Modifier.weight(1f).padding(start = MM.space.m)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
                     Text(
                         p.notebook.name, style = MM.type.heading, color = MM.colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+                    p.notebook.status.takeIf { it.isNotBlank() }?.let { statusText ->
+                        Box(
+                            Modifier
+                                .background(MM.colors.accentWash, MM.radius.pill)
+                                .padding(horizontal = MM.space.s, vertical = 2.dp)
+                        ) {
+                            Text(statusText, style = MM.type.caption, color = MM.colors.accent)
+                        }
+                    }
                     if (p.notebook.confidential) Icon(Icons.Rounded.Lock, "Confidential", Modifier.size(MMSize.iconSmall), tint = MM.colors.inkMuted)
                 }
-                listOfNotNull(p.org, p.notebook.status.takeIf { it.isNotBlank() }).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+                p.org?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = MM.type.secondary, color = MM.colors.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = MM.space.xs))
                 }
                 Row(Modifier.fillMaxWidth().padding(top = MM.space.m), horizontalArrangement = Arrangement.spacedBy(MM.space.l)) {

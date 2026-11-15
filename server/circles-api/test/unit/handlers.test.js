@@ -562,3 +562,63 @@ test("createPost: devotional type, metadata sanitization, and requestId idempote
   const retry = await W.call("owner", "createPost", postBody);
   assert.equal(retry.postId, first.postId);
 });
+
+test("notifications: type-specific post copy, notifyChat cooldown & mentions bypass, and comment push", async () => {
+  const W = world();
+  const id = await circle(W, { prayerApproval: false });
+  await joinAs(W, "ann", id); await joinAs(W, "bob", id);
+  W.db.seed("users/ann", { fcmTokens: ["tok-ann-aaaaaaaaaaaaaaaa"] });
+  W.db.seed("users/bob", { fcmTokens: ["tok-bob-bbbbbbbbbbbbbbbb"] });
+  W.db.seed("users/owner", { fcmTokens: ["tok-own-cccccccccccccccc"] });
+  await W.call("owner", "setMute", { circleId: id, muted: true });
+
+  // Named testimony post gets type-specific message (no post body leak)
+  W.fcm.sent.length = 0;
+  const { postId } = await W.call("ann", "createPost", { circleId: id, type: "testimony", body: "Secret praise detail", anonymous: false });
+  assert.deepEqual(W.fcm.sent.map((s) => s.token), ["tok-bob-bbbbbbbbbbbbbbbb"]);
+  assert.match(W.fcm.sent[0].msg.body, /shared a testimony/);
+  assert.doesNotMatch(W.fcm.sent[0].msg.body, /Secret praise detail/);
+
+  // notifyChat sends once then throttles within cooldown unless hasMentions is true
+  W.fcm.sent.length = 0;
+  const r1 = await W.call("ann", "notifyChat", { circleId: id, hasMentions: false });
+  assert.equal(r1.notified, true);
+  assert.equal(W.fcm.sent.length, 1);
+  assert.equal(W.fcm.sent[0].msg.data.kind, "chat");
+
+  const r2 = await W.call("ann", "notifyChat", { circleId: id, hasMentions: false });
+  assert.equal(r2.notified, false);
+  assert.equal(W.fcm.sent.length, 1);
+
+  const r3 = await W.call("ann", "notifyChat", { circleId: id, hasMentions: true });
+  assert.equal(r3.notified, true);
+  assert.equal(W.fcm.sent.length, 2);
+
+  // New comment detected via syncCounts notifies non-muted members
+  W.fcm.sent.length = 0;
+  W.db.seed(`${C(id)}/posts/${postId}/comments/c1`, { authorUid: "bob", displayName: "Bob", body: "Amen!" });
+  await W.call("bob", "syncCounts", { circleId: id, postId });
+  assert.deepEqual(W.fcm.sent.map((s) => s.token), ["tok-ann-aaaaaaaaaaaaaaaa"]);
+  assert.equal(W.fcm.sent[0].msg.data.kind, "comment");
+});
+
+test("fcm: send uses HIGH android priority and circles_posts channel", async () => {
+  const { Fcm } = await import("../../src/fcm.js");
+  let sentBody = null;
+  const mockFetch = async (url, init) => {
+    if (String(url).includes("oauth2.googleapis.com")) {
+      return new Response(JSON.stringify({ access_token: "at-1", expires_in: 3600 }), { status: 200 });
+    }
+    sentBody = JSON.parse(init.body);
+    return new Response(JSON.stringify({ name: "msg/1" }), { status: 200 });
+  };
+  const sa = JSON.stringify({
+    client_email: "svc@example.iam.gserviceaccount.com",
+    private_key: (await import("node:crypto")).generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs8", format: "pem" }),
+  });
+  const fcm = new Fcm({ projectId: "demo", env: { SERVICE_ACCOUNT_JSON: sa }, fetchImpl: mockFetch });
+  const res = await fcm.send("tok-device-1", { title: "Grace", body: "Ann shared a testimony", data: { kind: "post" } });
+  assert.equal(res, "ok");
+  assert.equal(sentBody.message.android.priority, "HIGH");
+  assert.equal(sentBody.message.android.notification.channel_id, "circles_posts");
+});

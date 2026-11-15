@@ -106,28 +106,50 @@ class GeminiTranscriptionEngine(
                 async {
                     gate.acquire()
                     try {
-                        transport.execute(
-                            GeminiRequest(
-                                modelId = verbatimModel,
-                                systemInstruction = VERBATIM_SYSTEM_INSTRUCTION,
-                                prompt = VERBATIM_PROMPT,
-                                audioFile = audioFile,
-                                audioStartMs = chunk.startMs,
-                                audioEndMs = chunk.endMs,
-                                // The transcription model's own request. Custom vocabulary is left out:
-                                // the API rejects it alongside timestamps and speakers.
-                                transcription = AudioTranscriptionConfig(mode = "VERBATIM", wordTimestamp = true, diarization = true),
-                                // One chunk is the whole recording: send the file as it is, no decoding.
-                                uploadWholeFile = chunks.size == 1 && restored.isEmpty() && chunk.startMs == 0L
-                            )
+                        val req = GeminiRequest(
+                            modelId = verbatimModel,
+                            systemInstruction = VERBATIM_SYSTEM_INSTRUCTION,
+                            prompt = VERBATIM_PROMPT,
+                            audioFile = audioFile,
+                            audioStartMs = chunk.startMs,
+                            audioEndMs = chunk.endMs,
+                            // The transcription model's own request. Custom vocabulary is left out:
+                            // the API rejects it alongside timestamps and speakers.
+                            transcription = AudioTranscriptionConfig(mode = "VERBATIM", wordTimestamp = true, diarization = true),
+                            // One chunk is the whole recording: send the file as it is, no decoding.
+                            uploadWholeFile = chunks.size == 1 && restored.isEmpty() && chunk.startMs == 0L
                         )
+                        val first = transport.execute(req)
+                        if (first is AiResult.Failed && first.cause is java.io.IOException) {
+                            // One transient network recovery per chunk so a single mobile radio blip
+                            // mid-upload doesn't invalidate completed parts of a long recording.
+                            transport.execute(req)
+                        } else {
+                            first
+                        }
                     } finally { gate.release() }
                 }
             }
             onProgress(0f, if (chunks.size > 1) "Transcribing ${chunks.size} parts…" else "Transcribing…")
             for ((i, job) in jobs.withIndex()) {
                 val chunk = chunks[i]
-                val response = job.await()
+                var response = job.await()
+                var words = (response as? AiResult.Success)?.let { parser.parseVerbatim(it.value, chunkStartMs = chunk.startMs) }
+                if (response is AiResult.Success && words == null) {
+                    // Retry once if the response arrived empty/malformed before abandoning the batch.
+                    val retryReq = GeminiRequest(
+                        modelId = verbatimModel,
+                        systemInstruction = VERBATIM_SYSTEM_INSTRUCTION,
+                        prompt = VERBATIM_PROMPT,
+                        audioFile = audioFile,
+                        audioStartMs = chunk.startMs,
+                        audioEndMs = chunk.endMs,
+                        transcription = AudioTranscriptionConfig(mode = "VERBATIM", wordTimestamp = true, diarization = true),
+                        uploadWholeFile = chunks.size == 1 && restored.isEmpty() && chunk.startMs == 0L
+                    )
+                    response = transport.execute(retryReq)
+                    words = (response as? AiResult.Success)?.let { parser.parseVerbatim(it.value, chunkStartMs = chunk.startMs) }
+                }
                 if (response !is AiResult.Success) {
                     // A transcript with a silent hole in the middle is worse than an honest failure.
                     jobs.forEach { it.cancel() }
@@ -135,7 +157,6 @@ class GeminiTranscriptionEngine(
                         "Cloud transcription failed on part ${chunk.index + 1} of ${chunks.size}: " + (response.describeFailure() ?: "unknown error")
                     )
                 }
-                val words = parser.parseVerbatim(response.value, chunkStartMs = chunk.startMs)
                 GeminiLog.add("Part ${chunk.index + 1}: ${words?.size ?: "unreadable"} words")
                 if (words == null) {
                     jobs.forEach { it.cancel() }

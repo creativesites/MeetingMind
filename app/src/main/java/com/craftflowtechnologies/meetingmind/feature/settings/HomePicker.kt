@@ -95,6 +95,11 @@ private fun HomeThumbnail(style: HomeStyle) {
                 Block(c.ink, 20.dp)
                 Line(); Line(); Line()
             }
+            HomeStyle.LEARNING -> {
+                Block(c.accent, 20.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) { repeat(3) { Dot() } }
+                Line(); Line()
+            }
             HomeStyle.CALM -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) { repeat(3) { Dot() } }
                 Block(c.surface, 14.dp)

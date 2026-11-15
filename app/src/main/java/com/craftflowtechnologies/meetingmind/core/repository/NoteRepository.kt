@@ -62,6 +62,9 @@ class NoteRepository(
     fun observeNotesForWorkflows(workflows: Collection<RecordingType>): Flow<List<Note>> =
         noteDao.observeByWorkflows(workflows.map { it.name }).map { list -> list.map { it.toDomain() } }.flowOn(Dispatchers.IO)
 
+    fun observeDraftsForWorkflow(workflow: RecordingType): Flow<List<Note>> =
+        noteDao.observeDraftsByWorkflow(workflow.name).map { list -> list.map { it.toDomain() } }.flowOn(Dispatchers.IO)
+
     fun observeArchivedNotes(): Flow<List<Note>> =
         noteDao.observeArchived().map { list -> list.map { it.toDomain() } }.flowOn(Dispatchers.IO)
 
@@ -108,6 +111,14 @@ class NoteRepository(
 
     fun observeLinks(noteId: String): Flow<List<NoteLink>> =
         noteDao.observeLinks(noteId).map { list -> list.map { it.toDomain() } }.flowOn(Dispatchers.IO)
+
+    suspend fun getLinks(noteId: String): List<NoteLink> = withContext(Dispatchers.IO) {
+        noteDao.getLinks(noteId).map { it.toDomain() }
+    }
+
+    suspend fun getAllLinks(): List<NoteLink> = withContext(Dispatchers.IO) {
+        noteDao.getAllLinks().map { it.toDomain() }
+    }
 
     fun observeRecordingIds(noteId: String): Flow<List<String>> =
         noteDao.observeMeetingsForNote(noteId).map { list -> list.map { it.id } }.flowOn(Dispatchers.IO)
@@ -680,10 +691,6 @@ class NoteRepository(
         val link = NoteLinkEntity(newId("link"), fromNoteId, toNoteId, kind.name, clock())
         noteDao.insertLink(link)
         link.toDomain()
-    }
-
-    suspend fun getLinks(noteId: String): List<NoteLink> = withContext(Dispatchers.IO) {
-        noteDao.getLinks(noteId).map { it.toDomain() }
     }
 
     suspend fun unlink(linkId: String) = withContext(Dispatchers.IO) { noteDao.deleteLink(linkId) }

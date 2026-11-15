@@ -5,10 +5,10 @@
 // can't be tampered with. Deploy: see README.md next to this file.
 
 const DEEPSEEK = "https://api.deepseek.com/chat/completions";
-const ALLOWED_MODELS = new Set(["deepseek-flash"]);
+const ALLOWED_MODELS = new Set(["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"]);
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method !== "POST" || !url.pathname.endsWith("/chat/completions")) {
       return json({ error: { message: "Not found" } }, 404);
@@ -27,14 +27,51 @@ export default {
     let body;
     try { body = await request.json(); } catch { return json({ error: { message: "Bad JSON" } }, 400); }
     if (!ALLOWED_MODELS.has(body.model)) body.model = "deepseek-flash";
-    body.stream = false;
-    body.max_tokens = Math.min(body.max_tokens || 4096, 8192);
+    const isStream = Boolean(body.stream);
+    body.stream = isStream;
+    if (isStream) {
+      body.stream_options = { include_usage: true, ...(body.stream_options || {}) };
+    }
+    body.max_tokens = Math.min(body.max_tokens || 4096, 16384);
 
     const upstream = await fetch(DEEPSEEK, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.DEEPSEEK_API_KEY}` },
       body: JSON.stringify(body),
     });
+
+    if (isStream && upstream.ok && upstream.body) {
+      let recorded = false;
+      const decoder = new TextDecoder();
+      let buf = "";
+      const { readable, writable } = new TransformStream({
+        transform(chunk, controller) {
+          controller.enqueue(chunk);
+          buf += decoder.decode(chunk, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === "[DONE]") continue;
+            try {
+              const tokens = JSON.parse(payload).usage?.total_tokens;
+              if (tokens > 0 && !recorded) {
+                recorded = true;
+                const write = env.USAGE.put(usageKey, String(used + tokens), { expirationTtl: 60 * 60 * 24 * 40 });
+                ctx?.waitUntil?.(write);
+              }
+            } catch { /* ignore partial frame */ }
+          }
+        }
+      });
+      upstream.body.pipeTo(writable).catch(() => {});
+      return new Response(readable, {
+        status: upstream.status,
+        headers: { "Content-Type": upstream.headers.get("content-type") ?? "text/event-stream; charset=utf-8", "Cache-Control": "no-cache" },
+      });
+    }
+
     const text = await upstream.text();
     if (upstream.ok) {
       try {

@@ -13,11 +13,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,10 +53,13 @@ import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -115,7 +121,8 @@ fun DevotionalScreen(
     onLive: (com.craftflowtechnologies.meetingmind.core.prayer.PrayMode) -> Unit = {},
     /** A saved devotional to show as it was, from the archive. */
     pastNoteId: String? = null,
-    onArchive: () -> Unit = {}
+    onArchive: () -> Unit = {},
+    onCreateCircle: () -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) {
@@ -149,7 +156,8 @@ fun DevotionalScreen(
         onExamen = viewModel::writeExamen,
         onClassic = viewModel::readClassic,
         onWriteWithAi = viewModel::writeWithAi,
-        onDismissTip = viewModel::dismissTip
+        onDismissTip = viewModel::dismissTip,
+        onCreateCircle = onCreateCircle
     )
     if (showAsk) AskDevotionalSheet(
         profile = state.profile,
@@ -189,11 +197,14 @@ fun DevotionalContent(
     onCreateCard: () -> Unit = {},
     onClassic: () -> Unit = {},
     onWriteWithAi: () -> Unit = {},
-    onDismissTip: () -> Unit = {}
+    onDismissTip: () -> Unit = {},
+    onCreateCircle: () -> Unit = {}
 ) {
     val today = state.today
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    var showShareToCircle by remember { mutableStateOf(false) }
     // The whole devotional as text; verses carry their own words and version when they can be fetched.
     fun wholeText(t: DailyDevotional, then: (String) -> Unit) {
         scope.launch {
@@ -204,7 +215,8 @@ fun DevotionalContent(
             then(DevotionalText.all(t.devotional, t.devotional.day.date.format(DATE), passages))
         }
     }
-    LazyColumn(Modifier.fillMaxSize().background(Paper).testTag("devotional_screen")) {
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize().background(Paper).testTag("devotional_screen")) {
         item {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink) }
@@ -318,12 +330,37 @@ fun DevotionalContent(
                     Footer(
                         today, onOpenNote, onRewrite, onShare, onCreateCard = onCreateCard, past = state.past,
                         onCopyAll = { wholeText(today) { copyToClipboard(context, today.devotional.title, it) } },
-                        onShareText = { wholeText(today) { shareAsText(context, today.devotional.title, it) } }
+                        onShareText = { wholeText(today) { shareAsText(context, today.devotional.title, it) } },
+                        onShareToCircle = { showShareToCircle = true }
                     )
                 }
             }
         }
         item { Spacer(Modifier.height(40.dp)) }
+        }
+        SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 12.dp)
+        )
+    }
+    if (showShareToCircle && today != null) {
+        val d = today.devotional
+        val excerptSource = d.motivation
+            ?: d.reflection.joinToString("\n\n").ifBlank { d.keyText.orEmpty() }
+        com.craftflowtechnologies.meetingmind.feature.circles2.ShareArtifactToCircleSheet(
+            title = d.title,
+            rawText = excerptSource.ifBlank { d.title },
+            verseRef = d.scripture.firstOrNull()?.display(),
+            readingDate = d.day.date.format(DATE),
+            onDismiss = { showShareToCircle = false },
+            onNavigateCreateCircle = {
+                showShareToCircle = false
+                onCreateCircle()
+            },
+            onShared = { circleName ->
+                scope.launch { snackbar.showSnackbar("Shared to $circleName") }
+            }
+        )
     }
 }
 
@@ -757,6 +794,7 @@ private fun ExamenCard(writing: Boolean, onExamen: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Footer(
     today: DailyDevotional,
@@ -766,7 +804,8 @@ private fun Footer(
     onCreateCard: () -> Unit = {},
     past: Boolean = false,
     onCopyAll: () -> Unit = {},
-    onShareText: () -> Unit = {}
+    onShareText: () -> Unit = {},
+    onShareToCircle: () -> Unit = {}
 ) {
     val d = today.devotional
     Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
@@ -798,21 +837,31 @@ private fun Footer(
                 }
             }
         }
-        if (d.origin != DevotionalOrigin.MINE) Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Surface(onClick = onCopyAll, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("devotional_copy_all")) {
-                Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = null, tint = Ink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
-                    Text("Copy all", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
+        FlowRow(
+            Modifier.padding(top = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (d.origin != DevotionalOrigin.MINE) {
+                Surface(onClick = onCopyAll, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("devotional_copy_all")) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.ContentCopy, contentDescription = null, tint = Ink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
+                        Text("Copy all", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
+                    }
+                }
+                Surface(onClick = onShareText, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("devotional_share_text")) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Share, contentDescription = null, tint = Ink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
+                        Text("Share devotional", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
+                    }
                 }
             }
-            Surface(onClick = onShareText, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("devotional_share_text")) {
+            Surface(onClick = onShareToCircle, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("devotional_share_circle")) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Share, contentDescription = null, tint = Ink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
-                    Text("Share devotional", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
+                    Icon(Icons.Rounded.Groups, contentDescription = null, tint = Gold, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(6.dp))
+                    Text("Share to Circle", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
                 }
             }
-        }
-        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Surface(onClick = { onOpenNote(today.note.id) }, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line)) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.EditNote, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
@@ -859,6 +908,6 @@ internal fun shareRequest(t: DailyDevotional, audioPath: String?, coverPath: Str
         theme = listOfNotNull(d.title, d.scripture.firstOrNull()?.display()).joinToString(", "),
         background = coverPath?.let { com.craftflowtechnologies.meetingmind.core.share.BackgroundSpec.Photo(it) },
         audioPath = audioPath,
-        caption = d.title
+        caption = listOfNotNull(d.title, d.scripture.firstOrNull()?.display()).joinToString(" · ").ifBlank { d.title }
     )
 }

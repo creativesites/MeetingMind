@@ -25,6 +25,9 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -45,6 +48,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.content.Intent
 import android.net.Uri
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -59,9 +63,12 @@ import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.PendingPost
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
+import com.craftflowtechnologies.meetingmind.core.circles2.PostMeta
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.circles2.ReactionKind
 import com.craftflowtechnologies.meetingmind.core.circles2.WhoCanInvite
+import com.craftflowtechnologies.meetingmind.core.circles2.WorkPriority
+import com.craftflowtechnologies.meetingmind.core.circles2.WorkStatus
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
@@ -107,11 +114,22 @@ class FeedActions(
     /** Opens member profile info sheet. */
     val onMemberClick: (String) -> Unit = {},
     /** Called when an attachment couldn't be read or is refused. */
-    val onPhotoRefused: (String) -> Unit = {}
+    val onPhotoRefused: (String) -> Unit = {},
+    /** Restores the locally saved draft for this circle. */
+    val onResumeDraft: () -> Unit = {},
+    /** Discards the locally saved draft for this circle. */
+    val onDiscardDraft: () -> Unit = {},
+    val onSetWorkStatus: (Post, WorkStatus) -> Unit = { _, _ -> }
 ) { companion object { val None = FeedActions() } }
 
 @Composable
-fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier: Modifier = Modifier) {
+fun FeedTab(
+    state: CircleHomeUiState,
+    now: Long,
+    actions: FeedActions,
+    modifier: Modifier = Modifier,
+    savedDraft: com.craftflowtechnologies.meetingmind.core.circles2.ComposerDraft? = null
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
@@ -134,17 +152,87 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
             }
         }
     }
+    val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val f = readPickedAsync(context, uri)
+                if (f != null) {
+                    if (f.name.orEmpty().endsWith(".mov", ignoreCase = true) ||
+                        f.name.orEmpty().endsWith(".3gp", ignoreCase = true) ||
+                        f.mime.contains("quicktime") ||
+                        f.mime.contains("3gpp")
+                    ) {
+                        actions.onPhotoRefused("MOV and 3GPP formats are not supported yet. Please select an MP4 or WebM video.")
+                    } else {
+                        actions.onPhoto(f)
+                    }
+                } else {
+                    actions.onPhotoRefused("That file couldn't be read or is too large.")
+                }
+            }
+        }
+    }
+    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val f = readPickedAsync(context, uri)
+                if (f != null) {
+                    actions.onPhoto(f)
+                } else {
+                    actions.onPhotoRefused("That file couldn't be read or is too large.")
+                }
+            }
+        }
+    }
     val circle = state.circle ?: return
     val canPost = circle.settings.allowedTypes.any { !it.adminOnly || state.isAdmin }
     val allMedia = remember(state.posts) { state.posts.flatMap { it.post.attachments } }
     var showSharedMediaSheet by remember { mutableStateOf(false) }
     var selectedFilter by rememberSaveable { mutableStateOf("All") }
 
-    val filteredPosts = remember(state.posts, selectedFilter) {
-        when (selectedFilter) {
-            "All" -> state.posts
-            "Media" -> state.posts.filter { it.post.attachments.isNotEmpty() }
-            else -> state.posts.filter { it.post.type.name == selectedFilter }
+    val nextSyncEvent = remember(state.events, now) {
+        state.events
+            .filter { it.status != "cancelled" && it.endsAt > now }
+            .minByOrNull { it.startsAt }
+    }
+    val openTasksCount = remember(state.posts) {
+        state.posts.count { it.post.type == PostType.Task && !it.post.isResolved }
+    }
+    val myTasksCount = remember(state.posts, state.myUid) {
+        state.posts.count {
+            it.post.type == PostType.Task && !it.post.isResolved &&
+                ((state.myUid != null && it.post.meta?.assigneeUid == state.myUid) || it.mine)
+        }
+    }
+    val blockersCount = remember(state.posts) {
+        state.posts.count { it.post.type == PostType.Blocker && !it.post.isResolved }
+    }
+
+    val filteredPosts = remember(state.posts, selectedFilter, circle.isWork, state.myUid) {
+        if (circle.isWork) {
+            when (selectedFilter) {
+                "All" -> state.posts
+                "My Tasks" -> state.posts.filter {
+                    it.post.type == PostType.Task && (
+                        it.mine || (state.myUid != null && it.post.meta?.assigneeUid == state.myUid)
+                    )
+                }
+                "Decisions" -> state.posts.filter { it.post.type == PostType.Decision }
+                "Blockers" -> state.posts.filter { it.post.type == PostType.Blocker }
+                "Tasks" -> state.posts.filter { it.post.type == PostType.Task }
+                "Briefs" -> state.posts.filter { it.post.type == PostType.Brief }
+                "Updates" -> state.posts.filter {
+                    it.post.type == PostType.Standup || it.post.type == PostType.Announcement || it.post.counts.updates > 0
+                }
+                "Media" -> state.posts.filter { it.post.attachments.isNotEmpty() }
+                else -> state.posts.filter { it.post.type.name == selectedFilter }
+            }
+        } else {
+            when (selectedFilter) {
+                "All" -> state.posts
+                "Media" -> state.posts.filter { it.post.attachments.isNotEmpty() }
+                else -> state.posts.filter { it.post.type.name == selectedFilter }
+            }
         }
     }
 
@@ -154,25 +242,103 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
     ) {
         state.failure?.let { f -> item { StatusLine(StatusKind.Warning, f.message) } }
         item { CircleHero(circle, state, actions) }
-        item { ComposerCard(circle, state, actions, onPhotoClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }) }
+        if (savedDraft != null && savedDraft.hasContent()) {
+            item {
+                val label = com.craftflowtechnologies.meetingmind.core.circles2.PostType.entries
+                    .firstOrNull { it.wire == savedDraft.typeWire }?.label ?: "Draft"
+                Surface(
+                    shape = MM.radius.card,
+                    color = CirclesPalette.WarmBg,
+                    border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
+                    modifier = Modifier.fillMaxWidth().clickable { actions.onResumeDraft() }
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = MM.space.m, vertical = MM.space.s),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Unfinished $label saved", style = MM.type.bodyStrong, color = CirclesPalette.WarmInk)
+                            Text(
+                                savedDraft.body.lineSequence().firstOrNull()?.take(80).orEmpty().ifBlank { savedDraft.verse },
+                                style = MM.type.caption,
+                                color = MM.colors.inkSecondary,
+                                maxLines = 1
+                            )
+                        }
+                        TextAction("Resume", onClick = actions.onResumeDraft)
+                        TextAction("Discard", onClick = actions.onDiscardDraft)
+                    }
+                }
+            }
+        }
+        if (circle.isWork && nextSyncEvent != null) {
+            item(key = "work_next_sync") {
+                NextSyncMeetingStrip(nextSyncEvent, actions.onOpenEvent)
+            }
+        }
+        item {
+            ComposerCard(
+                circle = circle,
+                state = state,
+                actions = actions,
+                onPhotoClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+                onVideoClick = { pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+                onPdfClick = { pickPdf.launch("application/pdf") }
+            )
+        }
+        if (circle.isWork) {
+            item(key = "work_pulse") {
+                WorkPulseStrip(
+                    openTasks = openTasksCount,
+                    myTasks = myTasksCount,
+                    blockers = blockersCount,
+                    selectedFilter = selectedFilter,
+                    onSelectFilter = { selectedFilter = it }
+                )
+            }
+        }
         item { EventsSection(state.events, now, actions.onOpenEvent, if (state.canModerate) actions.onNewEvent else null) }
         if (allMedia.isNotEmpty()) {
             item { SharedMediaSection(circle.id, allMedia, onSeeAll = { showSharedMediaSheet = true }) }
         }
-        item {
+        item(key = "feed_filter_chips") {
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(MM.space.s)
             ) {
-                MMChip("All", selected = selectedFilter == "All", onClick = { selectedFilter = "All" })
-                MMChip("Media", selected = selectedFilter == "Media", onClick = { selectedFilter = "Media" })
-                circle.settings.allowedTypes.forEach { type ->
-                    MMChip(
-                        type.label,
-                        selected = selectedFilter == type.name,
-                        onClick = { selectedFilter = type.name }
-                    )
+                if (circle.isWork) {
+                    val workFilters = listOf("All", "My Tasks", "Decisions", "Blockers", "Tasks", "Briefs", "Updates")
+                    workFilters.forEach { f ->
+                        MMChip(
+                            label = f,
+                            selected = selectedFilter == f,
+                            onClick = { selectedFilter = f }
+                        )
+                    }
+                    if (allMedia.isNotEmpty()) {
+                        MMChip(
+                            label = "Media",
+                            selected = selectedFilter == "Media",
+                            onClick = { selectedFilter = "Media" }
+                        )
+                    }
+                } else {
+                    MMChip("All", selected = selectedFilter == "All", onClick = { selectedFilter = "All" })
+                    MMChip("Media", selected = selectedFilter == "Media", onClick = { selectedFilter = "Media" })
+                    circle.settings.allowedTypes.forEach { type ->
+                        MMChip(
+                            type.label,
+                            selected = selectedFilter == type.name,
+                            onClick = { selectedFilter = type.name }
+                        )
+                    }
                 }
+            }
+        }
+        if (circle.isWork && selectedFilter == "Decisions") {
+            item(key = "decision_log_header") {
+                DecisionLogHeader(filteredPosts.size)
             }
         }
         if (selectedFilter == "All") {
@@ -187,11 +353,24 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
         if (filteredPosts.isEmpty()) {
             item {
                 EmptyState(
-                    title = if (selectedFilter == "All") "Nothing shared yet" else "No posts found",
-                    body = if (selectedFilter != "All") "No posts match the \"${selectedFilter}\" filter."
-                    else if (circle.isWork) "Share tasks, decisions, briefs and updates. Only members of this team can see it."
-                    else "Share a prayer request, a testimony or a word of encouragement. Only members of this ${circle.groupWord.lowercase()} can see it.",
-                    action = if (canPost && selectedFilter == "All") { { PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) } } else null
+                    title = when {
+                        selectedFilter == "Decisions" -> "No decisions recorded yet"
+                        selectedFilter == "All" -> "Nothing shared yet"
+                        else -> "No posts found"
+                    },
+                    body = when {
+                        selectedFilter == "Decisions" -> "Record key team decisions and their context to keep everyone aligned."
+                        selectedFilter != "All" -> "No posts match the \"${selectedFilter}\" filter."
+                        circle.isWork -> "Share tasks, decisions, briefs and updates. Only members of this team can see it."
+                        else -> "Share a prayer request, a testimony or a word of encouragement. Only members of this ${circle.groupWord.lowercase()} can see it."
+                    },
+                    action = if (canPost) {
+                        when {
+                            selectedFilter == "Decisions" -> ({ PrimaryButton("Record decision", { actions.onStartPost(PostType.Decision) }, leadingIcon = Icons.Rounded.Add) })
+                            selectedFilter == "All" -> ({ PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) })
+                            else -> null
+                        }
+                    } else null
                 )
             }
         } else {
@@ -246,7 +425,7 @@ private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedAc
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(160.dp)
+                    .height(148.dp)
                     .background(
                         Brush.linearGradient(
                             listOf(CirclesPalette.CoverStart, CirclesPalette.Accent, CirclesPalette.CoverEnd)
@@ -256,6 +435,15 @@ private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedAc
                 if (circle.coverPath != null) {
                     MediaImage(circle.id, circle.coverPath, Modifier.fillMaxSize(), "Cover photo for ${circle.name}")
                 }
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))
+                            )
+                        )
+                )
                 Row(
                     modifier = Modifier.align(Alignment.BottomStart).padding(MM.space.m),
                     verticalAlignment = Alignment.CenterVertically,
@@ -328,15 +516,21 @@ private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedAc
 
 /** The composer at the top of the feed (`circle_feed.html`): avatar + prompt, type chips, and bottom icon bar + Post pill. */
 @Composable
-private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: FeedActions, onPhotoClick: () -> Unit) {
+private fun ComposerCard(
+    circle: Circle,
+    state: CircleHomeUiState,
+    actions: FeedActions,
+    onPhotoClick: () -> Unit,
+    onVideoClick: () -> Unit = {},
+    onPdfClick: () -> Unit = {}
+) {
     val c = MM.colors
     val myName = state.me?.displayName?.ifBlank { "You" } ?: "You"
     MMCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
-            MemberAvatar(circle.id, state.myUid, myName, state.me?.avatarVersion, size = 38.dp)
+            MemberAvatar(circle.id, state.myUid, myName, state.me?.avatarVersion, size = 40.dp)
             Text(
-                if (circle.isWork) "Share an update, task or decision with ${circle.name}…"
-                else "Share anything with ${circle.name}…",
+                "Share an update with ${circle.name}…",
                 style = MM.type.body,
                 color = c.inkMuted,
                 modifier = Modifier.weight(1f).clickable { actions.onStartPost(PostType.Note) }
@@ -367,7 +561,25 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
                     modifier = Modifier.size(36.dp).clickable(onClick = onPhotoClick)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Image, "Add a photo", tint = c.inkSecondary, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.Image, "Add photo", tint = c.inkSecondary, modifier = Modifier.size(18.dp))
+                    }
+                }
+                Surface(
+                    shape = MM.radius.pill,
+                    color = c.surfaceSunk,
+                    modifier = Modifier.size(36.dp).clickable(onClick = onVideoClick)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Videocam, "Add video", tint = c.inkSecondary, modifier = Modifier.size(18.dp))
+                    }
+                }
+                Surface(
+                    shape = MM.radius.pill,
+                    color = c.surfaceSunk,
+                    modifier = Modifier.size(36.dp).clickable(onClick = onPdfClick)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.PictureAsPdf, "Add PDF", tint = c.inkSecondary, modifier = Modifier.size(18.dp))
                     }
                 }
                 if (state.canModerate) {
@@ -473,6 +685,131 @@ private fun PendingCard(p: PendingPost, actions: FeedActions) {
 }
 
 @Composable
+private fun PostMediaGrid(
+    circleId: String,
+    attachments: List<MediaAttachment>,
+    who: String,
+    modifier: Modifier = Modifier
+) {
+    if (attachments.isEmpty()) return
+    Box(modifier = modifier.fillMaxWidth().clip(MM.radius.card)) {
+        when (attachments.size) {
+            1 -> {
+                val a = attachments[0]
+                AttachmentTile(
+                    circleId = circleId,
+                    a = a,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 200.dp, max = 300.dp)
+                        .clip(MM.radius.card),
+                    contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
+                )
+            }
+            2 -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    attachments.take(2).forEach { a ->
+                        AttachmentTile(
+                            circleId = circleId,
+                            a = a,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(180.dp)
+                                .clip(MM.radius.card),
+                            contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
+                        )
+                    }
+                }
+            }
+            3 -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(220.dp),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    val a0 = attachments[0]
+                    AttachmentTile(
+                        circleId = circleId,
+                        a = a0,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(MM.radius.card),
+                        contentDescription = if (a0.isVideo) "Video from $who" else "Photo from $who"
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    ) {
+                        val a1 = attachments[1]
+                        val a2 = attachments[2]
+                        AttachmentTile(
+                            circleId = circleId,
+                            a = a1,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(108.dp)
+                                .clip(MM.radius.card),
+                            contentDescription = if (a1.isVideo) "Video from $who" else "Photo from $who"
+                        )
+                        AttachmentTile(
+                            circleId = circleId,
+                            a = a2,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(108.dp)
+                                .clip(MM.radius.card),
+                            contentDescription = if (a2.isVideo) "Video from $who" else "Photo from $who"
+                        )
+                    }
+                }
+            }
+            else -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    ) {
+                        attachments.take(2).forEach { a ->
+                            AttachmentTile(
+                                circleId = circleId,
+                                a = a,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(136.dp)
+                                    .clip(MM.radius.card),
+                                contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    ) {
+                        attachments.drop(2).take(2).forEach { a ->
+                            AttachmentTile(
+                                circleId = circleId,
+                                a = a,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(136.dp)
+                                    .clip(MM.radius.card),
+                                contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun PostCard(
     item: FeedPost,
     circle: Circle,
@@ -496,13 +833,14 @@ fun PostCard(
         item.mine -> "You"
         else -> post.authorName ?: "Member"
     }
-    val authorVersion = remember(post.authorUid, members) {
-        members.firstOrNull { it.uid == post.authorUid }?.avatarVersion
+    val authorMember = remember(post.authorUid, members) {
+        members.firstOrNull { it.uid == post.authorUid }
     }
+    val authorVersion = authorMember?.avatarVersion
     MMCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (post.anonymous) {
-                Surface(shape = MM.radius.pill, color = c.surfaceSunk, modifier = Modifier.size(MMSize.minTouch)) {
+                Surface(shape = MM.radius.pill, color = c.surfaceSunk, modifier = Modifier.size(42.dp)) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Person, null, tint = c.inkMuted) }
                 }
             } else {
@@ -516,14 +854,27 @@ fun PostCard(
                 )
             }
             Spacer(Modifier.width(MM.space.m))
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                ) {
+                    Text(
+                        who,
+                        style = MM.type.bodyStrong,
+                        color = c.ink,
+                        modifier = if (!post.anonymous) Modifier.clickable { actions.onMemberClick(post.authorUid ?: who) } else Modifier
+                    )
+                    if (!post.anonymous && authorMember != null) {
+                        authorMember.title?.takeIf { it.isNotBlank() }?.let { TitleTag(it) }
+                        if (authorMember.role.canModerate) RoleTag(authorMember.role)
+                    }
+                }
                 Text(
-                    who,
-                    style = MM.type.bodyStrong,
-                    color = c.ink,
-                    modifier = if (!post.anonymous) Modifier.clickable { actions.onMemberClick(post.authorUid ?: who) } else Modifier
+                    "${relativeTime(now, post.createdAt)}${if (post.editedAt != null) " · edited" else ""}",
+                    style = MM.type.caption,
+                    color = c.inkSecondary
                 )
-                Text("${post.type.label} · ${relativeTime(now, post.createdAt)}${if (post.editedAt != null) " · edited" else ""}", style = MM.type.caption, color = c.inkSecondary)
             }
             PostTypeBadge(post.type)
             Box {
@@ -532,18 +883,29 @@ fun PostCard(
                     if (post.body.isNotBlank()) MenuItem("Copy text") { clipboard.setText(AnnotatedString(post.body)); menu = false }
                     MenuItem("Share post") {
                         menu = false
-                        val shareText = buildString {
+                        val rawText = buildString {
                             append(post.body)
                             if (!post.verseRef.isNullOrBlank()) {
                                 append("\n\n— ")
                                 append(post.verseRef)
                             }
                         }
+                        val shareText = com.craftflowtechnologies.meetingmind.core.share.AppLinks.withAppLink(
+                            rawText,
+                            if (circle.isWork) "Shared from ${circle.name} on MeetingMind" else "Pray & grow together on MeetingMind"
+                        )
                         ShareHelper.shareText(context, "${circle.name} · ${post.type.label}", shareText, "Share Post")
                     }
                     if (item.mine && post.type == PostType.Prayer && !post.answered) {
                         MenuItem("Post an update") { menu = false; actions.onUpdate(post) }
                         MenuItem("Mark answered") { menu = false; actions.onMarkAnswered(post) }
+                    }
+                    if ((post.type == PostType.Task || post.type == PostType.Blocker) && !post.isResolved && (item.mine || canModerate)) {
+                        MenuItem("Mark as Done") {
+                            menu = false
+                            actions.onSetWorkStatus(post, WorkStatus.Done)
+                            actions.onMarkAnswered(post)
+                        }
                     }
                     if (post.type == PostType.Task && !post.answered && (item.mine || canModerate)) {
                         MenuItem("Mark completed") { menu = false; actions.onMarkAnswered(post) }
@@ -557,31 +919,117 @@ fun PostCard(
             }
         }
         if (post.type == PostType.Task) {
-            Surface(
-                shape = MM.radius.pill,
-                color = if (post.answered) CirclesPalette.GreenBg else CirclesPalette.AccentSoft,
-                modifier = Modifier.padding(top = MM.space.s)
+            Row(
+                Modifier.padding(top = MM.space.s),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
             ) {
-                Row(
-                    Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                Surface(
+                    shape = MM.radius.pill,
+                    color = CirclesPalette.AccentSoft
                 ) {
-                    if (post.answered) Icon(Icons.Rounded.Check, null, tint = CirclesPalette.GreenInk, modifier = Modifier.size(13.dp))
                     Text(
-                        if (post.answered) "Completed ✅" else "Action item",
+                        "Action item",
                         style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                        color = if (post.answered) CirclesPalette.GreenInk else CirclesPalette.AccentDeep
+                        color = CirclesPalette.AccentDeep,
+                        modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
                     )
                 }
             }
+            WorkStatusToggle(
+                currentStatus = post.workStatus,
+                onStatusChange = { nextStatus ->
+                    actions.onSetWorkStatus(post, nextStatus)
+                    if (nextStatus == WorkStatus.Done && !post.answered) {
+                        actions.onMarkAnswered(post)
+                    }
+                },
+                modifier = Modifier.padding(top = MM.space.xs)
+            )
         } else if (post.type == PostType.Decision) {
-            Surface(shape = MM.radius.pill, color = CirclesPalette.RoseBg, modifier = Modifier.padding(top = MM.space.s)) {
-                Text("Decision record 📋", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.RoseInk, modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs))
+            Surface(
+                shape = MM.radius.card,
+                color = CirclesPalette.RoseBg.copy(alpha = 0.35f),
+                modifier = Modifier.fillMaxWidth().padding(top = MM.space.s)
+            ) {
+                Row(Modifier.height(IntrinsicSize.Min)) {
+                    Box(
+                        Modifier
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .background(CirclesPalette.RoseInk, MM.radius.pill)
+                    )
+                    Row(
+                        Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Decision record 📋", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = CirclesPalette.RoseInk)
+                    }
+                }
+            }
+        } else if (post.type == PostType.Blocker) {
+            Surface(
+                shape = MM.radius.card,
+                color = CirclesPalette.RoseBg.copy(alpha = 0.35f),
+                modifier = Modifier.fillMaxWidth().padding(top = MM.space.s)
+            ) {
+                Row(Modifier.height(IntrinsicSize.Min)) {
+                    Box(
+                        Modifier
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .background(CirclesPalette.RoseInk, MM.radius.pill)
+                    )
+                    Row(
+                        Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Blocker ⚠️", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = CirclesPalette.RoseInk)
+                    }
+                }
+            }
+            WorkStatusToggle(
+                currentStatus = post.workStatus,
+                onStatusChange = { nextStatus ->
+                    actions.onSetWorkStatus(post, nextStatus)
+                    if (nextStatus == WorkStatus.Done && !post.answered) {
+                        actions.onMarkAnswered(post)
+                    }
+                },
+                modifier = Modifier.padding(top = MM.space.xs)
+            )
+        } else if (post.type == PostType.Brief) {
+            Surface(
+                shape = MM.radius.card,
+                color = CirclesPalette.WarmBg.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth().padding(top = MM.space.s)
+            ) {
+                Row(Modifier.height(IntrinsicSize.Min)) {
+                    Box(
+                        Modifier
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .background(CirclesPalette.WarmInk, MM.radius.pill)
+                    )
+                    Row(
+                        Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Project brief 📄", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = CirclesPalette.WarmInk)
+                    }
+                }
             }
         } else if (post.answered) {
             Surface(shape = MM.radius.pill, color = CirclesPalette.GreenBg, modifier = Modifier.padding(top = MM.space.s)) {
                 Text("Answered 🎉", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.GreenInk, modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs))
+            }
+        }
+        post.meta?.let { meta ->
+            if (!meta.isEmpty) {
+                PostMetaChips(meta, Modifier.padding(top = MM.space.s))
             }
         }
         SelectionContainer {
@@ -616,38 +1064,18 @@ fun PostCard(
                 }
             }
         }
-        if (post.attachments.isNotEmpty()) {
-            if (post.attachments.size == 1) {
-                val a = post.attachments.first()
-                AttachmentTile(
-                    circleId = circle.id,
-                    a = a,
-                    modifier = Modifier.padding(top = MM.space.s).fillMaxWidth().heightIn(min = 140.dp, max = 260.dp).clip(MM.radius.card),
-                    contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
-                )
-            } else {
-                Column(Modifier.padding(top = MM.space.s), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    post.attachments.chunked(2).forEach { rowItems ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            rowItems.forEach { a ->
-                                AttachmentTile(
-                                    circleId = circle.id,
-                                    a = a,
-                                    modifier = Modifier.weight(1f).height(140.dp).clip(MM.radius.card),
-                                    contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
-                                )
-                            }
-                            if (rowItems.size == 1) Spacer(Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-        }
+        PostMediaGrid(circle.id, post.attachments, who, Modifier.padding(top = MM.space.s))
         Row(Modifier.fillMaxWidth().padding(top = MM.space.s), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
             if (post.type == PostType.Prayer) {
                 PrayButton(post.counts.prayed, item.prayedByMe) { actions.onPray(post) }
             } else {
-                circle.settings.reactions.forEach { k ->
+                var showReactionPicker by remember { mutableStateOf(false) }
+                val activeReactions = remember(circle.settings.reactions, post.counts.reactions, item.myReaction) {
+                    circle.settings.reactions.filter { k ->
+                        (post.counts.reactions[k] ?: 0) > 0 || item.myReaction == k
+                    }
+                }
+                activeReactions.forEach { k ->
                     val n = post.counts.reactions[k] ?: 0
                     val isMyReaction = item.myReaction == k
                     val targetBg = when {
@@ -694,19 +1122,85 @@ fun PostCard(
                         )
                     }
                 }
+                Box {
+                    Surface(
+                        shape = MM.radius.pill,
+                        color = c.surfaceSunk,
+                        border = BorderStroke(1.dp, c.line),
+                        modifier = Modifier.clickable { showReactionPicker = true }
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.Add, "Add reaction", tint = c.inkSecondary, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = showReactionPicker,
+                        onDismissRequest = { showReactionPicker = false },
+                        containerColor = c.surfaceRaised
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs),
+                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                        ) {
+                            circle.settings.reactions.forEach { k ->
+                                Surface(
+                                    shape = MM.radius.pill,
+                                    color = if (item.myReaction == k) c.accentWash else Color.Transparent,
+                                    modifier = Modifier.clickable {
+                                        actions.onReact(post, k)
+                                        showReactionPicker = false
+                                    }
+                                ) {
+                                    Text(
+                                        k.emoji,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
             Spacer(Modifier.weight(1f))
-            Row(
-                modifier = Modifier.clickable { actions.onOpenThread(post) }.padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            Surface(
+                shape = MM.radius.pill,
+                color = c.surfaceSunk,
+                modifier = Modifier.clickable { actions.onOpenThread(post) }
             ) {
-                Icon(Icons.Rounded.ChatBubbleOutline, null, tint = c.inkSecondary, modifier = Modifier.size(16.dp))
-                Text(
-                    if (post.counts.comments > 0) "${post.counts.comments} comments" else "Comment",
-                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                    color = c.inkSecondary
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(Icons.Rounded.ChatBubbleOutline, null, tint = c.inkSecondary, modifier = Modifier.size(15.dp))
+                    Text(
+                        if (post.counts.comments > 0) "${post.counts.comments}" else "Comment",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = c.inkSecondary
+                    )
+                }
+            }
+            IconButton(
+                onClick = {
+                    val rawText = buildString {
+                        append(post.body)
+                        if (!post.verseRef.isNullOrBlank()) {
+                            append("\n\n— ")
+                            append(post.verseRef)
+                        }
+                    }
+                    val shareText = com.craftflowtechnologies.meetingmind.core.share.AppLinks.withAppLink(
+                        rawText,
+                        if (circle.isWork) "Shared from ${circle.name} on MeetingMind" else "Pray & grow together on MeetingMind"
+                    )
+                    ShareHelper.shareText(context, "${circle.name} · ${post.type.label}", shareText, "Share Post")
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.Rounded.Share, "Share", tint = c.inkSecondary, modifier = Modifier.size(16.dp))
             }
         }
         if (post.type == PostType.Prayer && post.answered && item.mine) {
@@ -839,6 +1333,391 @@ fun PostVerseCard(
                         "Read chapter →",
                         style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
                         color = CirclesPalette.WarmInk
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun formatEventWhen(startMs: Long, zone: String): String =
+    java.text.SimpleDateFormat("EEE d MMM, h:mm a", java.util.Locale.getDefault()).apply {
+        timeZone = java.util.TimeZone.getTimeZone(zone)
+    }.format(java.util.Date(startMs))
+
+@Composable
+private fun NextSyncMeetingStrip(
+    event: CircleEvent,
+    onOpen: (CircleEvent) -> Unit
+) {
+    val context = LocalContext.current
+    MMCard {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+                modifier = Modifier.weight(1f)
+            ) {
+                Surface(
+                    shape = MM.radius.pill,
+                    color = CirclesPalette.AccentSoft,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Rounded.Videocam,
+                            contentDescription = null,
+                            tint = CirclesPalette.Accent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        "NEXT SYNC",
+                        style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
+                        color = CirclesPalette.Accent
+                    )
+                    Text(
+                        event.title,
+                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
+                        color = MM.colors.ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        formatEventWhen(event.startsAt, event.timeZone),
+                        style = MM.type.caption,
+                        color = MM.colors.inkSecondary
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+            ) {
+                if (!event.onlineUrl.isNullOrBlank()) {
+                    Surface(
+                        shape = MM.radius.pill,
+                        color = CirclesPalette.Accent,
+                        modifier = Modifier.clickable {
+                            runCatching {
+                                val uri = Uri.parse(event.onlineUrl)
+                                val intent = Intent(Intent.ACTION_VIEW, uri)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            }
+                        }
+                    ) {
+                        Text(
+                            "Join link",
+                            style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                            color = CirclesPalette.White,
+                            modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                        )
+                    }
+                }
+                Surface(
+                    shape = MM.radius.pill,
+                    color = MM.colors.surfaceSunk,
+                    border = BorderStroke(1.dp, MM.colors.line),
+                    modifier = Modifier.clickable { onOpen(event) }
+                ) {
+                    Text(
+                        "RSVP",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = MM.colors.inkSecondary,
+                        modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkPulseStrip(
+    openTasks: Int,
+    myTasks: Int,
+    blockers: Int,
+    selectedFilter: String,
+    onSelectFilter: (String) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+    ) {
+        WorkPulseTile(
+            title = "Open tasks",
+            count = openTasks,
+            selected = selectedFilter == "Tasks",
+            accentColor = CirclesPalette.Accent,
+            modifier = Modifier.weight(1f),
+            onClick = { onSelectFilter(if (selectedFilter == "Tasks") "All" else "Tasks") }
+        )
+        WorkPulseTile(
+            title = "My tasks",
+            count = myTasks,
+            selected = selectedFilter == "My Tasks",
+            accentColor = CirclesPalette.WarmInk,
+            modifier = Modifier.weight(1f),
+            onClick = { onSelectFilter(if (selectedFilter == "My Tasks") "All" else "My Tasks") }
+        )
+        WorkPulseTile(
+            title = "Blockers",
+            count = blockers,
+            selected = selectedFilter == "Blockers",
+            accentColor = CirclesPalette.RoseInk,
+            isWarning = blockers > 0,
+            modifier = Modifier.weight(1f),
+            onClick = { onSelectFilter(if (selectedFilter == "Blockers") "All" else "Blockers") }
+        )
+    }
+}
+
+@Composable
+private fun WorkPulseTile(
+    title: String,
+    count: Int,
+    selected: Boolean,
+    accentColor: Color,
+    modifier: Modifier = Modifier,
+    isWarning: Boolean = false,
+    onClick: () -> Unit
+) {
+    val c = MM.colors
+    val bg = when {
+        selected -> accentColor.copy(alpha = 0.12f)
+        isWarning -> CirclesPalette.RoseBg
+        else -> c.surfaceSunk
+    }
+    val border = when {
+        selected -> accentColor
+        isWarning -> CirclesPalette.RoseInk.copy(alpha = 0.35f)
+        else -> c.line
+    }
+    Surface(
+        shape = MM.radius.card,
+        color = bg,
+        border = BorderStroke(1.dp, border),
+        modifier = modifier.clip(MM.radius.card).clickable(onClick = onClick)
+    ) {
+        Column(
+            Modifier.padding(vertical = MM.space.m, horizontal = MM.space.s),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                count.toString(),
+                style = MM.type.title.copy(fontWeight = FontWeight.Bold),
+                color = if (isWarning || selected) accentColor else c.ink
+            )
+            Text(
+                title,
+                style = MM.type.caption.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+                color = if (selected) accentColor else c.inkSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun DecisionLogHeader(count: Int) {
+    Surface(
+        shape = MM.radius.card,
+        color = CirclesPalette.RoseBg.copy(alpha = 0.2f),
+        border = BorderStroke(1.dp, CirclesPalette.RoseInk.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            Modifier.padding(MM.space.m),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(MM.space.m)
+        ) {
+            Surface(
+                shape = MM.radius.pill,
+                color = CirclesPalette.RoseBg,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("📋", style = MM.type.bodyStrong)
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Decision Log",
+                    style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
+                    color = CirclesPalette.RoseInk
+                )
+                Text(
+                    "$count recorded ${if (count == 1) "decision" else "decisions"} for this team",
+                    style = MM.type.caption,
+                    color = MM.colors.inkSecondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostMetaChips(meta: PostMeta, modifier: Modifier = Modifier) {
+    if (meta.isEmpty) return
+    Row(
+        modifier = modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        meta.priority?.let { p ->
+            val (pBg, pFg) = when (p) {
+                WorkPriority.Urgent -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
+                WorkPriority.High -> CirclesPalette.WarmBg to CirclesPalette.WarmInk
+                WorkPriority.Normal -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
+                WorkPriority.Low -> MM.colors.surfaceSunk to MM.colors.inkSecondary
+            }
+            Surface(
+                shape = MM.radius.pill,
+                color = pBg,
+                border = BorderStroke(1.dp, pFg.copy(alpha = 0.25f))
+            ) {
+                Text(
+                    p.label,
+                    style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                    color = pFg,
+                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = 3.dp)
+                )
+            }
+        }
+        if (!meta.assigneeName.isNullOrBlank()) {
+            Surface(
+                shape = MM.radius.pill,
+                color = CirclesPalette.AccentSoft,
+                border = BorderStroke(1.dp, CirclesPalette.Accent.copy(alpha = 0.2f))
+            ) {
+                Text(
+                    "@${meta.assigneeName}",
+                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = CirclesPalette.AccentDeep,
+                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = 3.dp)
+                )
+            }
+        }
+        if (!meta.dueText.isNullOrBlank()) {
+            Surface(
+                shape = MM.radius.pill,
+                color = MM.colors.surfaceSunk,
+                border = BorderStroke(1.dp, MM.colors.line)
+            ) {
+                Text(
+                    "Due ${meta.dueText}",
+                    style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                    color = MM.colors.inkSecondary,
+                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = 3.dp)
+                )
+            }
+        }
+        if (!meta.blockedOn.isNullOrBlank()) {
+            Surface(
+                shape = MM.radius.pill,
+                color = CirclesPalette.RoseBg,
+                border = BorderStroke(1.dp, CirclesPalette.RoseInk.copy(alpha = 0.25f))
+            ) {
+                Text(
+                    "Blocked: ${meta.blockedOn}",
+                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = CirclesPalette.RoseInk,
+                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = 3.dp)
+                )
+            }
+        }
+        if (!meta.decisionOwner.isNullOrBlank()) {
+            Surface(
+                shape = MM.radius.pill,
+                color = CirclesPalette.WarmBg,
+                border = BorderStroke(1.dp, CirclesPalette.WarmBorder)
+            ) {
+                Text(
+                    "Owner: ${meta.decisionOwner}",
+                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = CirclesPalette.WarmInk,
+                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = 3.dp)
+                )
+            }
+        }
+        if (!meta.sourceKind.isNullOrBlank()) {
+            val sourceText = buildString {
+                append("From ")
+                append(meta.sourceKind)
+                if (!meta.meetingDate.isNullOrBlank()) {
+                    append(" · ")
+                    append(meta.meetingDate)
+                }
+            }
+            Surface(
+                shape = MM.radius.pill,
+                color = MM.colors.surfaceSunk,
+                border = BorderStroke(1.dp, MM.colors.line)
+            ) {
+                Text(
+                    sourceText,
+                    style = MM.type.caption,
+                    color = MM.colors.inkMuted,
+                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkStatusToggle(
+    currentStatus: WorkStatus,
+    onStatusChange: (WorkStatus) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val c = MM.colors
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+    ) {
+        WorkStatus.entries.forEach { status ->
+            val isSelected = status == currentStatus
+            val (bg, fg, border) = when (status) {
+                WorkStatus.Open -> if (isSelected) Triple(CirclesPalette.AccentSoft, CirclesPalette.AccentDeep, CirclesPalette.Accent.copy(alpha = 0.3f))
+                                   else Triple(c.surfaceSunk, c.inkMuted, c.line)
+                WorkStatus.InProgress -> if (isSelected) Triple(CirclesPalette.WarmBg, CirclesPalette.WarmInk, CirclesPalette.WarmBorder)
+                                         else Triple(c.surfaceSunk, c.inkMuted, c.line)
+                WorkStatus.Done -> if (isSelected) Triple(CirclesPalette.GreenBg, CirclesPalette.GreenInk, CirclesPalette.GreenInk.copy(alpha = 0.35f))
+                                   else Triple(c.surfaceSunk, c.inkMuted, c.line)
+            }
+            Surface(
+                shape = MM.radius.pill,
+                color = bg,
+                border = BorderStroke(1.dp, border),
+                modifier = Modifier.clickable {
+                    if (!isSelected) {
+                        onStatusChange(status)
+                    }
+                }
+            ) {
+                Row(
+                    Modifier.padding(horizontal = MM.space.m, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (status == WorkStatus.Done && isSelected) {
+                        Icon(Icons.Rounded.Check, null, tint = fg, modifier = Modifier.size(13.dp))
+                    }
+                    Text(
+                        status.label,
+                        style = MM.type.caption.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium),
+                        color = fg
                     )
                 }
             }

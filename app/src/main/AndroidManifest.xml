@@ -84,8 +84,18 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <!-- Circles invite links: meetingmind://c/GRACE-7K2Q (replaces the old mindcircle:// link that carried a key) -->
+                <!-- Circles invite & open links: meetingmind://c/GRACE-7K2Q -->
                 <data android:scheme="meetingmind" android:host="c" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Clickable HTTPS App Links for WhatsApp, SMS, and web fallbacks -->
+                <data
+                    android:scheme="https"
+                    android:host="meetingmind.app"
+                    android:pathPrefix="/c" />
             </intent-filter>
         </activity>
 
@@ -99,7 +109,10 @@
         </service>
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="circles" />
+            android:value="circles_posts" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_zuri_glyph" />
 
         <service
             android:name="com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService"

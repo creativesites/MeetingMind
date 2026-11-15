@@ -228,4 +228,37 @@ class NoteMomentHostTest {
         assertTrue("expected FirstKeep after processing completes, got $lastPlan", lastPlan is MomentPlan.FirstKeep)
         compose.onNodeWithText("Book the cabin").assertExists()
     }
+
+    @Test fun `selectNoteMomentSubject prefers pending recording event or newest recording over bare noteId`() {
+        assertEquals(
+            "m_pending",
+            selectNoteMomentSubject(
+                noteLoaded = true,
+                locked = false,
+                recordingIds = listOf("m_old", "m_pending", "m_new"),
+                noteId = "n1",
+                pendingIds = setOf("m_pending")
+            )
+        )
+        assertEquals(
+            "m_new",
+            selectNoteMomentSubject(
+                noteLoaded = true,
+                locked = false,
+                recordingIds = listOf("m_old", "m_new"),
+                noteId = "n1",
+                pendingIds = emptySet()
+            )
+        )
+        assertEquals(
+            null,
+            selectNoteMomentSubject(
+                noteLoaded = true,
+                locked = true,
+                recordingIds = listOf("m_new"),
+                noteId = "n1",
+                pendingIds = setOf("m_new")
+            )
+        )
+    }
 }

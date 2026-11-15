@@ -68,6 +68,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Tag
@@ -85,7 +87,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -154,7 +160,9 @@ fun NoteEditorScreen(
     /** Opens straight into the photo picker, for "New → Photo or video". */
     startWithMediaPicker: Boolean = false,
     onShareCard: (com.craftflowtechnologies.meetingmind.feature.share.ShareRequest) -> Unit = {},
-    onOpenTasks: () -> Unit = {}
+    onOpenTasks: () -> Unit = {},
+    onCreateCircle: () -> Unit = {},
+    onOpenStudyStudio: (noteId: String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -196,19 +204,35 @@ fun NoteEditorScreen(
     // The Unveil (docs/mvp/ZURI_SIGNATURE_MOMENTS.md §3.2): a fresh open of this note plays the planner's moment,
     // the same as the meeting detail. Its facts come from the note's first recording, or from the note itself
     // when it has none; the Faith lock and the loading note plan nothing yet. A return to this entry (sub-screens, rotation, resume) never replays.
-    val momentSubject = com.craftflowtechnologies.meetingmind.feature.moments.noteMomentSubject(
-        noteLoaded = note != null && recordingsLoaded, locked = lockNeeded && !faithUnlocked, recordingIds = recordings.keys, noteId = viewModel.noteId
+    val pendingReady by com.craftflowtechnologies.meetingmind.feature.moments.NoteReadyEvents.pending.collectAsState()
+    val pendingReadyIds = remember(pendingReady) { pendingReady.map { it.noteId }.toSet() }
+    val momentSubject = com.craftflowtechnologies.meetingmind.feature.moments.selectNoteMomentSubject(
+        noteLoaded = note != null && recordingsLoaded,
+        locked = lockNeeded && !faithUnlocked,
+        recordingIds = recordings.keys,
+        noteId = viewModel.noteId,
+        pendingIds = pendingReadyIds
     )
-    val noteMoment = com.craftflowtechnologies.meetingmind.feature.moments.rememberNoteMoment(momentSubject)
+    val momentCard = recordings[momentSubject]
+    val noteMoment = com.craftflowtechnologies.meetingmind.feature.moments.rememberNoteMoment(
+        momentSubject,
+        refreshKey = momentCard?.status
+    )
     val momentForm = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings().value.form
     val createController = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
-    val momentCard = recordings[momentSubject]
 
     var showInsert by remember { mutableStateOf(false) }
     var showLink by remember { mutableStateOf(false) }
     var showTags by remember { mutableStateOf(false) }
     var showNotebooks by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
+    var showShareToCircle by remember { mutableStateOf(false) }
+    var noteStayOnDevice by remember(note?.id, note?.notebookId) { mutableStateOf(false) }
+    LaunchedEffect(note?.id, note?.notebookId, note?.workflow) {
+        noteStayOnDevice = note?.let { n ->
+            com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.mustStayOnDevice(context, noteId = n.id)
+        } ?: false
+    }
     var showCopyAs by remember { mutableStateOf(false) }
     var showExcerpts by remember { mutableStateOf(false) }
     var recordingPick by remember { mutableStateOf<NoteEditorViewModel.RecordingContent?>(null) }
@@ -219,6 +243,8 @@ fun NoteEditorScreen(
         androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) viewModel.setCover(uri) }
     val aiJobs by viewModel.aiJobs.collectAsState()
+    val pendingDiffs by viewModel.pendingDiffs.collectAsState()
+    val pendingDiffByBlock = remember(pendingDiffs) { pendingDiffs.associateBy { it.blockId } }
     var showAiMenu by remember { mutableStateOf(false) }
     var showReadToMe by remember { mutableStateOf(false) }
     var showAsk by remember { mutableStateOf(false) }
@@ -245,10 +271,20 @@ fun NoteEditorScreen(
     LaunchedEffect(gone) { if (gone) onNavigateBack() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); viewModel.consumeMessage() } }
 
-    val back = {
-        scope.launch { viewModel.flush() }
-        onNavigateBack()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                viewModel.flushOnPause()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
+
+    val back = { viewModel.flushAndExit(onNavigateBack) }
     BackHandler { back() }
 
     // ---- launchers
@@ -428,7 +464,41 @@ fun NoteEditorScreen(
                         DropdownMenuItem(text = { Text("Tidy into fewer blocks") }, leadingIcon = { Icon(Icons.Filled.ViewAgenda, null) }, onClick = { showMenu = false; viewModel.combineTextIntoMarkdown() })
                         DropdownMenuItem(text = { Text("Copy as…") }, leadingIcon = { Icon(Icons.Filled.ContentCopy, null) }, onClick = { showMenu = false; showCopyAs = true })
                         DropdownMenuItem(text = { Text("Export & share") }, leadingIcon = { Icon(Icons.Filled.IosShare, null) }, onClick = { showMenu = false; showExport = true })
+                        val canShareToFaithCircle = note?.let { n ->
+                            !n.isPrivate && !noteStayOnDevice &&
+                                com.craftflowtechnologies.meetingmind.core.model.Workflows.space(n.workflow) != com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK
+                        } == true
+                        if (canShareToFaithCircle) {
+                            DropdownMenuItem(
+                                text = { Text("Share to Circle") },
+                                leadingIcon = { Icon(Icons.Rounded.Groups, null, tint = Accent) },
+                                onClick = {
+                                    showMenu = false
+                                    if (note?.plainText.isNullOrBlank()) {
+                                        scope.launch { snackbar.showSnackbar("Add some reflection text before sharing to a Circle.") }
+                                    } else {
+                                        showShareToCircle = true
+                                    }
+                                }
+                            )
+                        }
                         DropdownMenuItem(text = { Text("Move to notebook") }, leadingIcon = { Icon(Icons.Filled.Folder, null) }, onClick = { showMenu = false; showNotebooks = true })
+                        DropdownMenuItem(
+                            text = { Text("Create course from note") },
+                            leadingIcon = { Icon(Icons.Rounded.School, null, tint = Accent) },
+                            onClick = {
+                                showMenu = false
+                                viewModel.createCourseFromNote()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Open in Study Studio") },
+                            leadingIcon = { Icon(Icons.Rounded.School, null) },
+                            onClick = {
+                                showMenu = false
+                                note?.id?.let(onOpenStudyStudio)
+                            }
+                        )
                         DropdownMenuItem(text = { Text("Tags") }, leadingIcon = { Icon(Icons.Outlined.Tag, null) }, onClick = { showMenu = false; showTags = true })
                         DropdownMenuItem(
                             text = { Text(if (note?.isPrivate == true) "Make not private" else "Make private") },
@@ -572,6 +642,77 @@ fun NoteEditorScreen(
                     onDetails = { if (currentNote.workflow == com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON) showDetails = true }
                 )
             }
+            val currentNotebook = notebooks.firstOrNull { it.id == currentNote.notebookId }
+            val isLearningNote = currentNote.workflow in setOf(
+                com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE,
+                com.craftflowtechnologies.meetingmind.core.model.RecordingType.RESEARCH
+            ) || currentNotebook?.space == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING
+            if (isLearningNote) {
+                item(key = "learning-course-strip") {
+                    val hasCourse = currentNotebook?.space == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Accent.copy(alpha = 0.08f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                            .padding(top = 8.dp)
+                            .testTag("note_learning_studio_strip")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Rounded.School, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = if (hasCourse) "Course: ${currentNotebook?.name}" else "Turn this lesson into a Course or study it",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Ink
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (!hasCourse) {
+                                    Surface(
+                                        onClick = { viewModel.createCourseFromNote() },
+                                        shape = RoundedCornerShape(999.dp),
+                                        color = Accent.copy(alpha = 0.16f),
+                                        modifier = Modifier.testTag("note_create_course_button")
+                                    ) {
+                                        Text(
+                                            "+ Create Course",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Accent,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    onClick = { onOpenStudyStudio(currentNote.id) },
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = Accent,
+                                    modifier = Modifier.testTag("note_open_study_studio_button")
+                                ) {
+                                    Text(
+                                        "Study Studio",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = androidx.compose.ui.graphics.Color.White,
+                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // A work meeting made from a calendar event: prepare for it from what's on record.
             if (currentNote.metadata[com.craftflowtechnologies.meetingmind.core.repository.NoteRepository.CALENDAR_EVENT_KEY] != null &&
                 com.craftflowtechnologies.meetingmind.core.model.Workflows.space(currentNote.workflow) == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK
@@ -636,6 +777,15 @@ fun NoteEditorScreen(
                     )
                 }
             }
+            if (pendingDiffs.isNotEmpty()) {
+                item(key = "pending_diffs_bar") {
+                    PendingDiffsBanner(
+                        count = pendingDiffs.size,
+                        onAcceptAll = viewModel::acceptAllDiffs,
+                        onDiscardAll = viewModel::rejectAllDiffs
+                    )
+                }
+            }
             // A note that arrived as dozens of one-line blocks (older pastes) is offered one tap to fix.
             val looseText = blocks.count { it.source == com.craftflowtechnologies.meetingmind.core.model.BlockSource.USER && it.type.isText && it.content.text.isNotBlank() }
             if (looseText >= TIDY_SUGGEST_AT) {
@@ -685,7 +835,7 @@ fun NoteEditorScreen(
                                 )
                             }
                     )
-                    Box(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f)) {
                         EnrichedFoldableContainer(
                             block = block,
                             onToggleUnpacked = { viewModel.toggleFold(it, NoteBlock.PAYLOAD_UNPACKED) }
@@ -706,6 +856,13 @@ fun NoteEditorScreen(
                                 onOpenNote = onOpenNote,
                                 onPlay = { card -> card.audioPath?.let { PlaybackController.play(context, card.meetingId, card.title, File(it)) } },
                                 onOpenScripture = { verseSheetFor = it }
+                            )
+                        }
+                        pendingDiffByBlock[block.id]?.let { diff ->
+                            InlineBlockDiffCard(
+                                diff = diff,
+                                onAccept = { viewModel.acceptBlockDiff(diff.id) },
+                                onReject = { viewModel.rejectBlockDiff(diff.id) }
                             )
                         }
                     }
@@ -744,8 +901,21 @@ fun NoteEditorScreen(
         state = noteMoment,
         meta = momentCard?.let { Formatters.formatDurationHms(it.durationMs) }.orEmpty(),
         keyPoints = remember(blocks, note?.title) {
-            blocks.filter { it.type.isText && it.content.text.isNotBlank() && it.content.text.trim() != note?.title?.trim() }
-                .map { it.content.text.trim() }
+            val titleTrim = note?.title?.trim()
+            val bodyBlocks = blocks.filter {
+                it.type != NoteBlockType.HEADING_1 &&
+                    it.type != NoteBlockType.HEADING_2 &&
+                    it.type != NoteBlockType.HEADING_3 &&
+                    it.type != NoteBlockType.TRANSCRIPT_EXCERPT &&
+                    it.type != NoteBlockType.RECORDING &&
+                    it.content.text.isNotBlank() &&
+                    it.content.text.trim() != titleTrim
+            }
+            val prioritized = bodyBlocks.filter {
+                it.type == NoteBlockType.BULLET || it.type == NoteBlockType.CHECKLIST || it.type == NoteBlockType.NUMBERED
+            }.ifEmpty { bodyBlocks }
+            prioritized.map { it.content.text.trim().removePrefix("- [ ] ").removePrefix("- [x] ").removePrefix("- ").trim() }
+                .filter { it.isNotBlank() }
                 .take(3)
         },
         actionCount = remember(blocks) { blocks.count { it.type == NoteBlockType.CHECKLIST } },
@@ -794,6 +964,7 @@ fun NoteEditorScreen(
             edit = edit,
             onRun = viewModel::runAiEdit,
             onReplace = { viewModel.applyAiEdit(replace = true) },
+            onStageInline = viewModel::stageAiEditAsDiff,
             onInsertBelow = { viewModel.applyAiEdit(replace = false) },
             onCancel = viewModel::cancelAiEdit,
             onDismiss = viewModel::dismissAiEdit
@@ -829,12 +1000,29 @@ fun NoteEditorScreen(
                     .setType(format.mimeType)
                     .putExtra(Intent.EXTRA_STREAM, viewModel.shareableUri(file))
                     .putExtra(Intent.EXTRA_SUBJECT, note?.title?.ifBlank { null } ?: "Note")
+                    .putExtra(
+                        Intent.EXTRA_TEXT,
+                        com.craftflowtechnologies.meetingmind.core.share.AppLinks.shortCaptionWithLink(note?.title?.ifBlank { null })
+                    )
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 context.startActivity(Intent.createChooser(send, "Share note"))
             }
         },
         onDismiss = { showExport = false }
     )
+    if (showShareToCircle) {
+        note?.let { n ->
+            com.craftflowtechnologies.meetingmind.feature.circles2.ShareArtifactToCircleSheet(
+                title = n.title.ifBlank { n.workflow.displayName },
+                rawText = n.plainText.trim().ifBlank { n.title },
+                verseRef = null,
+                readingDate = null,
+                onDismiss = { showShareToCircle = false },
+                onNavigateCreateCircle = { showShareToCircle = false; onCreateCircle() },
+                onShared = { circleName -> scope.launch { snackbar.showSnackbar("Shared to $circleName") } }
+            )
+        }
+    }
     recordingPick?.let { what ->
         RecordingPickerSheet(
             title = if (what == NoteEditorViewModel.RecordingContent.SUMMARY) "Insert summary from" else "Insert transcript from",
@@ -1321,3 +1509,86 @@ private fun NoteEditorSkeleton(modifier: Modifier = Modifier) {
 
 /** How many separate lines of your own text before the editor offers to make them one block. */
 private const val TIDY_SUGGEST_AT = 25
+
+@Composable
+private fun PendingDiffsBanner(count: Int, onAcceptAll: () -> Unit, onDiscardAll: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 22.dp, end = 16.dp, top = 8.dp, bottom = 6.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(com.craftflowtechnologies.meetingmind.ui.theme.AccentWash)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
+        Text(
+            if (count == 1) "1 inline AI change ready" else "$count inline AI changes ready",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = Ink,
+            modifier = Modifier.weight(1f).padding(start = 8.dp)
+        )
+        TextButton(onClick = onDiscardAll) {
+            Text("Discard", fontSize = 12.5.sp, color = InkMuted)
+        }
+        TextButton(onClick = onAcceptAll) {
+            Text("Accept all", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+        }
+    }
+}
+
+@Composable
+private fun InlineBlockDiffCard(
+    diff: NoteEditorViewModel.PendingBlockDiff,
+    onAccept: () -> Unit,
+    onReject: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Accent.copy(alpha = 0.25f)),
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp, end = 16.dp)
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(14.dp))
+                Text(
+                    diff.label,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Accent,
+                    modifier = Modifier.weight(1f).padding(start = 6.dp)
+                )
+                TextButton(onClick = onReject) {
+                    Text("Reject", fontSize = 12.5.sp, color = com.craftflowtechnologies.meetingmind.ui.theme.Danger)
+                }
+                TextButton(onClick = onAccept) {
+                    Text("Accept", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = com.craftflowtechnologies.meetingmind.ui.theme.Success)
+                }
+            }
+            Text(
+                text = "− ${diff.originalText}",
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                color = com.craftflowtechnologies.meetingmind.ui.theme.Danger,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(com.craftflowtechnologies.meetingmind.ui.theme.Danger.copy(alpha = 0.08f))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+            Text(
+                text = "+ ${diff.proposedMarkdown}",
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                color = Ink,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(com.craftflowtechnologies.meetingmind.ui.theme.Success.copy(alpha = 0.10f))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+        }
+    }
+}

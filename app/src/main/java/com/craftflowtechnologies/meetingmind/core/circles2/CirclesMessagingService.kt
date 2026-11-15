@@ -23,6 +23,6 @@ class CirclesMessagingService : FirebaseMessagingService() {
         val data: Map<String, String?> = message.data
         // Only our own push types (they all carry a kind). Anything else is not ours to show.
         if (data["kind"].isNullOrBlank()) return
-        CirclesNotifier.show(applicationContext, data, message.notification?.title, message.notification?.body)
+        CirclesNotifier.onForegroundMessage(applicationContext, data, message.notification?.title, message.notification?.body)
     }
 }

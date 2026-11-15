@@ -22,8 +22,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -33,6 +36,7 @@ import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -300,12 +304,67 @@ private fun extractVideoThumbnail(file: File): Bitmap? {
     }.getOrNull()
 }
 
-/** A video on a post, as a tile: thumbnail frame, length and size pill, and a play button. */
+/** Coordinated video player ensuring only one inline video plays at a time across feed and chat. */
+object CircleVideoCoordinator {
+    var activeVideoKey by mutableStateOf<String?>(null)
+        private set
+
+    val activeVideoId: String? get() = activeVideoKey
+
+    private var onStopCallback: (() -> Unit)? = null
+
+    fun play(key: String, onStop: () -> Unit) {
+        if (activeVideoKey != null && activeVideoKey != key) {
+            val prev = onStopCallback
+            onStopCallback = null
+            runCatching { prev?.invoke() }
+        }
+        activeVideoKey = key
+        onStopCallback = onStop
+    }
+
+    fun pauseOrStop(key: String) {
+        if (activeVideoKey == key) {
+            val prev = onStopCallback
+            onStopCallback = null
+            activeVideoKey = null
+            runCatching { prev?.invoke() }
+        }
+    }
+
+    fun releaseIfCurrent(key: String) {
+        if (activeVideoKey == key) {
+            pauseOrStop(key)
+        }
+    }
+
+    fun stopAll() {
+        activeVideoKey?.let { pauseOrStop(it) }
+    }
+
+    fun isActive(key: String): Boolean = activeVideoKey == key
+}
+
+/**
+ * Common inline video player:
+ * - Shows extracted thumbnail + dark scrim + duration/size badge + centered Play button initially.
+ * - Tapping plays the video inline via VideoView, muted by default.
+ * - Tap video toggles pause/play.
+ * - Bottom-right Mute/Unmute pill.
+ * - Top-right Fullscreen expand pill that pauses inline playback and opens VideoPlayerDialog.
+ * - Thin bottom LinearProgressIndicator updating while playing.
+ */
 @Composable
-private fun VideoTile(circleId: String, a: MediaAttachment, modifier: Modifier, contentDescription: String) {
+private fun InlineVideoPlayer(
+    circleId: String,
+    a: MediaAttachment,
+    modifier: Modifier,
+    contentDescription: String
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var loading by remember { mutableStateOf(false) }
+    val videoKey = remember(circleId, a.path) { "${circleId}_${a.path}" }
+
     var videoFile by remember {
         mutableStateOf(
             CircleMediaCache.getCachedFile(
@@ -315,6 +374,25 @@ private fun VideoTile(circleId: String, a: MediaAttachment, modifier: Modifier, 
             )
         )
     }
+    var loading by remember { mutableStateOf(false) }
+    var isInlinePlaying by remember { mutableStateOf(false) }
+    var isPaused by remember { mutableStateOf(false) }
+    var isMuted by remember { mutableStateOf(true) }
+    var showPlayer by remember { mutableStateOf<File?>(null) }
+    var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
+    var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
+    var playbackProgress by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(a.path) {
+        if (videoFile == null) {
+            val ext = if (a.mime == "video/webm") "webm" else "mp4"
+            val file = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
+            if (file != null) {
+                videoFile = file
+            }
+        }
+    }
+
     val thumbnail by produceState<ImageBitmap?>(initialValue = null, videoFile) {
         val file = videoFile ?: return@produceState
         val bmp = withContext(Dispatchers.IO) {
@@ -322,28 +400,81 @@ private fun VideoTile(circleId: String, a: MediaAttachment, modifier: Modifier, 
         }
         value = bmp?.asImageBitmap()
     }
-    var showPlayer by remember { mutableStateOf<File?>(null) }
 
-    Box(
-        modifier
-            .background(MM.colors.surfaceSunk)
-            .clickable(enabled = !loading) {
-                val current = videoFile
-                if (current != null) {
-                    showPlayer = current
-                } else {
-                    loading = true
-                    scope.launch {
-                        val ext = if (a.mime == "video/webm") "webm" else "mp4"
-                        val file = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
-                        videoFile = file
-                        loading = false
-                        if (file != null) {
-                            showPlayer = file
-                        }
+    DisposableEffect(videoKey) {
+        onDispose {
+            CircleVideoCoordinator.releaseIfCurrent(videoKey)
+            runCatching { videoViewRef?.stopPlayback() }
+            mediaPlayerRef = null
+            videoViewRef = null
+        }
+    }
+
+    LaunchedEffect(isInlinePlaying, isPaused) {
+        if (isInlinePlaying && !isPaused) {
+            while (isActive) {
+                val vv = videoViewRef
+                val dur = vv?.duration ?: 0
+                val cur = vv?.currentPosition ?: 0
+                if (dur > 0) {
+                    playbackProgress = (cur.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+                }
+                delay(100)
+            }
+        }
+    }
+
+    val startPlayback: () -> Unit = {
+        val cur = videoFile
+        if (cur != null) {
+            isInlinePlaying = true
+            isPaused = false
+            CircleVideoCoordinator.play(videoKey) {
+                runCatching { videoViewRef?.pause() }
+                isPaused = true
+            }
+            videoViewRef?.start()
+        } else if (!loading) {
+            loading = true
+            scope.launch {
+                val ext = if (a.mime == "video/webm") "webm" else "mp4"
+                val file = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
+                videoFile = file
+                loading = false
+                if (file != null) {
+                    isInlinePlaying = true
+                    isPaused = false
+                    CircleVideoCoordinator.play(videoKey) {
+                        runCatching { videoViewRef?.pause() }
+                        isPaused = true
                     }
                 }
             }
+        }
+    }
+
+    val togglePlayPause: () -> Unit = {
+        if (isInlinePlaying) {
+            if (isPaused) {
+                CircleVideoCoordinator.play(videoKey) {
+                    runCatching { videoViewRef?.pause() }
+                    isPaused = true
+                }
+                videoViewRef?.start()
+                isPaused = false
+            } else {
+                videoViewRef?.pause()
+                isPaused = true
+            }
+        } else {
+            startPlayback()
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .clip(MM.radius.card)
+            .background(MM.colors.surfaceSunk)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center
     ) {
@@ -354,47 +485,213 @@ private fun VideoTile(circleId: String, a: MediaAttachment, modifier: Modifier, 
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
+            if (!isInlinePlaying) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(MM.colors.scrim.copy(alpha = 0.45f))
+                )
+            }
+        } else {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(MM.colors.scrim.copy(alpha = 0.45f))
-            )
-        }
-        Box(
-            Modifier
-                .size(52.dp)
-                .clip(MM.radius.pill)
-                .background(CirclesPalette.Accent),
-            contentAlignment = Alignment.Center
-        ) {
-            if (loading) {
-                CircularProgressIndicator(Modifier.size(22.dp), color = FixedWhite, strokeWidth = 2.dp)
-            } else {
-                Icon(Icons.Rounded.PlayArrow, null, tint = FixedWhite, modifier = Modifier.size(28.dp))
-            }
-        }
-        val pillInfo = listOfNotNull(
-            a.durationMs?.takeIf { it > 0 }?.let(::formatDuration),
-            formatBytes(a.bytes)
-        ).joinToString(" · ")
-        if (pillInfo.isNotBlank()) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(MM.space.s)
-                    .clip(MM.radius.pill)
-                    .background(MM.colors.scrim.copy(alpha = 0.7f))
-                    .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                    .background(MM.colors.surfaceSunk),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    pillInfo,
-                    style = MM.type.caption,
-                    color = FixedWhite
+                Icon(
+                    Icons.Rounded.Videocam,
+                    contentDescription = null,
+                    tint = MM.colors.inkSecondary.copy(alpha = 0.4f),
+                    modifier = Modifier.size(36.dp)
                 )
             }
         }
+
+        if (isInlinePlaying && videoFile != null) {
+            AndroidView(
+                factory = { ctx ->
+                    VideoView(ctx).apply {
+                        setVideoPath(videoFile!!.absolutePath)
+                        setOnPreparedListener { mp ->
+                            mediaPlayerRef = mp
+                            mp.isLooping = true
+                            mp.setVolume(if (isMuted) 0f else 1f, if (isMuted) 0f else 1f)
+                            if (!isPaused) {
+                                start()
+                            }
+                        }
+                        setOnCompletionListener {
+                            if (isInlinePlaying && !isPaused) {
+                                start()
+                            }
+                        }
+                        setOnErrorListener { _, _, _ ->
+                            isInlinePlaying = false
+                            isPaused = false
+                            true
+                        }
+                    }.also { videoViewRef = it }
+                },
+                update = { view ->
+                    videoViewRef = view
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // Tap area to toggle play/pause
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable { togglePlayPause() }
+        )
+
+        // Center Play / Loading button when not playing or when paused
+        if (!isInlinePlaying || isPaused) {
+            Box(
+                Modifier
+                    .size(52.dp)
+                    .clip(MM.radius.pill)
+                    .background(CirclesPalette.Accent)
+                    .clickable { togglePlayPause() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = FixedWhite,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        Icons.Rounded.PlayArrow,
+                        contentDescription = if (isPaused) "Resume video" else "Play video",
+                        tint = FixedWhite,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+        }
+
+        // Initial duration & size badge at bottom-left
+        if (!isInlinePlaying) {
+            val pillInfo = listOfNotNull(
+                a.durationMs?.takeIf { it > 0 }?.let(::formatDuration),
+                formatBytes(a.bytes),
+                if (loading) "Loading…" else null
+            ).joinToString(" · ")
+            if (pillInfo.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(MM.space.s)
+                        .clip(MM.radius.pill)
+                        .background(MM.colors.scrim.copy(alpha = 0.7f))
+                        .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                ) {
+                    Text(
+                        pillInfo,
+                        style = MM.type.caption,
+                        color = FixedWhite
+                    )
+                }
+            }
+        }
+
+        // Top-right Fullscreen expand pill (pauses inline playback and opens VideoPlayerDialog)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(MM.space.s)
+                .clip(MM.radius.pill)
+                .background(MM.colors.scrim.copy(alpha = 0.7f))
+                .clickable {
+                    if (isInlinePlaying && !isPaused) {
+                        videoViewRef?.pause()
+                        isPaused = true
+                    }
+                    val cur = videoFile
+                    if (cur != null) {
+                        showPlayer = cur
+                    } else if (!loading) {
+                        loading = true
+                        scope.launch {
+                            val ext = if (a.mime == "video/webm") "webm" else "mp4"
+                            val file = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
+                            videoFile = file
+                            loading = false
+                            if (file != null) {
+                                showPlayer = file
+                            }
+                        }
+                    }
+                }
+                .padding(MM.space.xs),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Rounded.Fullscreen,
+                contentDescription = "Expand video to fullscreen",
+                tint = FixedWhite,
+                modifier = Modifier.size(MMSize.iconSmall)
+            )
+        }
+
+        // Bottom-right Mute / Unmute pill (when inline playback is active)
+        if (isInlinePlaying) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(MM.space.s)
+                    .clip(MM.radius.pill)
+                    .background(MM.colors.scrim.copy(alpha = 0.7f))
+                    .clickable {
+                        val nextMuted = !isMuted
+                        isMuted = nextMuted
+                        mediaPlayerRef?.setVolume(
+                            if (nextMuted) 0f else 1f,
+                            if (nextMuted) 0f else 1f
+                        )
+                        if (!nextMuted) {
+                            CircleAudioPlayer.pause()
+                        }
+                    }
+                    .padding(MM.space.xs),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (isMuted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                    contentDescription = if (isMuted) "Unmute video" else "Mute video",
+                    tint = FixedWhite,
+                    modifier = Modifier.size(MMSize.iconSmall)
+                )
+            }
+        }
+
+        // Thin bottom playback progress bar updating while playing
+        if (isInlinePlaying) {
+            LinearProgressIndicator(
+                progress = { playbackProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .align(Alignment.BottomCenter),
+                color = CirclesPalette.Accent,
+                trackColor = MM.colors.lineSoft.copy(alpha = 0.4f)
+            )
+        }
     }
-    showPlayer?.let { file -> VideoPlayerDialog(file) { showPlayer = null } }
+
+    showPlayer?.let { file ->
+        VideoPlayerDialog(file) { showPlayer = null }
+    }
+}
+
+/** A video on a post, as a tile: thumbnail frame, length and size pill, centered play button, and inline playback. */
+@Composable
+private fun VideoTile(circleId: String, a: MediaAttachment, modifier: Modifier, contentDescription: String) {
+    InlineVideoPlayer(circleId, a, modifier, contentDescription)
 }
 
 /** A fullscreen video player with media controls for a file already on disk. */
@@ -764,7 +1061,7 @@ internal object CircleAudioPlayer {
     }
 }
 
-/** A voice note: play or pause with a 12-bar audio waveform and coordinated playback. */
+/** A voice note: play or pause with a 24-bar audio waveform, speed toggle pill, and coordinated playback. */
 @Composable
 fun VoiceBubble(
     circleId: String,
@@ -778,10 +1075,29 @@ fun VoiceBubble(
     var isLoading by remember { mutableStateOf(false) }
     var currentPositionMs by remember { mutableStateOf(0L) }
     var durationMs by remember { mutableStateOf(a.durationMs ?: 0L) }
+    var speed by remember { mutableStateOf(1f) }
 
     DisposableEffect(a.path) {
         onDispose {
             CircleAudioPlayer.releaseIfCurrent(a.path)
+        }
+    }
+
+    LaunchedEffect(a.path) {
+        if (durationMs <= 0L) {
+            val cached = CircleMediaCache.getCachedFile(context, a.path, "m4a")
+            if (cached != null) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        MediaMetadataRetriever().use { r ->
+                            r.setDataSource(cached.absolutePath)
+                            r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                        }
+                    }.getOrNull()?.let { dur ->
+                        if (dur > 0) durationMs = dur
+                    }
+                }
+            }
         }
     }
 
@@ -799,14 +1115,26 @@ fun VoiceBubble(
         }
     }
 
-    val bars = remember { listOf(6, 12, 18, 10, 22, 14, 16, 8, 20, 12, 8, 14) }
-    val progress = if (durationMs > 0) (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+    val bars = remember {
+        listOf(
+            6, 10, 16, 12, 20, 14, 18, 24, 14, 18, 22, 12,
+            16, 20, 14, 24, 18, 14, 20, 16, 12, 16, 10, 6
+        )
+    }
+    val total = if (durationMs > 0) durationMs else (a.durationMs ?: 0L)
+    val progress = if (total > 0) (currentPositionMs.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
 
     val buttonBg = if (onAccent) MM.colors.onAccent else tint
     val buttonFg = if (onAccent) tint else FixedWhite
-    val inactiveBarColor = if (onAccent) MM.colors.onAccent.copy(alpha = 0.35f) else MM.colors.lineSoft
-    val activeBarColor = if (onAccent) MM.colors.onAccent else tint
+    val inactiveBarColor = if (onAccent) MM.colors.onAccent.copy(alpha = 0.35f) else MM.colors.line
+    val activeBarColor = if (onAccent) MM.colors.onAccent else MM.colors.accent
     val textColor = if (onAccent) MM.colors.onAccent.copy(alpha = 0.85f) else MM.colors.inkSecondary
+
+    val speedLabel = when (speed) {
+        1.5f -> "1.5x"
+        2f -> "2x"
+        else -> "1x"
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -828,6 +1156,7 @@ fun VoiceBubble(
                     return@IconButton
                 }
                 isLoading = true
+                CircleVideoCoordinator.pauseOrStop(CircleVideoCoordinator.activeVideoKey ?: "")
                 scope.launch {
                     val file = CircleMediaCache.fetchToFile(context, circleId, a.path, "m4a")
                     if (file != null) {
@@ -838,6 +1167,11 @@ fun VoiceBubble(
                                 isLoading = false
                                 val dur = player.duration.toLong()
                                 if (dur > 0) durationMs = dur
+                                runCatching {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && speed != 1f) {
+                                        player.playbackParams = player.playbackParams.setSpeed(speed)
+                                    }
+                                }
                                 isPlaying = true
                             },
                             onError = {
@@ -882,14 +1216,14 @@ fun VoiceBubble(
             }
         }
 
-        // 12-bar waveform
+        // 24-bar waveform with smooth played/unplayed color split
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(1.5.dp),
             modifier = Modifier.height(24.dp)
         ) {
             bars.forEachIndexed { idx, h ->
-                val active = (isPlaying || currentPositionMs > 0L) && (idx / 12f <= progress)
+                val active = (isPlaying || currentPositionMs > 0L) && ((idx + 1).toFloat() / bars.size <= progress)
                 val barColor by animateColorAsState(
                     targetValue = if (active) activeBarColor else inactiveBarColor,
                     animationSpec = MM.motion.quick(),
@@ -897,7 +1231,7 @@ fun VoiceBubble(
                 )
                 Box(
                     Modifier
-                        .width(3.dp)
+                        .width(2.5.dp)
                         .height(h.dp)
                         .clip(MM.radius.pill)
                         .background(barColor)
@@ -905,131 +1239,63 @@ fun VoiceBubble(
             }
         }
 
-        val timeText = if (isPlaying || currentPositionMs > 0L) {
-            "${formatDuration(currentPositionMs)} / ${formatDuration(if (durationMs > 0) durationMs else a.durationMs)}"
-        } else {
-            formatDuration(a.durationMs ?: durationMs)
-        }
+        val timeText = "${formatDuration(currentPositionMs)} / ${formatDuration(total)}"
 
         Text(
             timeText,
             style = MM.type.caption,
             color = textColor
         )
-    }
-}
 
-/** A video attachment: shows duration and size, and opens a fullscreen player when tapped. */
-@Composable
-fun VideoBubble(circleId: String, a: MediaAttachment) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var loading by remember { mutableStateOf(false) }
-    var videoFile by remember {
-        mutableStateOf(
-            CircleMediaCache.getCachedFile(
-                context,
-                a.path,
-                if (a.mime == "video/webm") "webm" else "mp4"
-            )
-        )
-    }
-    val thumbnail by produceState<ImageBitmap?>(initialValue = null, videoFile) {
-        val file = videoFile ?: return@produceState
-        val bmp = withContext(Dispatchers.IO) {
-            extractVideoThumbnail(file)
-        }
-        value = bmp?.asImageBitmap()
-    }
-    var showPlayer by remember { mutableStateOf<File?>(null) }
-
-    Box(
-        modifier = Modifier
-            .size(width = 200.dp, height = 124.dp)
-            .clip(MM.radius.card)
-            .background(MM.colors.surfaceSunk)
-            .clickable(enabled = !loading) {
-                val current = videoFile
-                if (current != null) {
-                    showPlayer = current
-                } else {
-                    loading = true
-                    scope.launch {
-                        val ext = if (a.mime == "video/webm") "webm" else "mp4"
-                        val file = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
-                        videoFile = file
-                        loading = false
-                        if (file != null) {
-                            showPlayer = file
+        // Playback speed toggle pill (1x -> 1.5x -> 2x)
+        Box(
+            modifier = Modifier
+                .clip(MM.radius.pill)
+                .background(if (onAccent) MM.colors.onAccent.copy(alpha = 0.2f) else MM.colors.surfaceSunk)
+                .clickable {
+                    val nextSpeed = when (speed) {
+                        1f -> 1.5f
+                        1.5f -> 2f
+                        else -> 1f
+                    }
+                    speed = nextSpeed
+                    val mp = CircleAudioPlayer.getPlayer(a.path)
+                    if (mp != null) {
+                        runCatching {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                val wasPlaying = mp.isPlaying
+                                mp.playbackParams = mp.playbackParams.setSpeed(nextSpeed)
+                                if (!wasPlaying) {
+                                    mp.pause()
+                                }
+                            }
                         }
                     }
                 }
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        if (thumbnail != null) {
-            Image(
-                bitmap = thumbnail!!,
-                contentDescription = a.name ?: "Video preview",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MM.colors.scrim.copy(alpha = 0.35f))
-            )
-        } else {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MM.colors.surfaceSunk),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Rounded.Videocam,
-                    contentDescription = null,
-                    tint = MM.colors.inkSecondary.copy(alpha = 0.4f),
-                    modifier = Modifier.size(36.dp)
-                )
-            }
-        }
-        Box(
-            Modifier
-                .size(44.dp)
-                .clip(MM.radius.pill)
-                .background(CirclesPalette.Accent),
+                .padding(horizontal = MM.space.xs, vertical = 2.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (loading) {
-                CircularProgressIndicator(Modifier.size(20.dp), color = FixedWhite, strokeWidth = 2.dp)
-            } else {
-                Icon(Icons.Rounded.PlayArrow, "Play video", tint = FixedWhite, modifier = Modifier.size(24.dp))
-            }
-        }
-        val pillInfo = listOfNotNull(
-            a.durationMs?.takeIf { it > 0 }?.let(::formatDuration),
-            formatBytes(a.bytes),
-            if (loading) "Loading…" else null
-        ).joinToString(" · ")
-        if (pillInfo.isNotBlank()) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(MM.space.xs)
-                    .clip(MM.radius.pill)
-                    .background(MM.colors.scrim.copy(alpha = 0.7f))
-                    .padding(horizontal = MM.space.s, vertical = 2.dp)
-            ) {
-                Text(
-                    pillInfo,
-                    style = MM.type.caption,
-                    color = FixedWhite
-                )
-            }
+            Text(
+                speedLabel,
+                style = MM.type.caption,
+                color = textColor
+            )
         }
     }
-    showPlayer?.let { file -> VideoPlayerDialog(file) { showPlayer = null } }
+}
+
+/** A video attachment: styled for chat with inline playback, mute toggle, and fullscreen expand. */
+@Composable
+fun VideoBubble(circleId: String, a: MediaAttachment) {
+    InlineVideoPlayer(
+        circleId = circleId,
+        a = a,
+        modifier = Modifier
+            .widthIn(min = 220.dp, max = 280.dp)
+            .height(172.dp)
+            .clip(MM.radius.card),
+        contentDescription = a.name ?: "Video preview"
+    )
 }
 
 /** A file: its name and size, clickable to open in PDF viewer (fallback to save), plus a save action. */
@@ -1266,6 +1532,17 @@ class VoiceRecorder(private val context: Context) {
     private var file: File? = null
     private var startedAt = 0L
 
+    /** Safely calls recorder?.maxAmplitude and returns normalized (amp / 32767f).coerceIn(0f, 1f), or 0f if null/error. */
+    fun amplitude(): Float {
+        return runCatching {
+            val amp = recorder?.maxAmplitude ?: 0
+            (amp / 32767f).coerceIn(0f, 1f)
+        }.getOrDefault(0f)
+    }
+
+    /** Returns elapsed recording time in milliseconds, or 0L when not recording. */
+    fun elapsedMs(): Long = if (startedAt > 0L) System.currentTimeMillis() - startedAt else 0L
+
     /** False when the microphone can't be used right now. */
     fun start(): Boolean {
         val f = File(context.cacheDir, "voice_${System.currentTimeMillis()}.m4a")
@@ -1280,10 +1557,15 @@ class VoiceRecorder(private val context: Context) {
             r.setOutputFile(f.absolutePath)
             r.prepare()
             r.start()
-            recorder = r; file = f; startedAt = System.currentTimeMillis()
+            recorder = r
+            file = f
+            startedAt = System.currentTimeMillis()
             true
         } catch (e: RuntimeException) {
-            r.release(); f.delete(); false
+            r.release()
+            f.delete()
+            startedAt = 0L
+            false
         }
     }
 
@@ -1291,8 +1573,10 @@ class VoiceRecorder(private val context: Context) {
     fun stop(): PickedFile? {
         val r = recorder ?: return null
         val f = file
-        val durationMs = System.currentTimeMillis() - startedAt
-        recorder = null; file = null
+        val durationMs = if (startedAt > 0L) System.currentTimeMillis() - startedAt else 0L
+        recorder = null
+        file = null
+        startedAt = 0L
         val stopped = try { r.stop(); true } catch (e: RuntimeException) { false }
         r.release()
         if (!stopped || f == null) { f?.delete(); return null }
@@ -1304,7 +1588,9 @@ class VoiceRecorder(private val context: Context) {
     fun cancel() {
         recorder?.let { try { it.stop() } catch (e: RuntimeException) { } ; it.release() }
         recorder = null
-        file?.delete(); file = null
+        file?.delete()
+        file = null
+        startedAt = 0L
     }
 }
 

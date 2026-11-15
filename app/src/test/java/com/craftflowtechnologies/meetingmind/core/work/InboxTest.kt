@@ -275,4 +275,89 @@ class InboxProcessTest {
         assertEquals("pdf", ShareIn.extensionFor("doc", "application/pdf"))
         assertEquals("mp4", ShareIn.extensionFor("existing.mp4", "video/mp4"))
     }
+
+    @Test fun whatsAppVoiceNoteAndAppSourcesAreInferredFromFilenameAndUri() = runBlocking {
+        assertEquals("WhatsApp Voice Note", ShareIn.inferSource(fileName = "PTT-20261114-WA0005.opus", mime = "audio/opus"))
+        assertEquals("WhatsApp Audio", ShareIn.inferSource(fileName = "AUD-20261114-WA0002.m4a", mime = "audio/mp4"))
+        assertEquals("WhatsApp Video", ShareIn.inferSource(fileName = "VID-20261114-WA0001.mp4", mime = "video/mp4"))
+        assertEquals("WhatsApp Voice Note", ShareIn.inferSource(uri = "content://com.whatsapp.provider.media/item/99", fileName = "voice.ogg", mime = "audio/ogg"))
+        assertEquals("Telegram Voice Note", ShareIn.inferSource(uri = "content://org.telegram.messenger/audio/1", fileName = "voice.ogg", mime = "audio/ogg"))
+        assertEquals("Slack", ShareIn.inferSource(rawSource = "com.Slack", fileName = "clip.mp4", mime = "video/mp4"))
+        assertEquals("Gmail", ShareIn.inferSource(rawSource = "com.google.android.gm", fileName = "attachment.pdf", mime = "application/pdf"))
+
+        val part = SharedPart(kind = InboxKind.AUDIO, uri = "content://com.whatsapp.provider.media/item/55", mime = "audio/opus", source = "Shared")
+        val item = repo.add(listOf(part)) {
+            CopiedFile("/files/inbox/PTT-20261114-WA0005.opus", "PTT-20261114-WA0005.opus", durationMs = 32_000L, inferredSource = "WhatsApp Voice Note")
+        }.single()
+        assertEquals("WhatsApp Voice Note", item.source)
+        assertEquals(32_000L, item.mediaDurationMs)
+        assertEquals(item.id, repo.getByUri("/files/inbox/PTT-20261114-WA0005.opus")?.id)
+    }
+
+    @Test fun transcribedVoiceNoteLinksMeetingAndSummaryNoteWhenFiledToProject() = runBlocking {
+        val part = SharedPart(kind = InboxKind.AUDIO, uri = "content://wa/ptt1", mime = "audio/opus")
+        val item = repo.add(listOf(part)) {
+            CopiedFile("/files/inbox/PTT-20261114-WA0009.opus", "PTT-20261114-WA0009.opus", durationMs = 48_000L, inferredSource = "WhatsApp Voice Note")
+        }.single()
+
+        // Create the note and meeting produced by transcription
+        val noteRepo = com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, f.db) { f.now }
+        val note = noteRepo.createNote(
+            workflow = com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
+            title = "Acme launch budget update",
+            useTemplate = false
+        )
+        f.db.meetingDao().insertMeeting(
+            com.craftflowtechnologies.meetingmind.core.database.MeetingEntity(
+                id = "m_wa_1",
+                title = "Acme launch budget update",
+                createdAt = f.now,
+                durationMs = 48_000L,
+                source = "IMPORTED_AUDIO",
+                audioFilePath = "/files/inbox/PTT-20261114-WA0009.opus",
+                status = "READY",
+                participantCount = 1,
+                language = "en",
+                summaryText = "Approved the Q4 Acme launch budget and timeline.",
+                noteId = note.id
+            )
+        )
+
+        repo.updateTranscription(
+            id = item.id,
+            status = "COMPLETED",
+            transcript = "We approved the Q4 Acme launch budget and timeline.",
+            meetingId = "m_wa_1",
+            durationMs = 48_000L
+        )
+        val byMeeting = repo.getByMeetingId("m_wa_1")!!
+        assertEquals(item.id, byMeeting.id)
+        assertEquals("COMPLETED", byMeeting.transcriptionStatus)
+
+        val filing = proposer().propose(byMeeting)!!
+        assertEquals(FilingTarget.PROJECT, filing.target)
+        assertEquals("nb", filing.targetId)
+
+        assertTrue(InboxFiler(context, f.db) { f.now }.file(byMeeting.id, filing))
+        val movedNote = f.db.noteDao().getById(note.id)!!
+        assertEquals("nb", movedNote.notebookId)
+        val filedItem = f.db.inboxDao().get(item.id)!!
+        assertEquals("FILED", filedItem.status)
+        assertTrue(filedItem.resultRefJson!!.contains(note.id))
+    }
+
+    @Test fun inboxDisplayFormattingHandlesWhatsAppCodesAndDates() {
+        assertEquals(
+            "WhatsApp Voice Note",
+            com.craftflowtechnologies.meetingmind.feature.work.formatInboxDisplayTitle("PTT-20261114-WA0005", "AUDIO", "WhatsApp Voice Note")
+        )
+        assertEquals(
+            "Q4 Pricing Sync",
+            com.craftflowtechnologies.meetingmind.feature.work.formatInboxDisplayTitle("PTT-20261114-WA0005", "AUDIO", "WhatsApp Voice Note", linkedMeetingTitle = "Q4 Pricing Sync")
+        )
+        assertNotNull(com.craftflowtechnologies.meetingmind.feature.work.parseWhatsAppDateFromFileName("PTT-20261114-WA0005.opus"))
+        val (dateStr, timeStr) = com.craftflowtechnologies.meetingmind.feature.work.formatImportDateAndTimeParts(1763145900000L)
+        assertTrue(dateStr.isNotBlank())
+        assertTrue(timeStr.isNotBlank())
+    }
 }

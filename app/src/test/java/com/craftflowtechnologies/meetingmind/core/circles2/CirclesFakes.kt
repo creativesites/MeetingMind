@@ -37,6 +37,7 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
     var joinPending = false
     var alreadyPrayed = false
     var lastPost: CreatePostRequest? = null
+    var lastCreateCircle: CreateCircleRequest? = null
     var lastJoinText: String? = null
     var lastCelebrate: Triple<CelebrationKind, String?, String?>? = null
 
@@ -45,7 +46,10 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
         return nextFailure?.let { f -> nextFailure = null; CirclesResult.Err(f) } ?: CirclesResult.Ok(ok)
     }
 
-    override suspend fun createCircle(req: CreateCircleRequest) = reply("createCircle", "new-circle")
+    override suspend fun createCircle(req: CreateCircleRequest): CirclesResult<String> {
+        lastCreateCircle = req
+        return reply("createCircle", "new-circle")
+    }
     override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?, coverPath: String?) = reply("updateCircle", Unit)
     override suspend fun myCircles() = reply("myCircles", myCirclesResult)
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = reply("createInvite", Invite("GRACE-7K2Q", null, 50))
@@ -69,13 +73,22 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
     override suspend fun editPost(circleId: String, postId: String, body: String) = reply("editPost", Unit)
     override suspend fun addUpdate(circleId: String, postId: String, body: String) = reply("addUpdate", Unit)
     override suspend fun markAnswered(circleId: String, postId: String) = reply("markAnswered", Unit)
+    var lastWorkStatus: Pair<String, WorkStatus>? = null
+    override suspend fun setWorkStatus(circleId: String, postId: String, status: WorkStatus): CirclesResult<Unit> {
+        lastWorkStatus = postId to status
+        return reply("setWorkStatus", Unit)
+    }
     override suspend fun deletePost(circleId: String, postId: String) = reply("deletePost", Unit)
     override suspend fun prayed(circleId: String, postId: String) = reply("prayed", alreadyPrayed)
     override suspend fun react(circleId: String, postId: String, kind: ReactionKind?) = reply("react", Unit)
     override suspend fun syncCounts(circleId: String, postId: String) = reply("syncCounts", Unit)
     override suspend fun report(circleId: String, postId: String, reason: String) = reply("report", Unit)
     override suspend fun reportMessage(circleId: String, messageId: String, reason: String) = reply("reportMessage", Unit)
-    override suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean) = reply("createPoll", Unit)
+    var lastPollClosesAt: Long? = null
+    override suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean, closesAt: Long?): CirclesResult<Unit> {
+        lastPollClosesAt = closesAt
+        return reply("createPoll", Unit)
+    }
     override suspend fun closePoll(circleId: String, pollId: String) = reply("closePoll", Unit)
     override suspend fun startChain(circleId: String, title: String, postId: String?) = reply("startChain", Unit)
     override suspend fun celebrate(circleId: String, kind: CelebrationKind, text: String, companion: String?, postId: String?): CirclesResult<Unit> {

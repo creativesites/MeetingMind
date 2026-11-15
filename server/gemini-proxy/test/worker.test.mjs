@@ -192,6 +192,30 @@ test('the first N paying people get the founder bonus, later ones do not', async
   assert.equal(ended.headers.get('X-Usage-Actions-Limit'), '3');
 });
 
+test('streaming generate passes SSE upstream untouched and charges once on 200', async () => {
+  const env = makeEnv({ ALLOWED_MODELS: 'gemini-3.8-flash' });
+  const sseBody = 'data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}\n\n';
+  const f = upstream({
+    'https://api.revenuecat.com': () => rcAnswer(proEnt),
+    'https://generativelanguage.googleapis.com/v1beta/models': new Response(sseBody, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' }
+    })
+  });
+  const res = await handle(
+    req('https://proxy.test/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse', { method: 'POST', body: textBody }, { 'X-RC-User': 'u_stream', 'X-Operation-Id': 'op-stream-1' }),
+    env,
+    { now: NOW, fetch: f }
+  );
+  assert.equal(res.status, 200);
+  assert.ok(res.headers.get('content-type').includes('text/event-stream'));
+  assert.equal(res.headers.get('X-Usage-Actions-Used'), '1');
+  assert.equal(await res.text(), sseBody);
+  const call = f.calls.find((c) => c.url.includes('streamGenerateContent'));
+  assert.ok(call.url.includes('alt=sse'));
+  assert.ok(call.url.includes('key=REALKEY'));
+});
+
 test('usage resets with the calendar month', async () => {
   const env = makeEnv();
   const f = upstream({ 'https://generativelanguage.googleapis.com/v1beta/models': new Response('{}', { status: 200 }) });

@@ -15,6 +15,7 @@ import {
 const C = (id) => `circles/${id}`;
 const forbidden = () => new ApiError(403, "not_a_member", "You're not a member of this circle.");
 const notFound = (what = "That") => new ApiError(404, "not_found", `${what} wasn't found.`);
+const bad = (code, msg) => new ApiError(400, code, msg);
 
 function newId() {
   const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -54,20 +55,73 @@ async function notifyAdmins(ctx, circleId, message) {
   const ms = await ctx.db.query({ parent: C(circleId), collection: "members", where: [["role", "in", ["owner", "admin"]]], limit: 50 });
   return pushToUsers({ db: ctx.db, fcm: ctx.fcm, uids: ms.map((m) => m.id), message, max: maxPush(ctx) });
 }
+async function shouldSendThrottledPush(kv, key, nowMs, cooldownMs = 20_000) {
+  if (!kv) return true;
+  try {
+    const last = parseInt((await kv.get(key)) || "0", 10) || 0;
+    if (last > 0 && nowMs - last < cooldownMs) return false;
+    await kv.put(key, String(nowMs), { expirationTtl: 60 });
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function postNotificationBody(post) {
+  if (post.anonymous) return "Someone shared a prayer request";
+  const who = post.authorName || "Someone";
+  switch (post.type) {
+    case "testimony": return `${who} shared a testimony`;
+    case "prayer": return `${who} shared a prayer request`;
+    case "devotional": return `${who} shared a devotional`;
+    case "encouragement": return `${who} shared a word of encouragement`;
+    case "study": return `${who} shared a study note`;
+    case "announcement": return `${who} posted an announcement`;
+    case "verse": return post.verseRef ? `${who} shared ${post.verseRef}` : `${who} shared a scripture verse`;
+    case "task": return `${who} added a task`;
+    case "decision": return `${who} logged a decision`;
+    case "brief": return `${who} shared a brief`;
+    case "standup": return `${who} posted an update`;
+    case "blocker": return `${who} flagged a blocker`;
+    default: return `${who} shared something new`;
+  }
+}
+
 const postMsg = (circleName, post, id, circleId) => ({
   title: circleName,
-  body: post.anonymous ? "Someone shared a prayer request" : `${post.authorName} shared something new`,
+  body: postNotificationBody(post),
   data: { kind: "post", circleId, postId: id },
 });
 
 // ---------- circles ----------
+const SPACE_BY_TEMPLATE = {
+  project_team: "work",
+  client_engagement: "work",
+  exec_board: "work",
+  department: "work",
+  custom_work: "work",
+  study_group: "learning",
+  course_cohort: "learning",
+  exam_prep_room: "learning",
+  custom_learning: "learning",
+  friends_group: "general",
+  community_club: "general",
+  book_club: "general",
+  custom_general: "general",
+};
+
 async function createCircle(ctx) {
   const b = ctx.body;
   const template = typeof b.template === "string" ? b.template : "";
   if (!TEMPLATES[template]) throw new ApiError(400, "bad_request", "Unknown template");
-  const space = b.space === "work" ? "work" : "faith";
+  const rawSpace = typeof b.space === "string" ? b.space.trim().toLowerCase() : "";
+  const mappedSpace = rawSpace === "community" ? "general" : rawSpace;
+  const space = (mappedSpace === "work" || mappedSpace === "learning" || mappedSpace === "general" || mappedSpace === "faith")
+    ? mappedSpace
+    : (SPACE_BY_TEMPLATE[template] || "faith");
   const nm = cleanText(b.name, "name", { max: LIMITS.nameMax });
-  const vocab = cleanText(b.vocab, "vocab", { min: 0, max: 40, optional: true }) ?? (space === "work" ? "Team" : "Circle");
+  const defaultVocab = space === "work" ? "Team" : space === "learning" ? "Study group" : space === "general" ? "Group" : "Circle";
+  const vocab = cleanText(b.vocab, "vocab", { min: 0, max: 40, optional: true }) ?? defaultVocab;
   const settings = normalizeSettings(b.settings, template, space);
   const description = cleanText(b.description, "description", { min: 0, max: LIMITS.descriptionMax, optional: true }) ?? "";
   const displayName = name(b.displayName);
@@ -544,17 +598,60 @@ async function addUpdate(ctx) {
 
 async function markAnswered(ctx) {
   const circleId = str(ctx.body, "circleId"); const postId = str(ctx.body, "postId");
-  const { circle } = await load(ctx, circleId);
-  await requireAuthor(ctx, circleId, postId);
+  const { circle, member } = await load(ctx, circleId);
   const post = await livePost(ctx, circleId, postId);
-  if (post.type !== "prayer") throw new ApiError(400, "bad_request", "Only prayer requests can be answered.");
-  if (post.status === "answered") return {};
-  await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { status: "answered", answeredAt: ctx.now })]);
-  ctx.defer((async () => {
-    const prayers = await ctx.db.query({ parent: `${C(circleId)}/posts/${postId}`, collection: "prayers", limit: LIMITS.membersPerCircle });
-    await pushToUsers({ db: ctx.db, fcm: ctx.fcm, uids: prayers.map((p) => p.id).filter((u) => u !== ctx.uid), max: maxPush(ctx),
-      message: { title: circle.name, body: "A prayer you prayed for was answered", data: { kind: "answered", circleId, postId } } });
-  })());
+
+  if (post.type === "prayer") {
+    await requireAuthor(ctx, circleId, postId);
+    if (post.status === "answered") return {};
+    await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { status: "answered", answeredAt: ctx.now })]);
+    ctx.defer((async () => {
+      const prayers = await ctx.db.query({ parent: `${C(circleId)}/posts/${postId}`, collection: "prayers", limit: LIMITS.membersPerCircle });
+      await pushToUsers({ db: ctx.db, fcm: ctx.fcm, uids: prayers.map((p) => p.id).filter((u) => u !== ctx.uid), max: maxPush(ctx),
+        message: { title: circle.name, body: "A prayer you prayed for was answered", data: { kind: "answered", circleId, postId } } });
+    })());
+    return {};
+  }
+
+  if (post.type === "task" || post.type === "blocker") {
+    const auth = await ctx.db.get(`${C(circleId)}/postAuthors/${postId}`);
+    const isAuthor = auth?.data?.authorUid === ctx.uid || post.authorUid === ctx.uid;
+    const isAssignee = Boolean(post.meta?.assigneeUid && post.meta.assigneeUid === ctx.uid);
+    const isMod = canModerate(member.role);
+    if (!isAuthor && !isAssignee && !isMod) {
+      throw new ApiError(403, "forbidden", "Only the creator, assignee, or a moderator can update status.");
+    }
+    if (post.status === "answered") return {};
+    await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { status: "answered", answeredAt: ctx.now })]);
+    return {};
+  }
+
+  throw new ApiError(400, "bad_request", "Only prayer requests, tasks, or blockers can be resolved.");
+}
+
+async function setWorkStatus(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const postId = str(ctx.body, "postId");
+  const status = ctx.body.status;
+  if (!["open", "in_progress", "answered"].includes(status)) {
+    throw bad("bad_request", "Unknown status.");
+  }
+  const { member } = await load(ctx, circleId);
+  const post = await livePost(ctx, circleId, postId);
+  if (post.type !== "task" && post.type !== "blocker") {
+    throw new ApiError(400, "bad_request", "Only tasks or blockers have a workflow status.");
+  }
+  const auth = await ctx.db.get(`${C(circleId)}/postAuthors/${postId}`);
+  const isAuthor = auth?.data?.authorUid === ctx.uid || post.authorUid === ctx.uid;
+  const isAssignee = Boolean(post.meta?.assigneeUid && post.meta.assigneeUid === ctx.uid);
+  const isMod = canModerate(member.role);
+  if (!isAuthor && !isAssignee && !isMod) {
+    throw new ApiError(403, "forbidden", "Only the creator, assignee, or a moderator can update status.");
+  }
+  await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, {
+    status,
+    answeredAt: status === "answered" ? ctx.now : null,
+  })]);
   return {};
 }
 
@@ -620,15 +717,26 @@ async function react(ctx) {
 /** Clients write comments directly (rules); this recomputes the counters from the truth. Idempotent. */
 async function syncCounts(ctx) {
   const circleId = str(ctx.body, "circleId"); const postId = str(ctx.body, "postId");
-  await load(ctx, circleId);
+  const { circle, member } = await load(ctx, circleId);
   const post = await livePost(ctx, circleId, postId);
   const last = post.countsSyncedAt instanceof Date ? post.countsSyncedAt.getTime() : 0;
   if (ctx.now.getTime() - last < 20_000) return { counts: post.counts };
   const parent = `${C(circleId)}/posts/${postId}`;
   const comments = await ctx.db.count({ parent, collection: "comments" });
+  const prevComments = post.counts?.comments || 0;
   const reactions = {};
   for (const k of REACTIONS) reactions[k] = await ctx.db.count({ parent, collection: "reactions", where: [["kind", "==", k]] });
   await ctx.db.commit([w.update(parent, { "counts.comments": comments, "counts.reactions": reactions, countsSyncedAt: ctx.now })]);
+  if (comments > prevComments && ctx.defer) {
+    ctx.defer((async () => {
+      if (!(await shouldSendThrottledPush(ctx.kv, `push:comment:${circleId}:${postId}`, ctx.now.getTime(), 20_000))) return;
+      await notifyMembers(ctx, circleId, ctx.uid, {
+        title: circle.name,
+        body: `${member.displayName} commented on a post`,
+        data: { kind: "comment", circleId, postId },
+      });
+    })());
+  }
   return { counts: { ...post.counts, comments, reactions } };
 }
 
@@ -640,7 +748,7 @@ async function syncCounts(ctx) {
  */
 async function commentAsAuthor(ctx) {
   const circleId = str(ctx.body, "circleId"); const postId = str(ctx.body, "postId");
-  await load(ctx, circleId);
+  const { circle } = await load(ctx, circleId);
   await requireAuthor(ctx, circleId, postId);
   const post = await livePost(ctx, circleId, postId);
   if (!post.anonymous) throw new ApiError(400, "bad_request", "Comment on your own named post the normal way.");
@@ -655,6 +763,16 @@ async function commentAsAuthor(ctx) {
   const id = newId();
   const doc = { body: text, displayName: "Requester", author: true, parentId, createdAt: ctx.now };
   await ctx.db.commit([w.create(`${C(circleId)}/posts/${postId}/comments/${id}`, doc)]);
+  if (ctx.defer) {
+    ctx.defer((async () => {
+      if (!(await shouldSendThrottledPush(ctx.kv, `push:comment:${circleId}:${postId}`, ctx.now.getTime(), 20_000))) return;
+      await notifyMembers(ctx, circleId, ctx.uid, {
+        title: circle.name,
+        body: "Someone added a reply on a prayer request",
+        data: { kind: "comment", circleId, postId },
+      });
+    })());
+  }
   return { commentId: id };
 }
 
@@ -687,7 +805,7 @@ function systemMessage(ctx, member, fields) {
 async function createPoll(ctx) {
   const circleId = str(ctx.body, "circleId");
   const { circle, member } = await load(ctx, circleId);
-  const shaped = shapePoll(ctx.body);
+  const shaped = shapePoll({ ...ctx.body, closesAt: ctx.body.closesAt ?? null });
   await hit(ctx.kv, `rl:createPoll:${ctx.uid}`, RATE.createPoll);
   const pollId = newId(); const messageId = newId();
   await ctx.db.commit([
@@ -788,10 +906,28 @@ async function unregisterToken(ctx) {
   return {};
 }
 
+/** Throttled chat push notification invoked after a member sends a Firestore chat message. */
+async function notifyChat(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const { circle, member } = await load(ctx, circleId);
+  const hasMentions = ctx.body.hasMentions === true;
+  if (!hasMentions && !(await shouldSendThrottledPush(ctx.kv, `push:chat:${circleId}`, ctx.now.getTime(), 25_000))) {
+    return { notified: false };
+  }
+  if (ctx.defer) {
+    ctx.defer(notifyMembers(ctx, circleId, ctx.uid, {
+      title: circle.name,
+      body: hasMentions ? `${member.displayName} mentioned someone in chat` : `${member.displayName} sent a message`,
+      data: { kind: "chat", circleId },
+    }));
+  }
+  return { notified: true };
+}
+
 export const HANDLERS = {
   createCircle, updateCircle, createInvite, createEmailInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
-  createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, deletePost,
-  prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken,
+  createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, setWorkStatus, deletePost,
+  prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken, notifyChat,
   createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
   decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp,
   createUploadTicket, sendMessage, deleteMedia, removeAvatar,

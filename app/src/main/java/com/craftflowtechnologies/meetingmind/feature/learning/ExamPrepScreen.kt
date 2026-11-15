@@ -75,6 +75,9 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.feature.notes.editor.LatexMathParser
 import com.craftflowtechnologies.meetingmind.feature.notes.editor.MathExpressionView
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.School
 import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.LearningFixedColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
@@ -86,11 +89,13 @@ fun ExamPrepScreen(
     onBack: () -> Unit,
     onOpenNote: (noteId: String) -> Unit,
     onShareToCircle: (cramSheetMarkdown: String) -> Unit,
+    onStartExamDrill: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val goals by viewModel.goals.collectAsState()
     val courses by viewModel.courses.collectAsState()
     val priorities by viewModel.examPriorities.collectAsState()
+    val selectedFilterId by viewModel.selectedExamFilterId.collectAsState()
     val cramSheetMarkdown by viewModel.cramSheetMarkdown.collectAsState()
     val isGeneratingCramSheet by viewModel.isGeneratingCramSheet.collectAsState()
 
@@ -119,7 +124,7 @@ fun ExamPrepScreen(
             }
         },
         onSaveCramSheetAsNote = { title, markdown ->
-            viewModel.saveCramSheetAsNote(title, null, markdown) { noteId ->
+            viewModel.saveCramSheetAsNote(title, selectedFilterId, markdown) { noteId ->
                 onOpenNote(noteId)
             }
         },
@@ -127,6 +132,22 @@ fun ExamPrepScreen(
             onShareToCircle(markdown)
         },
         onBack = onBack,
+        selectedFilterId = selectedFilterId,
+        onSelectFilter = { filterId ->
+            viewModel.refreshExamPriorities(filterId)
+        },
+        onOpenSession = { sessionId ->
+            onOpenNote(sessionId)
+        },
+        onStartExamDrill = {
+            val topSessionId = priorities.firstOrNull()?.concept?.sessionId
+            viewModel.loadPracticeByFilter(
+                filter = PracticeArenaFilter.ALL,
+                sessionId = topSessionId,
+                courseId = selectedFilterId
+            )
+            onStartExamDrill?.invoke()
+        },
         modifier = modifier
     )
 
@@ -135,7 +156,7 @@ fun ExamPrepScreen(
             markdown = cramSheetMarkdown!!,
             onDismiss = { showCramSheetPreview = false },
             onSaveAsNote = {
-                viewModel.saveCramSheetAsNote("Exam Cram Sheet", null, cramSheetMarkdown!!) { noteId ->
+                viewModel.saveCramSheetAsNote("Exam Cram Sheet", selectedFilterId, cramSheetMarkdown!!) { noteId ->
                     showCramSheetPreview = false
                     onOpenNote(noteId)
                 }
@@ -161,6 +182,10 @@ fun ExamPrepContent(
     onSaveCramSheetAsNote: (String, String) -> Unit,
     onShareToCircle: (String) -> Unit,
     onBack: () -> Unit,
+    selectedFilterId: String? = null,
+    onSelectFilter: (String?) -> Unit = {},
+    onOpenSession: (String) -> Unit = {},
+    onStartExamDrill: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val c = MM.colors
@@ -175,7 +200,7 @@ fun ExamPrepContent(
             .testTag("exam_prep_screen")
     ) {
         ScreenHeader(
-            title = "Exam Readiness",
+            title = "Exam Readiness Studio",
             leading = {
                 IconButton(onClick = onBack, modifier = Modifier.testTag("exam_prep_back_button")) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.ink)
@@ -188,11 +213,61 @@ fun ExamPrepContent(
             }
         )
 
+        if (courses.isNotEmpty() || goals.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = MM.space.l, vertical = MM.space.xs),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+            ) {
+                val allSelected = selectedFilterId == null
+                Box(
+                    modifier = Modifier
+                        .clip(MM.radius.pill)
+                        .background(if (allSelected) c.accent else c.surfaceSunk)
+                        .clickable { onSelectFilter(null) }
+                        .padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                ) {
+                    Text(
+                        text = "All Courses",
+                        style = MM.type.caption.copy(fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Medium),
+                        color = if (allSelected) c.onAccent else c.inkSecondary
+                    )
+                }
+                courses.forEach { course ->
+                    val isSelected = selectedFilterId == course.notebook.id
+                    Box(
+                        modifier = Modifier
+                            .clip(MM.radius.pill)
+                            .background(if (isSelected) c.accent else c.surfaceSunk)
+                            .clickable { onSelectFilter(course.notebook.id) }
+                            .padding(horizontal = MM.space.m, vertical = MM.space.xs)
+                    ) {
+                        Text(
+                            text = course.notebook.name,
+                            style = MM.type.caption.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium),
+                            color = if (isSelected) c.onAccent else c.inkSecondary
+                        )
+                    }
+                }
+            }
+        }
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(MM.space.l),
             verticalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
+            if (priorities.isNotEmpty()) {
+                item(key = "readiness_dashboard") {
+                    ExamReadinessDashboardCard(
+                        priorities = priorities,
+                        onStartExamDrill = onStartExamDrill
+                    )
+                }
+            }
+
             // Exam Goals section (renders all goals)
             item(key = "goals_section") {
                 if (goals.isEmpty()) {
@@ -209,12 +284,22 @@ fun ExamPrepContent(
                                 style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
                                 color = c.inkSecondary
                             )
+                            Text(
+                                text = "+ Add Exam",
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                color = c.accent,
+                                modifier = Modifier.clickable { showDialog = true }
+                            )
                         }
                         goals.forEach { goal ->
                             val daysRemaining = ((goal.examDateMs - System.currentTimeMillis()).coerceAtLeast(0L) / (24 * 3600 * 1000L)).toInt()
                             ExamGoalCard(
                                 goal = goal,
                                 daysRemaining = daysRemaining,
+                                isSelected = selectedFilterId == goal.id,
+                                onSelect = {
+                                    onSelectFilter(if (selectedFilterId == goal.id) null else goal.id)
+                                },
                                 onDelete = { goalToDelete = goal }
                             )
                         }
@@ -250,7 +335,10 @@ fun ExamPrepContent(
                 }
             } else {
                 items(priorities, key = { it.concept.id }) { item ->
-                    ExamPriorityRow(item = item)
+                    ExamPriorityRow(
+                        item = item,
+                        onClick = { onOpenSession(item.concept.sessionId) }
+                    )
                 }
             }
         }
@@ -308,14 +396,109 @@ fun ExamPrepContent(
 }
 
 @Composable
+private fun ExamReadinessDashboardCard(
+    priorities: List<ExamPriorityItem>,
+    onStartExamDrill: () -> Unit
+) {
+    val c = MM.colors
+    val total = priorities.size.coerceAtLeast(1)
+    val strongCount = priorities.count { it.mastery.state == LearningMasteryState.STRONG }
+    val developingCount = priorities.count {
+        it.mastery.state == LearningMasteryState.DEVELOPING || it.mastery.state == LearningMasteryState.LEARNING
+    }
+    val gapCount = priorities.count {
+        it.mastery.state == LearningMasteryState.NEEDS_REVIEW || it.mastery.state == LearningMasteryState.NEW
+    }
+    val readinessScore = (((strongCount * 100f) + (developingCount * 60f) + (gapCount * 20f)) / total).toInt().coerceIn(0, 100)
+
+    val readinessColor = when {
+        readinessScore >= 75 -> LearningFixedColors.MasteryStrong
+        readinessScore >= 45 -> LearningFixedColors.MasteryDeveloping
+        else -> LearningFixedColors.MasteryNeedsReview
+    }
+
+    MMCard(contentPadding = MM.space.l) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "EXAM READINESS SCORE",
+                        style = MM.type.overline,
+                        color = c.inkSecondary
+                    )
+                    Text(
+                        text = "$readinessScore% Ready",
+                        style = MM.type.title.copy(fontWeight = FontWeight.Bold),
+                        color = readinessColor
+                    )
+                    Text(
+                        text = "$strongCount Strong · $developingCount Developing · $gapCount Priority Gaps",
+                        style = MM.type.caption,
+                        color = c.inkSecondary
+                    )
+                }
+                PrimaryButton(
+                    text = "Drill Priority Gaps",
+                    onClick = onStartExamDrill,
+                    modifier = Modifier.testTag("start_exam_drill_button")
+                )
+            }
+
+            // Segmented readiness bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(MM.radius.pill)
+                    .background(c.surfaceSunk)
+            ) {
+                if (strongCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .weight(strongCount.toFloat())
+                            .height(8.dp)
+                            .background(LearningFixedColors.MasteryStrong)
+                    )
+                }
+                if (developingCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .weight(developingCount.toFloat())
+                            .height(8.dp)
+                            .background(LearningFixedColors.MasteryDeveloping)
+                    )
+                }
+                if (gapCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .weight(gapCount.toFloat())
+                            .height(8.dp)
+                            .background(LearningFixedColors.MasteryNeedsReview)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ExamGoalCard(
     goal: LearningGoal,
     daysRemaining: Int,
+    isSelected: Boolean = false,
+    onSelect: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     val c = MM.colors
 
-    MMCard(contentPadding = MM.space.m) {
+    MMCard(
+        contentPadding = MM.space.m,
+        modifier = Modifier.clickable(onClick = onSelect)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -325,7 +508,7 @@ private fun ExamGoalCard(
                 Text(
                     text = goal.title,
                     style = MM.type.heading,
-                    color = c.ink,
+                    color = if (isSelected) c.accent else c.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -437,7 +620,10 @@ private fun CramSheetActionCard(
 }
 
 @Composable
-private fun ExamPriorityRow(item: ExamPriorityItem) {
+private fun ExamPriorityRow(
+    item: ExamPriorityItem,
+    onClick: () -> Unit = {}
+) {
     val c = MM.colors
 
     val importanceColor = when (item.concept.examImportance) {
@@ -454,19 +640,30 @@ private fun ExamPriorityRow(item: ExamPriorityItem) {
         LearningMasteryState.NEW -> LearningFixedColors.MasteryNew
     }
 
-    MMCard(contentPadding = MM.space.m) {
+    MMCard(
+        contentPadding = MM.space.m,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = item.concept.name,
-                    style = MM.type.bodyStrong,
-                    color = c.ink,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.concept.name,
+                        style = MM.type.bodyStrong,
+                        color = c.ink
+                    )
+                    if (item.sessionTitle.isNotBlank()) {
+                        Text(
+                            text = "Lecture: ${item.sessionTitle}",
+                            style = MM.type.caption,
+                            color = c.accent
+                        )
+                    }
+                }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
                     Box(
@@ -497,13 +694,15 @@ private fun ExamPriorityRow(item: ExamPriorityItem) {
                 }
             }
 
-            Text(
-                text = item.concept.definition,
-                style = MM.type.caption,
-                color = c.inkSecondary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (item.concept.definition.isNotBlank()) {
+                Text(
+                    text = item.concept.definition,
+                    style = MM.type.caption,
+                    color = c.inkSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
             item.concept.formulaLatex?.takeIf { it.isNotBlank() }?.let { formula ->
                 Box(

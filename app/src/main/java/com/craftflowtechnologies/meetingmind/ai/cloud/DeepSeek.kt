@@ -8,10 +8,15 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.isRetryable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -125,8 +130,144 @@ class DeepSeek(private val context: Context, private val baseUrl: String = BASE_
         }
     }
 
+    /** Streaming DeepSeek completion (supports reasoning deltas, OpenAI tool calls, and cancellation). */
+    fun stream(
+        system: String,
+        prompt: String,
+        json: Boolean,
+        timeoutMs: Long = 120_000L,
+        maxTokens: Int = 4096,
+        modelId: String = MODEL,
+        enableThinking: Boolean = false,
+        messagesJson: String? = null,
+        toolsJson: String? = null
+    ): Flow<AiStreamEvent> = flow {
+        GeminiLog.attach(context)
+        if (!com.craftflowtechnologies.meetingmind.BuildConfig.DEBUG && usedThisMonth() >= MONTHLY_TOKENS) {
+            emit(AiStreamEvent.Failed(AiResult.Failed("This month's built-in AI allowance is used up. It resets on the 1st, or add your own Gemini key in Settings.", retryable = false)))
+            return@flow
+        }
+        val proxy = proxyUrl
+        val key = userKeyFlow.first() ?: systemKey
+        if (proxy == null && key == null) {
+            emit(AiStreamEvent.Failed(AiResult.ModelUnavailable(modelId, "DeepSeek isn't set up on this build.")))
+            return@flow
+        }
+
+        val messages = messagesJson?.let { runCatching { JSONArray(it) }.getOrNull() } ?: JSONArray().apply {
+            if (system.isNotBlank()) put(JSONObject().put("role", "system").put("content", system))
+            put(JSONObject().put("role", "user").put("content", if (json && !prompt.contains("json", ignoreCase = true)) "$prompt\n\nReply in json." else prompt))
+        }
+        val body = JSONObject()
+            .put("model", modelId)
+            .put("messages", messages)
+            .put("max_tokens", maxTokens)
+            .put("stream", true)
+            .put("stream_options", JSONObject().put("include_usage", true))
+            .put("thinking", JSONObject().put("type", if (enableThinking) "enabled" else "disabled"))
+        if (json && toolsJson == null) body.put("response_format", JSONObject().put("type", "json_object"))
+        toolsJson?.let { runCatching { JSONArray(it) }.getOrNull() }?.let { body.put("tools", it) }
+
+        val request = Request.Builder()
+            .url(if (proxy != null) "${proxy.trimEnd('/')}/chat/completions" else "$baseUrl/chat/completions")
+            .header("Accept", "text/event-stream")
+            .apply {
+                if (proxy != null) header("X-Install-Id", installId()) else header("Authorization", "Bearer $key")
+            }
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val started = System.currentTimeMillis()
+        val client = com.craftflowtechnologies.meetingmind.core.net.Net.base.newBuilder().callTimeout(timeoutMs, TimeUnit.MILLISECONDS).build()
+        val call = client.newCall(request)
+        val cancelReg = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+        try {
+            call.execute().use { r ->
+                if (!r.isSuccessful) {
+                    val errText = r.body?.string().orEmpty()
+                    val msg = runCatching { JSONObject(errText).optJSONObject("error")?.optString("message") }.getOrNull()?.takeIf { it.isNotBlank() } ?: errText.take(200)
+                    GeminiLog.add("DeepSeek stream → HTTP ${r.code}: $msg")
+                    emit(
+                        AiStreamEvent.Failed(
+                            AiResult.Failed(
+                                when (r.code) {
+                                    401 -> "DeepSeek didn't accept its key."
+                                    402 -> "The DeepSeek account is out of credit."
+                                    429 -> if (msg.contains("allowance", true)) msg else "DeepSeek is busy right now. Try again shortly."
+                                    else -> "DeepSeek couldn't answer (HTTP ${r.code}). $msg".trim()
+                                },
+                                retryable = r.code != 401 && r.code != 402
+                            )
+                        )
+                    )
+                    return@flow
+                }
+                val source = r.body?.source() ?: run {
+                    emit(AiStreamEvent.Failed(AiResult.Failed("DeepSeek returned an empty stream.")))
+                    return@flow
+                }
+                val fullText = StringBuilder()
+                val toolAcc = SseStreamReader.OpenAiToolCallAccumulator()
+                var usage: GeminiUsage? = null
+                var ttftMs: Long? = null
+
+                SseStreamReader.readEvents(source) { payload ->
+                    coroutineContext.ensureActive()
+                    val root = runCatching { JSONObject(payload) }.getOrNull() ?: return@readEvents
+                    val delta = root.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta")
+                    if (delta != null) {
+                        val reasoning = delta.optString("reasoning_content")
+                        if (reasoning.isNotEmpty() && reasoning != "null") {
+                            if (ttftMs == null) ttftMs = System.currentTimeMillis() - started
+                            emit(AiStreamEvent.ThinkingDelta(reasoning))
+                        }
+                        val content = delta.optString("content")
+                        if (content.isNotEmpty() && content != "null") {
+                            if (ttftMs == null) ttftMs = System.currentTimeMillis() - started
+                            fullText.append(content)
+                            emit(AiStreamEvent.TextDelta(content))
+                        }
+                        delta.optJSONArray("tool_calls")?.let {
+                            if (ttftMs == null) ttftMs = System.currentTimeMillis() - started
+                            toolAcc.accept(it)
+                        }
+                    }
+                    root.optJSONObject("usage")?.let { u ->
+                        usage = GeminiUsage(
+                            promptTokens = u.optInt("prompt_tokens"),
+                            outputTokens = u.optInt("completion_tokens"),
+                            totalTokens = u.optInt("total_tokens")
+                        )
+                    }
+                }
+
+                val calls = toolAcc.build()
+                if (calls.isNotEmpty()) emit(AiStreamEvent.FunctionCalls(calls))
+                val out = fullText.toString()
+                val tokens = usage?.totalTokens?.toLong()?.takeIf { it > 0 } ?: ((system.length + prompt.length + out.length) / 4L)
+                record(tokens)
+                val secs = "%.1fs".format((System.currentTimeMillis() - started) / 1000.0)
+                GeminiLog.add("DeepSeek stream → OK in $secs (ttft=${ttftMs ?: 0}ms, $tokens tokens)")
+
+                if (out.isBlank() && calls.isEmpty()) {
+                    emit(AiStreamEvent.Failed(AiResult.Failed("DeepSeek returned an empty answer.")))
+                } else {
+                    emit(AiStreamEvent.Completed(out, calls, usage, ttftMs))
+                }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: java.io.IOException) {
+            GeminiLog.add("DeepSeek stream → ${e.javaClass.simpleName}: ${e.message}")
+            emit(AiStreamEvent.Failed(AiResult.Failed("Couldn't reach DeepSeek: ${e.message ?: "network error"}", e)))
+        } finally {
+            cancelReg?.dispose()
+        }
+    }.flowOn(Dispatchers.IO)
+
     companion object {
         const val MODEL = "deepseek-flash"
+        const val MODEL_PRO = "deepseek-v4-pro"
         const val BASE_URL = "https://api.deepseek.com"
         const val MONTHLY_TOKENS = 6_000_000L
         private val KEY = stringPreferencesKey("deepseek_key")
@@ -192,6 +333,85 @@ class FallbackTransport(
                 retryable = second.isRetryable()
             )
         } else second
+    }
+
+    override fun stream(request: GeminiRequest): Flow<AiStreamEvent> = flow {
+        val audio = request.audioFile != null || request.transcription != null
+        if (audio) {
+            gemini.stream(request).collect { ev ->
+                if (ev is AiStreamEvent.Completed) DeepSeek.lastProvider = "Gemini"
+                emit(ev)
+            }
+            return@flow
+        }
+        refreshConfigured()
+        var geminiFailure: AiResult<Nothing>? = null
+        var emittedOutput = false
+        if (geminiReady) {
+            var completed = false
+            gemini.stream(request).collect { ev ->
+                when (ev) {
+                    is AiStreamEvent.ThinkingDelta, is AiStreamEvent.TextDelta, is AiStreamEvent.FunctionCalls -> {
+                        emittedOutput = true
+                        emit(ev)
+                    }
+                    is AiStreamEvent.Completed -> {
+                        DeepSeek.lastProvider = "Gemini"
+                        completed = true
+                        emit(ev)
+                    }
+                    is AiStreamEvent.Failed -> geminiFailure = ev.error
+                }
+            }
+            if (completed) return@flow
+            if (emittedOutput || !deepSeekReady) {
+                emit(AiStreamEvent.Failed(geminiFailure ?: AiResult.Failed("Gemini stream interrupted.")))
+                return@flow
+            }
+            val msg = (geminiFailure as? AiResult.Failed)?.message ?: (geminiFailure as? AiResult.ModelUnavailable)?.message
+            GeminiLog.add("Falling back to DeepSeek stream after Gemini: ${msg ?: "failed"}")
+        }
+        if (!deepSeekReady) {
+            emit(AiStreamEvent.Failed(AiResult.ModelUnavailable(request.modelId, "No AI is set up. Add a Gemini key in Settings.")))
+            return@flow
+        }
+        val openAiTools = SseStreamReader.geminiToolsToOpenAiTools(request.toolsJson)
+        val openAiMessages = SseStreamReader.geminiContentsToOpenAiMessages(request.systemInstruction, request.contentsJson)
+        val usePro = request.thinkingLevel == ThinkingLevel.HIGH || request.modelId.contains("4")
+        val deepSeekModel = if (usePro) DeepSeek.MODEL_PRO else DeepSeek.MODEL
+        val deepSeekPrompt = buildString {
+            append(request.prompt)
+            request.responseSchema?.let { append("\n\nReply with a JSON object matching this JSON Schema, and nothing else:\n").append(it) }
+            if (request.vocabularyHints.isNotEmpty()) append("\n\nTerms likely to appear: ").append(request.vocabularyHints.joinToString(", "))
+        }
+        deepSeek.stream(
+            system = request.systemInstruction,
+            prompt = deepSeekPrompt,
+            json = request.responseSchema != null || request.jsonOutput,
+            timeoutMs = request.timeoutMs ?: 120_000L,
+            maxTokens = request.maxOutputTokens ?: 4096,
+            modelId = deepSeekModel,
+            enableThinking = usePro || request.includeThoughts,
+            messagesJson = openAiMessages,
+            toolsJson = openAiTools
+        ).collect { ev ->
+            when (ev) {
+                is AiStreamEvent.Completed -> {
+                    DeepSeek.lastProvider = "DeepSeek"
+                    emit(ev)
+                }
+                is AiStreamEvent.Failed -> {
+                    val gMsg = (geminiFailure as? AiResult.Failed)?.message
+                    val dMsg = (ev.error as? AiResult.Failed)?.message
+                    if (gMsg != null) {
+                        emit(AiStreamEvent.Failed(AiResult.Failed("Gemini: $gMsg · DeepSeek: ${dMsg ?: "unavailable"}", retryable = ev.error.isRetryable())))
+                    } else {
+                        emit(ev)
+                    }
+                }
+                else -> emit(ev)
+            }
+        }
     }
 }
 

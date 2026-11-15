@@ -2,6 +2,7 @@
 // Worker. Clients never get R2 credentials: the Worker checks membership and writes or streams the bytes.
 // Spec: docs/CIRCLES_BACKEND_HANDOFF.md section 6.
 import { ApiError } from "./errors.js";
+import { pushToUsers } from "./fcm.js";
 import { w } from "./firestore.js";
 import { hit } from "./ratelimit.js";
 import { cleanText, isAdmin, validId, LIMITS } from "./logic.js";
@@ -163,7 +164,7 @@ export async function sendMessage(ctx) {
   const { kind, uploadPath } = ctx.body;
   if (!MEDIA[kind]) throw bad("kind must be image, video, voice or file.");
   uuidFromPath(circleId, uploadPath);
-  const { member } = await loadMember(ctx, circleId);
+  const { circle, member } = await loadMember(ctx, circleId);
   const requestedId = ctx.body.requestId == null ? null : validId(ctx.body.requestId, "requestId");
   if (requestedId) {
     const existing = await ctx.db.get(`circles/${circleId}/messages/${requestedId}`);
@@ -195,6 +196,25 @@ export async function sendMessage(ctx) {
   const msg = { authorUid: ctx.uid, displayName: member.displayName, kind, text, attachment, createdAt: ctx.now, editedAt: null, deleted: false };
   if (replyTo) msg.replyTo = replyTo;
   await ctx.db.commit([w.create(`circles/${circleId}/messages/${messageId}`, msg)]);
+  if (ctx.defer && ctx.fcm) {
+    const label = kind === "voice" ? "sent a voice note" : kind === "video" ? "sent a video" : kind === "image" ? "shared a photo" : "shared a file";
+    const maxPush = Math.max(0, parseInt(ctx.env?.NOTIFY_MAX || "30", 10) || 30);
+    ctx.defer((async () => {
+      const ms = await ctx.db.query({ parent: C(circleId), collection: "members", where: [["muted", "==", false]], limit: LIMITS.membersPerCircle });
+      const uids = ms.map((m) => m.id).filter((u) => u !== ctx.uid);
+      await pushToUsers({
+        db: ctx.db,
+        fcm: ctx.fcm,
+        uids,
+        max: maxPush,
+        message: {
+          title: circle.name,
+          body: `${member.displayName} ${label}`,
+          data: { kind: "chat", circleId, messageId },
+        },
+      });
+    })());
+  }
   return { messageId };
 }
 

@@ -54,6 +54,16 @@ class CirclesRepository(
         if (activatePush || store.circleIds().isNotEmpty()) push?.activate()
     }
 
+    /**
+     * Syncs FCM registration on app startup/foreground for users who already belong to a circle,
+     * without waking the Worker or registering tokens before the person joins/opens Circles.
+     */
+    suspend fun syncPushOnStartup() {
+        if (!api.isConfigured) return
+        if (store.circleIds().isNotEmpty()) push?.activate()
+        else (push as? PushTokenManager)?.syncIfWanted()
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     fun circles(): Flow<CirclesListState> {
         if (!api.isConfigured) return flowOf(CirclesListState.NotConnected)
@@ -103,7 +113,8 @@ class CirclesRepository(
         anonymous: Boolean = false,
         attachments: List<MediaAttachment> = emptyList(),
         verseRef: String? = null,
-        requestId: String = java.util.UUID.randomUUID().toString()
+        requestId: String = java.util.UUID.randomUUID().toString(),
+        meta: PostMeta? = null
     ): CirclesResult<CreatedPost> {
         if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
         val signedIn = uid()
@@ -116,7 +127,8 @@ class CirclesRepository(
                 verseRef = verseRef,
                 anonymous = anonymous,
                 attachments = attachments,
-                requestId = requestId
+                requestId = requestId,
+                meta = meta
             )
         )
     }

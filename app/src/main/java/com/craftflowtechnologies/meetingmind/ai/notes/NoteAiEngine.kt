@@ -85,7 +85,7 @@ class NoteAiEngine(
 
         val aliases = usable.mapIndexed { i, p -> "p${i + 1}" to p }.toMap()
         val prompt = NoteAiPrompts.build(tool, aliases, faith, question, sections)
-        val response = when (val r = languageModel.generate(prompt, maxOutputTokens)) {
+        val response = when (val r = languageModel.generateStructured(prompt, NoteAiPrompts.jsonSchema(tool), maxOutputTokens)) {
             is AiResult.Success -> r.value
             else -> return AiResult.Failed(r.describeFailure() ?: "\"${tool.label}\" could not run.")
         }
@@ -286,5 +286,13 @@ You MUST:
         NoteAiTool.EXTRACT_ACTIONS -> """{"actions":[{"text":"…","detail":"who or when, or empty","sources":["p2"]}]}"""
         NoteAiTool.ASK -> """{"found":true,"answer":"…","sources":["p1","p3"]}"""
         NoteAiTool.ORGANIZE, NoteAiTool.STUDY_GUIDE -> """{"sections":[{"key":"section_key","items":[{"text":"…","sources":["p1"]}]}]}"""
+    }
+
+    /** Formal JSON Schema enforced at decoding time by cloud transports. */
+    fun jsonSchema(tool: NoteAiTool): String = when (tool) {
+        NoteAiTool.SUMMARIZE -> """{"type":"object","properties":{"points":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["text","sources"]}}},"required":["points"]}"""
+        NoteAiTool.EXTRACT_ACTIONS -> """{"type":"object","properties":{"actions":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"detail":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["text","sources"]}}},"required":["actions"]}"""
+        NoteAiTool.ASK -> """{"type":"object","properties":{"found":{"type":"boolean"},"answer":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["found","answer","sources"]}"""
+        NoteAiTool.ORGANIZE, NoteAiTool.STUDY_GUIDE -> """{"type":"object","properties":{"sections":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"title":{"type":"string"},"items":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["text","sources"]}}},"required":["key","items"]}}},"required":["sections"]}"""
     }
 }

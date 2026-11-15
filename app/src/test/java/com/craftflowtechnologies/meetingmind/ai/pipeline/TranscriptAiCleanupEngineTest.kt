@@ -404,4 +404,31 @@ class TranscriptAiCleanupEngineTest {
 
         assertEquals("This is the raw text right here.", secondCleaned[0].cleanedText)
     }
+
+    @Test
+    fun `cloud-scale context grants ample output budget and includes domain vocabulary hints`() = runBlocking {
+        var seenPrompt = ""
+        var seenMaxTokens = 0
+        val cloudModel = object : LanguageModel {
+            override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> {
+                seenPrompt = prompt
+                seenMaxTokens = maxOutputTokens
+                return AiResult.Success(jsonResponse("s1" to "Let us open Psalm twenty three and review MeetingMind notes."))
+            }
+        }
+        val segments = listOf(seg("s1", "uh let us open psalm twenty three and review meeting mind notes"))
+
+        val result = engine(cloudModel, contextTokens = 32_000).cleanWithContext(
+            segments = segments,
+            profile = profile(RecordingType.SERMON),
+            singleSpeakerMode = true,
+            vocabularyHints = listOf("MeetingMind", "Psalm"),
+            recordingTitle = "Sunday Morning Message"
+        )
+
+        assertTrue(result is AiResult.Success)
+        assertTrue("Cloud cleanup must grant >= 4096 output tokens to prevent truncation", seenMaxTokens >= 4096)
+        assertTrue("Prompt should carry recording title context", seenPrompt.contains("Sunday Morning Message"))
+        assertTrue("Prompt should carry domain vocabulary hints", seenPrompt.contains("MeetingMind") && seenPrompt.contains("Psalm"))
+    }
 }

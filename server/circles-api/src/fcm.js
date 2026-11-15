@@ -12,7 +12,17 @@ export class Fcm {
       const res = await this.fetch(`https://fcm.googleapis.com/v1/projects/${this.projectId}/messages:send`, {
         method: "POST",
         headers: { Authorization: `Bearer ${at}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ message: { token, notification: { title, body }, data, android: { priority: "NORMAL" } } }),
+        body: JSON.stringify({
+          message: {
+            token,
+            notification: { title, body },
+            data,
+            android: {
+              priority: "HIGH",
+              notification: { channel_id: "circles_posts" },
+            },
+          },
+        }),
       });
       if (res.ok) return "ok";
       const t = await res.text();

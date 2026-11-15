@@ -193,3 +193,32 @@ object LearningFixedColors {
     val UnbalancedInk = Color(0xFFB91C1C)
 }
 
+/** Fixed editorial tokens for the redesigned Testimonies Wall of Remembrance. */
+object TestimonyColors {
+    val HeroDeepIndigo = Color(0xFF1C1633)
+    val HeroVelvetPlum = Color(0xFF35244E)
+    val HeroDawnBronze = Color(0xFF5A3B22)
+    val HeroGoldGlow = Color(0xFFF5C97B)
+    val HeroOnDark = Color(0xFFFFFFFF)
+    val HeroSubtleOnDark = Color(0xFFE7DFD3)
+
+    // Category badge tints (readable on both light & dark themes via soft alpha backgrounds)
+    val CategoryHealing = Color(0xFF059669)
+    val CategoryProvision = Color(0xFFD97706)
+    val CategoryBreakthrough = Color(0xFF7C3AED)
+    val CategoryFamily = Color(0xFFE11D48)
+    val CategoryGuidance = Color(0xFF0284C7)
+    val CategoryGratitude = Color(0xFFB45309)
+
+    // Story beats & Scripture callouts
+    val SpotlightTintLight = Color(0xFFFFF8EC)
+    val SpotlightTintDark = Color(0xFF282118)
+    val ScriptureWashLight = Color(0xFFFAF3E3)
+    val ScriptureWashDark = Color(0xFF252019)
+    val DraftAmber = Color(0xFFB45309)
+    val DraftWash = Color(0xFFFEF3C7)
+    val CircleSage = Color(0xFF0F766E)
+    val CircleWash = Color(0xFFCCFBF1)
+}
+
+

@@ -70,7 +70,7 @@ test("validation helpers reject path injection and junk", () => {
   assert.equal(canInvite("member", settings), false); assert.equal(canInvite("member", { whoCanInvite: "members" }), true);
 });
 
-import { shapePoll, shapeCelebration } from "../../src/logic.js";
+import { shapePoll, shapeCelebration, cleanPostMeta, GENERAL_POST_TYPES, GENERAL_REACTIONS, GENERAL_CODE_WORDS, ALL_CODE_WORDS, TEMPLATES } from "../../src/logic.js";
 test("shapePoll builds stable option ids; shapeCelebration validates kind and companion", () => {
   const p = shapePoll({ question: " Night? ", options: [" Tue ", "Thu"], multi: undefined });
   assert.deepEqual(p.optionIds, ["o0", "o1"]); assert.equal(p.question, "Night?"); assert.equal(p.multi, false);
@@ -86,3 +86,130 @@ test("join approval defaults off and must be a boolean", () => {
   assert.equal(normalizeSettings({ joinApproval: true }, "family").joinApproval, true);
   assert.throws(() => normalizeSettings({ joinApproval: 1 }, "family"));
 });
+
+test("general space: templates, settings normalization, and invite code generation", () => {
+  // General templates
+  const generalTemplates = ["friends_group", "community_club", "book_club", "custom_general"];
+  for (const tpl of generalTemplates) {
+    assert.ok(TEMPLATES[tpl], `Template ${tpl} should exist`);
+    assert.deepEqual(TEMPLATES[tpl], GENERAL_POST_TYPES);
+  }
+
+  // Normalization with space="general"
+  const s1 = normalizeSettings({}, "friends_group", "general");
+  assert.equal(s1.space, "general");
+  assert.equal(s1.prayerApproval, false);
+  assert.deepEqual(s1.reactions, GENERAL_REACTIONS);
+  assert.deepEqual(s1.allowedTypes, GENERAL_POST_TYPES);
+
+  // Normalization via s.space="general"
+  const s2 = normalizeSettings({ space: "general" }, "custom_general");
+  assert.equal(s2.space, "general");
+  assert.equal(s2.prayerApproval, false);
+  assert.deepEqual(s2.reactions, GENERAL_REACTIONS);
+
+  // Custom overrides in general space
+  const s3 = normalizeSettings({ prayerApproval: true, reactions: ["heart"] }, "book_club", "general");
+  assert.equal(s3.prayerApproval, true);
+  assert.deepEqual(s3.reactions, ["heart"]);
+
+  // All GENERAL_CODE_WORDS are part of ALL_CODE_WORDS
+  for (const word of GENERAL_CODE_WORDS) {
+    assert.ok(ALL_CODE_WORDS.includes(word), `ALL_CODE_WORDS should include ${word}`);
+  }
+
+  // Code generation for general space uses GENERAL_CODE_WORDS and round-trips
+  for (let i = 0; i < 50; i++) {
+    const code = generateCode(undefined, "general");
+    const [prefix, suffix] = code.split("-");
+    assert.ok(GENERAL_CODE_WORDS.includes(prefix), `Prefix ${prefix} should be in GENERAL_CODE_WORDS`);
+    assert.match(suffix, /^[2-9BCDFGHJKMNPQRSTVWXZ]{4}$/);
+    assert.deepEqual(extractCodes(`Join our club: ${code}`), [code]);
+  }
+});
+
+test("cleanPostMeta cleans and preserves work metadata and existing fields", () => {
+  assert.equal(cleanPostMeta(null), null);
+  assert.equal(cleanPostMeta(undefined), null);
+  assert.equal(cleanPostMeta("bad"), null);
+  assert.equal(cleanPostMeta([]), null);
+  assert.equal(cleanPostMeta({}), null);
+
+  // All valid fields
+  const full = {
+    sourceKind: "Devotional",
+    sourceId: "src-12345",
+    assigneeName: " Alice Engineer ",
+    dueText: " End of sprint ",
+    assigneeUid: "  uid-alice-42  ",
+    dueAt: 1_800_000_000_000,
+    priority: "  URGENT  ",
+    blockedOn: "  API deployment to staging  ",
+    decisionOwner: "  Chief Architect  ",
+    meetingDate: "  2026-11-20  ",
+  };
+  const cleaned = cleanPostMeta(full);
+  assert.deepEqual(cleaned, {
+    sourceKind: "Devotional",
+    sourceId: "src-12345",
+    assigneeName: " Alice Engineer ",
+    dueText: " End of sprint ",
+    assigneeUid: "uid-alice-42",
+    dueAt: 1_800_000_000_000,
+    priority: "urgent",
+    blockedOn: "API deployment to staging",
+    decisionOwner: "Chief Architect",
+    meetingDate: "2026-11-20",
+  });
+
+  // Priority accepted values and case insensitivity
+  for (const prio of ["low", "normal", "high", "urgent", " LOW ", "Normal", "HIGH"]) {
+    assert.equal(cleanPostMeta({ priority: prio }).priority, prio.trim().toLowerCase());
+  }
+  assert.equal(cleanPostMeta({ priority: "critical" }), null);
+  assert.equal(cleanPostMeta({ priority: "" }), null);
+
+  // Truncation & empty string stripping
+  const truncated = cleanPostMeta({
+    assigneeUid: "u".repeat(100),
+    blockedOn: "b".repeat(120),
+    decisionOwner: "d".repeat(100),
+    meetingDate: "m".repeat(80),
+  });
+  assert.equal(truncated.assigneeUid.length, 64);
+  assert.equal(truncated.blockedOn.length, 80);
+  assert.equal(truncated.decisionOwner.length, 60);
+  assert.equal(truncated.meetingDate.length, 40);
+
+  // Whitespace-only strings ignored (returns null if no other valid keys)
+  assert.equal(cleanPostMeta({ assigneeUid: "   ", blockedOn: "  ", decisionOwner: " ", meetingDate: " " }), null);
+
+  // dueAt: only safe positive integers
+  assert.equal(cleanPostMeta({ dueAt: 100 }).dueAt, 100);
+  assert.equal(cleanPostMeta({ dueAt: 0 }), null);
+  assert.equal(cleanPostMeta({ dueAt: -100 }), null);
+  assert.equal(cleanPostMeta({ dueAt: 123.45 }), null);
+  assert.equal(cleanPostMeta({ dueAt: "100" }), null);
+  assert.equal(cleanPostMeta({ dueAt: Infinity }), null);
+});
+
+test("shapePoll supports optional closesAt deadline", () => {
+  // Omitted or null closesAt preserves existing return object shape without closesAt
+  const p1 = shapePoll({ question: "Release today?", options: ["Yes", "No"] });
+  assert.equal("closesAt" in p1, false);
+  assert.deepEqual(p1.optionIds, ["o0", "o1"]);
+
+  const p2 = shapePoll({ question: "Release today?", options: ["Yes", "No"], closesAt: null });
+  assert.equal("closesAt" in p2, false);
+
+  // Valid positive safe integer closesAt
+  const p3 = shapePoll({ question: "Release today?", options: ["Yes", "No"], closesAt: 1_800_000_000_000 });
+  assert.equal(p3.closesAt, 1_800_000_000_000);
+
+  // Invalid closesAt throws bad_request
+  assert.throws(() => shapePoll({ question: "Q?", options: ["A", "B"], closesAt: 0 }), /Poll deadline must be a valid time/);
+  assert.throws(() => shapePoll({ question: "Q?", options: ["A", "B"], closesAt: -100 }), /Poll deadline must be a valid time/);
+  assert.throws(() => shapePoll({ question: "Q?", options: ["A", "B"], closesAt: 123.45 }), /Poll deadline must be a valid time/);
+  assert.throws(() => shapePoll({ question: "Q?", options: ["A", "B"], closesAt: "tomorrow" }), /Poll deadline must be a valid time/);
+});
+

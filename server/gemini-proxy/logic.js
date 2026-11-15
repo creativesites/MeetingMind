@@ -88,8 +88,8 @@ export function classifyRoute(method, pathname) {
   if (method === 'POST' && pathname === '/upload-session') return { name: 'upload-session' };
   const file = pathname.match(/^\/v1beta\/files\/([A-Za-z0-9_-]{1,80})$/);
   if (method === 'GET' && file) return { name: 'file-status', path: pathname };
-  const gen = pathname.match(/^\/v1beta\/models\/([A-Za-z0-9._-]{1,80}):generateContent$/);
-  if (method === 'POST' && gen) return { name: 'generate', model: gen[1], path: pathname };
+  const gen = pathname.match(/^\/v1beta\/models\/([A-Za-z0-9._-]{1,80}):(generateContent|streamGenerateContent|embedContent|batchEmbedContents)$/);
+  if (method === 'POST' && gen) return { name: 'generate', model: gen[1], path: pathname, stream: gen[2] === 'streamGenerateContent' };
   return null;
 }
 

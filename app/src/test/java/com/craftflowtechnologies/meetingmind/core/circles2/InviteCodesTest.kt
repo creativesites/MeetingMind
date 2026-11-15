@@ -64,5 +64,12 @@ class InviteCodesTest {
         val text = InviteCodes.shareText("Tuesday Night", "Cell group", "GRACE-7K2Q")
         assertEquals("GRACE-7K2Q", InviteCodes.extract(text))
         assertTrue(text.contains("Tuesday Night"))
+        assertTrue(text.contains("https://meetingmind.app/c/GRACE-7K2Q"))
+        assertTrue(text.contains(com.craftflowtechnologies.meetingmind.core.share.AppLinks.DOWNLOAD_URL))
+    }
+
+    @Test fun `web link wraps the invite code as an HTTPS app link`() {
+        assertEquals("https://meetingmind.app/c/GRACE-7K2Q", InviteCodes.webLink("GRACE-7K2Q"))
+        assertEquals("GRACE-7K2Q", InviteCodes.fromLink(InviteCodes.webLink("GRACE-7K2Q")))
     }
 }

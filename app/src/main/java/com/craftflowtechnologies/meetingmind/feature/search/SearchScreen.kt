@@ -105,6 +105,7 @@ enum class SearchFilter(val label: String) { ALL("All"), NOTES("Notes"), RECORDI
 sealed interface AskState {
     data object Idle : AskState
     data object Thinking : AskState
+    data class Streaming(val question: String, val partialText: String) : AskState
     data class Answered(val question: String, val answer: com.craftflowtechnologies.meetingmind.ai.assistant.AskAnswer) : AskState
     data class Failed(val message: String) : AskState
 }
@@ -161,6 +162,10 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         onQueryChange("")
     }
 
+    private val neuralEmbeddings by lazy {
+        com.craftflowtechnologies.meetingmind.ai.embeddings.NeuralEmbeddingEngine(application)
+    }
+
     /** Ask across everything: search finds the sources on the phone, the model answers from them. */
     fun askEverything() {
         val q = _query.value.trim().ifEmpty { return }
@@ -173,9 +178,18 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 search = { sources(it) },
                 dateLabel = { Formatters.formatDateRelative(it) }
             )
-            _ask.value = when (val r = engine.ask(q)) {
-                is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success -> AskState.Answered(q, r.value)
-                else -> AskState.Failed(r.describeFailure() ?: "Ask didn't work this time.")
+            engine.askStream(q).collect { ev ->
+                when (ev) {
+                    is com.craftflowtechnologies.meetingmind.ai.assistant.AskEverythingStreamEvent.Streaming -> {
+                        if (ev.partialText.isNotEmpty()) _ask.value = AskState.Streaming(q, ev.partialText)
+                    }
+                    is com.craftflowtechnologies.meetingmind.ai.assistant.AskEverythingStreamEvent.Complete -> {
+                        _ask.value = when (val r = ev.result) {
+                            is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success -> AskState.Answered(q, r.value)
+                            else -> AskState.Failed(r.describeFailure() ?: "Ask didn't work this time.")
+                        }
+                    }
+                }
             }
         }
     }
@@ -213,7 +227,14 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 taskId = t.id, noteId = t.noteId
             )
         }
-        out
+        if (out.size <= 1) return@withContext out
+        val qVec = runCatching { neuralEmbeddings.embedQuery(query) }.getOrNull() ?: return@withContext out
+        val docVecs = runCatching { neuralEmbeddings.embedBatch(out.map { "${it.title}\n${it.text}" }, isQuery = false) }.getOrNull()
+            ?: return@withContext out
+        out.mapIndexed { idx, src ->
+            val sem = neuralEmbeddings.cosineSimilarity(qVec, docVecs.getOrElse(idx) { FloatArray(0) })
+            src to sem
+        }.sortedByDescending { it.second }.map { it.first }
     }
 }
 
@@ -313,7 +334,7 @@ fun SearchScreen(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AskChip(ask is AskState.Thinking) { viewModel.askEverything() }
+                    AskChip(ask is AskState.Thinking || ask is AskState.Streaming) { viewModel.askEverything() }
                     SearchFilter.entries.forEach { f ->
                         val isSelected = f == filter
                         androidx.compose.material3.Surface(
@@ -339,6 +360,7 @@ fun SearchScreen(
                 when (val a = ask) {
                     AskState.Idle -> Unit
                     AskState.Thinking -> item { AskThinking(onStop = viewModel::cancelAsk) }
+                    is AskState.Streaming -> item { AskStreamingCard(a.partialText, onStop = viewModel::cancelAsk) }
                     is AskState.Failed -> item { AskFailed(a.message, onRetry = viewModel::askEverything, onClose = viewModel::dismissAnswer) }
                     is AskState.Answered -> item {
                         AnswerCard(a, onClose = viewModel::dismissAnswer, onOpen = { src ->
@@ -443,6 +465,25 @@ private fun AskThinking(onStop: () -> Unit) {
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         onStop = onStop
     )
+}
+
+@Composable
+private fun AskStreamingCard(partialText: String, onStop: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceRaised)
+            .border(1.dp, LineSoft, RoundedCornerShape(18.dp)).padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 16.dp)
+            .animateContentSize()
+            .semantics { liveRegion = LiveRegionMode.Polite }
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(16.dp))
+            Text("Answering…", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp, color = Accent, modifier = Modifier.padding(start = 8.dp).weight(1f))
+            androidx.compose.material3.TextButton(onClick = onStop) {
+                Text("Stop", fontSize = 12.sp, color = InkSecondary)
+            }
+        }
+        Text(partialText, fontSize = 15.sp, color = Ink, lineHeight = 22.sp, modifier = Modifier.padding(top = 6.dp))
+    }
 }
 
 @Composable

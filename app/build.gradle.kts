@@ -35,6 +35,7 @@ val debugSystemGeminiKey = buildValue("SYSTEM_GEMINI_API_KEY", "system.geminiApi
 // Store-required links on the paywall (Google Play needs them for subscriptions). Shown only when set.
 val privacyPolicyUrl = buildValue("PRIVACY_POLICY_URL", "legal.privacyPolicyUrl")
 val termsOfUseUrl = buildValue("TERMS_OF_USE_URL", "legal.termsOfUseUrl")
+val circlesApiUrl = buildValue("CIRCLES_API_URL", "circles.apiUrl", default = "https://meetingmind-circles.meetingmind.workers.dev")
 
 android {
   namespace = "com.craftflowtechnologies.meetingmind"
@@ -53,12 +54,6 @@ android {
     // https://circles-api.<account>.workers.dev. From local.properties (circles.apiUrl=...) or the
     // CIRCLES_API_URL environment variable, else the deployed production Worker (not a secret: every call is
     // authenticated with the user's Firebase ID token). An empty override shows "Circles isn't connected yet".
-    val circlesApiUrl = run {
-      val props = Properties()
-      val local = rootProject.file("local.properties")
-      if (local.exists()) local.inputStream().use { props.load(it) }
-      System.getenv("CIRCLES_API_URL") ?: props.getProperty("circles.apiUrl") ?: "https://meetingmind-circles.meetingmind.workers.dev"
-    }
     buildConfigField("String", "CIRCLES_API_URL", "\"${circlesApiUrl.trim().replace("\"", "")}\"")
     // No built-in Gemini key in defaultConfig: debug opts in below, release never carries one.
     buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"\"")
@@ -137,7 +132,8 @@ android {
     }
     release {
       isCrunchPngs = false
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
       buildConfigField("Boolean", "COMPANION_LIVE_WHISPER", "false")
@@ -212,10 +208,11 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // come from CI secrets; a release built without them would ship an app that is free by accident and
 // whose cloud AI has no allowance behind it. Failing the bundle is the honest outcome.
 val missingForPlayBundle = buildList {
-  if (releaseRevenueCatKey.isBlank()) add("REVENUECAT_API_KEY")
+  if (releaseRevenueCatKey.isBlank() || releaseRevenueCatKey.startsWith("test_")) add("REVENUECAT_API_KEY (production goog_ key)")
   if (geminiProxyUrl.isBlank()) add("GEMINI_PROXY_URL")
   if (privacyPolicyUrl.isBlank()) add("PRIVACY_POLICY_URL")
   if (termsOfUseUrl.isBlank()) add("TERMS_OF_USE_URL")
+  if (circlesApiUrl.isBlank()) add("CIRCLES_API_URL")
 }
 if (missingForPlayBundle.isNotEmpty()) {
   tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {

@@ -148,8 +148,10 @@ object ProcessingScheduler {
     private suspend fun resumeOne(context: Context, database: MeetMindDatabase, meeting: MeetingEntity): String? {
         if (activeWork(context, meeting.id) != null) return null
         val path = meeting.audioFilePath
-        if (path.isNullOrBlank() || !File(path).exists()) {
-            // Nothing to process: say so on the recording, so the user is not shown a bare failure.
+        val salvaged = com.craftflowtechnologies.meetingmind.core.audio.RecordingAudioSalvager
+            .salvageForRecovery(context, meeting.id, path)
+        if (salvaged == null) {
+            // Nothing playable to process: say so on the recording, so the user is not shown a bare failure.
             database.meetingDao().updateMeeting(meeting.copy(status = MeetingStatus.ERROR.name))
             database.processingJobDao().insertOrUpdateJob(
                 ProcessingJobEntity(
@@ -167,7 +169,17 @@ object ProcessingScheduler {
             )
             return null
         }
-        return enqueue(context, meeting.id)?.let { meeting.id }
+        val repairedDuration = maxOf(meeting.durationMs, salvaged.durationMs)
+        if (salvaged.file.absolutePath != path || repairedDuration > meeting.durationMs) {
+            database.meetingDao().updateMeeting(
+                meeting.copy(
+                    audioFilePath = salvaged.file.absolutePath,
+                    durationMs = repairedDuration,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+        return enqueue(context, meeting.id, salvaged.file.absolutePath, repairedDuration)?.let { meeting.id }
     }
 
     /**
@@ -188,12 +200,15 @@ object ProcessingScheduler {
         WorkManager.getInstance(context).cancelAllWorkByTag(MeetingProcessingWorker.meetingWorkTag(meetingId))
     }
 
-    private fun probeDurationMs(path: String): Long = runCatching {
-        MediaMetadataRetriever().run {
-            setDataSource(path)
-            val d = extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            release()
-            d
-        }
-    }.getOrDefault(0L)
+    private fun probeDurationMs(path: String): Long =
+        com.craftflowtechnologies.meetingmind.core.audio.RecordingAudioSalvager.probeDurationMs(File(path))
+            .takeIf { it > 0L }
+            ?: runCatching {
+                MediaMetadataRetriever().run {
+                    setDataSource(path)
+                    val d = extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                    release()
+                    d
+                }
+            }.getOrDefault(0L)
 }

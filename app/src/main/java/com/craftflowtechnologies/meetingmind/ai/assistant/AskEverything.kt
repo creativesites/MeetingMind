@@ -1,11 +1,15 @@
 package com.craftflowtechnologies.meetingmind.ai.assistant
 
+import com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport
+import com.craftflowtechnologies.meetingmind.ai.cloud.ThinkingLevel
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import com.craftflowtechnologies.meetingmind.ai.faith.Prompts
 import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import org.json.JSONObject
 
 enum class SourceKind(val label: String) { NOTE("Note"), RECORDING("Recording"), TASK("Task"), SCRIPTURE("Scripture"), ITEM("Item") }
@@ -75,6 +79,11 @@ object AskEverything {
     }.getOrDefault(emptyList())
 }
 
+sealed interface AskEverythingStreamEvent {
+    data class Streaming(val partialText: String, val sources: List<AskSource>) : AskEverythingStreamEvent
+    data class Complete(val result: AiResult<AskAnswer>) : AskEverythingStreamEvent
+}
+
 class AskEverythingEngine(
     private val transport: GeminiTransport,
     /** On-device search: one query in, candidate sources out (keys are reassigned here). */
@@ -82,10 +91,65 @@ class AskEverythingEngine(
     private val dateLabel: (Long) -> String,
     private val maxSources: Int = 14
 ) {
+    fun askStream(question: String): Flow<AskEverythingStreamEvent> = flow {
+        if (!transport.refreshConfigured()) {
+            emit(AskEverythingStreamEvent.Complete(AiResult.ModelUnavailable(DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "Ask needs Internet mode or the backup AI. Search still works offline.")))
+            return@flow
+        }
+        val sources = retrieveSources(question)
+        if (sources.isEmpty()) {
+            emit(AskEverythingStreamEvent.Complete(AiResult.Success(AskAnswer("I couldn't find anything about that in your notes, recordings or tasks.", emptyList(), emptyList(), emptyList()))))
+            return@flow
+        }
+        val model = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL
+        val system = (if (sources.any { it.faith }) Prompts.faithContract + "\n\n" else "") + Prompts.get("ask_everything").system()
+        val raw = StringBuilder()
+        var doneText: String? = null
+        var failureMsg: String? = null
+        transport.stream(
+            GeminiRequest(
+                model,
+                system,
+                "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question",
+                thinkingLevel = ThinkingLevel.LOW,
+                timeoutMs = 60_000
+            )
+        ).collect { ev ->
+            when (ev) {
+                is AiStreamEvent.TextDelta -> {
+                    raw.append(ev.text)
+                    emit(AskEverythingStreamEvent.Streaming(raw.toString(), sources))
+                }
+                is AiStreamEvent.Completed -> doneText = ev.text
+                is AiStreamEvent.Failed -> failureMsg = ev.error.describeFailure()
+                else -> Unit
+            }
+        }
+        val finalRaw = (doneText ?: raw.toString()).takeIf { it.isNotBlank() }
+        if (finalRaw != null) {
+            emit(AskEverythingStreamEvent.Complete(AiResult.Success(AskEverything.parse(finalRaw, sources))))
+        } else {
+            emit(AskEverythingStreamEvent.Complete(AiResult.Failed(failureMsg ?: "Ask failed.")))
+        }
+    }
+
     suspend fun ask(question: String): AiResult<AskAnswer> {
         if (!transport.refreshConfigured()) {
             return AiResult.ModelUnavailable(DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "Ask needs Internet mode or the backup AI. Search still works offline.")
         }
+        val model = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL
+        val sources = retrieveSources(question)
+        if (sources.isEmpty()) {
+            return AiResult.Success(AskAnswer("I couldn't find anything about that in your notes, recordings or tasks.", emptyList(), emptyList(), emptyList()))
+        }
+        // 3. Answer from those sources only.
+        val system = (if (sources.any { it.faith }) Prompts.faithContract + "\n\n" else "") + Prompts.get("ask_everything").system()
+        val res = transport.execute(GeminiRequest(model, system, "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question", timeoutMs = 60_000))
+        if (res !is AiResult.Success) return AiResult.Failed(res.describeFailure() ?: "Ask failed.")
+        return AiResult.Success(AskEverything.parse(res.value, sources))
+    }
+
+    private suspend fun retrieveSources(question: String): List<AskSource> {
         val model = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL
         // 1. Widen the question into searches (synonyms, names, references) — the recall step.
         val expanded = (transport.execute(
@@ -103,15 +167,7 @@ class AskEverythingEngine(
             found.putIfAbsent(id, s)
             if (found.size >= maxSources) break@outer
         }
-        val sources = found.values.mapIndexed { i, s -> s.copy(key = i + 1) }
-        if (sources.isEmpty()) {
-            return AiResult.Success(AskAnswer("I couldn't find anything about that in your notes, recordings or tasks.", emptyList(), emptyList(), emptyList()))
-        }
-        // 3. Answer from those sources only.
-        val system = (if (sources.any { it.faith }) Prompts.faithContract + "\n\n" else "") + Prompts.get("ask_everything").system()
-        val res = transport.execute(GeminiRequest(model, system, "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question", timeoutMs = 60_000))
-        if (res !is AiResult.Success) return AiResult.Failed(res.describeFailure() ?: "Ask failed.")
-        return AiResult.Success(AskEverything.parse(res.value, sources))
+        return found.values.mapIndexed { i, s -> s.copy(key = i + 1) }
     }
 
     private companion object {

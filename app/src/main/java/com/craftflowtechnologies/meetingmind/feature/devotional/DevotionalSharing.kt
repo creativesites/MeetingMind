@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.craftflowtechnologies.meetingmind.core.share.AppLinks
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 
 /** Puts [text] on the clipboard and says so briefly. */
@@ -28,9 +29,14 @@ internal fun copyToClipboard(context: Context, label: String, text: String) {
     }.onFailure { Toast.makeText(context, "Couldn't copy", Toast.LENGTH_SHORT).show() }
 }
 
-/** Opens the Android Sharesheet with [text]. */
-internal fun shareAsText(context: Context, subject: String, text: String) {
-    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, subject).putExtra(Intent.EXTRA_TEXT, text)
+/** Opens the Android Sharesheet with [text] and an optional MeetingMind download footer. */
+internal fun shareAsText(context: Context, subject: String, text: String, includeAppLink: Boolean = true) {
+    val payload = if (includeAppLink) {
+        AppLinks.withAppLink(text, "Read daily devotionals in MeetingMind")
+    } else {
+        text
+    }
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, subject).putExtra(Intent.EXTRA_TEXT, payload)
     runCatching { context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }
 

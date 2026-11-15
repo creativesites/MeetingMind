@@ -84,4 +84,14 @@ class PushTokensTest {
         repo.leave("c9")
         assertEquals(1, r.api.unregistered.size)
     }
+
+    @Test fun `syncIfWanted registers only when push is already wanted`() = runBlocking {
+        val r = Rig()
+        r.manager.syncIfWanted()
+        assertTrue(r.api.registered.isEmpty())
+
+        r.store.wantsPush = true
+        r.manager.syncIfWanted()
+        assertEquals(listOf("tok-1-aaaaaaaaaaaaaaaaaaaa"), r.api.registered)
+    }
 }

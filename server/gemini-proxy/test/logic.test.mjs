@@ -57,7 +57,13 @@ test('routes are allowlisted', () => {
   assert.equal(L.classifyRoute('GET', '/v1beta/files/abc-123').name, 'file-status');
   assert.equal(L.classifyRoute('POST', '/v1beta/models/gemini-3.6-flash:generateContent').model, 'gemini-3.6-flash');
   assert.equal(L.classifyRoute('GET', '/v1beta/files/../models'), null);
-  assert.equal(L.classifyRoute('POST', '/v1beta/models/x:streamGenerateContent'), null);
+  const streamRoute = L.classifyRoute('POST', '/v1beta/models/gemini-3.8-flash:streamGenerateContent');
+  assert.equal(streamRoute.name, 'generate');
+  assert.equal(streamRoute.model, 'gemini-3.8-flash');
+  assert.equal(streamRoute.stream, true);
+  assert.equal(L.classifyRoute('POST', '/v1beta/models/gemini-embedding-001:embedContent').model, 'gemini-embedding-001');
+  assert.equal(L.classifyRoute('POST', '/v1beta/models/gemini-embedding-001:batchEmbedContents').stream, false);
+  assert.equal(L.classifyRoute('POST', '/v1beta/models/x:countTokens'), null);
   assert.equal(L.classifyRoute('DELETE', '/v1beta/files/abc'), null);
   assert.equal(L.classifyRoute('GET', '/v1beta/models'), null);
 });

@@ -78,6 +78,7 @@ fun ScopedAskSheet(initial: AskScope, viewModel: WorkViewModel, onOpenMeeting: (
     var scope by remember { mutableStateOf(initial) }
     var question by remember { mutableStateOf("") }
     var answer by remember { mutableStateOf<ScopedAnswer?>(null) }
+    var streamingText by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
     var askJob by remember { mutableStateOf<Job?>(null) }
     val coroutine = rememberCoroutineScope()
@@ -85,6 +86,7 @@ fun ScopedAskSheet(initial: AskScope, viewModel: WorkViewModel, onOpenMeeting: (
     fun stopAsk() {
         askJob?.cancel()
         askJob = null
+        streamingText = null
         working = false
     }
 
@@ -93,10 +95,20 @@ fun ScopedAskSheet(initial: AskScope, viewModel: WorkViewModel, onOpenMeeting: (
         if (q.isEmpty() || working) return
         working = true
         answer = null
+        streamingText = null
         askJob = coroutine.launch {
             try {
-                answer = viewModel.scopedAsk.ask(q, scope)
+                viewModel.scopedAsk.askStream(q, scope).collect { ev ->
+                    when (ev) {
+                        is com.craftflowtechnologies.meetingmind.ai.assistant.ScopedAskStreamEvent.Partial -> streamingText = ev.text
+                        is com.craftflowtechnologies.meetingmind.ai.assistant.ScopedAskStreamEvent.Complete -> {
+                            answer = ev.answer
+                            streamingText = null
+                        }
+                    }
+                }
             } finally {
+                streamingText = null
                 working = false
             }
         }
@@ -173,7 +185,12 @@ fun ScopedAskSheet(initial: AskScope, viewModel: WorkViewModel, onOpenMeeting: (
                 }
             )
             val a = answer
+            val partial = streamingText
             when {
+                a == null && !partial.isNullOrBlank() -> Column(Modifier.padding(top = 12.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
+                    Text("Answering…", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp, color = Accent)
+                    Text(partial, fontSize = 15.sp, color = Ink, lineHeight = 22.sp, modifier = Modifier.padding(top = 4.dp))
+                }
                 a == null -> if (working) {
                     AiThinkingSkeleton(
                         label = "Searching ${scope.label.lowercase()}…",

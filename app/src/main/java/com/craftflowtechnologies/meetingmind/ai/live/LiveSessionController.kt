@@ -56,10 +56,8 @@ fun interface LiveToolExecutor {
  *
  * ### Status
  *
- * The state machine and the tool lifecycle are complete and tested. **No [LiveTransport]
- * implementation ships**: a bidirectional streaming session against the real endpoint could not be
- * built or verified in an environment with no credential and no device, and a transport written
- * blind would be untested code that looks finished. See docs/TRANSCRIPTION_OVERHAUL.md §6.
+ * The state machine, tool lifecycle, and real WebSocket transport ([OkHttpLiveTransport]) are wired
+ * against Gemini's BidiGenerateContent API. Remaining on-device audio verification happens in QA.
  */
 class LiveSessionController(
     private val transport: LiveTransport,

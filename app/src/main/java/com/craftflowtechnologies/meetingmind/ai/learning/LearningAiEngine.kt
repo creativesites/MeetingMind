@@ -1,9 +1,13 @@
 package com.craftflowtechnologies.meetingmind.ai.learning
 
+import android.content.Context
+import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore
+import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiInteractions
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
+import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.learning.SpokenNotationNormalizer
 import com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain
 import com.craftflowtechnologies.meetingmind.core.model.BlockSource
@@ -14,14 +18,22 @@ import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
 import com.craftflowtechnologies.meetingmind.core.model.LearningMasteryState
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlockType
+import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.core.model.TeachBackCriterion
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
 import com.craftflowtechnologies.meetingmind.core.notes.RichText
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.work.Mark
 import com.craftflowtechnologies.meetingmind.core.work.MarkKind
+import com.craftflowtechnologies.meetingmind.feature.learning.ChartPoint
+import com.craftflowtechnologies.meetingmind.feature.learning.ChartSeries
+import com.craftflowtechnologies.meetingmind.feature.learning.LearningVisualKind
+import com.craftflowtechnologies.meetingmind.feature.learning.LearningVisualSpec
+import com.craftflowtechnologies.meetingmind.feature.learning.TimelineNode
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 class LearningAiEngine(
     private val transport: GeminiTransport? = null,
@@ -41,14 +53,16 @@ class LearningAiEngine(
         return trimmed
     }
 
-    private suspend fun generateText(prompt: String): String? {
+    private suspend fun generateText(prompt: String, responseSchema: String? = null): String? {
         val t = transport
         if (t != null && t.refreshConfigured()) {
             val req = GeminiRequest(
                 modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
                 systemInstruction = "You are an expert academic tutor and university professor.",
                 prompt = prompt,
-                jsonOutput = true
+                responseSchema = responseSchema,
+                jsonOutput = true,
+                thinkingLevel = com.craftflowtechnologies.meetingmind.ai.cloud.ThinkingLevel.MEDIUM
             )
             when (val res = t.execute(req)) {
                 is AiResult.Success -> return res.value
@@ -56,7 +70,12 @@ class LearningAiEngine(
             }
         }
         val model = fallbackModel ?: return null
-        return when (val res = model.generate(prompt, maxOutputTokens = 1500)) {
+        val res = if (responseSchema != null) {
+            model.generateStructured(prompt, responseSchema, maxOutputTokens = 1500)
+        } else {
+            model.generate(prompt, maxOutputTokens = 1500)
+        }
+        return when (res) {
             is AiResult.Success -> res.value
             else -> null
         }
@@ -70,13 +89,14 @@ class LearningAiEngine(
         marks: List<Mark>
     ): LectureSynthesis {
         val transcriptText = segments.joinToString("\n") { "[${it.startMs / 1000}s] ${it.text}" }
+        val maxTranscriptChars = if (transport?.refreshConfigured() == true) 90_000 else 15_000
         val prompt = buildString {
             appendLine("You are an expert university professor and master tutor in ${domain.displayName}.")
             appendLine("Analyze the following lecture transcript and synthesize structured study materials.")
             appendLine("Extract key concepts, definitions, active-recall practice questions, exam hints, and explanations for confusing points.")
             appendLine("Vocabulary to prioritize: ${domain.vocabularyHints().take(12).joinToString(", ")}")
             appendLine("Transcript:")
-            appendLine(transcriptText.take(15000))
+            appendLine(transcriptText.take(maxTranscriptChars))
             appendLine()
             appendLine("Respond with JSON:")
             appendLine("""
@@ -94,7 +114,7 @@ class LearningAiEngine(
             """.trimIndent())
         }
 
-        val response = generateText(prompt)
+        val response = generateText(prompt, SYNTHESIS_SCHEMA)
         if (response != null) {
             val parsed = runCatching { parseSynthesisJson(sessionId, stripMarkdownCodeFences(response), domain) }.getOrNull()
             if (parsed != null) return parsed
@@ -119,7 +139,7 @@ class LearningAiEngine(
             appendLine("Respond with JSON: {\"overall\": \"COVERED|PARTLY_COVERED|NOT_YET_DEMONSTRATED\", \"score\": 85, \"summary\": \"evaluation\", \"missing\": [\"points\"], \"socraticFollowUp\": \"question\", \"criteria\": [{\"claim\": \"c\", \"status\": \"MET|PARTIAL|UNMET\", \"feedback\": \"f\"}]}")
         }
 
-        val res = generateText(prompt)
+        val res = generateText(prompt, TEACHBACK_SCHEMA)
         if (res != null) {
             val eval = runCatching { parseTeachBackJson(stripMarkdownCodeFences(res), rubric) }.getOrNull()
             if (eval != null) return eval
@@ -181,7 +201,7 @@ class LearningAiEngine(
             appendLine("Respond with JSON: {\"rootMisconception\": \"m\", \"correctMentalModel\": \"c\", \"stepByStepCorrection\": \"s\"}")
         }
 
-        val res = generateText(prompt)
+        val res = generateText(prompt, MISTAKE_SCHEMA)
         if (res != null) {
             val obj = runCatching { JSONObject(stripMarkdownCodeFences(res)) }.getOrNull()
             if (obj != null) {
@@ -215,7 +235,7 @@ class LearningAiEngine(
             appendLine("Respond with JSON: {\"explanation\": \"e\", \"formula\": \"optional LaTeX\", \"steps\": [\"step 1\", \"step 2\"]}")
         }
 
-        val res = generateText(prompt)
+        val res = generateText(prompt, ENRICH_SCHEMA)
         val enrichedText = if (res != null) {
             val obj = runCatching { JSONObject(stripMarkdownCodeFences(res)) }.getOrNull()
             obj?.optString("explanation")?.takeIf { it.isNotBlank() } ?: "$selectionText (expanded with $kind)"
@@ -453,5 +473,410 @@ class LearningAiEngine(
             examHints = examHints,
             confusionUnpacks = confusionUnpacks
         )
+    }
+
+    suspend fun generateConceptVisual(
+        context: Context,
+        conceptTitle: String,
+        definition: String,
+        domain: SubjectDomain,
+        preferredKind: LearningVisualKind = LearningVisualKind.AUTO,
+        formulaLatex: String? = null
+    ): LearningVisualSpec {
+        val chosenKind = if (preferredKind != LearningVisualKind.AUTO) {
+            preferredKind
+        } else {
+            when {
+                !formulaLatex.isNullOrBlank() || domain == SubjectDomain.MATH_QUANT || domain == SubjectDomain.ENGINEERING -> LearningVisualKind.FUNCTION_PLOT
+                domain == SubjectDomain.ECONOMICS || domain == SubjectDomain.ACCOUNTING_FINANCE -> LearningVisualKind.LINE_CHART
+                domain == SubjectDomain.SCIENCES_MED -> LearningVisualKind.TIMELINE
+                domain == SubjectDomain.PROGRAMMING_CS || domain == SubjectDomain.HUMANITIES_LAW -> LearningVisualKind.MERMAID_DIAGRAM
+                else -> LearningVisualKind.BAR_CHART
+            }
+        }
+
+        val prompt = buildString {
+            appendLine("You are an expert academic visual instructional designer in ${domain.displayName}.")
+            appendLine("Generate a structured visual specification for the academic concept: \"$conceptTitle\".")
+            appendLine("Definition: $definition")
+            if (!formulaLatex.isNullOrBlank()) {
+                appendLine("Latex Formula: $formulaLatex")
+            }
+            appendLine("Selected Visual Kind: ${chosenKind.name}")
+            appendLine("Respond strictly with JSON containing kind, title, subtitle, xLabel, yLabel, equations, xMin, xMax, series, timeline, mermaidCode, and caption:")
+            appendLine("""
+                {
+                  "kind": "${chosenKind.name}",
+                  "title": "$conceptTitle",
+                  "subtitle": "Conceptual Overview",
+                  "xLabel": "x",
+                  "yLabel": "y",
+                  "equations": ["x^2"],
+                  "xMin": -5.0,
+                  "xMax": 5.0,
+                  "series": [
+                    {
+                      "name": "$conceptTitle",
+                      "points": [{"label": "A", "value": 10.0}, {"label": "B", "value": 25.0}]
+                    }
+                  ],
+                  "timeline": [
+                    {"step": "1", "title": "Initial", "detail": "Setup"}
+                  ],
+                  "mermaidCode": "graph TD\n  A --> B",
+                  "caption": "Key visual takeaway"
+                }
+            """.trimIndent())
+        }
+
+        val response = generateText(prompt, VISUAL_SCHEMA)
+        if (response != null) {
+            val parsed = runCatching { parseVisualSpecJson(stripMarkdownCodeFences(response), conceptTitle, chosenKind) }.getOrNull()
+            if (parsed != null) return parsed
+        }
+
+        return fallbackVisualSpec(conceptTitle, definition, domain, chosenKind, formulaLatex)
+    }
+
+    suspend fun generateDiagramImage(
+        context: Context,
+        conceptTitle: String,
+        definition: String,
+        domain: SubjectDomain
+    ): AiResult<String> {
+        val prefs = UserPreferencesManager(context).preferencesFlow.first()
+        val credStore = GeminiCredentialStore(context)
+        val interactions = GeminiInteractions(credStore)
+        if (prefs.processingProfile != ProcessingProfile.INTERNET || !interactions.isConfigured()) {
+            return AiResult.ModelUnavailable(
+                "gemini-3.1-flash-lite-image",
+                "Turn on Internet mode with your Gemini key to generate diagram images."
+            )
+        }
+        val prompt = "Create a clear, pedagogical academic diagram illustration explaining the concept of '$conceptTitle' in the field of ${domain.displayName}. Concept details: ${definition.take(300)}. Clean educational infographic style, high contrast, elegant and focused."
+        val req = GeminiInteractions.imageRequest("gemini-3.1-flash-lite-image", prompt, "16:9")
+        val result = interactions.media(req, "image")
+        return when (result) {
+            is AiResult.Success -> {
+                val media = result.value
+                val ext = if (media.mimeType.contains("jpeg") || media.mimeType.contains("jpg")) "jpg" else "png"
+                val outDir = File(context.filesDir, "learning_visuals").apply { mkdirs() }
+                val outFile = File(outDir, "diagram_${System.currentTimeMillis()}.$ext")
+                outFile.writeBytes(media.bytes)
+                AiResult.Success(outFile.absolutePath)
+            }
+            else -> result as AiResult<String>
+        }
+    }
+
+    suspend fun explainSimply(
+        context: Context,
+        conceptTitle: String,
+        definition: String,
+        domain: SubjectDomain
+    ): SimpleExplanation {
+        val prompt = buildString {
+            appendLine("You are a master teacher using the Feynman technique in ${domain.displayName}.")
+            appendLine("Explain the following concept so a 12-year-old can deeply understand it intuitively.")
+            appendLine("Concept: $conceptTitle")
+            appendLine("Academic Definition: $definition")
+            appendLine("Respond strictly with JSON:")
+            appendLine("""
+                {
+                  "analogy": "A clear, intuitive physical analogy from the real world",
+                  "everydayExample": "A practical scenario showing how this works in daily life",
+                  "keyTakeaway": "One punchy, memorable sentence summarizing the core insight"
+                }
+            """.trimIndent())
+        }
+
+        val res = generateText(prompt, EXPLAIN_SIMPLY_SCHEMA)
+        if (res != null) {
+            val parsed = runCatching {
+                val obj = JSONObject(stripMarkdownCodeFences(res))
+                SimpleExplanation(
+                    analogy = obj.optString("analogy", "").trim(),
+                    everydayExample = obj.optString("everydayExample", "").trim(),
+                    keyTakeaway = obj.optString("keyTakeaway", "").trim()
+                )
+            }.getOrNull()
+            if (parsed != null && parsed.analogy.isNotBlank() && parsed.keyTakeaway.isNotBlank()) {
+                return parsed
+            }
+        }
+
+        return SimpleExplanation(
+            analogy = "Think of $conceptTitle like a specialized team where each member has a precise role, working together like gears in a clock.",
+            everydayExample = "Just like adjusting a thermostat smoothly changes room temperature, $conceptTitle balances inputs to achieve the desired outcome.",
+            keyTakeaway = "$conceptTitle is the underlying rule that keeps the whole system stable and predictable."
+        )
+    }
+
+    suspend fun generateHintLadder(
+        context: Context,
+        prompt: String,
+        expectedAnswer: String,
+        domain: SubjectDomain
+    ): List<String> {
+        val query = buildString {
+            appendLine("You are a Socratic academic tutor in ${domain.displayName}.")
+            appendLine("Provide exactly 3 progressive hints for a student solving this problem:")
+            appendLine("Problem: $prompt")
+            appendLine("Expected Answer: $expectedAnswer")
+            appendLine("Hint 1: A gentle nudge pointing to the core concept.")
+            appendLine("Hint 2: An intermediate hint pointing to the formula or relationship.")
+            appendLine("Hint 3: A strong hint detailing the next immediate step.")
+            appendLine("Respond strictly with JSON:")
+            appendLine("""{"hints": ["Hint 1", "Hint 2", "Hint 3"]}""")
+        }
+
+        val res = generateText(query, HINT_LADDER_SCHEMA)
+        if (res != null) {
+            val parsed = runCatching {
+                val obj = JSONObject(stripMarkdownCodeFences(res))
+                val arr = obj.optJSONArray("hints") ?: JSONArray()
+                val list = mutableListOf<String>()
+                for (i in 0 until arr.length()) {
+                    val h = arr.optString(i).trim()
+                    if (h.isNotBlank()) list.add(h)
+                }
+                if (list.size >= 3) list.take(3) else null
+            }.getOrNull()
+            if (parsed != null) return parsed
+        }
+
+        val answerSnippet = expectedAnswer.take(40).trim()
+        return listOf(
+            "Focus on the primary definition or theorem governing this problem in ${domain.displayName}.",
+            "Consider how the given variables relate to: $answerSnippet.",
+            "Set up the final step to solve directly for: $answerSnippet."
+        )
+    }
+
+    private fun parseVisualSpecJson(json: String, defaultTitle: String, fallbackKind: LearningVisualKind): LearningVisualSpec {
+        val obj = JSONObject(stripMarkdownCodeFences(json))
+        val title = obj.optString("title").ifBlank { defaultTitle }
+        val subtitle = obj.optString("subtitle", "")
+        val kindStr = obj.optString("kind")
+        val kind = runCatching { LearningVisualKind.valueOf(kindStr) }.getOrDefault(fallbackKind)
+        val xLabel = obj.optString("xLabel", "")
+        val yLabel = obj.optString("yLabel", "")
+        val xMin = obj.optDouble("xMin", -5.0)
+        val xMax = obj.optDouble("xMax", 5.0)
+        val caption = obj.optString("caption", "")
+        val mermaidCode = obj.optString("mermaidCode", "")
+
+        val equations = mutableListOf<String>()
+        val eqArr = obj.optJSONArray("equations")
+        if (eqArr != null) {
+            for (i in 0 until eqArr.length()) {
+                val eq = eqArr.optString(i)
+                if (eq.isNotBlank()) equations.add(eq)
+            }
+        }
+
+        val seriesList = mutableListOf<ChartSeries>()
+        val seriesArr = obj.optJSONArray("series")
+        if (seriesArr != null) {
+            for (i in 0 until seriesArr.length()) {
+                val sObj = seriesArr.getJSONObject(i)
+                val sName = sObj.optString("name", "Data")
+                val ptsArr = sObj.optJSONArray("points") ?: JSONArray()
+                val pts = mutableListOf<ChartPoint>()
+                for (j in 0 until ptsArr.length()) {
+                    val pObj = ptsArr.getJSONObject(j)
+                    pts.add(ChartPoint(pObj.optString("label", ""), pObj.optDouble("value", 0.0)))
+                }
+                seriesList.add(ChartSeries(sName, pts))
+            }
+        }
+
+        val timeline = mutableListOf<TimelineNode>()
+        val timeArr = obj.optJSONArray("timeline")
+        if (timeArr != null) {
+            for (i in 0 until timeArr.length()) {
+                val tObj = timeArr.getJSONObject(i)
+                timeline.add(
+                    TimelineNode(
+                        step = tObj.optString("step", "${i + 1}"),
+                        title = tObj.optString("title", ""),
+                        detail = tObj.optString("detail", "")
+                    )
+                )
+            }
+        }
+
+        return LearningVisualSpec(
+            id = NoteRepository.newId("visual"),
+            title = title,
+            subtitle = subtitle,
+            kind = kind,
+            xLabel = xLabel,
+            yLabel = yLabel,
+            series = seriesList,
+            equations = equations,
+            xMin = xMin,
+            xMax = xMax,
+            timeline = timeline,
+            mermaidCode = mermaidCode,
+            caption = caption
+        )
+    }
+
+    private fun fallbackVisualSpec(
+        conceptTitle: String,
+        definition: String,
+        domain: SubjectDomain,
+        kind: LearningVisualKind,
+        formulaLatex: String?
+    ): LearningVisualSpec {
+        val id = NoteRepository.newId("visual")
+        return when (kind) {
+            LearningVisualKind.FUNCTION_PLOT -> {
+                val eq = if (!formulaLatex.isNullOrBlank()) {
+                    formulaLatex
+                        .replace("\\sin", "sin")
+                        .replace("\\cos", "cos")
+                        .replace("\\tan", "tan")
+                        .replace("\\sqrt", "sqrt")
+                        .replace("\\ln", "ln")
+                        .replace("\\exp", "exp")
+                        .replace("{", "(")
+                        .replace("}", ")")
+                        .replace(" ", "")
+                        .replace("$", "")
+                } else {
+                    "x^2 - 4"
+                }
+                LearningVisualSpec(
+                    id = id,
+                    title = conceptTitle,
+                    subtitle = "Mathematical Curve",
+                    kind = LearningVisualKind.FUNCTION_PLOT,
+                    xLabel = "x",
+                    yLabel = "f(x)",
+                    equations = listOf(eq),
+                    xMin = -5.0,
+                    xMax = 5.0,
+                    caption = "Functional representation of $conceptTitle over the interval [-5, 5]."
+                )
+            }
+            LearningVisualKind.BAR_CHART -> {
+                LearningVisualSpec(
+                    id = id,
+                    title = conceptTitle,
+                    subtitle = "Distribution Breakdown",
+                    kind = LearningVisualKind.BAR_CHART,
+                    xLabel = "Category",
+                    yLabel = "Relative Magnitude",
+                    series = listOf(
+                        ChartSeries(
+                            name = conceptTitle,
+                            points = listOf(
+                                ChartPoint("Baseline", 25.0),
+                                ChartPoint("Phase 1", 45.0),
+                                ChartPoint("Peak", 85.0),
+                                ChartPoint("Final", 60.0)
+                            )
+                        )
+                    ),
+                    caption = "Distribution levels across key stages of $conceptTitle."
+                )
+            }
+            LearningVisualKind.LINE_CHART -> {
+                LearningVisualSpec(
+                    id = id,
+                    title = conceptTitle,
+                    subtitle = "Dynamic Trend",
+                    kind = LearningVisualKind.LINE_CHART,
+                    xLabel = "Time / Index",
+                    yLabel = "Intensity",
+                    series = listOf(
+                        ChartSeries(
+                            name = "Observed Trend",
+                            points = listOf(
+                                ChartPoint("t0", 10.0),
+                                ChartPoint("t1", 28.0),
+                                ChartPoint("t2", 52.0),
+                                ChartPoint("t3", 84.0),
+                                ChartPoint("t4", 95.0)
+                            )
+                        )
+                    ),
+                    caption = "Progressive trajectory observed in $conceptTitle."
+                )
+            }
+            LearningVisualKind.PIE_CHART -> {
+                LearningVisualSpec(
+                    id = id,
+                    title = conceptTitle,
+                    subtitle = "Component Share",
+                    kind = LearningVisualKind.PIE_CHART,
+                    series = listOf(
+                        ChartSeries(
+                            name = "Components",
+                            points = listOf(
+                                ChartPoint("Component A", 45.0),
+                                ChartPoint("Component B", 35.0),
+                                ChartPoint("Residual", 20.0)
+                            )
+                        )
+                    ),
+                    caption = "Proportional composition of $conceptTitle."
+                )
+            }
+            LearningVisualKind.TIMELINE -> {
+                LearningVisualSpec(
+                    id = id,
+                    title = conceptTitle,
+                    subtitle = "Process Sequence",
+                    kind = LearningVisualKind.TIMELINE,
+                    timeline = listOf(
+                        TimelineNode("Step 1", "Initial State", "Baseline conditions established for $conceptTitle."),
+                        TimelineNode("Step 2", "Primary Reaction", "Key interactions and mechanisms engage."),
+                        TimelineNode("Step 3", "System Stabilization", "Final state and persistent outcomes take effect.")
+                    ),
+                    caption = "Step-by-step evolution of $conceptTitle."
+                )
+            }
+            LearningVisualKind.MERMAID_DIAGRAM -> {
+                val safeTitle = conceptTitle.take(24).replace("\"", "").replace("'", "")
+                val mermaid = """
+                    graph TD
+                        A["$safeTitle"] --> B["Core Mechanism"]
+                        B --> C["Transformation"]
+                        C --> D["Observable Outcome"]
+                """.trimIndent()
+                LearningVisualSpec(
+                    id = id,
+                    title = conceptTitle,
+                    subtitle = "Conceptual Flow Diagram",
+                    kind = LearningVisualKind.MERMAID_DIAGRAM,
+                    mermaidCode = mermaid,
+                    caption = "Structural relationship diagram for $conceptTitle."
+                )
+            }
+            LearningVisualKind.AI_IMAGE, LearningVisualKind.AUTO -> {
+                val safeTitle = conceptTitle.take(24).replace("\"", "").replace("'", "")
+                LearningVisualSpec(
+                    id = id,
+                    title = conceptTitle,
+                    subtitle = "Concept Flow",
+                    kind = LearningVisualKind.MERMAID_DIAGRAM,
+                    mermaidCode = "graph TD\n    A[\"$safeTitle\"] --> B[\"Mechanism\"]\n    B --> C[\"Outcome\"]",
+                    caption = "Structural overview of $conceptTitle."
+                )
+            }
+        }
+    }
+
+    private companion object {
+        const val SYNTHESIS_SCHEMA = """{"type":"object","properties":{"summary":{"type":"string"},"concepts":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"importance":{"type":"string"},"formula":{"type":"string"}},"required":["name","description"]}},"questions":{"type":"array","items":{"type":"object","properties":{"prompt":{"type":"string"},"answer":{"type":"string"},"type":{"type":"string"},"difficulty":{"type":"string"}},"required":["prompt","answer"]}},"examHints":{"type":"array","items":{"type":"string"}},"confusionUnpacks":{"type":"array","items":{"type":"string"}}},"required":["summary","concepts","questions"]}"""
+        const val TEACHBACK_SCHEMA = """{"type":"object","properties":{"overall":{"type":"string"},"score":{"type":"integer"},"summary":{"type":"string"},"missing":{"type":"array","items":{"type":"string"}},"socraticFollowUp":{"type":"string"},"criteria":{"type":"array","items":{"type":"object","properties":{"claim":{"type":"string"},"status":{"type":"string"},"feedback":{"type":"string"}},"required":["claim","status"]}}},"required":["overall","score","summary"]}"""
+        const val MISTAKE_SCHEMA = """{"type":"object","properties":{"rootMisconception":{"type":"string"},"correctMentalModel":{"type":"string"},"stepByStepCorrection":{"type":"string"}},"required":["rootMisconception","correctMentalModel","stepByStepCorrection"]}"""
+        const val ENRICH_SCHEMA = """{"type":"object","properties":{"explanation":{"type":"string"},"formula":{"type":"string"},"steps":{"type":"array","items":{"type":"string"}}},"required":["explanation"]}"""
+        const val VISUAL_SCHEMA = """{"type":"object","properties":{"kind":{"type":"string"},"title":{"type":"string"},"subtitle":{"type":"string"},"xLabel":{"type":"string"},"yLabel":{"type":"string"},"equations":{"type":"array","items":{"type":"string"}},"xMin":{"type":"number"},"xMax":{"type":"number"},"series":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"points":{"type":"array","items":{"type":"object","properties":{"label":{"type":"string"},"value":{"type":"number"}},"required":["label","value"]}}},"required":["name","points"]}},"timeline":{"type":"array","items":{"type":"object","properties":{"step":{"type":"string"},"title":{"type":"string"},"detail":{"type":"string"}},"required":["step","title","detail"]}},"mermaidCode":{"type":"string"},"caption":{"type":"string"}},"required":["title","kind"]}"""
+        const val EXPLAIN_SIMPLY_SCHEMA = """{"type":"object","properties":{"analogy":{"type":"string"},"everydayExample":{"type":"string"},"keyTakeaway":{"type":"string"}},"required":["analogy","everydayExample","keyTakeaway"]}"""
+        const val HINT_LADDER_SCHEMA = """{"type":"object","properties":{"hints":{"type":"array","items":{"type":"string"}}},"required":["hints"]}"""
     }
 }
