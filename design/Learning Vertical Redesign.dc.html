@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MeetingMind Learning — Vertical Redesign (for approval)</title>
+<meta name="design_doc_mode" content="canvas">
+<!-- Self-contained design artifact. No build step, no runtime dependency.
+     Fonts load from Google Fonts when online and fall back to system faces offline. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&family=Outfit:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ───────────── Canvas chrome (matches Recording Page Redesign conventions) ───────────── */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:#EDEEF2;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#1a1a1a;-webkit-font-smoothing:antialiased}
+.dv-top{position:sticky;top:0;z-index:50;background:rgba(237,238,242,.92);backdrop-filter:blur(8px);border-bottom:1px solid rgba(0,0,0,.08);padding:10px 48px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.dv-top b{font:600 13px "Helvetica Neue",Helvetica,sans-serif}
+.dv-top .sp{flex:1}
+.dv-tg{display:inline-flex;background:rgba(0,0,0,.06);border-radius:8px;padding:2px}
+.dv-tg button{border:0;background:transparent;font:500 12px "Helvetica Neue",sans-serif;padding:6px 10px;border-radius:6px;cursor:pointer;color:#333}
+.dv-tg button.on{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.12);color:#000}
+.dv-top a.nav{font:500 12px "Helvetica Neue",sans-serif;color:#333;text-decoration:none;padding:6px 8px;border-radius:6px}
+.dv-top a.nav:hover{background:rgba(0,0,0,.06)}
+.dv-intro{padding:44px 48px 30px;max-width:1180px}
+.dv-intro h1{font:600 30px/1.15 "Helvetica Neue",Helvetica,sans-serif;letter-spacing:-.6px;margin:0 0 10px}
+.dv-intro p{font:14px/1.6 "Helvetica Neue",sans-serif;color:rgba(0,0,0,.66);margin:0 0 10px;max-width:860px}
+.dv-gate{display:inline-flex;gap:8px;align-items:center;background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:8px;padding:8px 12px;font:600 12px "Helvetica Neue",sans-serif;margin:6px 0 16px}
+.dv-gate i{width:8px;height:8px;border-radius:50%;background:#D97706;display:inline-block}
+.dv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:20px}
+.dv-card{background:#fff;border-radius:10px;padding:16px 18px;border:1px solid rgba(0,0,0,.07)}
+.dv-card h3{margin:0 0 6px;font:600 13px "Helvetica Neue",sans-serif}
+.dv-card p,.dv-card li{font:12.5px/1.55 "Helvetica Neue",sans-serif;color:rgba(0,0,0,.64);margin:0}
+.dv-card ul{margin:0;padding-left:16px}
+.dv-index{margin-top:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 18px}
+.dv-index a{font:12.5px/1.9 "Helvetica Neue",sans-serif;color:#1a1a1a;text-decoration:none;display:flex;gap:8px;align-items:baseline}
+.dv-index a:hover{color:#0E7490}
+.dv-turn{padding:44px 48px 36px;border-top:1px solid rgba(0,0,0,.08)}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 15px/1.3 "Helvetica Neue",Helvetica,sans-serif;color:#1a1a1a}
+.dv-tdesc{font:13px/1.6 "Helvetica Neue",sans-serif;color:rgba(0,0,0,.6);max-width:900px;margin:0 0 26px}
+.dv-opts{display:flex;flex-wrap:wrap;gap:44px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:12px;scroll-margin-top:70px;width:412px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none;flex:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11.5px/1.45 "Helvetica Neue",Helvetica,sans-serif;color:rgba(0,0,0,.6);min-height:50px}
+.dv-olabel b{color:#1a1a1a;font-weight:600}
+.dv-opt:target .dv-oid{background:#0E7490;color:#fff}
+.dv-reset{font:500 11px "Helvetica Neue",sans-serif;color:#0E7490;cursor:pointer;background:none;border:0;padding:0;align-self:flex-start}
+a{color:#0E7490}
+
+/* Walkthrough */
+.wt{display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap}
+.wt-side{width:360px;display:flex;flex-direction:column;gap:14px}
+.wt-box{background:#fff;border-radius:10px;padding:16px 18px;border:1px solid rgba(0,0,0,.07)}
+.wt-box h4{margin:0 0 10px;font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.8px;color:rgba(0,0,0,.45);text-transform:uppercase}
+.wt-where{font:600 16px/1.3 "Helvetica Neue",sans-serif;margin:0 0 6px}
+.wt-note{font:12.5px/1.6 "Helvetica Neue",sans-serif;color:rgba(0,0,0,.64)}
+.wt-j{display:block;width:100%;text-align:left;border:1px solid rgba(0,0,0,.09);background:#fafafa;border-radius:8px;padding:10px 12px;margin:0 0 8px;cursor:pointer;font:12.5px/1.45 "Helvetica Neue",sans-serif;color:#1a1a1a}
+.wt-j:hover{border-color:#0E7490;background:#fff}
+.wt-j b{display:block;font-weight:600;margin-bottom:2px}
+.wt-sw{display:flex;align-items:center;justify-content:space-between;padding:7px 0;font:12.5px "Helvetica Neue",sans-serif;border-top:1px solid rgba(0,0,0,.05)}
+.wt-sw:first-of-type{border-top:0}
+.wt-sw input{width:18px;height:18px;accent-color:#0E7490}
+
+/* ───────────── Device frame (mirrors design/android-frame.jsx AndroidDevice) ───────────── */
+.dev{width:412px;height:892px;border-radius:18px;overflow:hidden;border:8px solid rgba(116,119,117,.5);box-shadow:0 30px 80px rgba(0,0,0,.22);display:flex;flex-direction:column;position:relative;background:var(--bg);color:var(--ink);font-family:var(--ui);--ts:1}
+.dev.big{--ts:1.3}
+.sb{height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 16px;position:relative;font:400 14px/20px Roboto,system-ui,sans-serif;color:var(--ink);letter-spacing:.25px;background:var(--bg)}
+.sb .cam{position:absolute;left:50%;top:8px;transform:translateX(-50%);width:24px;height:24px;border-radius:100px;background:#2e2e2e}
+.sb .ic{display:flex;gap:2px;align-items:center}
+.gnav{height:24px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--chromeBg,var(--bg))}
+.gnav i{width:108px;height:4px;border-radius:2px;background:var(--ink);opacity:.4}
+.scr{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;scrollbar-width:none}
+.scr::-webkit-scrollbar{display:none}
+
+/* ───────────── Learning tokens: MM Paper/Graphite + Study (Ocean) accent ───────────── */
+.dev{
+  --ui:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --display:"Outfit","Inter",system-ui,sans-serif;
+  --read:"Literata","Iowan Old Style","Georgia",serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --bg:#FAFAF9; --surface:#FFFFFF; --raised:#FFFFFF; --sunk:#F5F5F4; --track:#EDEDEB; --paper:#FFFDF8;
+  --ink:#18181B; --ink2:#52525B; --muted:#6B6B73; --faint:#C8C8CD; --onInk:#FFFFFF;
+  --line:#E5E5E3; --lineSoft:#EDEDEB; --lineFaint:#F3F3F1;
+  --accent:#0E7490; --accentWash:rgba(14,116,144,.09); --accentLine:rgba(14,116,144,.28); --onAccent:#FFFFFF;
+  --success:#15803D; --successWash:rgba(21,128,61,.09);
+  --clay:#B45309; --clayWash:rgba(180,83,9,.09);
+  --danger:#B91C1C; --dangerWash:rgba(185,28,28,.07);
+  --shadow:0 8px 24px rgba(24,24,27,.08);
+  --sheetShadow:0 -12px 40px rgba(24,24,27,.14);
+  --scrim:rgba(0,0,0,.36);
+}
+.dev.dark{
+  --bg:#0C111B; --surface:#121A27; --raised:#192434; --sunk:#080D15; --track:#202C3C; --paper:#141D2B;
+  --ink:#F0F3F8; --ink2:#B7C0CF; --muted:#8995A8; --faint:#536176; --onInk:#0C111B;
+  --line:#2A3749; --lineSoft:#202C3A; --lineFaint:#172231;
+  --accent:#5CC8DD; --accentWash:rgba(92,200,221,.13); --accentLine:rgba(92,200,221,.35); --onAccent:#07131A;
+  --success:#4ADE80; --successWash:rgba(74,222,128,.12);
+  --clay:#F0A35E; --clayWash:rgba(240,163,94,.13);
+  --danger:#F87171; --dangerWash:rgba(248,113,113,.12);
+  --shadow:0 8px 24px rgba(0,0,0,.35);
+  --sheetShadow:0 -12px 40px rgba(0,0,0,.5);
+  --scrim:rgba(0,0,0,.55);
+}
+.dev.dark .sb .cam{background:#000}
+
+/* Type tokens (MMType + two proposed Learning tokens: reading, prompt). All scale with --ts (text size setting). */
+.t-display{font:600 calc(30px*var(--ts))/1.2 var(--display);letter-spacing:-.4px}
+.t-title{font:600 calc(22px*var(--ts))/1.27 var(--ui);letter-spacing:-.3px}
+.t-heading{font:600 calc(17px*var(--ts))/1.41 var(--ui);letter-spacing:-.15px}
+.t-body{font:400 calc(15px*var(--ts))/1.47 var(--ui)}
+.t-strong{font:500 calc(15px*var(--ts))/1.47 var(--ui)}
+.t-sec{font:400 calc(13px*var(--ts))/1.38 var(--ui);color:var(--ink2)}
+.t-cap{font:500 calc(12px*var(--ts))/1.33 var(--ui);color:var(--muted)}
+.t-over{font:600 calc(11px*var(--ts))/1.27 var(--ui);letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.t-read{font:400 calc(17px*var(--ts))/1.65 var(--read);color:var(--ink)}
+.t-prompt{font:500 calc(22px*var(--ts))/1.36 var(--read);letter-spacing:-.2px;color:var(--ink)}
+.t-mono{font:500 calc(11.5px*var(--ts))/1 var(--mono);letter-spacing:.3px}
+.ink2{color:var(--ink2)} .muted{color:var(--muted)} .acc{color:var(--accent)}
+
+/* Layout helpers (MMSpace 4/8/12/16/24/32, gutter 16 → Learning uses 20 for reading comfort: see spec §6) */
+.g{padding-left:20px;padding-right:20px}
+.row{display:flex;align-items:center;gap:12px}
+.col{display:flex;flex-direction:column}
+.f1{flex:1;min-width:0}
+.mt4{margin-top:4px}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mt24{margin-top:24px}.mt32{margin-top:32px}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tap{cursor:pointer}
+.dev.big .hide-big{display:none}
+.hr{height:1px;background:var(--lineSoft);margin:0 20px}
+
+/* App bar */
+.ab{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;gap:4px;padding:4px 8px;min-height:56px}
+.ab .ttl{flex:1;min-width:0;padding:0 4px}
+.ab.line{box-shadow:inset 0 -1px 0 var(--lineSoft)}
+.ib{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--ink2);cursor:pointer;flex:none;border:0;background:transparent}
+.ib:hover{background:var(--accentWash)}
+.ib svg{width:24px;height:24px}
+.ic20 svg,.ic20{width:20px;height:20px}
+svg.i{width:24px;height:24px;flex:none}
+svg.s{width:20px;height:20px;flex:none}
+svg.xs{width:16px;height:16px;flex:none}
+
+/* Space chip */
+.spc{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px 0 10px;border-radius:999px;border:1px solid var(--line);color:var(--ink);font:600 calc(13px*var(--ts)) var(--ui);cursor:pointer;background:var(--surface)}
+.av{width:36px;height:36px;border-radius:50%;background:var(--accentWash);color:var(--accent);display:flex;align-items:center;justify-content:center;font:600 14px var(--ui);flex:none}
+
+/* Buttons (pill, ≥48dp) */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:999px;font:600 calc(15px*var(--ts)) var(--ui);cursor:pointer;border:0;text-align:center;user-select:none;transition:transform .15s,background .15s,opacity .15s}
+.btn:active{transform:scale(.98)}
+.btn.pri{background:var(--ink);color:var(--onInk)}
+.btn.acc{background:var(--accent);color:var(--onAccent)}
+.btn.sec{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.btn.ton{background:var(--accentWash);color:var(--accent)}
+.btn.txt{background:transparent;color:var(--accent);padding:0 8px}
+.btn.full{width:100%}
+.btn.dis{opacity:.38;pointer-events:none}
+.btn svg{width:20px;height:20px}
+.ta{display:inline-flex;align-items:center;gap:6px;min-height:48px;color:var(--accent);font:600 calc(14px*var(--ts)) var(--ui);cursor:pointer}
+
+/* Surfaces: Card · Hero · Inset · Sheet (DESIGN_SYSTEM §7) */
+.card{background:var(--surface);border-radius:16px;box-shadow:inset 0 0 0 1px var(--line)}
+.dev.dark .card{box-shadow:none}
+.hero{background:var(--accentWash);border-radius:16px}
+.inset{background:var(--sunk);border-radius:8px}
+.paper{background:var(--paper);border-radius:16px;box-shadow:inset 0 0 0 1px var(--line),0 1px 0 var(--lineSoft)}
+.dev.dark .paper{box-shadow:inset 0 0 0 1px var(--line)}
+
+/* Section header: title · count, one "All" action */
+.sh{display:flex;align-items:center;justify-content:space-between;padding:0 20px;min-height:40px;margin-top:28px}
+.sh .t-heading span{color:var(--muted);font-weight:500}
+
+/* List rows */
+.lr{display:flex;align-items:center;gap:14px;padding:12px 20px;min-height:64px;cursor:pointer}
+.lr:hover{background:var(--accentWash)}
+.lr + .lr{box-shadow:inset 0 1px 0 var(--lineFaint)}
+.chev{color:var(--faint)}
+
+/* Course monogram */
+.mono{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font:600 15px var(--display);flex:none;letter-spacing:.2px}
+
+/* Chips (filters) */
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 20px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--line);font:500 calc(13px*var(--ts)) var(--ui);color:var(--ink2);cursor:pointer;background:var(--surface)}
+.chip.on{background:var(--ink);color:var(--onInk);box-shadow:none}
+.chip svg{width:16px;height:16px}
+
+/* Segmented session tabs */
+.seg{display:flex;gap:0;padding:0 12px;box-shadow:inset 0 -1px 0 var(--lineSoft);background:var(--bg);position:sticky;top:56px;z-index:4}
+.seg button{flex:1;border:0;background:transparent;min-height:48px;font:500 calc(14px*var(--ts)) var(--ui);color:var(--muted);cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 4px}
+.seg button.on{color:var(--ink);font-weight:600}
+.seg button.on:after{content:"";position:absolute;left:14%;right:14%;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--accent)}
+.seg .dot{width:6px;height:6px;border-radius:50%;background:var(--clay)}
+
+/* Bottom bar (Learning space) */
+.bb{flex:none;display:flex;background:var(--surface);box-shadow:0 -1px 0 var(--lineSoft);padding:6px 0 4px;--chromeBg:var(--surface)}
+.bb button{flex:1;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:56px;cursor:pointer;color:var(--ink2);font:500 calc(12px*var(--ts)) var(--ui)}
+.bb .pill{width:64px;height:32px;border-radius:16px;display:flex;align-items:center;justify-content:center;transition:background .25s}
+.bb button.on{color:var(--ink);font-weight:600}
+.bb button.on .pill{background:var(--accentWash);color:var(--accent)}
+
+/* Mastery state glyph */
+.ms{display:inline-flex;align-items:center;gap:6px;font:600 calc(12px*var(--ts))/1 var(--ui);white-space:nowrap}
+.ms svg{width:16px;height:16px;flex:none}
+.ms.new{color:var(--muted)} .ms.learning,.ms.developing{color:var(--accent)} .ms.strong{color:var(--success)} .ms.review{color:var(--clay)}
+.msbar{display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px;background:transparent}
+.msbar i{display:block;height:100%}
+.msbar .strong{background:var(--success)} .msbar .developing{background:var(--accent)} .msbar .learning{background:var(--accent);opacity:.45} .msbar .review{background:var(--clay)} .msbar .new{background:var(--track)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px}
+
+/* Citation chip */
+.cite{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:6px;background:var(--accentWash);color:var(--accent);font:600 calc(11.5px*var(--ts))/1 var(--mono);cursor:pointer;vertical-align:baseline;white-space:nowrap}
+.cite svg{width:12px;height:12px}
+.cn{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:5px;background:var(--accentWash);color:var(--accent);font:600 11px/1 var(--mono);cursor:pointer;vertical-align:2px;margin:0 1px}
+.cn.on{background:var(--accent);color:var(--onAccent)}
+
+/* Evidence quote */
+.quote{border-left:3px solid var(--accentLine);padding:2px 0 2px 14px;font:italic 400 calc(15px*var(--ts))/1.6 var(--read);color:var(--ink2)}
+
+/* Status line / banners */
+.status{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;font:400 calc(13px*var(--ts))/1.45 var(--ui);color:var(--ink2)}
+.status svg{width:20px;height:20px;flex:none;margin-top:1px}
+.status.info{background:var(--sunk)}
+.status.warn{background:var(--clayWash)} .status.warn svg{color:var(--clay)}
+.status.ok{background:var(--successWash)} .status.ok svg{color:var(--success)}
+.status b{color:var(--ink);font-weight:600}
+
+/* Progress bar */
+.pbar{height:4px;border-radius:2px;background:var(--track);overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--accent);border-radius:2px;transition:width .25s}
+.qprog{display:flex;gap:4px}
+.qprog i{flex:1;height:4px;border-radius:2px;background:var(--track)}
+.qprog i.d{background:var(--accent)} .qprog i.c{background:var(--ink)}
+
+/* Options (questions) */
+.opt{display:flex;align-items:flex-start;gap:14px;padding:14px 16px;border-radius:14px;box-shadow:inset 0 0 0 1px var(--line);background:var(--surface);cursor:pointer;min-height:56px;font:400 calc(15.5px*var(--ts))/1.45 var(--ui);color:var(--ink);transition:box-shadow .15s,background .15s}
+.opt + .opt{margin-top:10px}
+.opt .k{width:28px;height:28px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line);display:flex;align-items:center;justify-content:center;font:600 13px var(--ui);color:var(--ink2);flex:none}
+.opt.sel{box-shadow:inset 0 0 0 2px var(--ink)}
+.opt.sel .k{background:var(--ink);color:var(--onInk);box-shadow:none}
+.opt.right{box-shadow:inset 0 0 0 2px var(--success);background:var(--successWash)}
+.opt.right .k{background:var(--success);color:var(--surface);box-shadow:none}
+.opt.wrong{box-shadow:inset 0 0 0 2px var(--clay);background:var(--clayWash)}
+.opt.wrong .k{background:var(--clay);color:var(--surface);box-shadow:none}
+.opt.dim{opacity:.55}
+.opt .tag{display:block;margin-top:4px;font:600 calc(12px*var(--ts)) var(--ui)}
+.opt.right .tag{color:var(--success)} .opt.wrong .tag{color:var(--clay)}
+.locked .opt{cursor:default}
+
+textarea.fr{width:100%;min-height:150px;border:0;border-radius:14px;box-shadow:inset 0 0 0 1px var(--line);background:var(--surface);padding:14px 16px;font:400 calc(16px*var(--ts))/1.55 var(--ui);color:var(--ink);resize:none;outline:none}
+textarea.fr:focus{box-shadow:inset 0 0 0 2px var(--accent)}
+.field{display:flex;align-items:center;gap:10px;height:48px;border-radius:999px;background:var(--sunk);padding:0 16px;color:var(--muted);font:400 calc(15px*var(--ts)) var(--ui)}
+.field input{border:0;background:transparent;flex:1;font:inherit;color:var(--ink);outline:none;min-width:0}
+.tfield{border-radius:12px;box-shadow:inset 0 0 0 1px var(--line);background:var(--surface);padding:10px 14px}
+.tfield label{display:block;font:500 calc(12px*var(--ts)) var(--ui);color:var(--muted)}
+.tfield input{border:0;background:transparent;width:100%;font:400 calc(16px*var(--ts))/1.5 var(--ui);color:var(--ink);outline:none;padding:2px 0 0}
+
+/* Check rows (self-check) */
+.ck{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;cursor:pointer;min-height:48px}
+.ck + .ck{margin-top:6px}
+.ck .bx{width:22px;height:22px;border-radius:6px;box-shadow:inset 0 0 0 2px var(--faint);flex:none;display:flex;align-items:center;justify-content:center;color:var(--onAccent);margin-top:1px}
+.ck.on .bx{background:var(--accent);box-shadow:none}
+.ck .bx svg{width:16px;height:16px}
+
+/* Radio rows */
+.rd{display:flex;gap:14px;align-items:center;padding:12px 20px;min-height:60px;cursor:pointer}
+.rd .o{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 2px var(--faint);flex:none}
+.rd.on .o{box-shadow:inset 0 0 0 7px var(--accent)}
+
+/* Rating buttons */
+.rate{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.rate button{border:0;border-radius:14px;min-height:72px;padding:10px 6px;cursor:pointer;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink);font:600 calc(14.5px*var(--ts)) var(--ui)}
+.rate button small{font:500 calc(11.5px*var(--ts)) var(--ui);color:var(--muted)}
+.rate button svg{width:20px;height:20px}
+.rate button.r0 svg{color:var(--clay)} .rate button.r1 svg{color:var(--accent)} .rate button.r2 svg{color:var(--success)}
+.rate button:hover{box-shadow:inset 0 0 0 2px var(--ink)}
+
+/* Flashcard */
+.fc{position:relative;padding:28px 24px 24px;min-height:340px;display:flex;flex-direction:column}
+.fc .ans{animation:reveal .25s ease-out}
+@keyframes reveal{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes slidein{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+.slide{animation:slidein .25s ease-out}
+@media (prefers-reduced-motion:reduce){.fc .ans,.slide,.sheet,.toast{animation:none!important}.btn{transition:none}}
+
+/* Feedback panel */
+.fb{border-radius:16px;padding:16px 16px 14px;animation:reveal .25s ease-out}
+.fb.right{background:var(--successWash)} .fb.wrong{background:var(--clayWash)} .fb.part{background:var(--accentWash)}
+.fb h4{margin:0;display:flex;align-items:center;gap:8px;font:600 calc(16px*var(--ts)) var(--ui)}
+.fb.right h4{color:var(--success)} .fb.wrong h4{color:var(--clay)} .fb.part h4{color:var(--accent)}
+
+/* Sheet + scrim + toast */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:20;animation:fade .2s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--raised);border-radius:16px 16px 0 0;box-shadow:var(--sheetShadow);padding:8px 0 28px;max-height:86%;overflow-y:auto;animation:up .25s cubic-bezier(.2,0,0,1)}
+@keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+.grab{width:32px;height:4px;border-radius:2px;background:var(--faint);margin:6px auto 14px}
+.toast{position:absolute;left:12px;right:12px;bottom:12px;z-index:30;background:var(--ink);color:var(--onInk);border-radius:12px;padding:12px 8px 12px 16px;display:flex;align-items:center;gap:10px;font:500 calc(14px*var(--ts))/1.4 var(--ui);box-shadow:var(--shadow);animation:up .2s ease-out}
+.toast .ta{color:var(--accent);min-height:36px;padding:0 10px}
+.dev:not(.dark) .toast .ta{color:#7DD3E3}
+.toast svg{width:20px;height:20px;flex:none}
+
+/* Skeleton (static — no idle animation, DESIGN_SYSTEM §6) */
+.sk{background:var(--track);border-radius:6px;height:12px}
+
+/* Mini player */
+.mp{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px;background:var(--surface);box-shadow:0 -1px 0 var(--lineSoft);flex:none}
+.playb{width:44px;height:44px;border-radius:50%;background:var(--ink);color:var(--onInk);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+.playb svg{width:22px;height:22px}
+
+/* Transcript */
+.seg-t{display:flex;gap:14px;padding:12px 20px;cursor:pointer}
+.seg-t .ts{font:500 calc(11.5px*var(--ts))/1.9 var(--mono);color:var(--muted);width:44px;flex:none}
+.seg-t .tx{font:400 calc(15.5px*var(--ts))/1.65 var(--ui);color:var(--ink2)}
+.seg-t.hl{background:var(--accentWash)}
+.seg-t.hl .ts{color:var(--accent)} .seg-t.hl .tx{color:var(--ink)}
+.seg-t.unclear .tx{text-decoration:underline wavy var(--clay);text-decoration-thickness:1px;text-underline-offset:4px}
+
+/* Momentum dots */
+.wk{display:flex;gap:10px}
+.wk div{display:flex;flex-direction:column;align-items:center;gap:6px;font:500 calc(11px*var(--ts)) var(--ui);color:var(--muted)}
+.wk i{width:28px;height:28px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line);display:flex;align-items:center;justify-content:center;color:var(--accent)}
+.wk i.on{background:var(--accentWash);box-shadow:none}
+.wk i.today{box-shadow:inset 0 0 0 2px var(--ink)}
+.wk i svg{width:14px;height:14px}
+
+/* Plan rows inside hero */
+.plan{display:flex;gap:12px;align-items:center;padding:10px 0;cursor:pointer;min-height:52px}
+.plan + .plan{box-shadow:inset 0 1px 0 var(--accentLine)}
+.dev .plan + .plan{box-shadow:inset 0 1px 0 rgba(14,116,144,.14)}
+.dev.dark .plan + .plan{box-shadow:inset 0 1px 0 rgba(92,200,221,.16)}
+.plan .n{width:26px;height:26px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--accent);display:flex;align-items:center;justify-content:center;font:600 12px var(--ui);color:var(--accent);flex:none}
+.plan.done .n{background:var(--accent);color:var(--onAccent);box-shadow:none}
+.plan.done .pt{text-decoration:line-through;text-decoration-color:var(--faint);color:var(--muted)}
+.plan .n svg{width:14px;height:14px}
+
+/* Table */
+.tbl{width:100%;border-collapse:collapse;font:400 calc(13.5px*var(--ts))/1.4 var(--ui)}
+.tbl th{font:600 calc(11px*var(--ts)) var(--ui);letter-spacing:.5px;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+.tbl td{padding:10px;border-bottom:1px solid var(--lineSoft);vertical-align:top;color:var(--ink2)}
+.tbl td:first-child{color:var(--ink);font-weight:500}
+.tbl tr:last-child td{border-bottom:0}
+
+/* Chat */
+.bub{align-self:flex-end;max-width:84%;background:var(--sunk);border-radius:18px 18px 4px 18px;padding:12px 16px;font:400 calc(15px*var(--ts))/1.5 var(--ui)}
+.comp{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;background:var(--bg);box-shadow:0 -1px 0 var(--lineSoft);flex:none}
+.comp .field{flex:1}
+.sendb{width:48px;height:48px;border-radius:50%;background:var(--ink);color:var(--onInk);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+
+/* Steps (building) */
+.stp{display:flex;gap:14px;align-items:flex-start;padding:10px 0}
+.stp .d{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1.5px var(--line);color:var(--muted)}
+.stp.done .d{background:var(--accent);color:var(--onAccent);box-shadow:none}
+.stp.now .d{box-shadow:inset 0 0 0 2px var(--accent)}
+.stp.now .d:after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.stp .d svg{width:14px;height:14px}
+
+/* Design system board */
+.ds{width:860px;background:#fff;border-radius:12px;border:1px solid rgba(0,0,0,.08);padding:28px 30px;font-family:"Inter",system-ui,sans-serif;color:#18181B}
+.ds h3{font:600 12px ui-monospace,Menlo,monospace;letter-spacing:.8px;text-transform:uppercase;color:#6B6B73;margin:28px 0 12px}
+.ds h3:first-child{margin-top:0}
+.sw{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.sw div{border-radius:10px;overflow:hidden;border:1px solid rgba(0,0,0,.08);font:11px/1.35 ui-monospace,Menlo,monospace}
+.sw div i{display:block;height:46px}
+.sw div span{display:block;padding:6px 8px;color:#333}
+</style>
+</head>
+<body>
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════
+   MeetingMind Learning — prototype data. One consistent fictional scenario.
+   Today = Thursday 13 November 2026, 9:30. Lecture 07 recorded Tue 11 Nov.
+   ═══════════════════════════════════════════════════════════════════════ */
+const D = {
+  learner: 'Thandi',
+  today: 'Thursday 13 November',
+  courses: [
+    { id:'bioc', name:'Human Biochemistry', code:'BIOC 2101', mono:'HB', hue:'#0E7490', hueD:'#5CC8DD', lecturer:'Dr Grace Mensah', term:'Semester 2', sessions:7, due:6,
+      counts:{strong:9,developing:12,learning:8,review:3,new:9},
+      topics:[ {name:'Proteins', n:12, sessions:'Lectures 01–02'}, {name:'Enzymes', n:21, sessions:'Lectures 03–05, 07'}, {name:'Bioenergetics', n:8, sessions:'Lecture 06'} ] },
+    { id:'cell', name:'Cell Biology', code:'BIOL 2204', mono:'CB', hue:'#4D7C0F', hueD:'#A3D977', lecturer:'Prof. Ahmed Khalil', term:'Semester 2', sessions:5, due:2,
+      counts:{strong:7,developing:9,learning:5,review:1,new:6}, topics:[] },
+    { id:'stat', name:'Statistics for Life Sciences', code:'STAT 1150', mono:'SL', hue:'#7C3AED', hueD:'#C4B5FD', lecturer:'Dr Lena Park', term:'Semester 2', sessions:3, due:0,
+      counts:{strong:2,developing:3,learning:4,review:0,new:5}, topics:[] },
+  ],
+  sessions: [
+    { id:'l07', course:'bioc', title:'Enzyme Kinetics — Lecture 07', short:'Lecture 07', date:'Tue 11 Nov', dur:'52 min', concepts:9 },
+    { id:'l06', course:'bioc', title:'Thermodynamics of Reactions — Lecture 06', short:'Lecture 06', date:'Thu 6 Nov', dur:'48 min', concepts:8, counts:{strong:3,developing:3,learning:1,review:0,new:1} },
+    { id:'l05', course:'bioc', title:'Coenzymes and Cofactors — Lecture 05', short:'Lecture 05', date:'Tue 4 Nov', dur:'55 min', concepts:7, counts:{strong:2,developing:3,learning:1,review:1,new:0} },
+    { id:'c04', course:'cell', title:'Protein Targeting and the ER — Lecture 04', short:'Lecture 04', date:'Mon 10 Nov', dur:'50 min', concepts:6, counts:{strong:1,developing:2,learning:2,review:1,new:0} },
+    { id:'s03', course:'stat', title:'Hypothesis Testing — Lecture 03', short:'Lecture 03', date:'Wed 5 Nov', dur:'46 min', concepts:5, counts:{strong:0,developing:1,learning:2,review:0,new:2} },
+  ],
+  unassigned: [ { id:'tut3', title:'Tutorial — Problem Set 3 walkthrough', date:'Wed 12 Nov', dur:'23 min', kind:'Recording' } ],
+  notes: [
+    { id:'n1', title:'Enzymes — my revision notes', meta:'Note · edited Sun 9 Nov · 1,240 words' },
+    { id:'n2', title:'Glycolysis summary (from textbook ch. 14)', meta:'Note · edited Mon 3 Nov · 860 words' },
+  ],
+  outline: [
+    { t:'04:10', s:'Measuring enzyme activity' },
+    { t:'09:20', s:'How rate depends on substrate' },
+    { t:'15:30', s:'The Michaelis–Menten model' },
+    { t:'22:40', s:'Competitive and non-competitive inhibition' },
+    { t:'33:10', s:'The Lineweaver–Burk plot' },
+    { t:'41:00', s:'Worked example: reading Km from data' },
+  ],
+  emphasis: [
+    { t:'24:12', q:'If you flood the system with substrate, you can outcompete it. So Vmax doesn’t change. I want you to be able to tell me this.', c:'compinh' },
+    { t:'18:42', q:'Km is not strictly a binding constant — but a low Km tells you the enzyme copes well at low substrate.', c:'km' },
+  ],
+  transcript: [
+    { t:'04:10', x:'Right, let’s start with how we actually measure what an enzyme is doing.' },
+    { t:'06:15', x:'Enzyme activity is the amount of substrate converted per unit time — we report it in units, or katals if you want to be SI about it.' },
+    { t:'09:40', x:'We always measure the initial rate — before anything has had time to change. That’s v-nought.' },
+    { t:'12:05', x:'At low substrate concentrations the rate rises almost linearly. Keep adding substrate and you hit a plateau — every active site is busy. That’s saturation.' },
+    { t:'15:30', x:'So let’s build the model. Michaelis and Menten assumed the enzyme and substrate form a complex first, and that complex breaks down to give product.' },
+    { t:'16:20', x:'So the Michaelis–Menten equation: v-nought equals Vmax times S, over Km plus S. When S equals Km, you’re running at exactly half of Vmax.' },
+    { t:'18:42', x:'The Michaelis constant, Km, is simply the substrate concentration at which the reaction runs at half its maximum velocity. It is not a binding constant, strictly, but you can read a low Km as the enzyme coping well at low substrate.' },
+    { t:'22:40', x:'Okay — inhibitors. Two kinds today, and the whole point is being able to tell them apart from the data.' },
+    { t:'24:12', x:'Now a competitive inhibitor looks like the substrate. It sits in the active site. And here’s the key thing — I want you to be able to tell me this — if you flood the system with substrate, you can outcompete it. So Vmax doesn’t change. What changes is the apparent Km. It goes up.' },
+    { t:'25:40', x:'Classic example: malonate. It looks a lot like succinate, so it competes for succinate dehydrogenase. Add enough succinate and you get your rate back.' },
+    { t:'27:30', x:'Non-competitive is different. The inhibitor binds somewhere else, so adding more substrate doesn’t help you. Vmax comes down; Km stays where it was.' },
+    { t:'31:48', x:'[unclear] …so if you take the — the slope here, the — sorry, the projector — that gives you Km over Vmax, and the…', unclear:true },
+    { t:'35:10', x:'If you take the reciprocal of both sides you get a straight line. The intercept on the y-axis is one over Vmax, and on the x-axis minus one over Km.' },
+  ],
+};
+
+/* Concepts in Lecture 07. state = evidence-derived (spec §7.3). */
+const CONCEPTS = [
+  { id:'compinh', name:'Competitive inhibition', state:'review', emph:true,
+    def:'Inhibition in which a molecule resembling the substrate binds reversibly to the active site and competes with the substrate.',
+    expl:'Because inhibitor and substrate compete for the same site, adding enough substrate outcompetes the inhibitor. The enzyme still reaches the same Vmax, but it needs more substrate to get there, so the apparent Km rises.',
+    why:'Two incorrect answers in Tuesday’s diagnostic, then a hesitant recall yesterday.',
+    ev:[{t:'24:12', q:'So Vmax doesn’t change. What changes is the apparent Km. It goes up.'},{t:'25:40', q:'Malonate looks a lot like succinate, so it competes for succinate dehydrogenase.'}],
+    rel:['km','vmax','noncomp'],
+    hist:[{d:'Wed 12 Nov', a:'Daily Recall', r:'Hesitated'},{d:'Tue 11 Nov', a:'Diagnostic · Q6', r:'Incorrect'},{d:'Tue 11 Nov', a:'Diagnostic · Q1', r:'Incorrect'}] },
+  { id:'mm', name:'Michaelis–Menten kinetics', state:'learning',
+    def:'A model of how the initial velocity of an enzyme-catalysed reaction depends on substrate concentration.',
+    formula:'v₀ = Vmax [S] / (Km + [S])',
+    expl:'At low [S] the rate rises almost in proportion to [S]; at high [S] it levels off towards Vmax. When [S] equals Km, v₀ is exactly half of Vmax.',
+    why:'Correct once in the diagnostic. Your first review is due today.',
+    ev:[{t:'16:20', q:'When S equals Km, you’re running at exactly half of Vmax.'}], rel:['km','vmax','sat'],
+    hist:[{d:'Tue 11 Nov', a:'Diagnostic · Q4', r:'Correct'}] },
+  { id:'km', name:'Michaelis constant (Km)', state:'developing',
+    def:'The substrate concentration at which the reaction runs at half its maximum velocity.',
+    expl:'A low Km means the enzyme reaches half-speed at low substrate concentrations. It is not strictly a measure of binding affinity, though it is often read that way.',
+    why:'Recalled correctly on Tuesday and again yesterday.',
+    ev:[{t:'18:42', q:'Km is simply the substrate concentration at which the reaction runs at half its maximum velocity.'}], rel:['mm','vmax','compinh'],
+    hist:[{d:'Wed 12 Nov', a:'Daily Recall', r:'Knew it'},{d:'Tue 11 Nov', a:'Diagnostic · Q2', r:'Covered'}] },
+  { id:'vmax', name:'Maximum velocity (Vmax)', state:'developing',
+    def:'The highest rate an enzyme reaches when every active site is occupied.',
+    expl:'Vmax depends on how much enzyme is present. Competitive inhibitors leave it unchanged; non-competitive inhibitors lower it.',
+    why:'Recalled correctly on two separate days.',
+    ev:[{t:'27:30', q:'Vmax comes down; Km stays where it was.'}], rel:['km','sat','noncomp'],
+    hist:[{d:'Wed 12 Nov', a:'Daily Recall', r:'Knew it'},{d:'Tue 11 Nov', a:'Practice', r:'Correct'}] },
+  { id:'rate', name:'Initial velocity (v₀)', state:'strong',
+    def:'The reaction rate measured at the very start, before substrate is used up or product builds up.',
+    expl:'Measuring v₀ keeps conditions known: [S] is still what you added, and there is no reverse reaction yet.',
+    why:'Recalled correctly in three reviews across a week (it also came up in Lecture 05).',
+    ev:[{t:'09:40', q:'We always measure the initial rate — before anything has had time to change.'}], rel:['mm','activity'],
+    hist:[{d:'Wed 12 Nov', a:'Daily Recall', r:'Knew it'},{d:'Sat 8 Nov', a:'Daily Recall', r:'Knew it'},{d:'Wed 5 Nov', a:'Practice', r:'Correct'}] },
+  { id:'sat', name:'Enzyme saturation', state:'strong',
+    def:'The point at which adding more substrate no longer increases the rate, because every active site is busy.',
+    expl:'Saturation is why the Michaelis–Menten curve flattens. At saturation, the rate is at or near Vmax.',
+    why:'Correct in the diagnostic and in two later reviews.',
+    ev:[{t:'12:05', q:'Keep adding substrate and you hit a plateau — every active site is busy.'}], rel:['vmax','mm'],
+    hist:[{d:'Wed 12 Nov', a:'Daily Recall', r:'Knew it'},{d:'Tue 11 Nov', a:'Diagnostic · Q3', r:'Correct'}] },
+  { id:'activity', name:'Enzyme activity and units', state:'learning',
+    def:'The amount of substrate an enzyme converts per unit time, reported in units (µmol/min) or katals.',
+    expl:'Activity measures how much enzyme is working; specific activity divides by total protein to show purity.',
+    why:'Answered correctly once. Not yet recalled on a second day.',
+    ev:[{t:'06:15', q:'Activity is the amount of substrate converted per unit time — we report it in units, or katals.'}], rel:['rate'],
+    hist:[{d:'Tue 11 Nov', a:'Practice', r:'Correct'}] },
+  { id:'noncomp', name:'Non-competitive inhibition', state:'new',
+    def:'Inhibition in which the inhibitor binds a site other than the active site, lowering Vmax without changing Km.',
+    expl:'Because the inhibitor doesn’t compete for the active site, adding substrate cannot overcome it.',
+    why:'Not practised yet.',
+    ev:[{t:'27:30', q:'The inhibitor binds somewhere else, so adding more substrate doesn’t help you.'}], rel:['compinh','vmax'], hist:[] },
+  { id:'lb', name:'Lineweaver–Burk plot', state:'new', unclear:true,
+    def:'A double-reciprocal plot of 1/v₀ against 1/[S] that turns the Michaelis–Menten curve into a straight line.',
+    expl:'The y-intercept is 1/Vmax and the x-intercept is −1/Km, which makes inhibitor types easy to tell apart.',
+    why:'Not practised yet.', held:2,
+    ev:[{t:'35:10', q:'The intercept on the y-axis is one over Vmax, and on the x-axis minus one over Km.'}], rel:['mm','km'], hist:[] },
+];
+const CMAP = Object.fromEntries(CONCEPTS.map(c => [c.id, c]));
+const STATES = {
+  new:{label:'New', long:'Captured, not yet tested'},
+  learning:{label:'Learning', long:'Some correct answers; an early review is due'},
+  developing:{label:'Developing', long:'Recalled successfully on more than one day'},
+  strong:{label:'Strong', long:'Sustained recall over time'},
+  review:{label:'Needs review', long:'A recent miss makes this the next best thing to practise'},
+};
+const STATE_ORDER = ['review','learning','developing','strong','new'];
+
+/* Diagnostic — 6 questions, two formats. Answers are never shown before an attempt. */
+const DIAG = [
+  { id:'d1', type:'mcq', c:'compinh', q:'A competitive inhibitor is added to an enzyme-catalysed reaction. What happens to Vmax and the apparent Km?',
+    o:['Vmax falls; Km is unchanged','Vmax is unchanged; apparent Km rises','Both Vmax and Km fall','Vmax rises; apparent Km falls'], a:1,
+    why:'A competitive inhibitor only competes for the active site. With enough substrate the enzyme still reaches the same Vmax — it just needs more substrate to get there, so the apparent Km rises.',
+    miss:{0:'That describes non-competitive inhibition, where the inhibitor binds somewhere other than the active site.'}, src:'24:12' },
+  { id:'d2', type:'free', c:'km', q:'In your own words: what does Km tell you about an enzyme?',
+    pts:['It is the substrate concentration at which v₀ is half of Vmax','A lower Km means the enzyme works well at low substrate concentrations'],
+    keys:[['half','½','50'],['low','lower','small']],
+    model:'Km is the substrate concentration at which the reaction runs at half its maximum velocity. A low Km means the enzyme reaches half-speed at low substrate concentrations.', src:'18:42' },
+  { id:'d3', type:'mcq', c:'sat', q:'As you keep increasing the substrate concentration, the initial velocity…',
+    o:['keeps rising in a straight line','levels off as it approaches Vmax','falls back towards zero','doubles each time [S] doubles'], a:1,
+    why:'Once every active site is busy the enzyme is saturated, so extra substrate cannot raise the rate further.', miss:{0:'The rise is only close to linear at low [S].'}, src:'12:05' },
+  { id:'d4', type:'mcq', c:'mm', q:'According to the Michaelis–Menten equation, what is v₀ when [S] equals Km?',
+    o:['Vmax','Half of Vmax','Twice Vmax','Zero'], a:1,
+    why:'Substitute [S] = Km: v₀ = Vmax·Km / (Km + Km) = Vmax / 2.', miss:{}, src:'16:20' },
+  { id:'d5', type:'mcq', c:'noncomp', q:'Adding more substrate does not reverse non-competitive inhibition. Why?',
+    o:['The inhibitor binds the substrate instead of the enzyme','The inhibitor binds a site other than the active site','The inhibitor permanently destroys the active site','Substrate cannot enter the reaction mixture'], a:1,
+    why:'The inhibitor isn’t competing for the active site, so more substrate doesn’t displace it. Vmax falls; Km stays the same.', miss:{2:'That would be irreversible inhibition, which Lecture 07 mentions only briefly.'}, src:'27:30' },
+  { id:'d6', type:'mcq', c:'compinh', q:'Which change would best overcome competitive inhibition?',
+    o:['Lower the temperature','Increase the substrate concentration','Remove the cofactor','Add a second competitive inhibitor'], a:1,
+    why:'Raising [S] lets the substrate win the competition for the active site more often.', miss:{}, src:'24:12' },
+];
+/* Strengthen: Competitive inhibition — 3 questions (recall → explain → apply). */
+const DRILL = [
+  DIAG[0],
+  { id:'k2', type:'mcq', c:'compinh', q:'Malonate inhibits succinate dehydrogenase because it resembles succinate. Which result would you expect?',
+    o:['Vmax falls, even at very high succinate','The same Vmax is reached, but only at higher succinate','The enzyme stops working at any succinate concentration','Km falls'], a:1,
+    why:'Malonate is a competitive inhibitor: flooding the reaction with succinate restores the maximum rate, but more succinate is needed to reach half of it.', miss:{0:'Vmax only falls when the inhibitor binds away from the active site.'}, src:'25:40' },
+  DIAG[5],
+];
+/* Extra concept questions so every concept has at least one grounded question. */
+const EXTRA_Q = [
+  { id:'x1', type:'mcq', c:'lb', q:'On a Lineweaver–Burk plot, what does the y-intercept equal?', o:['Km','1/Vmax','−1/Km','Vmax/Km'], a:1,
+    why:'The plot is 1/v₀ against 1/[S]. Where 1/[S] is zero, 1/v₀ equals 1/Vmax.', miss:{2:'−1/Km is where the line crosses the x-axis.'}, src:'35:10' },
+  { id:'x2', type:'mcq', c:'vmax', q:'Which inhibitor type lowers Vmax?', o:['Competitive','Non-competitive','Neither','Both equally'], a:1,
+    why:'A non-competitive inhibitor binds away from the active site, so extra substrate cannot restore the maximum rate.', miss:{0:'Competitive inhibition leaves Vmax unchanged; enough substrate outcompetes it.'}, src:'27:30' },
+  { id:'x3', type:'mcq', c:'rate', q:'Why is the initial velocity (v₀) used rather than a later rate?', o:['It is always the fastest rate','Conditions are still known: [S] is what you added and no product has built up','It removes the need for an enzyme','It equals Vmax'], a:1,
+    why:'Measuring at the start keeps [S] known and avoids the reverse reaction and product build-up.', miss:{}, src:'09:40' },
+  { id:'x4', type:'mcq', c:'activity', q:'Enzyme activity is reported as…', o:['substrate converted per unit time','the concentration of enzyme','the value of Km','the number of active sites'], a:0,
+    why:'Activity is a rate: how much substrate is converted per unit time, in units (µmol/min) or katals.', miss:{}, src:'06:15' },
+];
+function conceptQs(id) { if (id === 'compinh') return DRILL; return DIAG.concat(EXTRA_Q).filter(q => q.c === id); }
+/* Daily Recall — 8 cards across two courses. */
+const RECALL = [
+  { c:'km', course:'bioc', s:'Lecture 07', f:'What is Km?', b:'The substrate concentration at which the reaction runs at half its maximum velocity (Vmax).', t:'18:42', iv:['Today','3 days','7 days'] },
+  { c:'compinh', course:'bioc', s:'Lecture 07', f:'A competitive inhibitor changes which parameter — Km or Vmax?', b:'The apparent Km rises. Vmax is unchanged, because enough substrate outcompetes the inhibitor.', t:'24:12', iv:['Today','1 day','3 days'] },
+  { c:'sat', course:'bioc', s:'Lecture 07', f:'What does it mean for an enzyme to be saturated?', b:'Every active site is occupied, so adding more substrate no longer increases the rate.', t:'12:05', iv:['Today','7 days','14 days'] },
+  { c:'mm', course:'bioc', s:'Lecture 07', f:'Write the Michaelis–Menten equation.', b:'v₀ = Vmax [S] / (Km + [S])', t:'16:20', iv:['Today','1 day','3 days'], formula:true },
+  { c:null, course:'cell', s:'Lecture 04', f:'What does the signal recognition particle (SRP) do?', b:'It binds the signal sequence of a new polypeptide and pauses translation until the ribosome docks at the ER membrane.', t:'08:30', iv:['Today','3 days','7 days'] },
+  { c:'compinh', course:'bioc', s:'Lecture 07', f:'How can you overcome competitive inhibition?', b:'Increase the substrate concentration.', t:'24:12', iv:['Today','1 day','3 days'] },
+  { c:null, course:'cell', s:'Lecture 04', f:'Where does N-linked glycosylation begin?', b:'In the lumen of the rough endoplasmic reticulum, as the protein is being made.', t:'19:05', iv:['Today','3 days','7 days'] },
+  { c:'rate', course:'bioc', s:'Lecture 07', f:'Why do we measure the initial velocity, v₀?', b:'Because at the start, [S] is still what you added and no product has built up, so conditions are known.', t:'09:40', iv:['Today','7 days','14 days'] },
+];
+function nearestSeg(t) { const sec = x => { const [m,s] = x.split(':').map(Number); return m*60+s; };
+  return D.transcript.filter(x=>!x.unclear).reduce((b,x)=> Math.abs(sec(x.t)-sec(t)) < Math.abs(sec(b.t)-sec(t)) ? x : b); }
+const ASK = {
+  q:'Why doesn’t Vmax change with a competitive inhibitor?',
+  a:[ ['Because a competitive inhibitor only competes for the active site', 1], ['. At very high substrate concentrations, the substrate wins that competition almost every time, so the enzyme can still reach the same maximum rate', 1], ['. What changes is how much substrate you need to get there — the apparent Km goes up', 2], ['. Dr Mensah’s example was malonate, which competes with succinate for succinate dehydrogenase', 3], ['.', 0] ],
+  cites:[ {n:1,t:'24:12',q:'If you flood the system with substrate, you can outcompete it. So Vmax doesn’t change.'}, {n:2,t:'24:12',q:'What changes is the apparent Km. It goes up.'}, {n:3,t:'25:40',q:'Malonate looks a lot like succinate, so it competes for succinate dehydrogenase.'} ],
+  follow:['How is this different from non-competitive inhibition?','What would this look like on a Lineweaver–Burk plot?','What drugs work as competitive inhibitors?'],
+};
+</script>
+<script>
+const FOLLOW = {
+  0:{ a:[['A non-competitive inhibitor binds somewhere other than the active site',4],[', so adding substrate can’t push it out. That’s why Vmax falls while Km stays where it was',4],[' — the opposite pattern to competitive inhibition, where Vmax holds and the apparent Km rises',2],['.',0]],
+      cites:[{n:4,t:'27:30',q:'The inhibitor binds somewhere else, so adding more substrate doesn’t help you. Vmax comes down; Km stays where it was.'},{n:2,t:'24:12',q:'What changes is the apparent Km. It goes up.'}] },
+  1:{ warn:'<b>Part of this is uncertain.</b> Dr Mensah drew the inhibitor lines during 31:48–33:05, which is hard to hear. This answer uses only the clear part at 35:10.',
+      a:[['The y-intercept of a Lineweaver–Burk plot is 1/Vmax and the x-intercept is −1/Km',5],['. A competitive inhibitor leaves Vmax unchanged',1],[', so its line should cross the y-axis at the same point as the uninhibited line, only steeper.',0]],
+      cites:[{n:1,t:'24:12',q:'So Vmax doesn’t change. What changes is the apparent Km.'},{n:5,t:'35:10',q:'The intercept on the y-axis is one over Vmax, and on the x-axis minus one over Km.'}] },
+  2:{ oos:true },
+};
+</script>
+<script>
+"use strict";
+/* ═══════════════════════ Icons (Material Symbols Rounded–style outlines, 24dp) ═══════════════════════ */
+const F = 'fill="currentColor" stroke="none"';
+const ICONS = {
+  back:'<path d="M19 12H5M11 18l-6-6 6-6"/>',
+  close:'<path d="M6 6l12 12M18 6L6 18"/>',
+  search:'<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  more:`<circle cx="12" cy="5.5" r="1.4" ${F}/><circle cx="12" cy="12" r="1.4" ${F}/><circle cx="12" cy="18.5" r="1.4" ${F}/>`,
+  chevR:'<path d="M9 6l6 6-6 6"/>', chevD:'<path d="M6 9l6 6 6-6"/>',
+  check:'<path d="M5 12.5l4.2 4.2L19 7"/>',
+  play:`<path d="M8 5.5v13l10.5-6.5z" ${F}/>`,
+  pause:`<rect x="7" y="5.5" width="3.6" height="13" rx="1.2" ${F}/><rect x="13.4" y="5.5" width="3.6" height="13" rx="1.2" ${F}/>`,
+  learn:'<path d="M3.5 19.5h17"/><path d="M7 15.5a5 5 0 0110 0"/><path d="M12 4.5v3M5.3 8.3l1.9 1.9M18.7 8.3l-1.9 1.9"/>',
+  learnF:`<path d="M3.5 19.5h17"/><path d="M7 15.5a5 5 0 0110 0z" ${F}/><path d="M12 4.5v3M5.3 8.3l1.9 1.9M18.7 8.3l-1.9 1.9"/>`,
+  library:'<rect x="4" y="4" width="4" height="16" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><path d="M16.3 5.4l3-.8 3 14.6-3 .8z"/>',
+  libraryF:`<rect x="4" y="4" width="4" height="16" rx="1" ${F}/><rect x="10" y="4" width="4" height="16" rx="1" ${F}/><path d="M16.3 5.4l3-.8 3 14.6-3 .8z" ${F}/>`,
+  progress:'<path d="M4 20h16"/><rect x="5.5" y="12" width="3" height="5" rx="1"/><rect x="10.5" y="8" width="3" height="9" rx="1"/><rect x="15.5" y="4.5" width="3" height="12.5" rx="1"/>',
+  progressF:`<path d="M4 20h16"/><rect x="5.5" y="12" width="3" height="5" rx="1" ${F}/><rect x="10.5" y="8" width="3" height="9" rx="1" ${F}/><rect x="15.5" y="4.5" width="3" height="12.5" rx="1" ${F}/>`,
+  ask:`<path d="M5 19V7.5A2.5 2.5 0 017.5 5h9A2.5 2.5 0 0119 7.5v6a2.5 2.5 0 01-2.5 2.5H8.3z"/><path d="M10.2 9.2a1.9 1.9 0 113 1.6c-.6.4-1.1.8-1.1 1.5"/><circle cx="12.1" cy="14" r=".6" ${F}/>`,
+  mic:'<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v2.5"/>',
+  note:'<path d="M6.5 3.5h7.5l4 4v13h-11.5z"/><path d="M14 3.5v4h4M9.5 12h5.5M9.5 15.5h5.5"/>',
+  type:'<path d="M5 7V5h14v2M12 5v14M9.5 19h5"/>',
+  wave:'<path d="M3.5 12h1M7 8.5v7M10.5 5v14M14 8v8M17.5 10v4M20.5 12h-.5"/>',
+  clock:'<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
+  cards:'<rect x="3.5" y="7.5" width="12.5" height="12.5" rx="2"/><path d="M8 4h10a2.5 2.5 0 012.5 2.5v10"/>',
+  quiz:'<path d="M4 6.5l1.5 1.5L8.5 5M4 13l1.5 1.5 3-3M11.5 7h8.5M11.5 13.5h8.5M11.5 19.5h8.5"/>',
+  target:`<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.3"/><circle cx="12" cy="12" r="1" ${F}/>`,
+  edit:'<path d="M4 20h4L19.3 8.7a2.1 2.1 0 00-3-3L5 17z"/><path d="M14.5 7.5l2 2"/>',
+  flag:'<path d="M5.5 21V4M5.5 4.5h11l-2 4 2 4h-11"/>',
+  wifiOff:`<path d="M3 3l18 18"/><path d="M8.6 15.9a5 5 0 016.4-.4M5.2 12.3A10 10 0 019.7 10M14.6 10.1A10 10 0 0118.8 12.3M2 8.9a15 15 0 014.9-3M10.6 5a15 15 0 0111.4 3.9"/><circle cx="12" cy="19.5" r=".9" ${F}/>`,
+  info:`<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5"/><circle cx="12" cy="8" r=".9" ${F}/>`,
+  warn:`<path d="M12 4l9 15.5H3z"/><path d="M12 10v4"/><circle cx="12" cy="16.8" r=".9" ${F}/>`,
+  listen:'<path d="M4 16v-3.5a8 8 0 0116 0V16"/><rect x="3.5" y="14" width="4" height="6" rx="1.5"/><rect x="16.5" y="14" width="4" height="6" rx="1.5"/>',
+  lines:'<path d="M4 6h16M4 10.5h16M4 15h10M4 19.5h13"/>',
+  eye:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/>',
+  arrowR:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  redo:'<path d="M20 12a8 8 0 11-2.4-5.7"/><path d="M20 4v5h-5"/>',
+  rew:'<path d="M4 12a8 8 0 102.4-5.7"/><path d="M4 4v5h5"/>',
+  fwd:'<path d="M20 12a8 8 0 11-2.4-5.7"/><path d="M20 4v5h-5"/>',
+  grid:'<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
+  xc:'<circle cx="12" cy="12" r="8.5"/><path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6"/>',
+  okc:'<circle cx="12" cy="12" r="8.5"/><path d="M8 12.3l2.8 2.8L16.2 9.6"/>',
+  partc:'<circle cx="12" cy="12" r="8.5"/><path d="M8 12h8"/>',
+  merge:'<path d="M7 4v3.5a4.5 4.5 0 004.5 4.5H18M7 20v-3.5A4.5 4.5 0 0111.5 12"/><path d="M15 9l3 3-3 3"/>',
+  hide:'<path d="M3 3l18 18"/><path d="M10.6 5.6A10 10 0 0112 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 01-2.9 3.7M6.6 6.7A16.6 16.6 0 002.5 12S6 18.5 12 18.5a9.6 9.6 0 004.6-1.2"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/>',
+  book:'<path d="M3 5.5c3-1 6-1 9 1 3-2 6-2 9-1V19c-3-1-6-1-9 1-3-2-6-2-9-1z"/><path d="M12 6.5V20"/>',
+  send:'<path d="M4.5 12L20 4.5 15.5 20l-3-6.5z"/><path d="M12.5 13.5L20 4.5"/>',
+  copy:'<rect x="8" y="8" width="11.5" height="11.5" rx="2"/><path d="M5 15.5V6.5A2 2 0 017 4.5h8.5"/>',
+  layers:'<path d="M12 4l8.5 4.5L12 13 3.5 8.5z"/><path d="M3.5 12.5L12 17l8.5-4.5M3.5 16.5L12 21l8.5-4.5"/>',
+  pausec:'<circle cx="12" cy="12" r="8.5"/><path d="M10 9v6M14 9v6"/>',
+  calendar:'<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+};
+const ic = (n, c='i') => `<svg class="${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]||''}</svg>`;
+
+/* Mastery glyphs: shape + fill level + label → never colour alone. */
+const MSG = {
+  new:'<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/>',
+  learning:'<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 8V2a6 6 0 016 6z" fill="currentColor"/>',
+  developing:'<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 2a6 6 0 010 12z" fill="currentColor"/>',
+  strong:'<circle cx="8" cy="8" r="6.8" fill="currentColor"/><path d="M5.1 8.2l2 2 3.9-4.1" stroke="var(--surface)" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  review:'<path d="M8 1.4l6.6 6.6L8 14.6 1.4 8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 5v3.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="10.8" r=".95" fill="currentColor"/>',
+};
+const glyph = st => `<svg viewBox="0 0 16 16" aria-hidden="true">${MSG[st]}</svg>`;
+const ms = (st, label=true) => `<span class="ms ${st}" role="img" aria-label="Learning state: ${STATES[st].label}">${glyph(st)}${label?STATES[st].label:''}</span>`;
+const msbar = (c, h=8) => { const tot = STATE_ORDER.reduce((a,k)=>a+(c[k]||0),0)||1;
+  return `<div class="msbar" style="height:${h}px" role="img" aria-label="${STATE_ORDER.filter(k=>c[k]).map(k=>c[k]+' '+STATES[k].label).join(', ')}">${['strong','developing','learning','review','new'].filter(k=>c[k]).map(k=>`<i class="${k}" style="flex:${c[k]}"></i>`).join('')}</div>`; };
+const legend = c => `<div class="legend">${['review','learning','developing','strong','new'].filter(k=>c[k]).map(k=>`<span class="ms ${k}">${glyph(k)}<span style="color:var(--ink)">${c[k]}</span>&nbsp;<span class="ink2" style="font-weight:500">${STATES[k].label}</span></span>`).join('')}</div>`;
+const cite = (t, lbl='') => `<span class="cite" data-a="cite" data-v="${t}" ${lbl?`data-l="${lbl}"`:''} role="button" aria-label="Source: ${lbl||'Lecture 07'} at ${t}. Opens the lecture moment">${ic('play','xs')}${t}</span>`;
+
+/* ═══════════════════════ Shared chrome ═══════════════════════ */
+const course = id => D.courses.find(c=>c.id===id);
+const hue = (c, s) => s.dark ? c.hueD : c.hue;
+const monoTile = (c, s, size=44) => `<div class="mono" style="width:${size}px;height:${size}px;background:${hue(c,s)}1f;color:${hue(c,s)}" aria-hidden="true">${c.mono}</div>`;
+function appBar({back=true, title='', sub='', actions='', line=false, big=false}={}) {
+  return `<div class="ab ${line?'line':''}">
+    ${back?`<button class="ib" data-a="back" aria-label="Back">${ic('back')}</button>`:'<div style="width:12px"></div>'}
+    <div class="ttl">${sub?`<div class="t-cap ell">${sub}</div>`:''}${title?`<div class="${big?'t-title':'t-heading'} ell">${title}</div>`:''}</div>
+    ${actions}
+  </div>`;
+}
+const sh = (title, count, action='') => `<div class="sh"><div class="t-heading">${title}${count!==undefined?` <span>· ${count}</span>`:''}</div>${action}</div>`;
+const status = (kind, icon, html, action='') => `<div class="status ${kind}">${ic(icon)}<div class="f1">${html}${action?`<div class="mt4">${action}</div>`:''}</div></div>`;
+const offlineBanner = s => s.offline ? `<div class="g mt8">${status('info','wifiOff','<b>You’re offline.</b> Reviews, practice and your study guides all work as normal. Ask Learning and new study guides will wait for a connection or an on-device model.')}</div>` : '';
+
+/* Concept state with learner evidence applied */
+function cst(s, id) {
+  if (s.cs[id]) return s.cs[id];
+  if (s.scenario === 'new' && !s.diagDone) return 'new';
+  return CMAP[id].state;
+}
+function l07counts(s) { const c = {}; CONCEPTS.forEach(k => { const st = cst(s,k.id); c[st]=(c[st]||0)+1; }); return c; }
+function bioCounts(s) { const base = {...course('bioc').counts}; const l = l07counts(s); const orig = {}; CONCEPTS.forEach(k=>{orig[k.state]=(orig[k.state]||0)+1});
+  Object.keys(STATES).forEach(k => base[k] = (base[k]||0) - (orig[k]||0) + (l[k]||0)); return base; }
+
+/* ═══════════════════════ LEARN — Daily Brief ═══════════════════════ */
+function learnTop(s) {
+  return `<div class="row g" style="padding-top:12px;padding-bottom:4px">
+    <span class="spc" data-a="toast" data-v="Opens the space switcher — Everyday, Work, Faith, Learning (existing app shell)." role="button" aria-label="Learning space. Switch space">${ic('grid','s')}Learning${ic('chevD','xs')}</span>
+    <div class="f1"></div>
+    <button class="ib" data-a="go" data-v="search" aria-label="Search your library">${ic('search')}</button>
+    <div class="av" aria-label="Profile">T</div>
+  </div>`;
+}
+function scrLearn(s) {
+  if (s.scenario === 'new' && !s.created) return learnFirstRun(s);
+  if (s.scenario === 'new') return learnNewDone(s);
+  const d = s.done, all = d.recall && d.drill && d.cont;
+  const greet = `<div class="g mt16"><div class="t-over hide-big">${D.today}</div><h1 class="t-display" style="margin:6px 0 0">Good morning, ${D.learner}</h1></div>`;
+  let html = learnTop(s) + greet + offlineBanner(s);
+  if (all) return html + learnDoneHero(s) + learnAfter(s, true);
+  const items = [
+    { k:'recall', t:s.short?'Daily Recall · the 5 most useful':'Daily Recall', sub: s.resume ? `${s.resume} of 8 done · pick up where you stopped` : (s.short?'5 cards · Biochemistry':'8 cards · Biochemistry and Cell Biology'), m:s.short?5:7, a:'startRecall' },
+    { k:'drill', t:'Strengthen competitive inhibition', sub:'3 questions · your weakest concept', m:4, a:'startDrill' },
+    { k:'cont', t:'Finish the Lecture 07 study guide', sub:'2 of 6 sections left', m:3, a:'openGuide' },
+  ].filter(x => !s.short || x.k==='recall');
+  const left = items.filter(x=>!d[x.k]).reduce((a,x)=>a+x.m,0);
+  const next = items.find(x=>!d[x.k]);
+  const nextLabel = {recall: s.resume?'Resume Daily Recall':'Start Daily Recall', drill:'Strengthen competitive inhibition', cont:'Finish the study guide'}[next.k];
+  const anyDone = items.some(x=>d[x.k]);
+  html += `<div class="g mt24"><section class="hero" style="padding:20px 20px 16px" aria-label="Today's plan">
+      <div class="t-over" style="color:var(--accent)">Today’s plan</div>
+      <div style="font:600 calc(26px*var(--ts))/1.2 var(--display);letter-spacing:-.3px;margin-top:8px">${anyDone?`${left} minutes left`:`About ${left} minutes of useful learning`}</div>
+      <div class="t-sec mt8 hide-big" style="color:var(--ink2)">${anyDone?'Nice progress. The next most useful thing is below.':(s.short?'A short version. Everything else keeps its place for tomorrow.':'Chosen from what’s due and what you found hardest. Nothing here is a backlog.')}</div>
+      <div class="mt12">${items.map((x,i)=>`<div class="plan ${d[x.k]?'done':''}" data-a="${x.a}" role="button" aria-label="${x.t}, ${x.m} minutes${d[x.k]?', done':''}">
+          <div class="n">${d[x.k]?ic('check'):(i+1)}</div>
+          <div class="f1"><div class="t-strong pt">${x.t}</div><div class="t-cap">${d[x.k]?'Done':x.sub}</div></div>
+          <div class="t-cap" style="font-variant-numeric:tabular-nums">${x.m} min</div></div>`).join('')}</div>
+      <button class="btn pri full mt12" data-a="${next.a}">${nextLabel}${ic('arrowR')}</button>
+      <div class="row" style="justify-content:center;margin-top:4px">${s.short?`<span class="ta" data-a="setShort" data-v="0">Show the full plan</span>`:`<span class="ta" data-a="setShort" data-v="1">Only have 5 minutes?</span>`}</div>
+    </section></div>`;
+  return html + learnAfter(s, false);
+}
+function learnAfter(s, allDone) {
+  const d = s.done; let h = '';
+  if (!d.drill && !allDone) {
+    h += sh('Worth your attention') + `<div class="g"><div class="card tap" style="padding:16px" data-a="concept" data-v="compinh">
+      <div class="row">${ms(cst(s,'compinh'))}<div class="f1"></div><span class="t-cap">Human Biochemistry · Lecture 07</span></div>
+      <div class="t-heading mt8">Competitive inhibition</div>
+      <div class="t-sec mt4">You chose “Vmax falls” twice in Tuesday’s diagnostic. Dr Mensah stressed this point at ${cite('24:12')} — and it’s the key to telling inhibitor types apart.</div>
+      <div class="row mt12" style="gap:8px"><button class="btn ton" data-a="startDrill" style="min-height:44px">Practise · 4 min</button><button class="btn txt" data-a="concept" data-v="compinh">Review the idea</button></div>
+    </div></div>`;
+  }
+  h += sh('Continue', undefined, `<span class="ta" data-a="tab" data-v="library">Library</span>`) + `<div>
+    <div class="lr" data-a="openSession" data-v="understand">${monoTile(course('bioc'),s)}<div class="f1"><div class="t-strong ell">Enzyme Kinetics — Lecture 07</div><div class="t-cap mt4">${d.cont?'Study guide read · 9 concepts':'Study guide · 4 of 6 sections · opened yesterday'}</div><div class="pbar mt8" style="width:70%"><i style="width:${d.cont?100:67}%"></i></div></div>${ic('chevR','s chev')}</div>
+    <div class="lr" data-a="toast" data-v="Opens Protein Targeting and the ER — Lecture 04 (Cell Biology).">${monoTile(course('cell'),s)}<div class="f1"><div class="t-strong ell">Protein Targeting and the ER — Lecture 04</div><div class="t-cap mt4">Diagnostic not taken yet · 6 questions</div></div>${ic('chevR','s chev')}</div>
+  </div>`;
+  const days = ['M','T','W','T','F','S','S'], on = [1,1,1, all(s)?1:0,0,0,0];
+  h += sh('This week') + `<div class="g"><div class="row" style="align-items:flex-start;gap:16px">
+    <div class="wk" role="img" aria-label="Studied Monday, Tuesday and Wednesday${all(s)?' and today':''}">${days.map((x,i)=>`<div><i class="${on[i]?'on':''} ${i===3?'today':''}">${on[i]?ic('check'):''}</i>${x}</div>`).join('')}</div></div>
+    <div class="t-sec mt12">${all(s)?'Four study days this week.':'Three study days so far this week.'} Missed a day? Your reviews wait for you — they never pile up into a debt.</div></div><div style="height:28px"></div>`;
+  return h;
+}
+const all = s => s.done.recall && s.done.drill && s.done.cont;
+function learnDoneHero(s) {
+  return `<div class="g mt24"><section class="hero" style="padding:24px 20px 20px" aria-label="Done for today">
+    <div style="width:48px;height:48px;border-radius:50%;background:var(--accent);color:var(--onAccent);display:flex;align-items:center;justify-content:center">${ic('check')}</div>
+    <div style="font:600 calc(26px*var(--ts))/1.2 var(--display);margin-top:16px">You’re done for today</div>
+    <div class="t-body mt8 ink2">8 reviews and one concept strengthened. <b style="color:var(--ink);font-weight:600">Competitive inhibition</b> moved from Needs review to Learning.</div>
+    <div class="row mt16" style="gap:10px">${ic('calendar','s')}<div class="t-sec">Tomorrow: 5 reviews, about 6 minutes. We’ll remind you only if you turn reminders on.</div></div>
+  </section></div>
+  ${sh('If you’d like more')}<div>
+    <div class="lr" data-a="concept" data-v="noncomp">${ms('new',false)}<div class="f1"><div class="t-strong">Non-competitive inhibition</div><div class="t-cap mt4">New · pairs well with what you just practised · 3 min</div></div>${ic('chevR','s chev')}</div>
+    <div class="lr" data-a="toast" data-v="Opens Thermodynamics of Reactions — Lecture 06.">${ms('new',false)}<div class="f1"><div class="t-strong">Lecture 06 study guide</div><div class="t-cap mt4">1 new concept · 5 min</div></div>${ic('chevR','s chev')}</div></div>`;
+}
+function learnFirstRun(s) {
+  return learnTop(s) + `<div class="g mt24">
+    <svg viewBox="0 0 372 150" width="100%" aria-hidden="true" style="display:block">
+      <g fill="none" stroke="var(--faint)" stroke-width="2" stroke-linecap="round">${[14,30,22,40,18,34,26,46,20,30,16,36,24].map((h,i)=>`<path d="M${24+i*10} ${75-h/2}v${h}"/>`).join('')}</g>
+      <path d="M160 75h36" stroke="var(--accent)" stroke-width="2" stroke-dasharray="3 5" stroke-linecap="round"/><path d="M192 69l7 6-7 6" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="226" y="34" width="112" height="78" rx="12" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5" transform="rotate(-5 282 73)"/>
+      <rect x="216" y="38" width="112" height="78" rx="12" fill="var(--paper)" stroke="var(--line)" stroke-width="1.5"/>
+      <rect x="232" y="56" width="62" height="7" rx="3.5" fill="var(--ink)" opacity=".75"/><rect x="232" y="72" width="80" height="5" rx="2.5" fill="var(--faint)"/><rect x="232" y="84" width="54" height="5" rx="2.5" fill="var(--faint)"/>
+      <circle cx="311" cy="99" r="7" fill="var(--accent)"/><path d="M308 99l2.2 2.2 4-4.2" stroke="var(--onAccent)" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h1 class="t-display" style="margin:18px 0 0">Turn lectures into knowledge you keep</h1>
+    <p class="t-body ink2" style="margin:10px 0 0">Choose a lecture. MeetingMind builds a study guide from it, checks what you already know, then brings back the right things to review at the right time.</p>
+  </div>
+  <div class="g mt24 col" style="gap:10px">
+    <button class="btn pri full" data-a="go" data-v="createSrc">${ic('wave')}Use a recording I already have</button>
+    <div class="t-cap" style="text-align:center">1 lecture recorded today · Enzyme Kinetics — Lecture 07</div>
+    <button class="btn sec full mt8" data-a="toast" data-v="Opens the recorder with Lecture selected (existing capture flow).">${ic('mic')}Record a lecture</button>
+    <button class="btn txt" data-a="go" data-v="createTyped">Type or paste notes instead</button>
+  </div>
+  ${sh('How it works')}<div class="g">${[['book','Understand','A study guide of key concepts, each linked to the moment it was said.'],['quiz','Check yourself','A short diagnostic shows where to start. It isn’t graded.'],['redo','Recall later','A few minutes a day, chosen for you. Nothing piles up.']].map(([i,t,b],n)=>`<div class="row" style="align-items:flex-start;padding:10px 0;gap:14px"><div class="av" style="border-radius:12px">${ic(i,'s')}</div><div class="f1"><div class="t-strong">${t}</div><div class="t-sec mt4">${b}</div></div></div>`).join('')}</div><div style="height:24px"></div>`;
+}
+function learnNewDone(s) {
+  const c = l07counts(s);
+  return learnTop(s) + `<div class="g mt16"><div class="t-over">${D.today}</div><h1 class="t-display" style="margin:6px 0 0">Good morning, ${D.learner}</h1></div>
+  <div class="g mt24"><section class="hero" style="padding:20px">
+    <div class="t-over" style="color:var(--accent)">${s.diagDone?'Your first session is set up':'Next step'}</div>
+    <div style="font:600 calc(24px*var(--ts))/1.25 var(--display);margin-top:8px">${s.diagDone?'Your first reviews arrive tomorrow':'Take the 6-question diagnostic'}</div>
+    <div class="t-sec mt8">${s.diagDone?'About 5 minutes, chosen from what you found hardest today. Come back any time before then to practise more.':'It shows where to start in Lecture 07. It isn’t graded, and you can stop at any point.'}</div>
+    <button class="btn pri full mt16" data-a="${s.diagDone?'openSession':'startDiag'}" data-v="mastery">${s.diagDone?'See what you know':'Start the diagnostic · 4 min'}${ic('arrowR')}</button>
+  </section></div>
+  ${sh('Continue')}<div class="lr" data-a="openSession" data-v="understand">${monoTile(course('bioc'),s)}<div class="f1"><div class="t-strong ell">Enzyme Kinetics — Lecture 07</div><div class="t-cap mt4">9 concepts</div><div class="mt8">${msbar(c,6)}</div></div>${ic('chevR','s chev')}</div><div style="height:24px"></div>`;
+}
+
+/* ═══════════════════════ LIBRARY ═══════════════════════ */
+function scrLibrary(s) {
+  const f = s.libF;
+  const chips = [['all','All'],['courses','Courses'],['sessions','Sessions'],['sources','Sources']].map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-a="libF" data-v="${k}" aria-pressed="${f===k}">${l}</button>`).join('');
+  let h = `<div class="ab"><div style="width:12px"></div><div class="ttl"><div class="t-title">Library</div></div>
+    <button class="btn ton" data-a="sheet" data-v="new" style="min-height:40px;padding:0 16px">${ic('plus','s')}New</button><div style="width:8px"></div></div>
+    <div class="g mt4"><div class="field tap" data-a="go" data-v="search" role="button">${ic('search','s')}<span>Search concepts, lectures and transcripts</span></div></div>
+    <div class="chips mt12" role="tablist">${chips}</div>` + offlineBanner(s);
+  const newMode = s.scenario==='new';
+  if (f==='all' || f==='courses') {
+    h += sh('Courses', D.courses.length, f==='all'?`<span class="ta" data-a="libF" data-v="courses">All</span>`:'') + D.courses.map(c=>{
+      const cc = c.id==='bioc'?bioCounts(s):c.counts; const tot = STATE_ORDER.reduce((a,k)=>a+(cc[k]||0),0);
+      return `<div class="lr" data-a="course" data-v="${c.id}">${monoTile(c,s)}<div class="f1"><div class="t-strong ell">${c.name}</div><div class="t-cap mt4">${c.code} · ${c.sessions} sessions · ${tot} concepts${c.due?` · <span style="color:var(--accent)">${c.due} due</span>`:''}</div><div class="mt8" style="width:72%">${msbar(cc,5)}</div></div>${ic('chevR','s chev')}</div>`;}).join('');
+  }
+  if (f==='all' || f==='sessions') {
+    h += sh('Recent sessions', newMode? (s.created?1:0) : 12, f==='all'?`<span class="ta" data-a="libF" data-v="sessions">All</span>`:'');
+    const list = newMode ? (s.created?[D.sessions[0]]:[]) : D.sessions.slice(0, f==='all'?3:5);
+    if (!list.length) h += `<div class="g t-sec">No sessions yet. Create one from a lecture below.</div>`;
+    h += list.map(x=>{ const c = course(x.course); const cc = x.id==='l07'?l07counts(s):x.counts; const rv = cc.review||0;
+      return `<div class="lr" data-a="${x.id==='l07'?'openSession':'toast'}" data-v="${x.id==='l07'?'understand':'Opens '+x.title+'.'}"><div class="f1"><div class="t-strong ell">${x.title}</div><div class="t-cap mt4">${c.name} · ${x.date} · ${x.dur}</div><div class="row mt8" style="gap:12px">${rv?ms('review',false)+`<span class="t-cap" style="color:var(--clay);margin-left:-8px">${rv} needs review</span>`:''}<span class="t-cap">${x.concepts} concepts</span></div></div>${ic('chevR','s chev')}</div>`;}).join('');
+  }
+  if (f==='all' || f==='sources') {
+    const pending = newMode && !s.created ? [{id:'l07src', title:'Enzyme Kinetics — Lecture 07', date:'Today, 10:02', dur:'52 min'}] : D.unassigned;
+    h += sh('Not in Learning yet', pending.length) + `<div class="g t-cap" style="margin:-4px 0 4px">Lecture recordings you could study from.</div>` + pending.map(x=>`<div class="lr" data-a="go" data-v="createSrc"><div class="av" style="border-radius:12px;background:var(--sunk);color:var(--ink2)">${ic('wave','s')}</div><div class="f1"><div class="t-strong ell">${x.title}</div><div class="t-cap mt4">Recording · ${x.date} · ${x.dur}</div></div><span class="ta">Create</span></div>`).join('');
+    if (f==='sources') h += sh('Notes') + D.notes.map(n=>`<div class="lr" data-a="go" data-v="createNote"><div class="av" style="border-radius:12px;background:var(--sunk);color:var(--ink2)">${ic('note','s')}</div><div class="f1"><div class="t-strong ell">${n.title}</div><div class="t-cap mt4">${n.meta}</div></div>${ic('chevR','s chev')}</div>`).join('');
+  }
+  return h + '<div style="height:24px"></div>';
+}
+function scrSearch(s) {
+  const q = s.q;
+  return `<div class="ab line"><button class="ib" data-a="back" aria-label="Back">${ic('back')}</button><div class="field f1" style="margin-right:8px">${ic('search','s')}<input data-in="q" value="${q}" aria-label="Search" placeholder="Search"></div></div>
+  ${q?`<div class="g t-cap mt12">Results for “${q}” across your courses</div>
+  ${sh('Concepts',3)}
+  <div class="lr" data-a="concept" data-v="compinh">${ms(cst(s,'compinh'),false)}<div class="f1"><div class="t-strong">Competitive <mark style="background:var(--accentWash);color:inherit">inhibition</mark></div><div class="t-cap mt4">Human Biochemistry · Lecture 07 · ${STATES[cst(s,'compinh')].label}</div></div>${ic('chevR','s chev')}</div>
+  <div class="lr" data-a="concept" data-v="noncomp">${ms(cst(s,'noncomp'),false)}<div class="f1"><div class="t-strong">Non-competitive <mark style="background:var(--accentWash);color:inherit">inhibition</mark></div><div class="t-cap mt4">Human Biochemistry · Lecture 07 · New</div></div>${ic('chevR','s chev')}</div>
+  <div class="lr" data-a="toast" data-v="Opens Feedback inhibition (Cell Biology).">${ms('developing',false)}<div class="f1"><div class="t-strong">Feedback <mark style="background:var(--accentWash);color:inherit">inhibition</mark></div><div class="t-cap mt4">Cell Biology · Lecture 02 · Developing</div></div>${ic('chevR','s chev')}</div>
+  ${sh('Said in lectures',2)}
+  <div class="lr" data-a="cite" data-v="24:12"><span class="cite">${ic('play','xs')}24:12</span><div class="f1"><div class="t-sec" style="color:var(--ink)">“Now a competitive <mark style="background:var(--accentWash);color:inherit">inhibitor</mark> looks like the substrate. It sits in the active site…”</div><div class="t-cap mt4">Lecture 07 · Human Biochemistry</div></div></div>
+  <div class="lr" data-a="cite" data-v="27:30"><span class="cite">${ic('play','xs')}27:30</span><div class="f1"><div class="t-sec" style="color:var(--ink)">“Non-competitive is different. The <mark style="background:var(--accentWash);color:inherit">inhibitor</mark> binds somewhere else…”</div><div class="t-cap mt4">Lecture 07 · Human Biochemistry</div></div></div>
+  ${sh('Sessions',1)}<div class="lr" data-a="openSession" data-v="understand">${monoTile(course('bioc'),s,40)}<div class="f1"><div class="t-strong ell">Enzyme Kinetics — Lecture 07</div><div class="t-cap mt4">Mentions inhibition 14 times</div></div>${ic('chevR','s chev')}</div>`
+  :`<div class="g mt24 t-sec">Try a concept, a lecturer’s phrase or a course name.</div>`}<div style="height:24px"></div>`;
+}
+
+/* ═══════════════════════ COURSE ═══════════════════════ */
+function scrCourse(s) {
+  const c = course(s.p.id||'bioc'), cc = c.id==='bioc'?bioCounts(s):c.counts, tot = STATE_ORDER.reduce((a,k)=>a+(cc[k]||0),0);
+  const drillDone = s.done.drill;
+  return appBar({actions:`<button class="ib" data-a="sheet" data-v="courseMore" aria-label="Course options">${ic('more')}</button>`}) + `
+  <div class="g mt4 row" style="gap:16px;align-items:flex-start">${monoTile(c,s,56)}<div class="f1"><h1 class="t-title" style="margin:0">${c.name}</h1><div class="t-sec mt4">${c.code} · ${c.lecturer} · ${c.term}</div></div></div>
+  <div class="g mt16 row" style="gap:8px"><button class="btn sec" style="min-height:44px;flex:1" data-a="go" data-v="ask">${ic('ask','s')}Ask</button><button class="btn sec" style="min-height:44px;flex:1.4" data-a="startRecall">${ic('cards','s')}Practise course</button></div>
+  ${offlineBanner(s)}
+  <div class="g mt24"><section class="hero" style="padding:18px 18px 14px">
+    <div class="t-over" style="color:var(--accent)">Next for this course</div>
+    <div class="t-heading mt8">${drillDone?'Try non-competitive inhibition':'Strengthen competitive inhibition'}</div>
+    <div class="t-sec mt4">${drillDone?'It’s new, and it’s the natural partner to what you just practised.':'Your only concept from this week that needs review. 3 questions, about 4 minutes.'}</div>
+    <div class="row mt12" style="gap:8px"><button class="btn pri" style="min-height:44px" data-a="${drillDone?'conceptGo':'startDrill'}" data-v="noncomp">${drillDone?'Open concept':'Practise'}</button><span class="t-cap">${c.due} reviews due · in today’s recall</span></div>
+  </section></div>
+  ${sh('Understanding', tot+' concepts', `<span class="ta" data-a="go" data-v="progressCourse">All</span>`)}
+  <div class="g">${msbar(cc,10)}<div class="mt12">${legend(cc)}</div><div class="t-cap mt12">States come from your answers and reviews, never from time spent reading.</div></div>
+  ${sh('Learning gaps', cc.review||0)}
+  ${[['compinh','Competitive inhibition','Lecture 07 · 2 incorrect, 1 hesitant'],['x1','Coenzyme vs. cofactor','Lecture 05 · forgot on Mon 10 Nov'],['x2','Forces in tertiary structure','Lecture 02 · mixed answers']].slice(0, cc.review||0).map(([id,n,w])=>`<div class="lr" data-a="${id==='compinh'?'concept':'toast'}" data-v="${id==='compinh'?id:'Opens '+n+'.'}">${ms('review',false)}<div class="f1"><div class="t-strong">${n}</div><div class="t-cap mt4">${w}</div></div><span class="ta">Practise</span></div>`).join('')}
+  ${sh('Topics', c.topics.length)}${c.topics.map(t=>`<div class="lr" data-a="toast" data-v="Topic view: ${t.name} — concepts and sessions in this topic."><div class="f1"><div class="t-strong">${t.name}</div><div class="t-cap mt4">${t.n} concepts · ${t.sessions}</div></div>${ic('chevR','s chev')}</div>`).join('')}
+  ${sh('Sessions', c.sessions, `<span class="ta" data-a="toast" data-v="Shows all 7 sessions, newest first.">All</span>`)}
+  ${D.sessions.filter(x=>x.course===c.id).map(x=>`<div class="lr" data-a="${x.id==='l07'?'openSession':'toast'}" data-v="${x.id==='l07'?'understand':'Opens '+x.title+'.'}"><div class="f1"><div class="t-strong ell">${x.title}</div><div class="t-cap mt4">${x.date} · ${x.dur} · ${x.concepts} concepts</div></div>${ic('chevR','s chev')}</div>`).join('')}
+  <div style="height:24px"></div>`;
+}
+
+/* ═══════════════════════ LEARNING SESSION ═══════════════════════ */
+function scrSession(s) {
+  const tab = s.sTab, nd = s.scenario==='new' && !s.diagDone;
+  const next = nd ? {t:'Take the diagnostic', sub:'6 questions · about 4 min · not graded', a:'startDiag'}
+    : s.done.drill ? {t:'Try non-competitive inhibition', sub:'New concept · 3 questions', a:'conceptGo', v:'noncomp'}
+    : {t:'Strengthen competitive inhibition', sub:'3 questions · 4 min', a:'startDrill'};
+  return `<div class="ab"><button class="ib" data-a="back" aria-label="Back">${ic('back')}</button>
+    <div class="ttl"><span class="t-cap tap" data-a="course" data-v="bioc" role="link" style="display:inline-flex;align-items:center;min-height:32px">Human Biochemistry ${ic('chevR','xs')}</span></div>
+    <button class="ib" data-a="go" data-v="ask" aria-label="Ask about this lecture">${ic('ask')}</button><button class="ib" data-a="sheet" data-v="sessionMore" aria-label="Session options">${ic('more')}</button></div>
+  <div class="g" style="padding-bottom:14px"><h1 class="t-title" style="margin:0">Enzyme Kinetics — Lecture 07</h1>
+    <div class="t-sec mt4">Tue 11 Nov · 52 min · 9 concepts · Dr Grace Mensah</div>
+    ${s.building?'':`<div class="row mt12 tap" data-a="${next.a}" data-v="${next.v||''}" style="background:var(--accentWash);border-radius:12px;padding:10px 10px 10px 14px;gap:12px" role="button">
+      <div class="f1"><div class="t-cap" style="color:var(--accent)">Next step</div><div class="t-strong">${next.t}</div><div class="t-cap">${next.sub}</div></div>
+      <div class="playb" style="background:var(--accent);color:var(--onAccent);width:40px;height:40px">${ic('arrowR','s')}</div></div>`}
+  </div>
+  <div class="seg" role="tablist">${[['source','Source'],['understand','Understand'],['practise','Practise'],['mastery','Mastery']].map(([k,l])=>`<button role="tab" aria-selected="${tab===k}" class="${tab===k?'on':''}" data-a="sTab" data-v="${k}">${l}${k==='practise'&&!nd&&!s.done.recall?'<i class="dot" aria-label="3 due"></i>':''}</button>`).join('')}</div>
+  ${offlineBanner(s)}
+  <div class="slide" style="padding-bottom:28px">${s.building?`<div class="g mt16">${status('info','info','<b>Your study guide is ready to read.</b> Practice questions are still being written — about a minute. You can leave this screen.')}</div>`:''}${s.building&&tab==='practise'?sessBuilding(s):{source:sessSource,understand:sessUnderstand,practise:sessPractise,mastery:sessMastery}[tab](s)}</div>`;
+}
+function sessBuilding(s) {
+  return `<div class="g mt24"><div class="t-over">Diagnostic</div><div class="row mt16" aria-label="Writing the diagnostic"><div class="sk" style="width:40px;height:40px;border-radius:12px"></div><div class="f1"><div class="sk" style="width:55%"></div><div class="sk mt8" style="width:80%;height:9px"></div></div></div></div>
+  <div class="g mt24"><div class="t-over">Practice sets</div>${[70,55,80,62].map(w=>`<div class="row mt16"><div class="sk" style="width:16px;height:16px;border-radius:50%"></div><div class="f1"><div class="sk" style="width:${w}%"></div><div class="sk mt8" style="width:${w+15}%;height:9px"></div></div></div>`).join('')}</div>`;
+}
+function sessUnderstand(s) {
+  const show = s.allConcepts ? CONCEPTS : CONCEPTS.slice(0,5);
+  return `<div class="g mt24"><div class="t-over">Summary</div>
+    <p class="t-read" style="margin:10px 0 0">Dr Mensah showed how an enzyme’s reaction rate depends on substrate concentration, built up the Michaelis–Menten model ${cite('15:30')}, and used it to tell competitive and non-competitive inhibitors apart ${cite('22:40')}. The lecture closed with the Lineweaver–Burk plot and a worked example.</p></div>
+  <div class="g mt24"><div class="t-over">Dr Mensah emphasised</div>${D.emphasis.map(e=>`<div class="mt12 tap" data-a="concept" data-v="${e.c}"><div class="quote">“${e.q}”</div><div class="row mt8" style="padding-left:17px;gap:8px">${cite(e.t)}<span class="t-cap">${CMAP[e.c].name}</span></div></div>`).join('')}</div>
+  ${sh('Key concepts', 9, `<span class="ta" data-a="sheet" data-v="editGuide">Edit</span>`)}
+  ${show.map(c=>`<div class="lr" data-a="concept" data-v="${c.id}" style="align-items:flex-start">${ms(cst(s,c.id),false)}<div class="f1"><div class="t-strong">${c.name}${c.emph?` <span class="t-cap" style="color:var(--accent)">· emphasised</span>`:''}</div><div class="t-sec mt4" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${c.def}</div></div>${ic('chevR','s chev')}</div>`).join('')}
+  ${s.allConcepts?'':`<div class="g"><button class="btn sec full" data-a="allConcepts">Show all 9 concepts</button></div>`}
+  <div class="g mt32"><div class="t-over">Inhibitors at a glance</div>
+    <div class="card mt12" style="padding:4px 6px"><table class="tbl"><thead><tr><th>Type</th><th>Binds</th><th>Vmax</th><th>Km</th></tr></thead><tbody>
+    <tr><td>Competitive</td><td>Active site</td><td>Unchanged</td><td>Rises</td></tr><tr><td>Non-competitive</td><td>Elsewhere</td><td>Falls</td><td>Unchanged</td></tr></tbody></table></div>
+    <div class="row mt8" style="gap:8px">${cite('24:12')}${cite('27:30')}</div></div>
+  <div class="g mt32"><div class="t-over">Outline</div><div class="mt8">${D.outline.map((o,i)=>`<div class="row tap" data-a="cite" data-v="${o.t}" style="min-height:48px;gap:14px;box-shadow:${i?'inset 0 1px 0 var(--lineFaint)':'none'}"><span class="t-mono muted" style="width:40px">${o.t}</span><span class="t-body f1">${o.s}</span>${i===4?`<span class="ms review" title="Part hard to hear">${glyph('review')}</span>`:''}</div>`).join('')}</div></div>
+  <div class="g mt32"><div class="paper" style="padding:18px">
+    <div class="t-heading">Ready to test yourself?</div><div class="t-sec mt4">Trying to recall beats rereading. Three quick questions on what you just read.</div>
+    <button class="btn pri full mt12" data-a="startDrill">Quiz me · 3 questions</button></div></div>
+  <div class="g mt16 t-cap">Generated from the lecture transcript on Tue 11 Nov. Spot something wrong? Edit or report any concept.</div>`;
+}
+function sessSource(s) {
+  const p = s.playing, hl = s.hl;
+  return `<div class="g mt16"><div class="card" style="padding:16px">
+      <div class="row"><div class="playb" data-a="togglePlay" role="button" aria-label="${p?'Pause':'Play'} lecture">${ic(p?'pause':'play')}</div>
+      <div class="f1"><div class="t-strong">Lecture recording</div><div class="t-cap mt4">Recorded on this phone · Tue 11 Nov, 10:02</div></div></div>
+      <div class="mt16" style="position:relative;height:20px;display:flex;align-items:center"><div class="pbar f1"><i style="width:${hl?46:28}%"></i></div></div>
+      <div class="row" style="justify-content:space-between"><span class="t-mono muted">${hl||'14:40'}</span><span class="t-mono muted">52:40</span></div>
+      <div class="row mt8" style="justify-content:center;gap:4px"><button class="ib" aria-label="Back 15 seconds" data-a="toast" data-v="Back 15 seconds">${ic('rew')}</button><button class="btn sec" style="min-height:40px;padding:0 14px" data-a="toast" data-v="Speed: 1.25×">1×</button><button class="ib" aria-label="Forward 15 seconds" data-a="toast" data-v="Forward 15 seconds">${ic('fwd')}</button></div>
+  </div></div>
+  <div class="g mt16">${status('warn','warn','<b>Mostly clear.</b> 31:48–33:05 was hard to hear, so two questions from that part are held back until you check it.', `<span class="ta" data-a="hl" data-v="31:48">Check this part</span>`)}</div>
+  ${sh('Transcript', '214 segments', `<span class="ta" data-a="toast" data-v="Opens the full transcript in the recording screen — editing and review live there.">Full</span>`)}
+  ${D.transcript.map(x=>`<div class="seg-t ${hl===x.t?'hl':''} ${x.unclear?'unclear':''}" data-a="hl" data-v="${x.t}" ${hl===x.t?'data-anchor':''} role="button" aria-label="Play from ${x.t}"><span class="ts">${x.t}</span><span class="tx">${x.x}</span></div>`).join('')}
+  <div class="g mt16 t-cap">Every concept, question and answer in this session links back to one of these moments.</div>`;
+}
+function sessPractise(s) {
+  const nd = s.scenario==='new' && !s.diagDone;
+  let h = '';
+  if (nd) h += `<div class="g mt16">${status('info','quiz','<b>Start with the diagnostic</b> (Next step, above). Practice sets open once it shows where to begin.')}</div>`;
+  else h += `${sh('Diagnostic')}<div class="lr" data-a="go" data-v="diagReview"><div class="av" style="border-radius:12px">${ic('quiz','s')}</div><div class="f1"><div class="t-strong">Taken ${s.scenario==='new'?'today':'Tue 11 Nov'}</div><div class="t-cap mt4">${s.scenario==='new'?s.diagScore:'4'} of 6 correct · see each answer and its source</div></div>${ic('chevR','s chev')}</div>`;
+  h += sh('Practice sets') + [['cards','Flashcards','9 cards'+(nd?'':' · 3 due today'),'startRecall'],['quiz','Questions','12 questions · multiple choice and short answer','startDrill'],['target','Concept challenges','4 application problems · e.g. predict an inhibitor’s effect','startDrill']].map(([i,t,sub,a])=>`<div class="lr" data-a="${nd?'needDiag':a}"><div class="av" style="border-radius:12px;background:var(--sunk);color:var(--ink2)">${ic(i,'s')}</div><div class="f1"><div class="t-strong">${t}</div><div class="t-cap mt4">${sub}</div></div>${ic('chevR','s chev')}</div>`).join('');
+  if (!nd) h += sh('History') + [['Wed 12 Nov','Daily Recall','4 cards from this session · 3 knew, 1 hesitated'],['Tue 11 Nov','Diagnostic','4 of 6 correct']].map(([d,t,r])=>`<div class="lr" style="cursor:default"><div class="f1"><div class="t-strong">${t}</div><div class="t-cap mt4">${d} · ${r}</div></div></div>`).join('');
+  return h;
+}
+function sessMastery(s) {
+  const c = l07counts(s), nd = s.scenario==='new' && !s.diagDone;
+  if (nd) return `<div class="g mt24">${msbar(c,10)}<div class="mt12">${legend(c)}</div><p class="t-body ink2">Every concept starts as <b style="color:var(--ink)">New</b>. States only change when you answer, recall or apply something — never from reading or listening.</p><button class="btn pri full mt8" data-a="startDiag">Take the diagnostic</button></div>`;
+  return `<div class="g mt24"><p class="t-body" style="margin:0">Strong on rates and saturation. ${cst(s,'compinh')==='review'?'Competitive inhibition needs another look.':'Inhibition is coming along.'}</p>
+    <div class="t-cap mt8">Based on ${s.scenario==='new'?6:11} answers since Tue 11 Nov. <span class="tap acc" data-a="sheet" data-v="states" style="font-weight:600">How states work</span></div>
+    <div class="mt16">${msbar(c,10)}</div><div class="mt12">${legend(c)}</div></div>
+  <div class="g mt16">${status('info','calendar','<b>3 reviews from this session are due today.</b> They’re already in your Daily Recall.')}</div>
+  ${STATE_ORDER.filter(k=>c[k]).map(k=>sh(STATES[k].label, c[k]) + CONCEPTS.filter(x=>cst(s,x.id)===k).map(x=>`<div class="lr" data-a="concept" data-v="${x.id}" style="align-items:flex-start">${ms(k,false)}<div class="f1"><div class="t-strong">${x.name}</div><div class="t-cap mt4">${s.why[x.id]||x.why}</div></div>${ic('chevR','s chev')}</div>`).join('')).join('')}`;
+}
+
+/* ═══════════════════════ CONCEPT ═══════════════════════ */
+function scrConcept(s) {
+  const c = CMAP[s.p.id], st = cst(s,c.id), name = s.renamed[c.id] || c.name;
+  return `<div class="ab"><button class="ib" data-a="back" aria-label="Back">${ic('back')}</button><div class="ttl"><span class="t-cap tap" data-a="openSession" data-v="understand" style="display:inline-flex;align-items:center;min-height:32px">Lecture 07 ${ic('chevR','xs')}</span></div>
+    <button class="ib" data-a="go" data-v="ask" aria-label="Ask about this concept">${ic('ask')}</button><button class="ib" data-a="sheet" data-v="editConcept" aria-label="Edit or report this concept">${ic('edit')}</button></div>
+  <div class="g"><div class="t-over">Concept${c.emph?' · emphasised in lecture':''}</div><h1 class="t-title" style="margin:6px 0 0">${name}</h1>
+    <div class="row mt12" style="gap:8px;align-items:flex-start">${ms(st)}</div>
+    <div class="t-cap mt8" style="line-height:1.5">${s.why[c.id]||c.why}</div></div>
+  ${s.hidden[c.id]?`<div class="g mt16">${status('info','hide','<b>Hidden from practice.</b> It stays in your study guide.', `<span class="ta" data-a="unhide" data-v="${c.id}">Show in practice again</span>`)}</div>`:''}
+  <div class="g mt24"><div class="paper" style="padding:18px 18px 16px"><div class="t-over">Definition</div><p class="t-read" style="margin:8px 0 0">${c.def}</p>${c.formula?`<div class="mt12 inset" style="padding:12px 14px;font:500 calc(17px*var(--ts)) var(--read);text-align:center">${c.formula}</div>`:''}</div></div>
+  <div class="g mt24"><div class="t-over">In plain terms</div><p class="t-body" style="margin:8px 0 0">${c.expl}</p></div>
+  <div class="g mt24"><div class="t-over">From the lecture</div>
+    <div class="mt12"><div class="quote">“${c.ev[0].q}”</div><div class="row mt8" style="padding-left:17px;gap:8px">${cite(c.ev[0].t)}<span class="ta" data-a="srcAt" data-v="${c.ev[0].t}" style="min-height:32px">Show in transcript</span></div></div>
+    ${c.ev[1]?(s.moreEv?`<div class="mt16"><div class="quote">“${c.ev[1].q}”</div><div class="row mt8" style="padding-left:17px">${cite(c.ev[1].t)}</div></div>`:`<span class="ta mt4" data-a="moreEv">1 more moment in this lecture ${ic('chevD','xs')}</span>`):''}
+    ${c.unclear?`<div class="mt12">${status('warn','warn','Part of the source for this concept (31:48–33:05) was hard to hear. Two questions are held back until you check it.',`<span class="ta" data-a="srcAt" data-v="31:48">Check the transcript</span>`)}</div>`:''}
+  </div>
+  <div class="g mt24 col" style="gap:8px">${(()=>{ const n = conceptQs(c.id).length; return `<button class="btn pri full" data-a="${c.id==='compinh'?'startDrill':'startConcept'}" data-v="${c.id}">Practise this concept · ${n} question${n===1?'':'s'}</button>${c.held?`<div class="t-cap" style="text-align:center">${c.held} more held back until you check 31:48–33:05</div>`:''}`; })()}</div>
+  <div class="g mt24"><div class="t-over">Related</div><div class="row mt12" style="flex-wrap:wrap;gap:8px">${c.rel.map(r=>`<button class="chip" data-a="conceptGo" data-v="${r}">${glyph(cst(s,r)).replace('<svg','<svg class="xs" style="color:var(--'+({new:'muted',learning:'accent',developing:'accent',strong:'success',review:'clay'}[cst(s,r)])+')"')}${CMAP[r].name}</button>`).join('')}</div></div>
+  <div class="g mt24"><div class="t-over">Your history</div>${(s.hist[c.id]||[]).concat(c.hist).length?(s.hist[c.id]||[]).concat(c.hist).map(h=>`<div class="row" style="min-height:48px;box-shadow:inset 0 -1px 0 var(--lineFaint)"><div class="f1"><div class="t-strong" style="font-size:calc(14px*var(--ts))">${h.a}</div><div class="t-cap">${h.d}</div></div><span class="t-cap" style="color:var(--${/Incorrect|Forgot/.test(h.r)?'clay':/Hesitated|Partly/.test(h.r)?'accent':'success'})">${h.r}</span></div>`).join(''):`<div class="t-sec mt8">Nothing yet. Your first answer will set this concept’s state.</div>`}</div>
+  <div class="g mt24 t-cap" style="padding-bottom:28px">Generated from Lecture 07${s.renamed[c.id]?' · renamed by you':''}. You can rename, merge, hide or report it.</div>`;
+}
+
+/* ═══════════════════════ PRACTICE runner ═══════════════════════ */
+const MODES = { recall:'Daily Recall', diag:'Diagnostic · Lecture 07', drill:'Competitive inhibition', quiz:'Quiz from your question', concept:'Concept practice' };
+function scrPractice(s) {
+  const p = s.pr, items = p.items, n = items.length;
+  if (p.end) return practiceEnd(s);
+  const it = items[p.i];
+  const top = `<div class="ab" style="min-height:64px"><button class="ib" data-a="closePractice" aria-label="Stop practice">${ic('close')}</button>
+    <div class="ttl" style="text-align:center"><div class="t-strong ell">${MODES[p.mode]}</div><div class="t-cap" aria-live="polite">${p.mode==='recall'?'Card':'Question'} ${p.i+1} of ${n}</div></div>
+    <button class="ib" data-a="sheet" data-v="practiceMore" aria-label="More options">${ic('more')}</button></div>
+    <div class="g"><div class="qprog" aria-hidden="true">${items.map((_,i)=>`<i class="${i<p.i?'d':i===p.i?'c':''}"></i>`).join('')}</div></div>`;
+  let body = '', foot = '';
+  const src = it.course ? `${course(it.course).name.split(' ').slice(-1)[0]==='Biochemistry'?'Human Biochemistry':course(it.course).name} · ${it.s}` : `Lecture 07`;
+  if (p.mode === 'recall') {
+    body = `<div class="g mt24 slide" key="${p.i}">${p.flash?`<div class="t-cap" style="text-align:center;color:var(--accent);margin-bottom:12px" aria-live="polite">${ic('check','xs')} ${p.flash}</div>`:''}
+      <div class="paper fc"><div class="t-cap">${src}</div>
+        <div class="t-prompt" style="margin-top:22px">${it.f}</div>
+        ${p.rev?`<div class="ans"><div style="height:1px;background:var(--line);margin:26px 0 20px"></div><div class="t-over">Answer</div>
+          <div class="${it.formula?'':'t-read'}" style="margin-top:8px;${it.formula?'font:500 calc(20px*var(--ts)) var(--read)':''}">${it.b}</div>
+          <div class="row mt16" style="gap:8px">${cite(it.t, it.course==='cell'?'Cell Biology · Lecture 04':'')}<span class="t-cap">${it.s}</span></div></div>`
+        :`<div class="f1"></div><div class="t-sec" style="text-align:center;margin-top:40px">Say or think the answer first.<br>Then check yourself.</div>`}
+      </div></div>`;
+    foot = p.rev ? `<div class="t-strong" style="text-align:center;margin-bottom:10px">How well did you recall it?</div>
+      <div class="rate">${[['Forgot','xc','r0'],['Hesitated','partc','r1'],['Knew it','okc','r2']].map(([l,i,c],k)=>`<button class="${c}" data-a="rate" data-v="${k}" aria-label="${l}. Next review ${it.iv[k]==='Today'?'later today':'in '+it.iv[k]}">${ic(i)}${l}<small>${it.iv[k]==='Today'?'Again today':'In '+it.iv[k]}</small></button>`).join('')}</div>`
+      : `<button class="btn pri full" data-a="reveal" style="min-height:56px">${ic('eye')}Show answer</button>`;
+  } else if (it.type === 'mcq') {
+    const sub = p.sub, right = sub && p.sel===it.a;
+    body = `<div class="g mt24 slide ${sub?'locked':''}"><div class="t-cap">${CMAP[it.c] && p.mode!=='diag'? CMAP[it.c].name+' · ' : ''}Multiple choice</div>
+      <div class="t-prompt mt12" id="q">${it.q}</div>
+      <div class="mt24" role="radiogroup" aria-labelledby="q">${it.o.map((o,k)=>{ let cls = '';
+        if (sub) cls = k===it.a?'right':(k===p.sel?'wrong':'dim'); else if (p.sel===k) cls='sel';
+        return `<div class="opt ${cls}" role="radio" aria-checked="${p.sel===k}" ${sub?'':`data-a="pick" data-v="${k}"`}><span class="k">${sub&&k===it.a?ic('check','xs'):sub&&k===p.sel?ic('close','xs'):'ABCD'[k]}</span><span class="f1">${o}${sub&&k===it.a?`<span class="tag">Correct answer</span>`:''}${sub&&k===p.sel&&k!==it.a?`<span class="tag">Your answer</span>`:''}</span></div>`;}).join('')}</div>
+      ${sub?`<div class="fb ${right?'right':'wrong'} mt16" aria-live="polite"><h4>${ic(right?'okc':'partc','s')}${right?'That’s right':'Not quite'}</h4>
+        ${!right&&it.miss[p.sel]?`<p class="t-body" style="margin:8px 0 0">${it.miss[p.sel]}</p>`:''}
+        <p class="t-body" style="margin:8px 0 0">${it.why}</p>
+        <div class="mt12" style="background:var(--surface);border-radius:12px;padding:12px 14px"><div class="t-cap">From Lecture 07</div><div class="quote mt8" style="font-size:calc(14px*var(--ts))">“${(D.transcript.find(x=>x.t===it.src)||{x:''}).x.split('. ').slice(-2).join('. ').slice(0,150)}”</div><div class="mt8">${cite(it.src)}</div></div>
+      </div>`:''}</div>`;
+    foot = sub ? `<button class="btn pri full" data-a="nextQ">${p.i+1<n?'Next question':'See results'}${ic('arrowR')}</button>`
+      : `<button class="btn pri full ${p.sel==null?'dis':''}" data-a="submit" aria-disabled="${p.sel==null}">Check answer</button>`;
+  } else {
+    const sub = p.sub;
+    body = `<div class="g mt24 slide"><div class="t-cap">${p.mode!=='diag'?CMAP[it.c].name+' · ':''}Short answer</div>
+      <div class="t-prompt mt12">${it.q}</div>
+      ${sub?`<div class="inset mt16" style="padding:12px 14px"><div class="t-cap">You wrote</div><div class="t-body mt4">${p.text||'<span class="muted">(skipped)</span>'}</div></div>
+        <div class="fb part mt16"><h4>${ic('book','s')}Compare with the lecture</h4><p class="t-read" style="margin:8px 0 0;font-size:calc(16px*var(--ts))">${it.model}</p><div class="mt8">${cite(it.src)}</div></div>
+        <div class="t-strong mt24">Which key points did you include?</div><div class="t-cap mt4">MeetingMind suggested these ticks from your answer. Change them if they’re wrong — you decide.</div>
+        <div class="mt8">${it.pts.map((pt,k)=>`<div class="ck ${p.checks[k]?'on':''}" data-a="ck" data-v="${k}" role="checkbox" aria-checked="${!!p.checks[k]}"><span class="bx">${p.checks[k]?ic('check'):''}</span><span class="t-body f1">${pt}</span></div>`).join('')}</div>`
+      :`<textarea class="fr mt24" data-in="text" placeholder="Type your answer — a sentence or two is plenty" aria-label="Your answer">${p.text||''}</textarea>
+        <div class="row mt8" style="justify-content:space-between"><span class="t-cap">You can also answer out loud ${ic('mic','xs')}</span></div>`}
+    </div>`;
+    foot = sub ? `<button class="btn pri full" data-a="nextQ">${p.i+1<n?'Next question':'See results'}${ic('arrowR')}</button>`
+      : `<div class="row" style="gap:8px"><button class="btn sec" data-a="skipFree" style="flex:1">Not sure — show me</button><button class="btn pri ${p.text?'':'dis'}" data-a="submitFree" id="frBtn" style="flex:1.2">Check my answer</button></div>`;
+  }
+  return { body: top + body + '<div style="height:24px"></div>', foot };
+}
+function practiceEnd(s) {
+  const p = s.pr;
+  const head = (t, sub) => `<div class="g" style="padding-top:44px"><div style="width:56px;height:56px;border-radius:50%;background:var(--accentWash);color:var(--accent);display:flex;align-items:center;justify-content:center">${ic('check')}</div><h1 class="t-display" style="margin:20px 0 0">${t}</h1><p class="t-body ink2" style="margin:8px 0 0">${sub}</p></div>`;
+  if (p.mode === 'recall') {
+    const r = p.rates, k = [0,1,2].map(x=>r.filter(y=>y===x).length);
+    return { body: head('Today’s recall is done', `${p.items.length} cards reviewed. ${k[2]} knew, ${k[1]} hesitated, ${k[0]} forgot.`) +
+      `<div class="g mt24"><div class="t-over">What changed</div>${(p.changes.length?p.changes:[{n:'No state changes',d:'States move after recall on separate days.'}]).map(c=>`<div class="row" style="padding:12px 0;align-items:flex-start;box-shadow:inset 0 -1px 0 var(--lineFaint)">${c.st?ms(c.st,false):''}<div class="f1"><div class="t-strong">${c.n}</div><div class="t-cap mt4">${c.d}</div></div></div>`).join('')}
+      ${(()=>{ const ki = p.items.findIndex(x=>x.c==='km'); return ki>=0 && p.rates[ki]===2 && cst(s,'km')==='developing' ? `<div class="row" style="padding:12px 0;align-items:flex-start">${ms('developing',false)}<div class="f1"><div class="t-strong">Michaelis constant (Km) stays Developing</div><div class="t-cap mt4">Strong needs successful recall spread over at least a week.</div></div></div>` : ''; })()}</div>
+      <div class="g mt16">${status('info','calendar','<b>Next:</b> 5 reviews tomorrow, about 6 minutes. Anything you forgot comes back later today.')}</div>`,
+      foot:`<button class="btn pri full" data-a="finish">Back to Learn</button>` };
+  }
+  if (p.mode === 'diag') {
+    return { body: head('Diagnostic complete', `${p.score} of ${p.items.length} correct. This sets where you start — it isn’t a grade.`) +
+      `<div class="g mt24"><div class="t-over">Where you’re starting</div>${[...new Set(p.items.map(it=>it.c))].map(c=>{ const qs = p.items.map((it,i)=>[it,i]).filter(([it])=>it.c===c);
+        return `<div class="row tap" data-a="concept" data-v="${c}" style="padding:12px 0;align-items:flex-start;box-shadow:inset 0 -1px 0 var(--lineFaint)" role="button">${ms(cst(s,c),false)}<div class="f1"><div class="t-strong">${CMAP[c].name}</div><div class="t-cap mt4">${qs.map(([it,i])=>`Q${i+1} ${{right:'correct',wrong:'not yet',part:'partly'}[p.res[i]]}`).join(' · ')} → ${STATES[cst(s,c)].label}</div></div>${ic('chevR','s chev')}</div>`; }).join('')}</div>
+      <div class="g mt16">${status('info','calendar','<b>Your first reviews arrive tomorrow</b> — about 5 minutes, starting with what you missed.')}</div>`,
+      foot:`<button class="btn pri full" data-a="finish" data-v="session">See your study guide</button>` };
+  }
+  const ok = p.res.filter(x=>x==='right').length;
+  const moved = p.moved, from = p.cid==='compinh'?'Needs review':'New';
+  return { body: head(ok>=Math.min(2,p.items.length)?'Nicely done':'Good effort', `${ok} of ${p.items.length} correct.`) +
+    `<div class="g mt24"><div class="card" style="padding:16px"><div class="row">${ms(cst(s,p.cid))}</div><div class="t-heading mt8">${CMAP[p.cid].name}</div>
+    <div class="t-sec mt4">${moved?`Moved from ${from} to Learning. One more correct review on a different day moves it to Developing.`:`Still Needs review. We’ll bring it back later today with a different question.`}</div></div></div>
+    ${ok<p.items.length?`<div class="g mt16">${status('info','book','Missed one? The explanation and the lecture moment stay in this concept’s history.')}</div>`:''}`,
+    foot:`<div class="col" style="gap:8px"><button class="btn pri full" data-a="finish">Done</button><button class="btn txt" data-a="finish" data-v="concept">Review the concept</button></div>` };
+}
+
+/* ═══════════════════════ ASK LEARNING ═══════════════════════ */
+function answerHTML(s, parts, cites, idp) {
+  return `<div class="t-read" style="font-size:calc(17px*var(--ts))">${parts.map(([t,n])=>t+(n?`<span class="cn ${s.askCite===idp+n?'on':''}" data-a="askCite" data-v="${idp+n}" role="button" aria-label="Source ${n}">${n}</span>`:'')).join('')}</div>
+    ${s.askCite && s.askCite.startsWith(idp) ? (()=>{ const c = cites.find(x=>idp+x.n===s.askCite); return `<div class="card mt12" style="padding:14px"><div class="row"><span class="t-cap">Source ${c.n} · Lecture 07</span></div><div class="quote mt8">“${c.q}”</div><div class="row mt8" style="gap:8px">${cite(c.t)}<span class="ta" data-a="srcAt" data-v="${c.t}" style="min-height:32px">Open in transcript</span></div></div>`; })() : ''}`;
+}
+function scrAsk(s) {
+  const scope = {session:'Lecture 07', course:'Human Biochemistry', all:'All courses'}[s.askScope];
+  let convo = `<div class="col g mt16" style="gap:14px"><div class="bub">${ASK.q}</div>
+    <div>${answerHTML(s, ASK.a, ASK.cites, 'a')}
+      <div class="t-cap mt12">3 sources from Lecture 07 · tap a number to see it</div>
+      <div class="row mt12" style="gap:8px;flex-wrap:wrap"><button class="btn ton" style="min-height:44px" data-a="quizMe">${ic('quiz','s')}Quiz me on this</button><button class="btn sec" style="min-height:44px" data-a="srcAt" data-v="24:12">${ic('lines','s')}Transcript</button><button class="ib" data-a="toast" data-v="Copied." aria-label="Copy answer">${ic('copy')}</button><button class="ib" data-a="sheet" data-v="reportAnswer" aria-label="Report this answer">${ic('flag')}</button></div>
+    </div>`;
+  s.askThread.forEach((id, idx) => {
+    const F = FOLLOW[id], last = idx === s.askThread.length-1;
+    convo += `<div class="bub" ${last?'data-anchor':''}>${ASK.follow[id]}</div>`;
+    if (last && s.askThinking) { convo += `<div class="row t-sec" aria-live="polite" style="gap:10px"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent)"></span>Searching ${scope}…</div>`; return; }
+    if (F.oos) {
+      convo += `<div><div class="status info" style="margin-bottom:12px">${ic('info')}<div><b>Not covered in Lecture 07.</b> Dr Mensah’s only example was malonate <span class="cn" data-a="askCite" data-v="a3">3</span>.</div></div>
+        ${s.askGeneral?`<div class="t-over" style="color:var(--clay);margin-bottom:8px">General knowledge · not from your lecture</div><div class="t-body">Methotrexate, a chemotherapy drug, competes with dihydrofolate for dihydrofolate reductase. Statins compete with HMG-CoA for HMG-CoA reductase. Check these against your textbook before relying on them.</div>`
+        :`<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sec" style="min-height:44px" data-a="askGeneral">Answer from general knowledge</button><button class="btn txt" data-a="askScope" data-v="course">Search the whole course</button></div>`}</div>`;
+      return;
+    }
+    convo += `<div>${F.warn?`<div class="status warn" style="margin-bottom:12px">${ic('warn')}<div>${F.warn}</div></div>`:''}${answerHTML(s, F.a, F.cites, 'f'+id)}<div class="t-cap mt12">${F.cites.length} source${F.cites.length>1?'s':''} from Lecture 07</div>
+      <div class="row mt12" style="gap:8px"><button class="btn ton" style="min-height:44px" data-a="quizMe">${ic('quiz','s')}Quiz me on this</button></div></div>`;
+  });
+  convo += `</div>`;
+  const left = ASK.follow.map((_,i)=>i).filter(i=>!s.askThread.includes(i));
+  const sugg = !left.length || s.askThinking ? '' : `<div class="g mt24"><div class="t-cap">Ask next</div><div class="col mt8" style="gap:8px">${left.map(i=>[ASK.follow[i],i]).map(([f,i])=>`<button class="chip" style="height:auto;min-height:44px;padding:10px 14px;text-align:left;white-space:normal;justify-content:flex-start" data-a="follow" data-v="${i}">${f}</button>`).join('')}</div></div>`;
+  return { body: `<div class="ab line"><button class="ib" data-a="back" aria-label="Back">${ic('back')}</button><div class="ttl"><div class="t-heading">Ask Learning</div>
+      <span class="t-cap tap" data-a="sheet" data-v="scope" style="display:inline-flex;align-items:center;gap:2px;color:var(--accent)" role="button">Answers from ${scope} ${ic('chevD','xs')}</span></div></div>` + offlineBanner(s) + convo + sugg + '<div style="height:24px"></div>',
+    foot: `<div class="comp"><div class="field"><input placeholder="${s.offline?'Ask needs a connection or on-device model':'Ask about '+scope}" ${s.offline?'disabled':''} aria-label="Ask a question"></div><button class="ib" aria-label="Ask by voice" data-a="toast" data-v="Listening… (voice question)">${ic('mic')}</button><div class="sendb" role="button" aria-label="Send" data-a="toast" data-v="In the prototype, try a suggested question.">${ic('send','s')}</div></div>`, raw:true };
+}
+
+/* ═══════════════════════ CREATE A SESSION ═══════════════════════ */
+function scrCreateSrc(s) {
+  const fresh = s.scenario==='new' && !s.created;
+  const rows = (fresh?[{t:'Enzyme Kinetics — Lecture 07',m:'Today, 10:02 · 52 min · transcript ready',on:true}]:[{t:'Tutorial — Problem Set 3 walkthrough',m:'Wed 12 Nov · 23 min · transcript ready',on:true}])
+    .concat([{t:'Thermodynamics of Reactions — Lecture 06',m:'Thu 6 Nov · already a session',dis:true},{t:'Protein Targeting and the ER — Lecture 04',m:'Mon 10 Nov · already a session',dis:true}]);
+  return appBar({title:'Choose a recording', line:true}) + `<div class="g t-sec mt16">Lectures and recordings on this phone. Transcripts are reused — nothing is processed twice.</div>
+    <div class="mt12">${rows.map(r=>`<div class="lr" ${r.dis?'style="opacity:.5;cursor:default"':`data-a="go" data-v="createCourse"`}><div class="av" style="border-radius:12px;background:var(--sunk);color:var(--ink2)">${ic('wave','s')}</div><div class="f1"><div class="t-strong ell">${r.t}</div><div class="t-cap mt4">${r.m}</div></div>${r.dis?ic('check','s'):ic('chevR','s chev')}</div>`).join('')}</div>`;
+}
+function scrCreateNote(s) {
+  return appBar({title:'Choose a note', line:true}) + `<div class="g t-sec mt16">Your own notes work too. Concepts will link to the paragraphs they came from.</div><div class="mt12">${D.notes.map(n=>`<div class="lr" data-a="go" data-v="createCourse"><div class="av" style="border-radius:12px;background:var(--sunk);color:var(--ink2)">${ic('note','s')}</div><div class="f1"><div class="t-strong ell">${n.title}</div><div class="t-cap mt4">${n.meta}</div></div>${ic('chevR','s chev')}</div>`).join('')}</div>`;
+}
+function scrCreateTyped(s) {
+  return appBar({title:'Type a session', line:true}) + `<div class="g mt16 col" style="gap:12px">
+    <div class="tfield"><label>Title</label><input value="" placeholder="e.g. Glycolysis — key steps"></div>
+    <textarea class="fr" style="min-height:220px" placeholder="Type or paste what you want to learn. Headings and bullet points help."></textarea>
+    <div class="t-cap">Concepts and questions will cite the paragraphs you write here.</div>
+    <button class="btn pri full mt8" data-a="go" data-v="createCourse">Continue</button></div>`;
+}
+function scrCreateCourse(s) {
+  const fresh = s.scenario==='new' && !s.created;
+  const title = fresh ? 'Enzyme Kinetics — Lecture 07' : 'Tutorial — Problem Set 3 walkthrough';
+  const opts = [['bioc','Human Biochemistry','BIOC 2101 · suggested from the title'],['cell','Cell Biology','BIOL 2204'],['stat','Statistics for Life Sciences','STAT 1150'],['newc','New course…',''],['none','Not now','You can add it to a course later']];
+  return appBar({title:'New learning session', line:true}) + `<div class="g mt16"><div class="card row" style="padding:14px"><div class="av" style="border-radius:12px;background:var(--sunk);color:var(--ink2)">${ic('wave','s')}</div><div class="f1"><div class="t-strong ell">${title}</div><div class="t-cap mt4">Transcript ready · good quality</div></div></div>
+    <div class="tfield mt16"><label>Session title</label><input value="${title}"></div></div>
+    ${sh('Course')}<div role="radiogroup">${opts.map(([k,l,sub])=>`<div class="rd ${s.pickCourse===k?'on':''}" data-a="pickCourse" data-v="${k}" role="radio" aria-checked="${s.pickCourse===k}"><span class="o"></span><div class="f1"><div class="t-strong">${l}</div>${sub?`<div class="t-cap mt4">${sub}</div>`:''}</div></div>`).join('')}</div>
+    <div class="g mt16">${status('info','info','MeetingMind writes the study guide first, then a short diagnostic. It runs on your phone when it can; your lecture isn’t shared.')}</div>
+    <div class="g mt16" style="padding-bottom:24px"><button class="btn pri full" data-a="create">Create session</button></div>`;
+}
+function scrCreateBuild(s) {
+  const st = s.buildStep, steps = [['Reading the transcript','214 segments'],['Finding key concepts','9 found'],['Linking each concept to the lecture','so every idea has a source'],['Writing a short diagnostic','6 questions']];
+  return appBar({title:'', back:true}) + `<div class="g" style="padding-top:28px"><div class="t-over">Enzyme Kinetics — Lecture 07</div><h1 class="t-display" style="margin:8px 0 0">${st>=4?'Your study guide is ready':'Building your study guide'}</h1>
+    <p class="t-body ink2" style="margin:10px 0 0">${st>=4?'9 concepts, each linked to the moment it was said.':'Usually under a minute. You can leave — it carries on, and we’ll show it on Learn when it’s ready.'}</p>
+    <div class="mt24" aria-live="polite">${steps.map(([t,sub],i)=>`<div class="stp ${i<st?'done':i===st?'now':''}"><span class="d">${i<st?ic('check'):''}</span><div class="f1"><div class="t-strong" style="${i>st?'color:var(--muted)':''}">${t}</div><div class="t-cap mt4">${i<st?sub:i===st?'Working…':'Waiting'}</div></div></div>`).join('')}</div>
+    ${st===2?`<div class="mt16">${status('warn','warn','31:48–33:05 is hard to hear. Questions from that part will be held back until you check it.')}</div>`:''}
+    <div class="mt24">${st>=4?`<button class="btn pri full" data-a="openCreated">Open session</button>`:`<button class="btn sec full" data-a="tab" data-v="learn">Leave and carry on</button>`}</div></div>`;
+}
+
+/* ═══════════════════════ PROGRESS ═══════════════════════ */
+function scrProgress(s) {
+  const weeks = [[1,2,0,1,3,0,0],[2,1,1,0,2,1,0],[1,0,2,3,1,0,1],[2,3,2, all(s)?3:0,0,0,0]];
+  return `<div class="ab"><div style="width:12px"></div><div class="ttl"><div class="t-title">Progress</div></div><button class="ib" data-a="sheet" data-v="states" aria-label="How learning states work">${ic('info')}</button></div>
+  <div class="g t-sec">Built from 46 answers and reviews since 20 October. States change only when you show what you know.</div>
+  ${offlineBanner(s)}
+  <div class="g mt24"><div class="card" style="padding:16px">
+    <div class="t-over" style="color:var(--success)">Going well</div>
+    <div class="row mt8" style="align-items:flex-start">${ms('strong',false)}<div class="f1 t-body">Reaction rates and saturation <span class="muted">· Biochemistry</span></div></div>
+    <div class="row mt8" style="align-items:flex-start">${ms('strong',false)}<div class="f1 t-body">Membrane transport <span class="muted">· Cell Biology</span></div></div>
+    <div style="height:1px;background:var(--lineSoft);margin:14px 0"></div>
+    <div class="t-over" style="color:var(--clay)">Worth practising</div>
+    ${[['compinh','Competitive inhibition','Biochemistry'],['x','Signal sequences','Cell Biology']].filter(x=>x[0]!=='compinh'||cst(s,'compinh')==='review').map(([id,n,c])=>`<div class="row mt8" style="align-items:center">${ms('review',false)}<div class="f1 t-body">${n} <span class="muted">· ${c}</span></div><span class="ta" data-a="${id==='compinh'?'startDrill':'toast'}" data-v="Starts a 3-question set on signal sequences.">Practise</span></div>`).join('')}
+  </div></div>
+  ${sh('Courses', 3)}${D.courses.map(c=>{const cc = c.id==='bioc'?bioCounts(s):c.counts; const tot=STATE_ORDER.reduce((a,k)=>a+(cc[k]||0),0);
+    return `<div class="lr" data-a="${c.id==='bioc'?'go':'toast'}" data-v="${c.id==='bioc'?'progressCourse':'Opens '+c.name+' progress.'}" style="align-items:flex-start"><div class="f1"><div class="row" style="justify-content:space-between"><span class="t-strong">${c.name}</span><span class="t-cap">${tot} concepts</span></div><div class="mt8">${msbar(cc,8)}</div><div class="t-cap mt8">${cc.strong} strong · ${cc.developing} developing · ${cc.learning} learning · ${cc.review?`<span style="color:var(--clay)">${cc.review} need review</span> · `:''}${cc.new} new</div></div></div>`;}).join('')}
+  ${sh('Review history', '4 weeks')}
+  <div class="g"><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;max-width:300px" role="img" aria-label="Studied on 18 of the last 28 days">${['M','T','W','T','F','S','S'].map(d=>`<div class="t-cap" style="text-align:center">${d}</div>`).join('')}${weeks.flat().map((v,i)=>`<div style="aspect-ratio:1;border-radius:6px;background:${v?`color-mix(in srgb, var(--accent) ${[0,30,60,100][v]}%, transparent)`:'var(--track)'};${i===24?'box-shadow:inset 0 0 0 2px var(--ink)':''}"></div>`).join('')}</div>
+  <div class="t-sec mt12">18 study days in the last four weeks. Days off are fine — reviews wait for you.</div></div>
+  ${sh('Recent activity')}${[['Daily Recall','Today · 8 cards'],['Competitive inhibition','Tue 11 Nov · diagnostic · 4 of 6'],['Daily Recall','Wed 12 Nov · 6 cards']].filter((x,i)=>i||all(s)).map(([t,m])=>`<div class="lr" style="cursor:default"><div class="f1"><div class="t-strong">${t}</div><div class="t-cap mt4">${m}</div></div></div>`).join('')}<div style="height:24px"></div>`;
+}
+function scrProgressCourse(s) {
+  const cc = bioCounts(s), f = s.pcF;
+  const extra = [['Coenzyme vs. cofactor','review','Lecture 05'],['Forces in tertiary structure','review','Lecture 02'],['Gibbs free energy (ΔG)','strong','Lecture 06'],['Peptide bond formation','strong','Lecture 01'],['Allosteric regulation','new','Lecture 05']];
+  const list = CONCEPTS.map(c=>[c.name, cst(s,c.id), 'Lecture 07', c.id]).concat(extra).filter(x=>f==='all'||x[1]===f);
+  return appBar({title:'Human Biochemistry', sub:'Concepts', line:true}) + `<div class="chips mt12">${[['all','All '+STATE_ORDER.reduce((a,k)=>a+cc[k],0)]].concat(STATE_ORDER.map(k=>[k,STATES[k].label+' '+cc[k]])).map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-a="pcF" data-v="${k}" aria-pressed="${f===k}">${k!=='all'?glyph(k).replace('<svg','<svg class="xs"'):''}${l}</button>`).join('')}</div>
+  <div class="mt8">${list.map(([n,st,src,id])=>`<div class="lr" data-a="${id?'concept':'toast'}" data-v="${id||'Opens '+n+'.'}">${ms(st,false)}<div class="f1"><div class="t-strong">${n}</div><div class="t-cap mt4">${STATES[st].label} · ${src}</div></div>${ic('chevR','s chev')}</div>`).join('')}
+  <div class="g t-cap mt12">Showing ${list.length} of ${f==='all'?41:cc[f]} — scroll for more in the app.</div></div><div style="height:24px"></div>`;
+}
+
+/* ═══════════════════════ Sheets ═══════════════════════ */
+function sheetHTML(s) {
+  const k = s.sheet; if (!k) return '';
+  const row = (icn, t, sub, a, v='') => `<div class="lr" data-a="${a}" data-v="${v}"><div class="av" style="border-radius:12px;background:var(--sunk);color:var(--ink2)">${ic(icn,'s')}</div><div class="f1"><div class="t-strong">${t}</div>${sub?`<div class="t-cap mt4">${sub}</div>`:''}</div></div>`;
+  let body = '';
+  if (k==='new') body = `<div class="g t-title">New learning session</div><div class="g t-sec mt4" style="margin-bottom:8px">Start from something you’ve heard or written.</div>
+    ${row('wave','From a recording', s.scenario==='new'&&!s.created?'1 lecture recorded today':'1 recording not in Learning yet','go','createSrc')}${row('note','From a note','Your own notes or imported text','go','createNote')}${row('type','Type or paste','Start from scratch','go','createTyped')}${row('mic','Record a lecture now','Opens the recorder with Lecture selected','toast','Opens the recorder with Lecture selected (existing capture flow).')}`;
+  if (k==='editConcept') { const c = CMAP[s.p.id];
+    body = s.renaming ? `<div class="g t-title">Rename concept</div><div class="g mt16"><div class="tfield"><label>Name</label><input data-in="rn" value="${s.renamed[c.id]||c.name}"></div><div class="row mt16" style="justify-content:flex-end;gap:8px"><button class="btn txt" data-a="sheet" data-v="">Cancel</button><button class="btn pri" data-a="saveRename">Save</button></div></div>`
+    : s.reporting ? `<div class="g t-title">What’s wrong?</div><div class="g t-sec mt4">Questions from this concept pause until it’s fixed.</div><div class="mt8">${['It’s incorrect','It wasn’t in the lecture','It’s unclear or badly worded','It’s a duplicate'].map(r=>`<div class="rd" data-a="doReport"><span class="o"></span><span class="t-body">${r}</span></div>`).join('')}</div>`
+    : `<div class="g t-title">${s.renamed[c.id]||c.name}</div><div class="g t-sec mt4" style="margin-bottom:8px">Generated from Lecture 07. Your edits are kept if the session is regenerated.</div>
+      ${row('edit','Rename','','renameStart')}${row('book','Edit definition','','toast','Opens the definition editor. Your version is marked “edited by you”.')}${row('merge','Merge with another concept','e.g. when two names mean the same idea','toast','Pick a concept to merge into. History from both is kept.')}${row('hide','Hide from practice','Stays in the study guide','hideConcept')}${row('flag','Report a problem','Incorrect, not in the lecture, unclear…','reportStart')}`; }
+  if (k==='states') body = `<div class="g t-title">How learning states work</div><div class="g t-sec mt4">MeetingMind never guesses a score. Each concept’s state comes from what you’ve shown.</div>
+    <div class="g mt16">${['new','learning','developing','strong','review'].map(st=>`<div class="row" style="align-items:flex-start;padding:10px 0">${ms(st,false)}<div class="f1"><div class="t-strong">${STATES[st].label}</div><div class="t-sec mt4">${STATES[st].long}.</div></div></div>`).join('')}
+    <div class="inset mt12" style="padding:14px"><div class="t-strong">What moves a concept</div><div class="t-sec mt4">Correct answers and recall on separate days move it forward. A miss moves it to Needs review. Reading or listening alone never changes a state.</div></div></div>`;
+  if (k==='scope') body = `<div class="g t-title">Answer from</div><div class="mt8">${[['session','This lecture','Enzyme Kinetics — Lecture 07'],['course','This course','Human Biochemistry · 7 sessions'],['all','All my courses','3 courses']].map(([v,l,sub])=>`<div class="rd ${s.askScope===v?'on':''}" data-a="askScope" data-v="${v}"><span class="o"></span><div class="f1"><div class="t-strong">${l}</div><div class="t-cap mt4">${sub}</div></div></div>`).join('')}</div><div class="g t-cap mt8">Answers always cite your sources. Anything not from them is clearly labelled.</div>`;
+  if (k==='practiceMore') body = `<div class="g t-title">This ${s.pr.mode==='recall'?'card':'question'}</div><div class="mt8">${row('calendar','Skip for today','It comes back tomorrow. No penalty.','defer')}${row('listen','Hear the lecture moment','Plays the source without leaving','toast','Playing Lecture 07 from '+(s.pr.items[s.pr.i].t||s.pr.items[s.pr.i].src)+'…')}${row('flag','This is wrong or unclear','Report it — it’s paused until fixed','toast','Thanks. This question is paused and won’t count against you.')}${row('pausec','Pause and save','Pick up from here on Learn','stopSave')}</div>`;
+  if (k==='stop') body = `<div class="g t-title">Stop here?</div><div class="g t-body ink2 mt8">Your ${s.pr.i} answer${s.pr.i===1?' is':'s are'} saved. You can pick up from ${s.pr.mode==='recall'?'card':'question'} ${s.pr.i+1} on Learn.</div><div class="g mt24 col" style="gap:8px"><button class="btn pri full" data-a="sheet" data-v="">Keep going</button><button class="btn sec full" data-a="stopSave">Stop and save</button></div>`;
+  if (k==='sessionMore') body = `<div class="g t-title">Lecture 07</div><div class="mt8">${row('book','Edit study guide','Rename, merge or hide concepts','sheet','editGuide')}${row('pausec','Pause reviews for this session','Nothing will be due until you resume','toast','Reviews paused for Lecture 07. Resume any time.')}${row('redo','Regenerate questions','Your edits and history are kept','toast','Regenerating… your edits and history are kept.')}${row('note','Open the lecture note','The original note in Notes','toast','Opens the Lecture 07 note in the editor.')}</div>`;
+  if (k==='editGuide') body = `<div class="g t-title">Edit study guide</div><div class="g t-sec mt4">Tap a concept to rename, merge, hide or report it.</div><div class="mt8">${CONCEPTS.map(c=>`<div class="lr" data-a="concept" data-v="${c.id}">${ms(cst(s,c.id),false)}<div class="f1 t-strong">${c.name}</div>${ic('edit','s')}</div>`).join('')}</div><div class="g mt8"><button class="btn sec full" data-a="toast" data-v="Add a concept: name it, then pick the lecture moment it comes from.">${ic('plus','s')}Add a concept</button></div>`;
+  if (k==='courseMore') body = `<div class="g t-title">Human Biochemistry</div><div class="mt8">${row('pausec','Pause this course','e.g. after the exam. Reviews stop; nothing is lost.','toast','Course paused. Its reviews won’t appear on Learn.')}${row('edit','Rename or edit details','','toast','Edit course name, code and lecturer.')}${row('redo','Reset learning history','Start this course’s states from New','toast','Asks for confirmation first — your notes and sessions stay.')}</div>`;
+  if (k==='reportAnswer') body = `<div class="g t-title">Report this answer</div><div class="mt8">${['It says something the lecture didn’t','A source doesn’t support it','It’s unclear'].map(r=>`<div class="rd" data-a="toast" data-v="Thanks — reported. This helps keep answers grounded."><span class="o"></span><span class="t-body">${r}</span></div>`).join('')}</div>`;
+  if (k==='cite') { const t = s.citeT, seg = s.citeL ? {x:'Cell Biology transcript excerpt — opens in that lecture.'} : nearestSeg(t);
+    body = `<div class="g row"><div class="playb" data-a="togglePlay">${ic(s.playing?'pause':'play')}</div><div class="f1"><div class="t-strong">${s.citeL||'Lecture 07'} · ${t}</div><div class="t-cap mt4">${s.playing?'Playing from '+t+'…':(s.citeL?'Prof. Ahmed Khalil':'Enzyme Kinetics · Dr Grace Mensah')}</div></div></div>
+    <div class="g mt16"><div class="quote">“${seg.x}”</div></div><div class="g mt16 row" style="gap:8px"><button class="btn sec" data-a="srcAt" data-v="${t}">${ic('lines','s')}Open in transcript</button></div>`; }
+  return `<div class="scrim" data-a="sheet" data-v=""></div><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${body}</div>`;
+}
+</script>
+<script>
+"use strict";
+/* ═══════════════════════ Diagnostic review (read-only answers + sources) ═══════════════════════ */
+function scrDiagReview(s) {
+  const res = s.scenario==='new' && s.diagRes ? s.diagRes : ['wrong','right','right','right','right','wrong'];
+  return appBar({title:'Diagnostic answers', sub:'Lecture 07 · '+(s.scenario==='new'?'today':'Tue 11 Nov'), line:true}) +
+    `<div class="g t-sec mt16">Each question shows the right answer, why, and where it came from in the lecture.</div>` +
+    DIAG.map((q,i)=>`<div class="g mt24"><div class="row" style="gap:8px">${ic(res[i]==='right'?'okc':res[i]==='part'?'partc':'xc','s')}<span class="t-cap" style="color:var(--${res[i]==='right'?'success':res[i]==='part'?'accent':'clay'})">Q${i+1} · ${{right:'Correct',wrong:'Not yet',part:'Partly'}[res[i]]}</span><span class="t-cap">· ${CMAP[q.c].name}</span></div>
+      <div class="t-strong mt8">${q.q}</div><div class="t-sec mt8"><b style="color:var(--ink);font-weight:600">${q.type==='mcq'?q.o[q.a]:q.model}</b></div><div class="mt8">${cite(q.src)}</div></div>`).join('') + '<div style="height:28px"></div>';
+}
+
+/* Diagnostic intro, injected ahead of question 1 */
+function diagIntro(s) {
+  return { body: `<div class="ab"><button class="ib" data-a="closePractice" aria-label="Close">${ic('close')}</button></div>
+    <div class="g" style="padding-top:12px"><div class="t-over">Lecture 07 · Enzyme Kinetics</div><h1 class="t-display" style="margin:8px 0 0">A quick check before you study</h1>
+    <p class="t-body ink2" style="margin:12px 0 0">Six questions on what Dr Mensah covered. Your answers decide what practice starts with — this isn’t a grade, and nothing is shared.</p>
+    <div class="mt24">${[['clock','About 4 minutes','You can stop and pick up later.'],['quiz','Multiple choice and short answer','Answers appear only after you try.'],['play','Every answer has a source','Jump to the moment in the lecture.']].map(([i,t,b])=>`<div class="row" style="align-items:flex-start;padding:10px 0;gap:14px"><div class="av" style="border-radius:12px">${ic(i,'s')}</div><div class="f1"><div class="t-strong">${t}</div><div class="t-sec mt4">${b}</div></div></div>`).join('')}</div></div>`,
+    foot: `<button class="btn pri full" data-a="beginDiag">Start · question 1 of 6</button>` };
+}
+
+/* ═══════════════════════ Frame assembly ═══════════════════════ */
+const TABOF = { learn:'learn', library:'library', search:'library', course:'library', progress:'progress', progressCourse:'progress' };
+const SCREENS = { learn:scrLearn, library:scrLibrary, search:scrSearch, course:scrCourse, session:scrSession, concept:scrConcept,
+  practice:s => s.pr.intro ? diagIntro(s) : scrPractice(s), ask:scrAsk, createSrc:scrCreateSrc, createNote:scrCreateNote, createTyped:scrCreateTyped,
+  createCourse:scrCreateCourse, createBuild:scrCreateBuild, progress:scrProgress, progressCourse:scrProgressCourse, diagReview:scrDiagReview };
+const STATUSBAR = `<div class="sb"><span>9:30</span><span class="cam"></span><span class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 13.3L.67 5.97a10.37 10.37 0 0114.66 0L8 13.3z" fill="currentColor"/></svg><svg width="16" height="16" viewBox="0 0 16 16"><path d="M14.67 14.67V1.33L1.33 14.67h13.34z" fill="currentColor"/></svg><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3.75" y="2" width="8.5" height="13" rx="1.5" fill="currentColor"/><rect x="5.5" y=".9" width="5" height="2" rx=".5" fill="currentColor"/></svg></span></div>`;
+function frameHTML(s) {
+  const out = SCREENS[s.route](s), o = typeof out === 'string' ? {body:out} : out;
+  const tab = TABOF[s.route];
+  const bar = tab ? `<nav class="bb" aria-label="Learning">${[['learn','Learn'],['library','Library'],['progress','Progress']].map(([k,l])=>`<button class="${tab===k?'on':''}" data-a="tab" data-v="${k}" aria-current="${tab===k?'page':'false'}"><span class="pill">${ic(tab===k?k+'F':k)}</span>${l}</button>`).join('')}</nav>` : '';
+  const foot = o.foot ? (o.raw ? o.foot : `<div style="padding:12px 20px;background:var(--bg);box-shadow:0 -1px 0 var(--lineSoft);flex:none">${o.foot}</div>`) : '';
+  const toast = s.toast ? `<div class="toast" role="status" style="${bar?'bottom:96px':''}${foot?'bottom:'+(o.raw?76:88)+'px':''}">${s.toast.icon?ic(s.toast.icon):''}<span class="f1">${s.toast.m}</span>${s.toast.undo?`<span class="ta" data-a="undo">Undo</span>`:''}</div>` : '';
+  return STATUSBAR + `<div class="scr">${o.body}</div>` + foot + bar + sheetHTML(s) + toast + `<div class="gnav"><i></i></div>`;
+}
+
+/* ═══════════════════════ App instance (one per device frame) ═══════════════════════ */
+const DEF = () => ({ route:'learn', p:{}, stack:[], dark:false, big:false, offline:false, freeze:false, scenario:'returning',
+  done:{recall:false, drill:false, cont:false}, short:false, resume:0, contPending:false, sTab:'understand', sheet:null, toast:null,
+  cs:{}, why:{}, hist:{}, renamed:{}, hidden:{}, libF:'all', q:'inhibition', pr:null, askScope:'session', askCite:null, askThread:[], askThinking:false, askGeneral:false,
+  created:false, diagDone:false, diagScore:0, diagRes:null, buildStep:0, building:false, playing:false, hl:null, allConcepts:false, moreEv:false,
+  pickCourse:'bioc', pcF:'all', citeT:null, citeL:'', renaming:false, reporting:false, rn:'' });
+const clone = o => JSON.parse(JSON.stringify(o));
+function mkPr(mode, o={}) {
+  const items = {recall:RECALL, diag:DIAG, drill:DRILL, quiz:[DRILL[1], DIAG[0]], concept:o.items||[DIAG[4]]}[mode];
+  return Object.assign({ mode, items, i:0, sel:null, sub:false, rev:false, text:'', checks:[], res:[], rates:[], changes:[], flash:'', end:false, intro:false, cid:'compinh', score:0, moved:false, from:null }, o, {items: o.items || items});
+}
+class App {
+  constructor(el, init={}, onChange) {
+    this.el = el; this.init = init; this.onChange = onChange; this.timers = [];
+    el.addEventListener('click', e => this.click(e));
+    el.addEventListener('input', e => this.input(e));
+    this.reset();
+  }
+  reset(over) { this.timers.forEach(clearTimeout); this.timers = []; this.building = this.thinking = this.bTimer = false; this.s = Object.assign(DEF(), clone(over || this.init)); this.last = null; this.anchorPending = !!this.s.hl || this.s.askThread.length > 0; this.render(); }
+  get scr() { return this.el.querySelector('.scr'); }
+  render() {
+    const s = this.s, key = s.route + '|' + (s.p.id||'') + '|' + s.sTab + '|' + (s.pr ? s.pr.mode+s.pr.i+s.pr.end+s.pr.intro : '');
+    const top = this.scr && this.last === key ? this.scr.scrollTop : 0;
+    this.el.className = 'dev' + (s.dark ? ' dark' : '') + (s.big ? ' big' : '');
+    this.el.innerHTML = frameHTML(s);
+    const sc = this.scr; sc.scrollTop = top;
+    const anc = sc.querySelector('[data-anchor]');
+    if (anc && this.anchorPending) { sc.scrollTop = anc.offsetTop - 140; this.anchorPending = false; }
+    this.last = key; this.hooks(); this.onChange && this.onChange(this);
+  }
+  set(p) { Object.assign(this.s, p); this.render(); }
+  later(fn, ms) { if (this.s.freeze) return; this.timers.push(setTimeout(() => { fn(); this.render(); }, ms)); }
+  hooks() {
+    const s = this.s;
+    if (s.route === 'createBuild' && s.buildStep < 4 && !this.building) { this.building = true; this.later(() => { s.buildStep++; this.building = false; }, s.buildStep === 2 ? 1700 : 1000); }
+    if (s.askThinking && !this.thinking) { this.thinking = true; this.later(() => { s.askThinking = false; this.thinking = false; this.anchorPending = true; }, 1300); }
+    if (s.building && !this.bTimer) { this.bTimer = true; this.later(() => { s.building = false; this.bTimer = false; s.toast = {m:'Practice questions are ready.', icon:'check'}; }, 2600); }
+    if (s.toast && !s.toast.armed) { s.toast.armed = true; const t = s.toast; this.later(() => { if (this.s.toast === t) this.s.toast = null; }, t.undo ? 5000 : 3200); }
+  }
+  go(route, p={}) { const s = this.s; s.stack.push({route:s.route, p:s.p, sTab:s.sTab}); s.route = route; s.p = p; s.sheet = null; s.askCite = null; this.last = null; }
+  click(e) {
+    const t = e.target.closest('[data-a]'); if (!t || !this.el.contains(t)) return;
+    e.preventDefault(); const a = t.dataset.a, v = t.dataset.v;
+    const fn = ACT[a]; if (!fn) return;
+    fn(this, v, t); this.render();
+  }
+  input(e) {
+    const k = e.target.dataset.in; if (!k) return;
+    if (k === 'text') { this.s.pr.text = e.target.value; const b = this.el.querySelector('#frBtn'); if (b) b.classList.toggle('dis', !e.target.value.trim()); }
+    if (k === 'q') { this.s.q = e.target.value; clearTimeout(this.qt); this.qt = setTimeout(() => { const pos = e.target.selectionStart; this.render(); const inp = this.el.querySelector('[data-in=q]'); if (inp) { inp.focus(); inp.setSelectionRange(pos,pos); } }, 350); }
+    if (k === 'rn') this.s.rn = e.target.value;
+  }
+}
+
+/* ═══════════════════════ Actions ═══════════════════════ */
+const toast = (app, m, undo, icon) => { app.s.toast = { m, undo, icon }; };
+function startPractice(app, mode, o={}) { const s = app.s; s.pr = mkPr(mode, o); s.sheet = null; app.go('practice'); }
+function applyRate(s, it, r) {
+  if (!it.c) return;
+  const cur = s.cs[it.c] || (s.scenario==='new' && !s.diagDone ? 'new' : CMAP[it.c].state);
+  let next = cur, d = '';
+  if (r === 0) { next = 'review'; d = 'Forgotten today, so it comes back later today.'; }
+  if (r === 2 && cur === 'review') { next = 'learning'; d = 'Recalled after a miss. Another success on a different day moves it on.'; }
+  if (r === 2 && cur === 'learning') { next = 'developing'; d = 'Recalled correctly on a second day.'; }
+  s.pr.changes = s.pr.changes.filter(c => c.id !== it.c);
+  if (next !== cur) { s.cs[it.c] = next; s.why[it.c] = d; s.pr.changes.push({ id:it.c, st:next, n:`${CMAP[it.c].name}: ${STATES[cur].label} → ${STATES[next].label}`, d }); }
+  (s.hist[it.c] = s.hist[it.c] || []).unshift({ d:'Today', a:'Daily Recall', r:['Forgot','Hesitated','Knew it'][r] });
+}
+function endPractice(app) {
+  const s = app.s, p = s.pr;
+  p.end = true;
+  if (p.mode === 'diag') {
+    p.score = p.res.filter(x => x==='right').length;
+    const per = {};
+    p.items.forEach((it,i) => { per[it.c] = per[it.c] || []; per[it.c].push(p.res[i]); });
+    Object.entries(per).forEach(([c, rs]) => {
+      const st = rs.includes('wrong') ? 'review' : rs.includes('part') ? 'learning' : 'learning';
+      s.cs[c] = st; s.why[c] = st === 'review' ? 'Missed in today’s diagnostic. It’s first in line for practice.' : 'Correct in today’s diagnostic. Your first review is tomorrow.';
+      (s.hist[c] = s.hist[c] || []).unshift({ d:'Today', a:'Diagnostic', r: rs.includes('wrong') ? 'Incorrect' : rs.includes('part') ? 'Partly' : 'Correct' });
+    });
+    s.diagDone = true; s.diagScore = p.score; s.diagRes = p.res.slice();
+  }
+  if (p.mode === 'drill' || p.mode === 'quiz' || p.mode === 'concept') {
+    const ok = p.res.filter(x => x==='right').length, need = Math.min(2, p.items.length), c = p.cid;
+    (s.hist[c] = s.hist[c] || []).unshift({ d:'Today', a: p.mode==='quiz'?'Quiz from Ask':'Practice', r: ok >= need ? 'Correct' : 'Incorrect' });
+    const cur = s.cs[c] || CMAP[c].state;
+    if (ok >= need && (cur === 'review' || cur === 'new')) { s.cs[c] = 'learning'; s.why[c] = 'Correct in today’s practice after earlier misses. One more correct review on another day moves it to Developing.'; p.moved = true; }
+    if (ok < need) { s.cs[c] = 'review'; s.why[c] = 'Missed again today. It comes back later today with a different question.'; }
+  }
+}
+const ACT = {
+  back(app) { const s = app.s;
+    if (s.sheet) { s.sheet = null; return; }
+    if (s.route === 'session' && s.contPending) { s.done.cont = true; s.contPending = false; toast(app, 'Study guide finished. Nice.', null, 'check'); }
+    const prev = s.stack.pop(); if (!prev) { s.route = TABOF[s.route] ? s.route : 'learn'; return; }
+    s.route = prev.route; s.p = prev.p; s.sTab = prev.sTab; app.last = null; },
+  go(app, v) { const s = app.s; if (v === 'createCourse') s.pickCourse = 'bioc'; app.go(v); },
+  tab(app, v) { const s = app.s; s.stack = []; s.route = v; s.p = {}; s.sheet = null; app.last = null; },
+  toast(app, v) { app.s.sheet = null; toast(app, v); },
+  undo(app) { const s = app.s, u = s.toast && s.toast.undo; s.toast = null; if (u) u(); toast(app, 'Undone.'); },
+  sheet(app, v) { const s = app.s; s.sheet = v || null; s.renaming = false; s.reporting = false; },
+  course(app, v) { app.go('course', { id:v }); },
+  openSession(app, v) { const s = app.s; app.go('session'); s.sTab = v || 'understand'; },
+  openGuide(app) { const s = app.s; app.go('session'); s.sTab = 'understand'; s.contPending = true; },
+  concept(app, v) { const s = app.s; s.sheet = null; s.moreEv = false; if (s.route === 'practice') { s.route = 'concept'; s.p = { id:v }; app.last = null; return; } app.go('concept', { id:v }); },
+  conceptGo(app, v) { const s = app.s; s.moreEv = false; app.go('concept', { id:v }); },
+  sTab(app, v) { app.s.sTab = v; app.last = null; },
+  cite(app, v, el) { const s = app.s; s.sheet = 'cite'; s.citeT = v; s.citeL = el.dataset.l || ''; s.playing = true; },
+  srcAt(app, v) { const s = app.s; s.sheet = null; s.hl = v; s.playing = true;
+    if (s.route !== 'session') app.go('session'); s.sTab = 'source'; app.anchorPending = true; app.last = null; },
+  hl(app, v) { const s = app.s; s.hl = v; s.playing = true; },
+  togglePlay(app) { app.s.playing = !app.s.playing; },
+  libF(app, v) { app.s.libF = v; }, pcF(app, v) { app.s.pcF = v; },
+  allConcepts(app) { app.s.allConcepts = true; }, moreEv(app) { app.s.moreEv = true; },
+  renameStart(app) { app.s.renaming = true; app.s.rn = app.s.renamed[app.s.p.id] || CMAP[app.s.p.id].name; },
+  saveRename(app) { const s = app.s, id = s.p.id, prev = s.renamed[id]; const val = (s.rn || '').trim(); s.sheet = null; s.renaming = false;
+    if (!val) return; s.renamed[id] = val; toast(app, 'Renamed. Your name is kept if the session is regenerated.', () => { if (prev) s.renamed[id] = prev; else delete s.renamed[id]; }, 'check'); },
+  hideConcept(app) { const s = app.s, id = s.p.id; s.hidden[id] = true; s.sheet = null; toast(app, 'Hidden from practice. Still in your study guide.', () => { delete s.hidden[id]; }); },
+  unhide(app, v) { delete app.s.hidden[v]; toast(app, 'Back in practice.'); },
+  reportStart(app) { app.s.reporting = true; },
+  doReport(app) { const s = app.s; s.sheet = null; s.reporting = false; toast(app, 'Reported. Questions from this concept are paused until it’s fixed.', () => {}, 'flag'); },
+  startRecall(app) { const s = app.s; const items = s.short ? RECALL.slice(0,5) : RECALL; startPractice(app, 'recall', { items, i: Math.min(s.resume||0, items.length-1) }); },
+  startDrill(app) { startPractice(app, 'drill', { cid:'compinh' }); },
+  startConcept(app, v) { startPractice(app, 'concept', { cid:v, items: conceptQs(v) }); },
+  startDiag(app) { startPractice(app, 'diag', { intro:true }); },
+  beginDiag(app) { app.s.pr.intro = false; app.last = null; },
+  needDiag(app) { toast(app, 'Take the diagnostic first — it decides where practice starts.'); },
+  quizMe(app) { startPractice(app, 'quiz', { cid:'compinh' }); },
+  pick(app, v) { app.s.pr.sel = +v; },
+  submit(app) { const p = app.s.pr; if (p.sel == null) return; p.sub = true; p.res[p.i] = p.sel === p.items[p.i].a ? 'right' : 'wrong'; },
+  submitFree(app) { const p = app.s.pr, it = p.items[p.i]; if (!p.text.trim()) return; const tx = p.text.toLowerCase();
+    p.checks = it.keys.map(ks => ks.some(k => tx.includes(k))); p.sub = true; },
+  skipFree(app) { const p = app.s.pr; p.text = ''; p.checks = []; p.sub = true; },
+  ck(app, v) { const p = app.s.pr; p.checks[v] = !p.checks[v]; },
+  nextQ(app) { const p = app.s.pr, it = p.items[p.i];
+    if (it.type === 'free') { const n = p.checks.filter(Boolean).length; p.res[p.i] = n === it.pts.length ? 'right' : n ? 'part' : 'wrong'; }
+    if (p.i + 1 < p.items.length) { p.i++; p.sel = null; p.sub = false; p.text = ''; p.checks = []; } else endPractice(app); app.last = null; },
+  reveal(app) { app.s.pr.rev = true; },
+  rate(app, v) { const s = app.s, p = s.pr, it = p.items[p.i], r = +v; p.rates.push(r); applyRate(s, it, r);
+    p.flash = r === 0 ? 'Saved — this one comes back later today' : `Saved — next review in ${it.iv[r]}`;
+    if (p.i + 1 < p.items.length) { p.i++; p.rev = false; } else { p.flash = ''; endPractice(app); } app.last = null; },
+  defer(app) { const s = app.s, p = s.pr; s.sheet = null; const removed = p.items[p.i]; p.items = p.items.filter((_,i) => i !== p.i); p.rev = false; p.sub = false; p.sel = null;
+    if (p.i >= p.items.length) endPractice(app);
+    toast(app, 'Moved to tomorrow. No penalty.', () => { p.items.splice(p.i, 0, removed); p.end = false; }); app.last = null; },
+  closePractice(app) { const s = app.s, p = s.pr; if (!p.end && !p.intro && p.i > 0) { s.sheet = 'stop'; return; } ACT.back(app); },
+  stopSave(app) { const s = app.s, p = s.pr; s.sheet = null; if (p.mode === 'recall') s.resume = p.i; ACT.back(app); toast(app, `Saved. Pick up from ${p.mode==='recall'?'card':'question'} ${p.i+1} on Learn.`, null, 'check'); },
+  finish(app, v) { const s = app.s, p = s.pr;
+    if (p.mode === 'recall') { s.done.recall = true; s.resume = 0; }
+    if (p.mode === 'drill') s.done.drill = true;
+    const top = s.stack[s.stack.length - 1];
+    if (v === 'session') { if (top && top.route === 'session') s.stack.pop(); s.route = 'session'; s.sTab = 'understand'; s.p = {}; }
+    else if (v === 'concept') { if (top && top.route === 'concept' && top.p.id === p.cid) s.stack.pop(); s.route = 'concept'; s.p = { id:p.cid }; }
+    else { const b = s.stack.pop(); if (b) { s.route = b.route; s.p = b.p; s.sTab = b.sTab; } else s.route = 'learn'; }
+    if (all(s) && s.route === 'learn') toast(app, 'That’s everything for today.', null, 'check');
+    app.last = null; },
+  setShort(app, v) { app.s.short = v === '1'; toast(app, v === '1' ? 'Trimmed to the 5 most useful reviews. The rest keep their place for tomorrow.' : 'Full plan restored.'); },
+  askCite(app, v) { app.s.askCite = app.s.askCite === v ? null : v; },
+  follow(app, v) { const s = app.s; s.askThread.push(+v); s.askThinking = true; s.askCite = null; app.anchorPending = true; },
+  askScope(app, v) { const s = app.s; s.askScope = v; s.sheet = null; toast(app, 'Now answering from ' + {session:'Lecture 07', course:'Human Biochemistry', all:'all your courses'}[v] + '.'); },
+  askGeneral(app) { app.s.askGeneral = true; },
+  pickCourse(app, v) { app.s.pickCourse = v; },
+  create(app) { const s = app.s; app.go('createBuild'); s.buildStep = 0; },
+  openCreated(app) { const s = app.s; s.created = true; s.stack = [{ route:'library', p:{}, sTab:'understand' }]; s.route = 'session'; s.sTab = 'understand'; s.building = true; s.p = {}; app.last = null; toast(app, 'Study guide ready. Practice questions are almost done.', null, 'check'); },
+};
+
+/* ═══════════════════════ Walkthrough notes (what the reviewer is looking at) ═══════════════════════ */
+function noteFor(s) {
+  const r = s.route;
+  if (r === 'learn') return s.scenario==='new' && !s.created ? ['Learn · first run', 'An empty state that is an invitation, not a blank screen. One primary action uses the lecture already on the phone; recording is secondary because the student usually records first and studies later.']
+    : all(s) ? ['Learn · done for today', 'A real finish line. States what changed, previews tomorrow and offers optional extras quietly. No streak counter, no guilt.']
+    : ['Learn · Daily Brief', 'Answers “what is worth learning today?” in one bounded plan: three items, honest minutes, one primary button. The weak concept card explains why, with the lecture moment as evidence. “Only have 5 minutes?” trims the plan without creating a backlog.'];
+  if (r === 'library') return ['Library', 'Courses, sessions and sources in one place. Search spans concepts and transcript moments. Lectures not yet in Learning are surfaced so creating a session is one tap.'];
+  if (r === 'search') return ['Library · Search', 'Results grouped by meaning: concepts (with their state), lecture moments (playable) and sessions.'];
+  if (r === 'course') return ['Course', 'A learning space for one course: next recommended action, evidence-based understanding (counts, never percentages), gaps, topics and sessions. Pause lives in the overflow.'];
+  if (r === 'session') return ['Learning Session · ' + {source:'Source',understand:'Understand',practise:'Practise',mastery:'Mastery'}[s.sTab], {source:'The original lecture. Every citation lands here with the moment highlighted. Unclear audio is flagged honestly and held back from questions.', understand:'The study guide: summary, lecturer emphasis, concepts with states, a relationship table and a timestamped outline. Ends with retrieval, not more reading.', practise:'Diagnostic result, the recommended next activity and practice sets for this lecture. Formats are options, not the product.', mastery:'Per-concept states with the reason for each, in plain language. “How states work” explains the rules.'}[s.sTab]];
+  if (r === 'concept') return ['Concept detail', 'Definition first (reading face), plain-language explanation, then evidence from the lecture — one quote visible, more on demand. State always shows its reason. Edit/report lives behind the pencil.'];
+  if (r === 'practice') { const p = s.pr; if (p.intro) return ['Diagnostic · intro', 'Sets expectations: length, not graded, answers after each attempt, every answer has a source.'];
+    if (p.end) return ['Practice · summary', 'Results lead to a next action and say exactly what changed in each concept’s state.'];
+    return [MODES[p.mode], p.mode==='recall' ? 'Deliberate reveal: the answer is never visible until “Show answer”. Three honest ratings, each labelled with when it returns.' : 'Answers stay hidden until the student commits. Feedback never says “Wrong!” — it explains, cites the lecture and moves on.']; }
+  if (r === 'ask') return ['Ask Learning', 'Scoped to the lecture by default and says so. Numbered citations open the exact quote. If the source doesn’t cover it, it says so and only offers general knowledge with a clear label. “Quiz me” turns an answer into retrieval.'];
+  if (r.startsWith('create')) return ['Create a session', 'From a recording, a note or typed text → choose a course (suggested) → build with visible stages. The student can leave; the study guide is readable before questions finish.'];
+  if (r === 'progress') return ['Progress', 'Strengths and gaps in words, course understanding as state counts, and a calm review history. No percentages, no predictions.'];
+  if (r === 'progressCourse') return ['Course concepts', 'Every concept with its state, filterable. Counts in the chips, so the filter never hides how many there are.'];
+  if (r === 'diagReview') return ['Diagnostic answers', 'Read-only review of each question with the right answer and its lecture source.'];
+  return [r, ''];
+}
+</script>
+<style>
+.dev.flat{width:auto;height:auto;border:0;box-shadow:none;border-radius:12px;overflow:visible;display:block;padding:24px 26px}
+.dsg{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.dsl{font:600 11px ui-monospace,Menlo,monospace;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+.sws{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sws div{border-radius:10px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line);font:11px/1.35 ui-monospace,Menlo,monospace;color:var(--ink2)}
+.sws i{display:block;height:40px}
+.sws span{display:block;padding:6px 8px}
+</style>
+
+<div class="dv-top">
+  <b>MeetingMind · Learning vertical redesign</b><span class="dv-oid" style="background:#FDE68A">Awaiting founder approval</span>
+  <div class="sp"></div>
+  <a class="nav" href="#t0">Walkthrough</a><a class="nav" href="#t1">Learn</a><a class="nav" href="#t2">Library</a><a class="nav" href="#t3">Session</a><a class="nav" href="#t4">Diagnostic</a><a class="nav" href="#t5">Recall</a><a class="nav" href="#t6">Progress</a><a class="nav" href="#t7">Ask</a><a class="nav" href="#t8">Dark</a><a class="nav" href="#t9">System</a>
+  <span class="dv-tg" role="group" aria-label="Appearance of canvas frames"><button class="on" data-theme="light">Light</button><button data-theme="dark">Dark</button></span>
+  <span class="dv-tg" role="group" aria-label="Text size of canvas frames"><button class="on" data-size="1">Text 1.0×</button><button data-size="1.3">1.3×</button></span>
+</div>
+
+<header class="dv-intro">
+  <div class="dv-gate"><i></i>Design exploration for approval. Not in the 1.0 paid-launch scope. No app code has changed.</div>
+  <h1>Learning: turn what you listen to into knowledge you keep</h1>
+  <p>A redesign of the whole Learning vertical for university students who record lectures. One scenario runs through every screen: <b>Thandi</b>, a second-year student, studying <b>Human Biochemistry</b> and its <b>Enzyme Kinetics — Lecture 07</b> (competitive inhibition, Michaelis–Menten kinetics, enzyme activity and reaction rates). It is Thursday 13 November, 9:30.</p>
+  <p><b>How to review.</b> Start with the walkthrough (turn 0): one live phone with journeys to launch, a note on every screen and switches for dark mode, large text, offline and “done for today”. Every frame below is live too: tap anything. Append <code>#3a</code>-style ids to the URL to jump to a screen. The written spec is <code>design/learning-vertical-design-spec.md</code>.</p>
+  <div class="dv-grid">
+    <div class="dv-card"><h3>1 · Three places, plus a mode</h3><p><b>Learn · Library · Progress</b> sit in the space’s bar. <b>Practice</b> is a full-screen focus mode you enter from wherever you are, so it never becomes a fourth list of the same items.</p></div>
+    <div class="dv-card"><h3>2 · One bounded plan a day</h3><p>Learn shows a single plan of about 14 minutes with one primary button. It has a real “done for today”, a 5-minute version, and no backlog that grows.</p></div>
+    <div class="dv-card"><h3>3 · The session mirrors the loop</h3><p>Source · Understand · Practise · Mastery are four tabs of one workspace, with a “Next step” strip that is always one tap away.</p></div>
+    <div class="dv-card"><h3>4 · Evidence, not scores</h3><p>Five qualitative states with a glyph, a label and a plain-language reason. There are no percentages or predictions. Every claim cites a timestamp, and unclear audio is flagged and held back.</p></div>
+    <div class="dv-card"><h3>5 · Retrieval before rereading</h3><p>Answers are hidden until you try. The study guide ends in a quiz, not more text. Ask ends in “Quiz me”.</p></div>
+    <div class="dv-card"><h3>Deliberately not here</h3><ul><li>Teach-Back, Study With Me (1.1)</li><li>Exam dates, mock exams, readiness (R2)</li><li>Knowledge map, cross-source sessions (R3)</li><li>Streaks, leaderboards, sharing</li></ul></div>
+  </div>
+  <div class="dv-index" id="index"></div>
+</header>
+
+<section class="dv-turn" id="t0">
+  <div class="dv-thd"><a class="dv-tid" href="#t0">0</a><span class="dv-tname">Walkthrough: one live phone, the whole vertical</span></div>
+  <p class="dv-tdesc">Pick a journey, then use the app as a student would. The panel explains the screen you are on. Back, tabs, sheets, practice and Ask all work, and state carries across screens (finish Daily Recall and Learn updates).</p>
+  <div class="wt">
+    <div class="dev" id="wt-dev"></div>
+    <div class="wt-side">
+      <div class="wt-box"><h4>You are here</h4><div class="wt-where" id="wt-where"></div><div class="wt-note" id="wt-note"></div></div>
+      <div class="wt-box"><h4>Journeys</h4>
+        <button class="wt-j" data-j="first"><b>1 · First-time student</b>Empty Learn → use today’s lecture → pick course → build → diagnostic → see where you start.</button>
+        <button class="wt-j" data-j="return"><b>2 · Returning student, daily</b>Today’s plan → Daily Recall (reveal, rate) → summary → weak concept → done for today.</button>
+        <button class="wt-j" data-j="weak"><b>3 · Why is this concept weak?</b>Concept → reason → lecture evidence → transcript → practise it.</button>
+        <button class="wt-j" data-j="ask"><b>4 · Ask, then Quiz me</b>Cited answer → open a citation → follow-ups (uncertain source, not in lecture) → Quiz me.</button>
+        <button class="wt-j" data-j="lib"><b>5 · Organise</b>Library → course → session tabs → Source moments.</button>
+        <button class="wt-j" data-j="prog"><b>6 · Progress</b>Strengths and gaps → course concepts → how states work.</button>
+      </div>
+      <div class="wt-box"><h4>Conditions</h4>
+        <label class="wt-sw">Dark appearance<input type="checkbox" data-t="dark"></label>
+        <label class="wt-sw">Large text (1.3×)<input type="checkbox" data-t="big"></label>
+        <label class="wt-sw">Offline<input type="checkbox" data-t="offline"></label>
+        <label class="wt-sw">Done for today<input type="checkbox" data-t="alldone"></label>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="turns"></div>
+
+<script>
+"use strict";
+/* ═══════════════════════ Canvas frames ═══════════════════════ */
+const L = r => ({ route:r, p:{}, sTab:'understand' });
+const pr = (m, o) => mkPr(m, o);
+const TURNS = [
+ { id:'t1', n:'1', name:'Learn: the Daily Brief', desc:'The most important screen. It answers “what is worth learning today?” with one bounded plan, one primary button, a reason for the weak concept and calm momentum. States shown: start of day, partway, done, first run, offline and large text.', frames:[
+  ['1a','Learn · start of day','About 14 minutes in three items. The hero is the only accent surface on the screen. “Only have 5 minutes?” trims the plan; nothing becomes a backlog.', {}],
+  ['1b','Learn · partway','Daily Recall done. The plan counts down in minutes and the button moves to the next most useful thing.', {done:{recall:true,drill:false,cont:false}, cs:{mm:'developing'}}],
+  ['1c','Learn · done for today','A real finish. It states what changed and when tomorrow’s reviews are, then offers optional extras quietly.', {done:{recall:true,drill:true,cont:true}, cs:{compinh:'learning'}}],
+  ['1d','Learn · first run (empty)','No sessions yet. The primary action uses the lecture already recorded today; Record is secondary. Three lines explain the loop.', {scenario:'new'}],
+  ['1e','Learn · offline','A neutral status line, not an error. Everything already generated still works.', {offline:true}],
+  ['1f','Learn · large text 1.3×','Text-size personalisation at its largest step. Rows grow; nothing truncates mid-word or overlaps.', {big:true}],
+ ]},
+ { id:'t2', n:'2', name:'Library, search, courses and creating a session', desc:'The organised collection. Courses come first; sessions and their sources follow. Search spans concepts and what was said. Creating a session takes three steps and the student can leave while it builds.', frames:[
+  ['2a','Library','Courses with state bars, recent sessions, and lectures not yet in Learning. “New” is a tonal button, not a FAB, so it never covers content.', {route:'library'}],
+  ['2b','Search · “inhibition”','Results grouped as Concepts (with state), Said in lectures (playable moments) and Sessions.', {route:'search', stack:[L('library')]}],
+  ['2c','Course · Human Biochemistry','The course’s next action, understanding as counts by state, gaps, topics and sessions. Pause, rename and reset are in the overflow.', {route:'course', p:{id:'bioc'}, stack:[L('library')]}],
+  ['2d','New session sheet','Four starting points: recording, note, typed or record now.', {route:'library', sheet:'new'}],
+  ['2e','Create · choose course','The course is suggested from the title. “Not now” is a real option. One line on privacy and what happens next.', {route:'createCourse', scenario:'new', stack:[L('learn'),L('createSrc')]}],
+  ['2f','Create · building','Visible stages with honest wording, an audio-quality warning when relevant, and “Leave and carry on”.', {route:'createBuild', scenario:'new', buildStep:2, freeze:true}],
+ ]},
+ { id:'t3', n:'3', name:'Learning Session and concept detail', desc:'The central workspace. Source · Understand · Practise · Mastery are four tabs of one place, ordered like the learning loop. Understand opens by default. The Next step strip stays above the tabs so the most useful action is always one tap away.', frames:[
+  ['3a','Session · Understand (default)','Summary in the reading face, lecturer emphasis as quotes, concepts with states, a relationship table and a timestamped outline. It ends with “Quiz me”.', {route:'session', sTab:'understand', stack:[L('library')]}],
+  ['3b','Session · Source','Player, honest transcript quality, and the cited moment highlighted. Unclear audio has a wavy underline and a reason, not only a colour.', {route:'session', sTab:'source', hl:'24:12', playing:true, stack:[L('library')]}],
+  ['3c','Session · Practise','The recommended activity, the diagnostic result, practice sets and history.', {route:'session', sTab:'practise', stack:[L('library')]}],
+  ['3d','Session · Mastery','States grouped with a reason for each. “How states work” makes the rules inspectable.', {route:'session', sTab:'mastery', stack:[L('library')]}],
+  ['3e','Session · just created (loading)','The guide is readable at once; the Practise tab shows a static skeleton while questions are written. No idle animation.', {route:'session', sTab:'practise', building:true, scenario:'new', created:true, freeze:true}],
+  ['3f','Concept · Competitive inhibition','The state and its reason, definition, plain explanation and lecture evidence (one quote, more on demand). Practise is the primary action.', {route:'concept', p:{id:'compinh'}, stack:[L('learn')]}],
+  ['3g','Concept · edit and report','Generated content is always correctable: rename, edit, merge, hide or report. Edits survive regeneration.', {route:'concept', p:{id:'compinh'}, sheet:'editConcept', stack:[L('learn')]}],
+  ['3h','Concept · uncertain source','A New concept whose source audio is partly unclear. Its questions are held back until the student checks the transcript.', {route:'concept', p:{id:'lb'}, stack:[L('learn')]}],
+ ]},
+ { id:'t4', n:'4', name:'Diagnostic and questions', desc:'Six questions, two formats. The answer is never shown before an attempt. Feedback explains rather than judges, always cites the lecture, and every result ends in a next action.', frames:[
+  ['4a','Diagnostic · intro','Length, “not a grade”, answers after each try and sources for each answer.', {route:'practice', scenario:'new', created:true, pr:pr('diag',{intro:true})}],
+  ['4b','Multiple choice · selected','The selection is shown by a ring, a filled letter and aria-checked. “Check answer” is enabled only after a choice.', {route:'practice', pr:pr('diag',{sel:0})}],
+  ['4c','Multiple choice · not quite','Correct and chosen answers are marked by icon and text, not only colour. Why the chosen answer doesn’t fit, the reasoning, and the lecture quote.', {route:'practice', pr:pr('diag',{sel:0, sub:true, res:['wrong']})}],
+  ['4d','Multiple choice · correct','Short confirmation and the reasoning, so a lucky guess still teaches.', {route:'practice', pr:pr('diag',{i:3, sel:1, sub:true, res:['wrong','right','right','right']})}],
+  ['4e','Short answer · writing','Free text (or voice). “Not sure — show me” is a respectable exit.', {route:'practice', pr:pr('diag',{i:1, text:'It’s the substrate concentration where the enzyme works at half its top speed', res:['wrong']})}],
+  ['4f','Short answer · compare','The lecture’s answer plus key points. MeetingMind suggests the ticks; the student decides. No black-box grade.', {route:'practice', pr:pr('diag',{i:1, text:'It’s the substrate concentration where the enzyme works at half its top speed', sub:true, checks:[true,false], res:['wrong']})}],
+  ['4g','Diagnostic · summary','Where you’re starting, concept by concept, and when the first reviews arrive.', {route:'practice', scenario:'new', created:true, diagDone:true, cs:{compinh:'review', km:'learning', sat:'learning', mm:'learning', noncomp:'learning'}, pr:pr('diag',{end:true, res:['wrong','part','right','right','right','wrong'], score:3})}],
+  ['4h','Diagnostic · answers','Read-only review with the right answer and the source for each question.', {route:'diagReview', stack:[L('session')]}],
+ ]},
+ { id:'t5', n:'5', name:'Daily Recall (flashcards)', desc:'Flashcards are a format, not the product. The card asks the student to recall first. Reveal is a deliberate button, not an accidental flip. Ratings say when each card returns. Stopping is safe and resumable.', frames:[
+  ['5a','Card · front','A paper card with the prompt in the reading face and a one-line nudge to recall first.', {route:'practice', pr:pr('recall')}],
+  ['5b','Card · revealed','Answer, source moment and three honest ratings, each showing its next review.', {route:'practice', pr:pr('recall',{rev:true})}],
+  ['5c','Next card · confirmation','A quiet line confirms the rating was saved and when the last card returns.', {route:'practice', pr:pr('recall',{i:2, rates:[2,1], flash:'Saved — next review in 1 day'})}],
+  ['5d','Recall complete','Counts, what changed and why, what didn’t change and why, and tomorrow’s size.', {route:'practice', pr:pr('recall',{end:true, rates:[2,1,2,2,2,2,1,2], changes:[{id:'mm',st:'developing',n:'Michaelis–Menten kinetics: Learning → Developing',d:'Recalled correctly on a second day.'},{id:'compinh',st:'learning',n:'Competitive inhibition: Needs review → Learning',d:'Recalled after a miss. Another success on a different day moves it on.'}]})}],
+  ['5e','Stop mid-way','Interruptions are normal. Progress is saved and Learn offers to resume.', {route:'practice', pr:pr('recall',{i:3}), sheet:'stop'}],
+  ['5f','Strengthen · summary','After the targeted practice: the state moved, and what would move it further.', {route:'practice', cs:{compinh:'learning'}, pr:pr('drill',{end:true, res:['right','right','wrong'], moved:true})}],
+ ]},
+ { id:'t6', n:'6', name:'Progress', desc:'Understanding over time, in words and counts. No percentages, no readiness score and no exam prediction. Recommendations are always actionable.', frames:[
+  ['6a','Progress','Going well and worth practising, course state bars with counts, a 4-week review history and recent activity.', {route:'progress'}],
+  ['6b','Course concepts','Every concept with its state, filterable by state with counts in the chips.', {route:'progressCourse', stack:[L('progress')]}],
+  ['6c','How states work','The rules in plain language: what moves a concept and what never does.', {route:'progress', sheet:'states'}],
+ ]},
+ { id:'t7', n:'7', name:'Ask Learning', desc:'A source-grounded tutor, not a chatbot. Scope is explicit and changeable. Citations are numbered and open the exact quote and moment. Uncertainty and missing coverage are stated. Every answer can become practice.', frames:[
+  ['7a','Answer with citations','Numbered citations; tapping one opens the quote and moment. Quiz me, transcript, copy and report.', {route:'ask', askCite:'a1', stack:[L('session')]}],
+  ['7b','Not in the lecture','It says so, cites the only related moment, and offers general knowledge only on request, clearly labelled.', {route:'ask', askThread:[2], askGeneral:true, stack:[L('session')]}],
+  ['7c','Uncertain source','Part of the source audio is unclear, so the answer says which part it relies on.', {route:'ask', askThread:[1], stack:[L('session')]}],
+  ['7d','Offline','Answers already given stay readable; asking new questions waits for a connection or an on-device model.', {route:'ask', offline:true, stack:[L('session')]}],
+ ]},
+ { id:'t8', n:'8', name:'Dark appearance', desc:'Midnight Graphite with the Study accent’s dark value. Wash surfaces carry the hierarchy because borders drop away in dark (DESIGN_SYSTEM §4).', frames:[
+  ['8a','Learn · dark','', {dark:true}],
+  ['8b','Session · dark','', {dark:true, route:'session', sTab:'understand', stack:[L('library')]}],
+  ['8c','Recall · dark','', {dark:true, route:'practice', pr:pr('recall',{rev:true})}],
+  ['8d','Question feedback · dark','', {dark:true, route:'practice', pr:pr('diag',{sel:0, sub:true, res:['wrong']})}],
+  ['8e','Done for today · dark','', {dark:true, done:{recall:true,drill:true,cont:true}, cs:{compinh:'learning'}}],
+  ['8f','Progress · dark','', {dark:true, route:'progress'}],
+ ]},
+];
+
+/* Build turns */
+const turnsEl = document.getElementById('turns'), apps = [], idx = [];
+TURNS.forEach(T => {
+  const sec = document.createElement('section'); sec.className = 'dv-turn'; sec.id = T.id;
+  sec.innerHTML = `<div class="dv-thd"><a class="dv-tid" href="#${T.id}">${T.n}</a><span class="dv-tname">${T.name}</span></div><p class="dv-tdesc">${T.desc}</p><div class="dv-opts"></div>`;
+  const opts = sec.querySelector('.dv-opts');
+  T.frames.forEach(([id, title, note, init]) => {
+    const o = document.createElement('div'); o.className = 'dv-opt'; o.id = id;
+    o.innerHTML = `<div class="dv-olabel"><a class="dv-oid" href="#${id}">${id}</a><span><b>${title}.</b> ${note}</span></div><div class="dev"></div><button class="dv-reset">Reset this frame</button>`;
+    opts.appendChild(o);
+    const app = new App(o.querySelector('.dev'), init); app.fixedDark = !!init.dark; apps.push(app);
+    o.querySelector('.dv-reset').onclick = () => { app.reset(); applyGlobal(app); };
+    idx.push([id, title]);
+  });
+  turnsEl.appendChild(sec);
+});
+/* Frames are built before they are in the document; re-render those that scroll to an anchor. */
+apps.forEach(a => { if (a.s.hl || a.s.askThread.length) { a.anchorPending = true; a.render(); } });
+/* Design system board */
+const ds = document.createElement('section'); ds.className = 'dv-turn'; ds.id = 't9';
+const sw = (n, v) => `<div><i style="background:${v}"></i><span>${n}<br>${v}</span></div>`;
+ds.innerHTML = `<div class="dv-thd"><a class="dv-tid" href="#t9">9</a><span class="dv-tname">Learning design language, built on MM tokens</span></div>
+<p class="dv-tdesc">Everything uses the existing <code>MM.*</code> tokens and <code>core/ui/mm</code> components, plus three proposed additions marked ◆ (see spec §7). Learning takes the Study space accent (Ocean), Paper and Midnight Graphite surfaces, and one reading face for study content.</p>
+<div style="display:flex;gap:28px;flex-wrap:wrap">
+<div class="dev flat" style="width:560px">
+  <div class="dsl">Colour · light (Paper + Ocean)</div>
+  <div class="sws">${sw('background','#FAFAF9')}${sw('surface','#FFFFFF')}${sw('surfaceSunk','#F5F5F4')}${sw('◆ paper','#FFFDF8')}${sw('ink','#18181B')}${sw('inkSecondary','#52525B')}${sw('◆ inkMuted (AA)','#6B6B73')}${sw('line','#E5E5E3')}${sw('accent · Ocean','#0E7490')}${sw('accentWash','rgba(14,116,144,.09)')}${sw('◆ success (AA)','#15803D')}${sw('◆ clay (review)','#B45309')}</div>
+  <div class="dsl" style="margin-top:22px">Type</div>
+  <div class="t-display">Good morning, Thandi</div><div class="t-cap">display · Outfit 600 · 30/36 · one per screen</div>
+  <div class="t-title mt12">Enzyme Kinetics — Lecture 07</div><div class="t-cap">title · Inter 600 · 22/28</div>
+  <div class="t-heading mt12">Competitive inhibition</div><div class="t-cap">heading · Inter 600 · 17/24</div>
+  <div class="t-body mt12">Because inhibitor and substrate compete for the same site…</div><div class="t-cap">body · Inter 400 · 15/22</div>
+  <div class="t-read mt12">The substrate concentration at which the reaction runs at half its maximum velocity.</div><div class="t-cap">◆ reading · Literata 400 · 17/28 · study-guide prose, definitions, answers</div>
+  <div class="t-prompt mt12">What is Km?</div><div class="t-cap">◆ prompt · Literata 500 · 22/30 · question stems and card fronts</div>
+  <div class="mt12"><span class="t-mono acc">24:12</span> <span class="t-cap">mono · timestamps only</span></div>
+</div>
+<div class="dev flat" style="width:520px">
+  <div class="dsl">Learning states · glyph + label + reason</div>
+  <div class="col" style="gap:10px">${['new','learning','developing','strong','review'].map(k=>`<div class="row">${ms(k)}<span class="t-cap">${STATES[k].long}</span></div>`).join('')}</div>
+  <div class="mt16">${msbar({strong:9,developing:12,learning:8,review:3,new:9},10)}</div><div class="mt8">${legend({strong:9,developing:12,learning:8,review:3,new:9})}</div>
+  <div class="dsl" style="margin-top:22px">Actions</div>
+  <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn pri">Start Daily Recall</button><button class="btn ton">Practise · 4 min</button><button class="btn sec">Show all</button><button class="btn txt">Review the idea</button></div>
+  <div class="row mt12" style="gap:8px">${cite('24:12')}<span class="cn">1</span><span class="cn on">2</span><button class="chip on">All</button><button class="chip">Courses</button></div>
+  <div class="dsl" style="margin-top:22px">Feedback</div>
+  ${status('info','wifiOff','<b>You’re offline.</b> Practice still works.')}<div class="mt8">${status('warn','warn','<b>Mostly clear.</b> 31:48–33:05 was hard to hear.')}</div>
+  <div class="fb right mt8"><h4>${ic('okc','s')}That’s right</h4></div><div class="fb wrong mt8"><h4>${ic('partc','s')}Not quite</h4></div>
+  <div class="dsl" style="margin-top:22px">Evidence</div><div class="quote">“So Vmax doesn’t change. What changes is the apparent Km.”</div>
+  <div class="dsl" style="margin-top:22px">Rating</div><div class="rate">${[['Forgot','xc','r0','Again today'],['Hesitated','partc','r1','In 1 day'],['Knew it','okc','r2','In 3 days']].map(([l,i,c,w])=>`<button class="${c}">${ic(i)}${l}<small>${w}</small></button>`).join('')}</div>
+</div></div>`;
+turnsEl.appendChild(ds);
+document.getElementById('index').innerHTML = idx.map(([id,t])=>`<a href="#${id}"><span class="dv-oid">${id}</span>${t}</a>`).join('') + `<a href="#t9"><span class="dv-oid">9</span>Design language</a>`;
+
+/* Global appearance toggles for canvas frames */
+let G = { dark:false, size:1 };
+function applyGlobal(app) { if (!app.fixedDark) app.s.dark = G.dark; app.s.big = G.size > 1 || !!app.init.big; app.render(); }
+document.querySelectorAll('[data-theme]').forEach(b => b.onclick = () => { G.dark = b.dataset.theme === 'dark'; document.querySelectorAll('[data-theme]').forEach(x => x.classList.toggle('on', x === b)); apps.forEach(applyGlobal); });
+document.querySelectorAll('[data-size]').forEach(b => b.onclick = () => { G.size = +b.dataset.size; document.querySelectorAll('[data-size]').forEach(x => x.classList.toggle('on', x === b)); apps.forEach(applyGlobal); });
+
+/* Walkthrough */
+const J = { first:{scenario:'new'}, return:{}, weak:{route:'concept', p:{id:'compinh'}, stack:[L('learn')]}, ask:{route:'ask', stack:[L('session')]}, lib:{route:'library'}, prog:{route:'progress'} };
+const wtWhere = document.getElementById('wt-where'), wtNote = document.getElementById('wt-note');
+const wt = new App(document.getElementById('wt-dev'), {}, app => { const [a, b] = noteFor(app.s); wtWhere.textContent = a; wtNote.textContent = b; });
+const conds = () => { const o = {}; document.querySelectorAll('[data-t]').forEach(c => { if (c.dataset.t === 'alldone') { if (c.checked) { o.done = {recall:true,drill:true,cont:true}; o.cs = {compinh:'learning'}; } } else o[c.dataset.t] = c.checked; }); return o; };
+document.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { wt.init = Object.assign({}, J[b.dataset.j]); wt.reset(Object.assign({}, J[b.dataset.j], conds())); });
+document.querySelectorAll('[data-t]').forEach(c => c.onchange = () => {
+  const s = wt.s, k = c.dataset.t;
+  if (k === 'alldone') { s.done = c.checked ? {recall:true,drill:true,cont:true} : {recall:false,drill:false,cont:false}; if (c.checked) s.cs.compinh = 'learning'; else delete s.cs.compinh; }
+  else s[k] = c.checked;
+  wt.render(); });
+/* ?solo=<id>[&do=action:value,…] renders one frame alone (used for review screenshots and deep links). */
+const Q = new URLSearchParams(location.search);
+if (Q.get('solo')) {
+  const host = document.getElementById(Q.get('solo')); const dev = host && host.querySelector('.dev');
+  if (dev) { const app = apps.find(a => a.el === dev) || wt; if (Q.get('dark')) { app.s.dark = true; }
+    (Q.get('do')||'').split(',').filter(Boolean).forEach(step => { const [a, v] = step.split(':'); const el = [...dev.querySelectorAll('[data-a="'+a+'"]')].find(e => v === undefined || e.dataset.v === v); el && el.click(); });
+    app.render(); document.body.innerHTML = ''; document.body.style.cssText = 'margin:0;padding:10px;background:#EDEEF2'; document.body.appendChild(dev); }
+}
+if (Q.get('sheet')) { const devs = Q.get('sheet').split(',').map(id => document.getElementById(id)).filter(Boolean).map(h => h.querySelector('.dev'));
+  document.body.innerHTML = ''; document.body.style.cssText = 'margin:0;padding:10px;background:#EDEEF2;display:flex;gap:10px;align-items:flex-start'; devs.forEach(d => document.body.appendChild(d)); apps.forEach(a => { if (devs.includes(a.el) && (a.s.hl || a.s.askThread.length)) { a.anchorPending = true; a.render(); } }); }
+if (location.hash) setTimeout(() => { const el = document.querySelector(location.hash); el && el.scrollIntoView(); }, 60);
+</script>
+</body>
+</html>
