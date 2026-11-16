@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.core.tasks
 
+import com.craftflowtechnologies.meetingmind.core.database.NotebookDao
 import com.craftflowtechnologies.meetingmind.core.database.NotebookEntity
 import com.craftflowtechnologies.meetingmind.core.database.NotePersonCrossRef
 import com.craftflowtechnologies.meetingmind.core.database.PeopleDao
@@ -13,9 +14,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.util.UUID
 
 enum class TaskKind(val label: String) {
@@ -96,17 +99,34 @@ object TaskRules {
      * with it, at the same time of day. Returns null for a task that doesn't repeat.
      */
     fun nextOccurrence(task: Task, zone: ZoneId = ZoneId.systemDefault()): Task? {
-        if (task.repeat == TaskRepeat.NONE) return null
-        fun step(ms: Long?): Long? = ms?.let {
-            val t = Instant.ofEpochMilli(it).atZone(zone)
-            when (task.repeat) {
-                TaskRepeat.DAILY -> t.plusDays(1)
-                TaskRepeat.WEEKLY -> t.plusWeeks(1)
-                TaskRepeat.MONTHLY -> t.plusMonths(1)
-                TaskRepeat.NONE -> t
-            }.toInstant().toEpochMilli()
-        }
+        val next = stepper(task) ?: return null
+        fun step(ms: Long?): Long? = ms?.let { next(Instant.ofEpochMilli(it).atZone(zone)).toInstant().toEpochMilli() }
         return task.copy(dueAt = step(task.dueAt), remindAt = step(task.remindAt), doneAt = null)
+    }
+
+    /** The step for a task's RRULE when it has one, else for its legacy [TaskRepeat]. Null when it doesn't repeat. */
+    private fun stepper(task: Task): ((ZonedDateTime) -> ZonedDateTime)? {
+        task.repeatRule?.let { rule -> ruleStepper(rule)?.let { return it } }
+        return when (task.repeat) {
+            TaskRepeat.NONE -> null
+            TaskRepeat.DAILY -> ::plusDay
+            TaskRepeat.WEEKLY -> ::plusWeek
+            TaskRepeat.MONTHLY -> ::plusMonth
+        }
+    }
+
+    /** FREQ=DAILY, MONTHLY, or WEEKLY with an optional BYDAY list. Unknown rules return null. */
+    private fun ruleStepper(rule: String): ((ZonedDateTime) -> ZonedDateTime)? {
+        val parts = rule.split(';').associate { it.substringBefore('=') to it.substringAfter('=', "") }
+        return when (parts["FREQ"]) {
+            "DAILY" -> ::plusDay
+            "MONTHLY" -> ::plusMonth
+            "WEEKLY" -> {
+                val days = parts["BYDAY"].orEmpty().split(',').mapNotNull { WEEKDAY_CODES[it] }.toSet()
+                if (days.isEmpty()) ::plusWeek else weekdayStep(days)
+            }
+            else -> null
+        }
     }
 
     /**
@@ -119,6 +139,27 @@ object TaskRules {
         }
 }
 
+private val WEEKDAY_CODES = mapOf(
+    "MO" to DayOfWeek.MONDAY, "TU" to DayOfWeek.TUESDAY, "WE" to DayOfWeek.WEDNESDAY, "TH" to DayOfWeek.THURSDAY,
+    "FR" to DayOfWeek.FRIDAY, "SA" to DayOfWeek.SATURDAY, "SU" to DayOfWeek.SUNDAY
+)
+
+private fun plusDay(t: ZonedDateTime): ZonedDateTime = t.plusDays(1)
+private fun plusWeek(t: ZonedDateTime): ZonedDateTime = t.plusWeeks(1)
+private fun plusMonth(t: ZonedDateTime): ZonedDateTime = t.plusMonths(1)
+
+private fun weekdayStep(days: Set<DayOfWeek>): (ZonedDateTime) -> ZonedDateTime = { from -> nextWeekday(from, days) }
+
+/** The next day after [from] whose weekday is in [days]. */
+private fun nextWeekday(from: ZonedDateTime, days: Set<DayOfWeek>): ZonedDateTime {
+    var d = from.plusDays(1)
+    repeat(7) {
+        if (d.dayOfWeek in days) return d
+        d = d.plusDays(1)
+    }
+    return from.plusWeeks(1)
+}
+
 class TaskRepository(
     private val tasks: TaskDao,
     private val people: PeopleDao,
@@ -126,7 +167,9 @@ class TaskRepository(
     /** Called after anything that changes when reminders fire. */
     private val onRemindersChanged: suspend () -> Unit = {},
     /** Called after a task is ticked or reopened, so a commitment linked to it follows. */
-    private val onTaskDone: suspend (taskId: String, done: Boolean) -> Unit = { _, _ -> }
+    private val onTaskDone: suspend (taskId: String, done: Boolean) -> Unit = { _, _ -> },
+    /** Needed only to create task lists ([createList]). */
+    private val notebooks: NotebookDao? = null
 ) {
     private val zone: ZoneId = ZoneId.systemDefault()
 
@@ -245,6 +288,19 @@ class TaskRepository(
     }
 
     suspend fun labelsFor(taskId: String): List<TaskLabel> = io { tasks.labelsForTask(taskId).map { TaskLabel(it.id, it.name, it.color) } }
+
+    /** A new task list (a notebook of kind TASK_LIST) in [space]. Null when the name is blank or no notebook DAO is wired. */
+    suspend fun createList(name: String, space: String): TaskList? = io {
+        val dao = notebooks ?: return@io null
+        if (name.isBlank()) return@io null
+        val now = clock()
+        val entity = NotebookEntity(
+            id = "list_${UUID.randomUUID()}", name = name.trim(), space = space, colorHex = null, icon = null,
+            createdAt = now, updatedAt = now, archivedAt = null, sortOrder = 0, kind = "TASK_LIST"
+        )
+        dao.upsert(entity)
+        entity.toTaskList()
+    }
 
     /** Adds a section at the end of a list, or renames [id] when it is given. */
     suspend fun saveSection(listId: String, name: String, id: String? = null): TaskSection = io {
