@@ -114,11 +114,21 @@ class DeterministicSpacedSchedulerTest {
     }
 
     @Test
-    fun `previewInterval returns deterministic preview strings for null schedule`() {
-        assertEquals("<1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.AGAIN, baseTime))
+    fun `previewInterval for a new card matches what the scheduler saves`() {
+        // A card with no schedule starts from initialSchedule, whose first step is always 1 day.
+        // The old preview said "<1d" for AGAIN and "3d" for EASY, which the scheduler never saved.
+        assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.AGAIN, baseTime))
         assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.HARD, baseTime))
         assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.GOOD, baseTime))
-        assertEquals("3d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.EASY, baseTime))
+        assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.EASY, baseTime))
+        val saved = DeterministicSpacedScheduler.calculateNextSchedule(
+            DeterministicSpacedScheduler.initialSchedule("a", "s", null, baseTime), isCorrect = true,
+            rating = RecallRating.GOOD, now = baseTime
+        )
+        assertEquals(saved.intervalDays, DeterministicSpacedScheduler.previewIntervalDays(null, RecallRating.GOOD, baseTime))
+        assertEquals("Tomorrow", DeterministicSpacedScheduler.nextReviewLabel(1))
+        assertEquals("In 3 days", DeterministicSpacedScheduler.nextReviewLabel(3))
+        assertEquals("In 2 weeks", DeterministicSpacedScheduler.nextReviewLabel(14))
     }
 
     @Test

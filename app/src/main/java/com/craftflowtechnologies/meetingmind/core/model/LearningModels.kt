@@ -560,30 +560,37 @@ object DeterministicSpacedScheduler {
     }
 
     /**
-     * Dynamically computes the preview string for the next review interval
-     * for a given rating. Respects current repetition count, ease factor, and
-     * explicitly resets to 1d on AGAIN.
+     * The interval, in days, that [rating] would give, computed by the real scheduler so the label
+     * a student sees always matches what is saved. A card with no schedule yet starts from
+     * [initialSchedule].
      */
+    fun previewIntervalDays(
+        current: ReviewSchedule?,
+        rating: RecallRating,
+        now: Long = System.currentTimeMillis()
+    ): Int {
+        val base = current ?: initialSchedule(activityId = "preview", sessionId = "preview", conceptId = null, now = now)
+        return calculateNextSchedule(
+            current = base,
+            isCorrect = rating != RecallRating.AGAIN,
+            rating = rating,
+            now = now
+        ).intervalDays
+    }
+
     fun previewInterval(
         current: ReviewSchedule?,
         rating: RecallRating,
         now: Long = System.currentTimeMillis()
-    ): String {
-        if (current == null) {
-            return when (rating) {
-                RecallRating.AGAIN -> "<1d"
-                RecallRating.HARD -> "1d"
-                RecallRating.GOOD -> "1d"
-                RecallRating.EASY -> "3d"
-            }
-        }
-        val next = calculateNextSchedule(
-            current = current,
-            isCorrect = rating != RecallRating.AGAIN,
-            rating = rating,
-            now = now
-        )
-        return formatIntervalDays(next.intervalDays)
+    ): String = formatIntervalDays(previewIntervalDays(current, rating, now))
+
+    /** "Tomorrow", "In 3 days", "In 2 weeks": what a rating button says about the next review. */
+    fun nextReviewLabel(days: Int): String = when {
+        days <= 0 -> "Later today"
+        days == 1 -> "Tomorrow"
+        days < 14 -> "In $days days"
+        days < 60 -> "In ${days / 7} weeks"
+        else -> "In ${days / 30} months"
     }
 
     fun formatIntervalDays(days: Int): String {

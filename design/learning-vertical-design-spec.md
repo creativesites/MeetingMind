@@ -508,3 +508,25 @@ Teach-Back recording and rubric, Study With Me, question-mode taxonomy, "Explain
 
 ### Walkthrough performed
 Both scenarios (first-time and returning) were walked end to end, by hand in the walkthrough phone and with scripted runs of journeys J1–J4: create → diagnostic → back stack; recall → strengthen → study guide → done; concept → transcript → back; Ask → citation → follow-ups → Quiz me → close. Also checked: rename with Undo, hide, the 5-minute plan, resume after stopping, and offline Ask. All 47 canvas frames render without script errors, in light, dark and 1.3× text. Ten issues were found and fixed; see the end of §6. **Not verified:** rendering in the user's own browser with Google Fonts loaded (reviewed with system-font fallbacks); real-device behaviour, which is Phase B.
+
+---
+
+## 17. Phase B status (approved 2026-11-16)
+
+The founder approved the design as specified, so D1–D10 follow the recommendations in §14. D11 (Learning's release status) is still open.
+
+| Step (§15) | State | Where |
+|---|---|---|
+| 1 Foundations | Done. Literata is not bundled yet; the system serif stands in (D4). | `ui/theme/LearningTheme.kt`, `feature/learning/components/` |
+| 2 Trust fixes | Done for every surface still routed: no percentages or floors, no answer before an attempt, hints never quote the answer, errors shown with Retry. The old screens that held #1, #2, #4 and #17 are no longer routed. | `LearningAiEngine.kt`, `LearnViewModel.kt` |
+| 3 Practice scaffold | Done: recall with three ratings, choice with labelled results, short answer with self-check, skip with Undo, stop and resume, summary. | `space/PracticeModeScreen.kt` |
+| 4 Learning Session | Done: four tabs, Next step, Source with highlight and unclear-audio marking, Mastery with reasons, Concept detail with rename, hide and report. | `space/SessionStudioScreen.kt` |
+| 5 Diagnostic | Done: intro, 5–8 questions, summary that splits "worth strengthening" from "looks solid". | `LearningRules.diagnosticSet` |
+| 6 Daily Brief | Done: bounded plan, five-minute version, done state, week without streaks; brief refreshes while open (#10). | `space/LearningSpaceScreen.kt` |
+| 7 Library, course, search | Done, except the 3-step create flow (Record and Write still open the existing flows). | `space/LearningSpaceScreen.kt` |
+| 8 Progress | Done. | `space/LearningSpaceScreen.kt` |
+| 9 Ask Learning | Not started: the shared `AssistantSheet` is still used, scoped to the session. | — |
+| 10 Navigation | Done: space bar, Home integration (D2), Exam and Teach-Back hidden from the space (D3). | `MainActivity.kt` |
+| 11 Device pass | Not done. | — |
+
+Known gaps: the citation sheet opens the recording at the moment rather than playing in place; reminders (D8) are not built; the old `LearnHomeScreen`, `LearningSessionScreen` and `PracticeArenaScreen` files remain until a device pass confirms the new screens.

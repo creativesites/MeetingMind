@@ -1,6 +1,14 @@
 # Status
 
-Updated: 2026-11-15. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+
+## Learning vertical redesign, Phase B (2026-11-16)
+- **Approved:** founder approved `design/Learning Vertical Redesign.dc.html` and `design/learning-vertical-design-spec.md` "as designed", so decisions D1-D10 take the spec's recommendations. D11 (Learning's release status: `AGENTS.md` says production, `agents/PRODUCT.md` says cut from MVP) is still open.
+- **New Learning space** (`feature/learning/space/`, `feature/learning/components/`): Learn (bounded daily plan, five-minute version, done state, week without streaks), Library (search, courses with mastery counts, course view), Progress (qualitative states with reasons, no percentages); Session with Source · Understand · Practise · Mastery and a Next step strip; Concept detail with cited quotes, rename/hide/report with Undo; Practice as a full-screen mode (Daily Recall, ungraded diagnostic, strengthen a concept, session practice) with deliberate reveal, three ratings labelled by the real scheduler, short-answer self-check, skip with Undo, stop/resume, completion summary.
+- **Routing:** `learn`, `learning_session/{noteId}` and `learn_practice` now render the new screens; `HomeStyle.LEARNING` shows the Learn pane with the global bar and "Open Learning" (D2). Exam Prep and Teach-Back have no entry in the space (D3); their code and the `learn_exam` route are kept. The old `LearnHomeScreen`, `LearningSessionScreen` and `PracticeArenaScreen` are no longer routed; delete them after a device pass.
+- **Trust fixes:** offline hints no longer quote the answer and AI hints that do are dropped; review previews match the scheduler; the daily brief refreshes while open; a failed save no longer crashes practice; load errors show with Retry. AA contrast fix for `inkMuted`, `success`, `warning` (D5, separate commit).
+- **Not done:** Ask Learning redesign (still the shared `AssistantSheet`), the 3-step create flow, bundling Literata (D4; the system serif stands in), audio playback inside the citation sheet (it opens the recording at the moment instead), reminders (D8).
+- **Verification:** static checks only (icon names against the cached icon jars, colour/size literal guards, entry-point contract). Per `AGENTS.md`, `./gradlew` was not run locally: compile, `LearningRulesTest`, `LearningSpaceUiTest`, `HintSafetyTest`, `DeterministicSpacedSchedulerTest` and screenshot re-recording (contrast change) await the remote runner. Nothing checked on a device.
 
 ## Local LLM Parity Round 2, Vital Editor/Reminder Tools & Paid Killer Feature #2: Post-Session Autopilot Workflows (`Capability.AUTOMATION_RECIPES`) (2026-11-15)
 - **Pass 1 — Eliminated Remaining Cloud-Only & Privacy-Bypass Gaps:**

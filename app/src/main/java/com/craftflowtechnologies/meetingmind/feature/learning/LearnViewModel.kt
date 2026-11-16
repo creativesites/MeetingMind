@@ -26,10 +26,18 @@ import com.craftflowtechnologies.meetingmind.core.model.NoteDocument
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.RecallRating
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
+import com.craftflowtechnologies.meetingmind.core.model.ReviewSchedule
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
 import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.work.Marks
+import com.craftflowtechnologies.meetingmind.feature.learning.space.MaxPlanCards
+import com.craftflowtechnologies.meetingmind.feature.learning.space.QuickPlanCards
+import com.craftflowtechnologies.meetingmind.feature.learning.space.Release1PracticeTypes
+import com.craftflowtechnologies.meetingmind.feature.learning.space.conceptSet
+import com.craftflowtechnologies.meetingmind.feature.learning.space.diagnosticSet
+import com.craftflowtechnologies.meetingmind.feature.learning.space.isRelease1Practice
+import com.craftflowtechnologies.meetingmind.feature.learning.space.practiceItems
 import com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -125,7 +133,7 @@ class LearnViewModel @JvmOverloads constructor(
     val lectureNotes: StateFlow<List<LearningRepository.LectureNoteSummary>> = learningRepo.observeLectureNotes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val dailyBrief: StateFlow<LearningRepository.DailyCompanionBrief?> = learningRepo.observeDailyBrief()
+    val dailyBrief: StateFlow<LearningRepository.DailyCompanionBrief?> = learningRepo.observeLiveDailyBrief()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val goals: StateFlow<List<LearningGoal>> = learningRepo.observeGoals()
@@ -154,6 +162,7 @@ class LearnViewModel @JvmOverloads constructor(
     val isSynthesizingSession: StateFlow<Boolean> = _isSynthesizingSession.asStateFlow()
 
     private var documentObserveJob: Job? = null
+    private var detailObserveJob: Job? = null
 
     // Practice Arena state
     private val _practiceFilter = MutableStateFlow(PracticeArenaFilter.ALL)
@@ -333,6 +342,18 @@ class LearnViewModel @JvmOverloads constructor(
                             )
                     ) {
                         detail = learningRepo.bootstrapSessionMaterials(detail.session.id, allowDefaultFallback = true) ?: detail
+                    }
+
+                    // Keep the session's concepts, attempts and schedules live, so mastery and the
+                    // next step update as soon as practice is recorded.
+                    detailObserveJob?.cancel()
+                    val liveSessionId = detail.session.id
+                    detailObserveJob = viewModelScope.launch {
+                        learningRepo.observeSessionDetail(liveSessionId).collect { live ->
+                            if (live != null && _activeSessionDetail.value?.session?.id == liveSessionId) {
+                                _activeSessionDetail.value = live
+                            }
+                        }
                     }
 
                     // Observe live changes to the note document while Session Studio is open
@@ -610,6 +631,7 @@ class LearnViewModel @JvmOverloads constructor(
         _revealedHintCount.value = 0
         _practiceStats.value = PracticeSessionStats()
         _missedActivityIds.value = emptySet()
+        _practiceResults.value = emptyList()
         _activeTab.value = LearnTab.PRACTICE
     }
 
@@ -762,13 +784,27 @@ class LearnViewModel @JvmOverloads constructor(
 
         val activity = activities[currentIndex]
         viewModelScope.launch {
-            val outcome = learningRepo.recordAttempt(
-                activityId = activity.id,
-                userResponse = userResponse,
-                isCorrect = isCorrect,
-                rating = rating
-            )
+            val outcome = try {
+                learningRepo.recordAttempt(
+                    activityId = activity.id,
+                    userResponse = userResponse,
+                    isCorrect = isCorrect,
+                    rating = rating
+                )
+            } catch (e: Exception) {
+                // A failed save must never crash practice or pretend it worked.
+                Log.e("LearnViewModel", "Failed to save attempt", e)
+                _practiceError.value = "That answer couldn't be saved. Keep going; you can review it again later."
+                return@launch
+            }
             _lastOutcome.value = outcome
+            _practiceResults.value = _practiceResults.value + PracticeResult(
+                activity = activity,
+                isCorrect = isCorrect,
+                newState = outcome.masteryEvaluation?.state,
+                reason = outcome.masteryEvaluation?.reason,
+                nextReviewDays = outcome.schedule.intervalDays
+            )
             val isMissed = !isCorrect || rating == RecallRating.AGAIN || rating == RecallRating.HARD
             if (isMissed) {
                 _missedActivityIds.value = _missedActivityIds.value + activity.id
@@ -1122,6 +1158,201 @@ class LearnViewModel @JvmOverloads constructor(
         _studyTimerSecondsLeft.value = _studyTimerTotalSeconds.value
     }
 
+    // ───────────────────────── Learning space (design spec §4, §12) ─────────────────────────
+
+    /** Every visible concept, for Progress. */
+    val allConcepts: StateFlow<List<LearningConcept>> = learningRepo.observeAllConcepts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _practiceKind = MutableStateFlow(PracticeKind.SET)
+    val practiceKind: StateFlow<PracticeKind> = _practiceKind.asStateFlow()
+
+    private val _practiceTitle = MutableStateFlow("Practice")
+    val practiceTitle: StateFlow<String> = _practiceTitle.asStateFlow()
+
+    /** Concepts in the current practice, by id, so the summary can name what changed. */
+    private val _practiceConcepts = MutableStateFlow<Map<String, LearningConcept>>(emptyMap())
+    val practiceConcepts: StateFlow<Map<String, LearningConcept>> = _practiceConcepts.asStateFlow()
+
+    private val _practiceResults = MutableStateFlow<List<PracticeResult>>(emptyList())
+    val practiceResults: StateFlow<List<PracticeResult>> = _practiceResults.asStateFlow()
+
+    private val _practiceError = MutableStateFlow<String?>(null)
+    val practiceError: StateFlow<String?> = _practiceError.asStateFlow()
+
+    /** True while a practice is open part-way, so Learn can offer to resume it. */
+    val hasPausedPractice: Boolean
+        get() {
+            val index = _currentActivityIndex.value
+            return index in 1 until _practiceActivities.value.size
+        }
+
+    private fun beginMode(
+        kind: PracticeKind,
+        title: String,
+        activities: List<LearningActivity>,
+        concepts: Collection<LearningConcept>
+    ) {
+        _practiceKind.value = kind
+        _practiceTitle.value = title
+        _practiceConcepts.value = concepts.associateBy { it.id }
+        _practiceError.value = null
+        startPracticeSession(activities)
+    }
+
+    /** Daily Recall: today's due cards, bounded like the plan. [quick] is the five-minute version. */
+    fun startDailyRecall(quick: Boolean = false, onReady: () -> Unit) {
+        val due = dailyBrief.value?.dueReviews.orEmpty()
+            .filter { it.activity.isRelease1Practice() }
+            .take(if (quick) QuickPlanCards else MaxPlanCards)
+        if (due.isNotEmpty()) {
+            beginMode(
+                PracticeKind.RECALL, "Daily Recall", due.map { it.activity }, due.mapNotNull { it.concept }
+            )
+            onReady()
+            return
+        }
+        viewModelScope.launch {
+            _isLoadingPractice.value = true
+            try {
+                val deck = learningRepo.getPracticeDeck(activityTypes = Release1PracticeTypes, onlyDue = true)
+                    .take(if (quick) QuickPlanCards else MaxPlanCards)
+                beginMode(PracticeKind.RECALL, "Daily Recall", deck, emptyList())
+                onReady()
+            } catch (e: Exception) {
+                Log.e("LearnViewModel", "Failed to load Daily Recall", e)
+                _practiceError.value = "Daily Recall could not be loaded. Your progress is safe. Try again."
+            } finally {
+                _isLoadingPractice.value = false
+            }
+        }
+    }
+
+    /** The session's ungraded diagnostic (5 to 8 questions). */
+    fun startDiagnostic(sessionIdOrNoteId: String, onReady: () -> Unit) {
+        withSessionDetail(sessionIdOrNoteId) { detail ->
+            beginMode(PracticeKind.DIAGNOSTIC, "Quick check", diagnosticSet(detail), detail.concepts)
+            onReady()
+        }
+    }
+
+    /** Up to three questions that strengthen one concept. */
+    fun startConceptPractice(sessionIdOrNoteId: String, conceptId: String, onReady: () -> Unit) {
+        withSessionDetail(sessionIdOrNoteId) { detail ->
+            val concept = detail.concepts.firstOrNull { it.id == conceptId }
+            beginMode(
+                PracticeKind.CONCEPT,
+                concept?.let { "Strengthen ${it.name}" } ?: "Strengthen",
+                conceptSet(detail, conceptId),
+                detail.concepts
+            )
+            onReady()
+        }
+    }
+
+    /** Every Release 1 question in a session. */
+    fun startSessionPractice(sessionIdOrNoteId: String, dueOnly: Boolean, onReady: () -> Unit) {
+        withSessionDetail(sessionIdOrNoteId) { detail ->
+            val now = System.currentTimeMillis()
+            val dueIds = detail.schedules.filter { !it.isPaused && it.dueAt <= now }.map { it.activityId }.toSet()
+            val set = practiceItems(detail).filter { !dueOnly || it.id in dueIds }
+            beginMode(PracticeKind.SET, if (dueOnly) "Due reviews" else detail.session.title, set, detail.concepts)
+            onReady()
+        }
+    }
+
+    private fun withSessionDetail(
+        sessionIdOrNoteId: String,
+        block: (LearningRepository.LearningSessionDetail) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isLoadingPractice.value = true
+            _practiceError.value = null
+            try {
+                val detail = _activeSessionDetail.value?.takeIf {
+                    it.session.id == sessionIdOrNoteId || it.session.noteId == sessionIdOrNoteId
+                } ?: learningRepo.getSessionDetail(sessionIdOrNoteId)
+                    ?: database.learningSessionDao().getByNoteId(sessionIdOrNoteId)?.let { learningRepo.getSessionDetail(it.id) }
+                if (detail == null) {
+                    _practiceError.value = "This session could not be found."
+                } else {
+                    block(detail)
+                }
+            } catch (e: Exception) {
+                Log.e("LearnViewModel", "Failed to start practice", e)
+                _practiceError.value = "Practice could not be loaded. Your progress is safe. Try again."
+            } finally {
+                _isLoadingPractice.value = false
+            }
+        }
+    }
+
+    /** The item's saved schedule, so rating buttons can show the real next review. */
+    suspend fun scheduleFor(activityId: String): ReviewSchedule? =
+        runCatching { learningRepo.getSchedule(activityId) }.getOrNull()
+
+    /** Moves the current item to the end of the deck. Nothing is recorded and nothing is lost. */
+    fun skipCurrent() {
+        val list = _practiceActivities.value
+        val index = _currentActivityIndex.value
+        if (index !in list.indices || list.size < 2) {
+            nextCard()
+            return
+        }
+        val item = list[index]
+        _practiceActivities.value = list.toMutableList().apply { removeAt(index); add(item) }
+        _isFlipped.value = false
+        _lastOutcome.value = null
+        _hintLadder.value = emptyList()
+        _revealedHintCount.value = 0
+    }
+
+    /** Undo for [skipCurrent]: brings the last item back to the current position. */
+    fun undoSkip(activityId: String) {
+        val list = _practiceActivities.value.toMutableList()
+        val from = list.indexOfFirst { it.id == activityId }
+        val index = _currentActivityIndex.value
+        if (from < 0 || index !in list.indices) return
+        val item = list.removeAt(from)
+        list.add(index, item)
+        _practiceActivities.value = list
+        _isFlipped.value = false
+        _lastOutcome.value = null
+    }
+
+    /** Ends the practice. Answers are already saved, one by one, as they were given. */
+    fun closePractice() {
+        _practiceActivities.value = emptyList()
+        _currentActivityIndex.value = 0
+        _isFlipped.value = false
+        _lastOutcome.value = null
+        _practiceResults.value = emptyList()
+    }
+
+    fun renameConcept(concept: LearningConcept, newName: String) {
+        val name = newName.trim()
+        if (name.isEmpty() || name == concept.name) return
+        updateConcept(concept.copy(name = name, isUserEdited = true, updatedAt = System.currentTimeMillis()))
+    }
+
+    /** Hide from practice (or bring back). Hidden concepts keep their history. */
+    fun setConceptHidden(concept: LearningConcept, hidden: Boolean) {
+        updateConcept(concept.copy(isDismissed = hidden, isUserEdited = true, updatedAt = System.currentTimeMillis()))
+    }
+
+    /** "Report a problem": questions on this concept are held back until it is regenerated or edited. */
+    fun setConceptReported(concept: LearningConcept, reported: Boolean) {
+        updateConcept(concept.copy(isStale = reported, isUserEdited = true, updatedAt = System.currentTimeMillis()))
+    }
+
+    private fun updateConcept(updated: LearningConcept) {
+        viewModelScope.launch {
+            runCatching {
+                learningRepo.saveConceptsAndActivities(updated.sessionId, listOf(updated), emptyList(), createInitialSchedules = false)
+            }.onFailure { Log.e("LearnViewModel", "Failed to update concept", it) }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         studyTimerJob?.cancel()
@@ -1132,3 +1363,15 @@ class LearnViewModel @JvmOverloads constructor(
         }
     }
 }
+
+/** Which practice mode is open (design spec §12.1: learn_practice?mode=). */
+enum class PracticeKind { RECALL, DIAGNOSTIC, CONCEPT, SET }
+
+/** One answered item in the open practice, for the completion summary. */
+data class PracticeResult(
+    val activity: LearningActivity,
+    val isCorrect: Boolean,
+    val newState: LearningMasteryState?,
+    val reason: String?,
+    val nextReviewDays: Int
+)

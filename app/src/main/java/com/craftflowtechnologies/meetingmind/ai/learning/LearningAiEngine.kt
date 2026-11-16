@@ -636,6 +636,7 @@ class LearningAiEngine(
             appendLine("Hint 1: A gentle nudge pointing to the core concept.")
             appendLine("Hint 2: An intermediate hint pointing to the formula or relationship.")
             appendLine("Hint 3: A strong hint detailing the next immediate step.")
+            appendLine("Never state the expected answer, or any part of it, in a hint.")
             appendLine("Respond strictly with JSON:")
             appendLine("""{"hints": ["Hint 1", "Hint 2", "Hint 3"]}""")
         }
@@ -648,18 +649,19 @@ class LearningAiEngine(
                 val list = mutableListOf<String>()
                 for (i in 0 until arr.length()) {
                     val h = arr.optString(i).trim()
-                    if (h.isNotBlank()) list.add(h)
+                    if (h.isNotBlank() && !hintRevealsAnswer(h, expectedAnswer)) list.add(h)
                 }
                 if (list.size >= 3) list.take(3) else null
             }.getOrNull()
             if (parsed != null) return parsed
         }
 
-        val answerSnippet = expectedAnswer.take(40).trim()
+        // The offline fallback must never contain any part of the expected answer: a hint that
+        // quotes the answer turns retrieval practice into reading (design spec §13 #5).
         return listOf(
-            "Focus on the primary definition or theorem governing this problem in ${domain.displayName}.",
-            "Consider how the given variables relate to: $answerSnippet.",
-            "Set up the final step to solve directly for: $answerSnippet."
+            "Name the main definition or rule in ${domain.displayName} that this question is about.",
+            "Write down what the question gives you and what it asks for, before you work anything out.",
+            "Look back at where this came up in the lecture, then try the last step on your own."
         )
     }
 
@@ -889,4 +891,11 @@ class LearningAiEngine(
         const val EXPLAIN_SIMPLY_SCHEMA = """{"type":"object","properties":{"analogy":{"type":"string"},"everydayExample":{"type":"string"},"keyTakeaway":{"type":"string"}},"required":["analogy","everydayExample","keyTakeaway"]}"""
         const val HINT_LADDER_SCHEMA = """{"type":"object","properties":{"hints":{"type":"array","items":{"type":"string"}}},"required":["hints"]}"""
     }
+}
+
+/** True when a hint quotes the expected answer (when the answer is long enough to tell). */
+internal fun hintRevealsAnswer(hint: String, expectedAnswer: String): Boolean {
+    val answer = expectedAnswer.trim().lowercase()
+    if (answer.length < 4) return false
+    return hint.lowercase().contains(answer)
 }

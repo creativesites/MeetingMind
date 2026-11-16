@@ -672,14 +672,21 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         ) { backStackEntry ->
             val sessionId = backStackEntry.arguments?.getString("sessionId")
-            val activityId = backStackEntry.arguments?.getString("activityId")
             val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            com.craftflowtechnologies.meetingmind.feature.learning.PracticeArenaScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-                sessionId = sessionId,
-                activityId = activityId
-            )
+            // Practice is a full-screen mode (decision D1). Callers prepare the deck on the shared
+            // view model first; a bare sessionId (old links) opens that session's practice.
+            LaunchedEffect(sessionId) {
+                if (!sessionId.isNullOrBlank() && vm.practiceActivities.value.isEmpty()) {
+                    vm.startSessionPractice(sessionId, dueOnly = false) { }
+                }
+            }
+            com.craftflowtechnologies.meetingmind.ui.theme.LearningAccent {
+                com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeModeScreen(
+                    viewModel = vm,
+                    onClose = { navController.popBackStack() },
+                    onOpenSession = { id -> navController.navigate(Routes.learningSessionRoute(id)) }
+                )
+            }
         }
 
         composable(
@@ -732,17 +739,17 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 }
             }
 
-            com.craftflowtechnologies.meetingmind.feature.learning.LearningSessionScreen(
-                noteId = noteId,
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-                onOpenEditor = { id -> navController.navigate(Routes.noteRoute(id)) },
-                onStartPractice = { activities ->
-                    vm.startPracticeSession(activities)
-                    navController.navigate(Routes.learnPracticeRoute())
-                },
-                onOpenAssistant = { assistantOpen = true }
-            )
+            com.craftflowtechnologies.meetingmind.ui.theme.LearningAccent {
+                com.craftflowtechnologies.meetingmind.feature.learning.space.SessionStudioScreen(
+                    noteId = noteId,
+                    viewModel = vm,
+                    onBack = { navController.popBackStack() },
+                    onOpenNotes = { id -> navController.navigate(Routes.noteRoute(id)) },
+                    onPlayMoment = { meetingId, startMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startMs)) },
+                    onStartPractice = { navController.navigate(Routes.learnPracticeRoute()) },
+                    onAsk = { assistantOpen = true }
+                )
+            }
 
             if (assistantOpen) {
                 com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(
@@ -1693,24 +1700,17 @@ private fun LearnHomeHost(
     val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = viewModel()
     var assistantOpen by remember { mutableStateOf(false) }
 
-    com.craftflowtechnologies.meetingmind.feature.learning.LearnHomeScreen(
+    // The Learning space (design/learning-vertical-design-spec.md). Exam Prep and Teach-Back are
+    // Release 2 and 1.1, so the space has no entry to them (decision D3); their code is kept.
+    com.craftflowtechnologies.meetingmind.feature.learning.space.LearningSpaceScreen(
         viewModel = vm,
         onNavigateBottomNav = onNavigateBottomNav,
-        actions = com.craftflowtechnologies.meetingmind.feature.learning.LearnHomeActions(
+        actions = com.craftflowtechnologies.meetingmind.feature.learning.space.LearningSpaceActions(
             onBack = { navController.popBackStack() },
-            onAssistant = { assistantOpen = true },
-            onStartDailyRecall = {
-                navController.navigate(Routes.learnPracticeRoute())
-            },
+            onOpenSpace = { navController.navigate(Routes.LEARN) { launchSingleTop = true } },
+            onOpenSession = { id -> navController.navigate(Routes.learningSessionRoute(id)) },
+            onStartPractice = { navController.navigate(Routes.learnPracticeRoute()) { launchSingleTop = true } },
             onRecordLecture = { navController.navigate(Routes.recordTypeRoute(RecordingType.LECTURE)) },
-            onAudioCram = {
-                val firstSession = vm.sessions.value.firstOrNull()
-                if (firstSession != null) {
-                    vm.readSessionAloud(firstSession.noteId)
-                } else {
-                    android.widget.Toast.makeText(context, "No study sessions yet to read aloud", android.widget.Toast.LENGTH_SHORT).show()
-                }
-            },
             onWriteStudyNote = {
                 vm.createStudyNote(
                     title = "Study Note",
@@ -1720,11 +1720,7 @@ private fun LearnHomeHost(
                     navController.navigate(Routes.noteRoute(noteId))
                 }
             },
-            onOpenCircles = { navController.navigate(Routes.circleCreateRoute("learning")) },
-            onOpenSession = { noteId -> navController.navigate(Routes.learningSessionRoute(noteId)) },
-            onOpenCourse = { courseId -> navController.navigate(Routes.notebookRoute(courseId)) },
-            onOpenPractice = { navController.navigate(Routes.learnPracticeRoute()) },
-            onOpenExamPrep = { navController.navigate(Routes.learnExamRoute()) }
+            onAsk = { assistantOpen = true }
         )
     )
 

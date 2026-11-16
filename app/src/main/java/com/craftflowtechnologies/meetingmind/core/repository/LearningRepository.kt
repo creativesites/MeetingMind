@@ -32,8 +32,12 @@ import com.craftflowtechnologies.meetingmind.core.model.ReviewSchedule
 import com.craftflowtechnologies.meetingmind.core.model.TeachBackCriterion
 import com.craftflowtechnologies.meetingmind.core.repository.NoteCodec.toDomain
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -652,6 +656,30 @@ class LearningRepository(
     }
 
     // ---------------------------------------------------------------- daily companion brief
+
+    /** The saved review schedule for one item, or null if it has never been reviewed. */
+    suspend fun getSchedule(activityId: String): ReviewSchedule? = withContext(Dispatchers.IO) {
+        scheduleDao.getByActivity(activityId)?.toDomain()
+    }
+
+    /** Every concept the student has not hidden, across all sessions (for Progress). */
+    fun observeAllConcepts(): Flow<List<LearningConcept>> =
+        conceptDao.observeAll()
+            .map { list -> list.filter { !it.isDismissed }.map { it.toDomain() } }
+            .flowOn(Dispatchers.IO)
+
+    /**
+     * [observeDailyBrief], re-evaluated every [refreshMs]. The due queue depends on "now", so a
+     * single snapshot would miss reviews that fall due while the screen stays open.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeLiveDailyBrief(refreshMs: Long = 5 * 60_000L): Flow<DailyCompanionBrief> =
+        flow {
+            while (true) {
+                emit(clock())
+                delay(refreshMs)
+            }
+        }.flatMapLatest { now -> observeDailyBrief(now) }
 
     fun observeDailyBrief(now: Long = clock()): Flow<DailyCompanionBrief> {
         val sevenDaysAgo = now - (6 * DeterministicSpacedScheduler.DAY_MS)
