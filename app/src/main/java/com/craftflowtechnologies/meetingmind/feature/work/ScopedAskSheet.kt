@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -74,7 +75,15 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScopedAskSheet(initial: AskScope, viewModel: WorkViewModel, onOpenMeeting: (String, Long?) -> Unit, onOpenNote: (String) -> Unit, onDismiss: () -> Unit) {
+fun ScopedAskSheet(
+    initial: AskScope,
+    viewModel: WorkViewModel,
+    onOpenMeeting: (String, Long?) -> Unit,
+    onOpenNote: (String) -> Unit,
+    onDismiss: () -> Unit,
+    /** Opens the full Ask screen with this scope; the sheet is then dismissed. Null hides the link. */
+    onOpenFull: ((AskScope) -> Unit)? = null
+) {
     var scope by remember { mutableStateOf(initial) }
     var question by remember { mutableStateOf("") }
     var answer by remember { mutableStateOf<ScopedAnswer?>(null) }
@@ -134,6 +143,15 @@ fun ScopedAskSheet(initial: AskScope, viewModel: WorkViewModel, onOpenMeeting: (
                 .testTag("scoped_ask")
         ) {
             Text("Ask", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
+            onOpenFull?.let { open ->
+                Text(
+                    "Open full screen",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Accent,
+                    modifier = Modifier.padding(vertical = 4.dp).clickable { stopAsk(); onDismiss(); open(scope) }.testTag("ask_open_full")
+                )
+            }
             Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip(if (isScopedNow) "${scope.label}  ✕" else scope.label, selected = isScopedNow) {
                     if (isScopedNow) {

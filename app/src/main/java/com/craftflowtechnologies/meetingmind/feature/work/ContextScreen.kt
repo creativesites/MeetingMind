@@ -1,18 +1,39 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,27 +45,40 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
+import com.craftflowtechnologies.meetingmind.BuildConfig
+import com.craftflowtechnologies.meetingmind.ai.assistant.AskScope
 import com.craftflowtechnologies.meetingmind.core.database.ItemEntity
-import com.craftflowtechnologies.meetingmind.core.database.PersonEntity
+import com.craftflowtechnologies.meetingmind.core.model.Note
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
+import com.craftflowtechnologies.meetingmind.core.model.Workflows
+import com.craftflowtechnologies.meetingmind.core.ui.work.PulseHeaderCard
+import com.craftflowtechnologies.meetingmind.core.ui.work.projectColor
+import com.craftflowtechnologies.meetingmind.core.work.BriefTarget
 import com.craftflowtechnologies.meetingmind.core.work.ContextHeader
 import com.craftflowtechnologies.meetingmind.core.work.ContextRepository
 import com.craftflowtechnologies.meetingmind.core.work.ContextType
+import com.craftflowtechnologies.meetingmind.core.work.Direction
+import com.craftflowtechnologies.meetingmind.core.work.ItemKind
+import com.craftflowtechnologies.meetingmind.core.work.ItemStatus
+import com.craftflowtechnologies.meetingmind.core.work.MemoryHistory
 import com.craftflowtechnologies.meetingmind.core.work.Pulse
 import com.craftflowtechnologies.meetingmind.core.work.SavedFilter
 import com.craftflowtechnologies.meetingmind.core.work.TimelineEntry
-import com.craftflowtechnologies.meetingmind.ui.theme.Accent
-import com.craftflowtechnologies.meetingmind.ui.theme.Ink
-import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
-import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
+import com.craftflowtechnologies.meetingmind.core.work.WorkPeople
+import com.craftflowtechnologies.meetingmind.core.work.WorkPerson
+import com.craftflowtechnologies.meetingmind.core.work.WorkTask
+import com.craftflowtechnologies.meetingmind.core.work.KanbanBoardData
+import com.craftflowtechnologies.meetingmind.core.work.XRayGraph
+import com.craftflowtechnologies.meetingmind.core.database.PersonEntity
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.util.Calendar
 
 /** What a context page shows beyond the person, organisation or project's own screen. */
 data class ContextState(
@@ -63,11 +97,70 @@ data class ContextState(
 )
 
 /**
- * The context page (docs/PLAN_PROFESSIONAL.md D5.2): one screen for a person, an organisation or a
- * project. It opens with the pulse header and "Prepare for conversation", then carries the page's
- * own lists, its decision history, risks and a timeline. The existing person and project screens
- * stay as its body, so nothing they did is lost; their routes open this screen.
+ * The tabs of a context page. Each kind has its own set; Kanban and X-Ray stay behind the
+ * project-views flag, as before.
  */
+enum class ContextTab(val label: String) {
+    OVERVIEW("Overview"), TIMELINE("Timeline"), NOTES("Notes & files"), KANBAN("Kanban"), XRAY("X-Ray"),
+    CONVERSATIONS("Conversations"), PROJECTS("Projects"), HOW_WE_KNOW("How MeetingMind knows"),
+    PEOPLE("People"), HISTORY("History");
+
+    companion object {
+        fun forType(type: ContextType, projectViews: Boolean): List<ContextTab> = when (type) {
+            ContextType.PROJECT -> listOfNotNull(OVERVIEW, TIMELINE, NOTES, KANBAN.takeIf { projectViews }, XRAY.takeIf { projectViews })
+            ContextType.PERSON -> listOf(CONVERSATIONS, PROJECTS, HOW_WE_KNOW)
+            ContextType.ORG -> listOf(PEOPLE, PROJECTS, HISTORY)
+        }
+    }
+}
+
+/** The full-screen pages a context page opens over itself. */
+internal enum class ContextOverlay { PREPARE, ASK }
+
+/** Everything the tabs read, loaded once per change. */
+internal class PageData(
+    val type: ContextType,
+    val id: String,
+    val name: String,
+    val state: ContextState,
+    val now: Long,
+    val monthOnly: Boolean,
+    val items: List<ItemEntity>,
+    val tasks: List<WorkTask>,
+    val notes: List<Note>,
+    val meetings: List<MeetingRef>,
+    /** Projects this page is linked to: an organisation's projects, or the projects a person's items sit in. */
+    val projects: List<Pair<String, String>>,
+    /** An organisation's people. */
+    val people: List<WorkPerson>,
+    val person: WorkPerson?,
+    val story: MemoryHistory?
+)
+
+/** What the tabs can ask the page to do. */
+internal class PageActions(
+    val onOpenMeeting: (String, Long?) -> Unit,
+    val onOpenNote: (String) -> Unit,
+    val onOpenContext: (ContextType, String) -> Unit,
+    val onOpenSource: (SourceRef) -> Unit,
+    val onToggle: (WorkTask) -> Unit,
+    val onEdit: (WorkTask) -> Unit,
+    val onNudge: (WorkTask) -> Unit,
+    val onAddTask: (String) -> Unit,
+    val onRecord: () -> Unit,
+    val onWriteNote: () -> Unit,
+    val onAddMember: () -> Unit,
+    val onRemoveMember: (String) -> Unit,
+    val onToggleMonth: () -> Unit
+)
+
+/**
+ * The context page (docs/PLAN_PROFESSIONAL.md D5.2): one layout for a project, a person and an
+ * organisation. Identity, then a status line that comes from counts, then the actions (Ask, Brief,
+ * Prepare, Record or Message), then the pulse header (You owe, They owe, Open, Decided, Next), then
+ * the page's tabs. Ask and Prepare open as full screens over the page.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContextScreen(
     type: ContextType,
@@ -79,181 +172,576 @@ fun ContextScreen(
     onOpenMeeting: (String, Long?) -> Unit,
     onRecordInto: (noteId: String, type: RecordingType, title: String) -> Unit,
     /** Opens a brief for this page. */
-    onOpenBrief: (com.craftflowtechnologies.meetingmind.core.work.BriefTarget) -> Unit = {}
+    onOpenBrief: (BriefTarget) -> Unit = {}
 ) {
     val state by remember(type, id) { viewModel.contextState(type, id) }.collectAsState(initial = null)
-    var preparing by remember { mutableStateOf(false) }
-    var chip by remember { mutableStateOf<SavedFilter?>(null) }
-    var asking by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
-    var monthOnly by rememberSaveable { mutableStateOf(false) }
-    var addingMember by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val pageVm: ContextPageViewModel = composeViewModel()
+    val version by viewModel.itemVersion.collectAsState(initial = 0L)
+    val settings by viewModel.settings.collectAsState()
     val everyone by viewModel.everyone.collectAsState()
+    val orgs by viewModel.organisations.collectAsState()
+    val duplicates by viewModel.duplicates.collectAsState()
+    val person by remember(type, id) { viewModel.person(id) }.collectAsState(initial = null)
+    val project by remember(type, id) { viewModel.project(id) }.collectAsState(initial = null)
+    val tasks by remember(type, id) { if (type == ContextType.PERSON) viewModel.tasksWith(id) else viewModel.tasksIn(id) }
+        .collectAsState(initial = emptyList())
+    val notes by remember(type, id) { if (type == ContextType.PERSON) viewModel.notesWith(id) else viewModel.notesIn(id) }
+        .collectAsState(initial = emptyList())
+    val orgMembers by remember(type, id) { viewModel.members(id) }.collectAsState(initial = emptyList())
 
-    val top: LazyListScope.() -> Unit = {
-        state?.let { st ->
-            contextHeaderItems(st, onPrepare = { preparing = true }, onBrief = { onOpenBrief(briefTarget(type, id)) }, onAsk = { asking = true })
-            if (com.craftflowtechnologies.meetingmind.BuildConfig.FEATURE_SAVED_VIEWS) {
-                item { SavedFilterRow { chip = it } }
-            }
-            when (type) {
-                ContextType.ORG -> orgItems(st, onEdit = { editing = true }, onOpenProject = { onOpenContext(ContextType.PROJECT, it) })
-                ContextType.PROJECT -> projectItems(st, onEdit = { editing = true }, onAddMember = { addingMember = true },
-                    onRemoveMember = { p -> scope.launch { viewModel.context.removeMember(id, p) } }, onOpenPerson = { onOpenContext(ContextType.PERSON, it) })
-                else -> Unit
-            }
+    val items by produceState(emptyList<ItemEntity>(), type, id, version) { value = pageVm.items(type, id) }
+    val meetings by produceState(emptyList<MeetingRef>(), type, id, version) { value = pageVm.meetings(type, id) }
+    val touched by produceState(emptyList<Pair<String, String>>(), type, id, version) { value = pageVm.projectsTouched(type, id) }
+    val story by produceState<MemoryHistory?>(null, type, id, version) {
+        value = viewModel.memory.history(type, id, tell = false)
+        value = viewModel.memory.history(type, id, tell = true)
+    }
+
+    val projectViews = BuildConfig.FEATURE_PROJECT_VIEWS
+    val tabs = ContextTab.forType(type, projectViews)
+    var tab by rememberSaveable(type, id) { mutableStateOf(tabs.first()) }
+    var overlay by remember { mutableStateOf<ContextOverlay?>(null) }
+    var sourceRef by remember { mutableStateOf<SourceRef?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var detailsOpen by remember { mutableStateOf(false) }
+    var orgOpen by remember { mutableStateOf(false) }
+    var contactOpen by remember { mutableStateOf(false) }
+    var merging by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf(false) }
+    var addingMember by remember { mutableStateOf(false) }
+    var recordPicker by remember { mutableStateOf(false) }
+    var writePicker by remember { mutableStateOf(false) }
+    var nudging by remember { mutableStateOf<WorkTask?>(null) }
+    var editing by remember { mutableStateOf<WorkTask?>(null) }
+    var savedFilter by remember { mutableStateOf<SavedFilter?>(null) }
+    var monthOnly by rememberSaveable { mutableStateOf(false) }
+    var confirmedSame by rememberSaveable(id) { mutableStateOf(false) }
+    var kanbanRefresh by remember { mutableStateOf(0) }
+    var kanbanData by remember { mutableStateOf<KanbanBoardData?>(null) }
+    var xrayGraph by remember { mutableStateOf<XRayGraph?>(null) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(id, tab, kanbanRefresh) {
+        when (tab) {
+            ContextTab.KANBAN -> kanbanData = viewModel.loadProjectKanban(id)
+            ContextTab.XRAY -> xrayGraph = viewModel.loadProjectXRay(id)
+            else -> Unit
         }
     }
-    val bottom: LazyListScope.() -> Unit = {
-        state?.let { st -> contextBottomItems(st, viewModel, onOpenMeeting, monthOnly) { monthOnly = !monthOnly } }
-        item(key = "ctx-memory") { MemorySection(type, id, state?.header?.lastMeeting?.id, viewModel, onOpenMeeting) }
+
+    val st = state
+    val now = remember(version) { System.currentTimeMillis() }
+    val name = (project?.name ?: person?.name ?: st?.projectName ?: st?.org?.name).orEmpty()
+    val confidential = project?.confidential == true || person?.confidential == true
+    val orgId = project?.orgId ?: person?.orgId
+    val orgName = orgs.firstOrNull { it.id == orgId }?.name
+    val header = st?.header
+    val statusLine = header?.let { ContextStatus.of(it, ContextStatus.pastDueCount(items, now)) }
+    val firstName = name.trim().substringBefore(' ')
+    val uncertainWith: WorkPerson? = if (type != ContextType.PERSON) null else duplicates
+        .firstOrNull { it.first.id == id || it.second.id == id }
+        ?.let { if (it.first.id == id) it.second else it.first }
+
+    val page: PageData? = st?.let {
+        PageData(
+            type = type, id = id, name = name, state = it, now = now, monthOnly = monthOnly,
+            items = items, tasks = tasks, notes = notes, meetings = meetings,
+            projects = if (type == ContextType.ORG) it.projects else touched,
+            people = orgMembers, person = person, story = story
+        )
     }
-
-    if (type == ContextType.PROJECT) ProjectScreen(viewModel, id, onNavigateBack, onOpenNote, onOpenMeeting, onRecordInto, extraTop = top, extraBottom = bottom)
-    else WorkPersonScreen(viewModel, id, onNavigateBack, onOpenPerson = { onOpenContext(ContextType.PERSON, it) }, onOpenNote = onOpenNote, onOpenMeeting = onOpenMeeting, extraTop = top, extraBottom = bottom)
-
-    if (asking) ScopedAskSheet(
-        com.craftflowtechnologies.meetingmind.ai.assistant.AskScope(type, id, label = state?.projectName ?: askLabel(type)),
-        viewModel, onOpenMeeting, onOpenNote, onDismiss = { asking = false }
+    val actions = PageActions(
+        onOpenMeeting = onOpenMeeting,
+        onOpenNote = onOpenNote,
+        onOpenContext = onOpenContext,
+        onOpenSource = { sourceRef = it },
+        onToggle = { viewModel.toggle(it) },
+        onEdit = { editing = it },
+        onNudge = { nudging = it },
+        onAddTask = { text -> viewModel.addTask(text, noteId = notes.firstOrNull()?.id) },
+        onRecord = { recordPicker = true },
+        onWriteNote = { writePicker = true },
+        onAddMember = { addingMember = true },
+        onRemoveMember = { pid -> scope.launch { viewModel.context.removeMember(id, pid) } },
+        onToggleMonth = { monthOnly = !monthOnly }
     )
-    if (preparing) PrepareSheet(PrepTarget.Entity(type, id), viewModel, onOpenMeeting, onDismiss = { preparing = false })
-    chip?.let { f ->
-        val answer by produceState<com.craftflowtechnologies.meetingmind.core.work.SavedAnswer?>(null, f) { value = viewModel.savedViews.answer(f, type to id) }
-        SavedAnswerSheet(answer, f.label, viewModel, onOpenMeeting, onOpenPerson = { onOpenContext(ContextType.PERSON, it) }, onDismiss = { chip = null })
-    }
-    if (editing) state?.let { st ->
-        if (type == ContextType.ORG && st.org != null) OrgDetailsDialog(st.org, onDismiss = { editing = false }) { domains, description, urls, props ->
-            editing = false; scope.launch { viewModel.context.setOrgDetails(id, domains, description, urls, props) }
+
+    Scaffold(containerColor = SurfaceBase) { padding ->
+        LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("context_page"), contentPadding = PaddingValues(bottom = 48.dp)) {
+            item(key = "ctx-top") {
+                Row(
+                    Modifier.fillMaxWidth().statusBarsPadding().padding(start = MM.space.xs, end = MM.space.xs, top = MM.space.xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.ink) }
+                    Spacer(Modifier.weight(1f))
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More", tint = MM.colors.inkSecondary) }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renaming = true })
+                            when (type) {
+                                ContextType.PROJECT -> {
+                                    listOf("Active", "On hold", "Done").filter { it != project?.status }.forEach { s ->
+                                        DropdownMenuItem(text = { Text("Mark $s") }, onClick = { menu = false; project?.let { viewModel.updateProject(it, status = s) } })
+                                    }
+                                    DropdownMenuItem(text = { Text("Project details") }, onClick = { menu = false; detailsOpen = true })
+                                }
+                                ContextType.PERSON -> {
+                                    DropdownMenuItem(text = { Text("Email or phone") }, onClick = { menu = false; contactOpen = true })
+                                    DropdownMenuItem(text = { Text(settings.terms.organisation) }, onClick = { menu = false; orgOpen = true })
+                                    DropdownMenuItem(text = { Text("Same person as…") }, onClick = { menu = false; merging = true })
+                                }
+                                ContextType.ORG -> DropdownMenuItem(text = { Text("About and links") }, onClick = { menu = false; detailsOpen = true })
+                            }
+                            if (type != ContextType.ORG) {
+                                DropdownMenuItem(
+                                    text = { Text(if (confidential) "Not confidential" else "Confidential — keep on this phone") },
+                                    onClick = {
+                                        menu = false
+                                        project?.let { viewModel.updateProject(it, confidential = !it.confidential) }
+                                        person?.let { viewModel.updatePerson(it.copy(confidential = !it.confidential)) }
+                                    }
+                                )
+                            }
+                            if (type == ContextType.PERSON) {
+                                DropdownMenuItem(text = { Text("Remove…") }, onClick = { menu = false; removing = true })
+                            }
+                        }
+                    }
+                }
+            }
+
+            item(key = "ctx-identity") {
+                val p = person
+                Row(Modifier.fillMaxWidth().padding(horizontal = MM.space.l).padding(top = MM.space.s), verticalAlignment = Alignment.CenterVertically) {
+                    when {
+                        type == ContextType.PERSON && p != null -> PersonAvatar(p, 56.dp)
+                        type == ContextType.PROJECT -> Avatar(initialsOf(name), 56.dp, projectColor(id))
+                        else -> Avatar(initialsOf(name), 56.dp, MM.colors.accent)
+                    }
+                    Column(Modifier.weight(1f).padding(start = MM.space.m)) {
+                        val overline = when (type) {
+                            ContextType.PROJECT -> settings.terms.project.uppercase() + " · " + (project?.status.orEmpty().uppercase()) +
+                                if (confidential) " · CONFIDENTIAL" else ""
+                            ContextType.ORG -> settings.terms.organisation.uppercase()
+                            ContextType.PERSON -> "PERSON"
+                        }
+                        Text(overline.trim(' ', '·'), style = MM.type.overline, color = MM.colors.inkMuted)
+                        Text(
+                            name.ifBlank { askLabelFor(type) },
+                            style = MM.type.title,
+                            color = MM.colors.ink,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val sub = when (type) {
+                            ContextType.PERSON -> p?.role
+                            ContextType.PROJECT -> null
+                            ContextType.ORG -> st?.org?.domainsJson?.let { ContextRepository.list(it).joinToString("  ·  ") { d -> "@$d" }.ifBlank { null } }
+                        }
+                        sub?.let { Text(it, style = MM.type.secondary, color = MM.colors.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        if (orgId != null && orgName != null && type != ContextType.ORG) {
+                            Text(
+                                orgName,
+                                style = MM.type.secondary,
+                                color = MM.colors.accent,
+                                modifier = Modifier.padding(top = MM.space.xs).clickable { onOpenContext(ContextType.ORG, orgId) }
+                            )
+                        }
+                        if (type == ContextType.PERSON) {
+                            val reach = p?.let { (it.emails.take(1) + it.phones.take(1)).joinToString(" · ") }.orEmpty()
+                            Text(
+                                reach.ifBlank { "Add email or phone" },
+                                style = MM.type.caption,
+                                color = if (reach.isBlank()) MM.colors.accent else MM.colors.inkMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = MM.space.xs).clickable { contactOpen = true }
+                            )
+                        }
+                        if (type == ContextType.PROJECT) {
+                            val line = projectDetailLine(st?.projectProps)
+                            Text(
+                                line.first,
+                                style = MM.type.caption,
+                                color = if (line.second) MM.colors.accent else MM.colors.inkMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = MM.space.xs).clickable { detailsOpen = true }
+                            )
+                        }
+                    }
+                }
+            }
+
+            val orgAbout = st?.org?.description
+            if (type == ContextType.ORG && !orgAbout.isNullOrBlank()) {
+                item(key = "ctx-about") {
+                    Text(
+                        orgAbout,
+                        style = MM.type.secondary,
+                        color = MM.colors.inkSecondary,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = MM.space.l).padding(top = MM.space.s).clickable { detailsOpen = true }
+                    )
+                }
+            }
+
+            statusLine?.let { s ->
+                item(key = "ctx-status") {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = MM.space.l).padding(top = MM.space.m).testTag("context_status"), verticalAlignment = Alignment.CenterVertically) {
+                        StatusPill(s.attention, s.label)
+                        Spacer(Modifier.width(MM.space.s))
+                        Text(s.reason, style = MM.type.secondary, color = MM.colors.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+
+            item(key = "ctx-actions") {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = MM.space.m).horizontalScroll(rememberScrollState()).padding(horizontal = MM.space.l),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                ) {
+                    Chip("Ask", selected = true, color = MM.colors.accent) { overlay = ContextOverlay.ASK }
+                    Chip(if (confidential) "Brief (on this phone)" else "Brief") { onOpenBrief(briefTarget(type, id)) }
+                    Chip("Prepare next") { overlay = ContextOverlay.PREPARE }
+                    if (type == ContextType.PROJECT) Chip("Record") { recordPicker = true }
+                    if (type == ContextType.PERSON) Chip("Message") {
+                        // Nudge the first thing they owe; with nothing waiting, reach them by email or phone.
+                        val waiting = tasks.firstOrNull { it.waitingOn && !it.done }
+                        nudging = waiting
+                        if (waiting == null) contactOpen = true
+                    }
+                }
+            }
+
+            if (confidential) item(key = "ctx-privacy") {
+                Surface(
+                    color = MM.colors.surfaceSunk,
+                    shape = MM.radius.card,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = MM.space.l).padding(top = MM.space.m).testTag("context_privacy")
+                ) {
+                    Text(
+                        "Confidential. This stays on this phone: AI for this page runs on the phone only, and nothing here is shared to a Circle.",
+                        style = MM.type.secondary,
+                        color = MM.colors.inkSecondary,
+                        modifier = Modifier.padding(MM.space.m)
+                    )
+                }
+            }
+
+            if (uncertainWith != null && !confirmedSame) item(key = "ctx-uncertain") {
+                Surface(
+                    color = MM.colors.surfaceSunk,
+                    shape = MM.radius.card,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = MM.space.l).padding(top = MM.space.m).testTag("context_uncertain")
+                ) {
+                    Column(Modifier.padding(MM.space.m)) {
+                        Text(
+                            "Is ${name.ifBlank { "this person" }} the same person as ${uncertainWith.name}?",
+                            style = MM.type.bodyStrong,
+                            color = MM.colors.ink
+                        )
+                        Text(
+                            "MeetingMind found a likely match in your people. Nothing is merged until you choose.",
+                            style = MM.type.secondary,
+                            color = MM.colors.inkSecondary,
+                            modifier = Modifier.padding(top = MM.space.xs)
+                        )
+                        Row(Modifier.padding(top = MM.space.s), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                            Chip("Confirm", selected = true, color = MM.colors.accent) { confirmedSame = true }
+                            Chip("Same person as…") { merging = true }
+                            Chip("Not a person") { removing = true }
+                        }
+                    }
+                }
+            }
+
+            if (header != null) {
+                item(key = "ctx-pulse") {
+                    val rows = pulseRowsFor(type, header, items, firstName)
+                    PulseHeaderCard(rows = rows, modifier = Modifier.padding(horizontal = MM.space.l).padding(top = MM.space.m).testTag("context_pulse"))
+                }
+            }
+
+            item(key = "ctx-tabs") {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = MM.space.l).horizontalScroll(rememberScrollState()).padding(horizontal = MM.space.l),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                ) {
+                    tabs.forEach { t ->
+                        val label = if (t == ContextTab.HOW_WE_KNOW && firstName.isNotBlank()) "How MeetingMind knows $firstName" else t.label
+                        Chip(label, selected = tab == t, color = MM.colors.ink) { tab = t }
+                    }
+                }
+            }
+            if (BuildConfig.FEATURE_SAVED_VIEWS) item(key = "ctx-saved") { SavedFilterRow { savedFilter = it } }
+
+            if (page != null) {
+                when (tab) {
+                    ContextTab.OVERVIEW -> projectOverviewItems(page, actions)
+                    ContextTab.TIMELINE -> timelineItems(page, actions)
+                    ContextTab.NOTES -> projectNotesItems(page, actions)
+                    ContextTab.KANBAN -> item(key = "ctx-kanban") {
+                        val data = kanbanData
+                        if (data != null) {
+                            KanbanBoard(
+                                boardData = data,
+                                onMoveCard = { card, col ->
+                                    viewModel.moveKanbanCard(card, col)
+                                    kanbanRefresh++
+                                }
+                            )
+                        } else {
+                            Text("Loading Kanban board...", style = MM.type.secondary, color = MM.colors.inkMuted, modifier = Modifier.padding(MM.space.l))
+                        }
+                    }
+                    ContextTab.XRAY -> item(key = "ctx-xray") {
+                        val graph = xrayGraph
+                        if (graph != null) XRayView(graph = graph)
+                        else Text("Assembling X-Ray entity graph...", style = MM.type.secondary, color = MM.colors.inkMuted, modifier = Modifier.padding(MM.space.l))
+                    }
+                    ContextTab.CONVERSATIONS -> personConversationsItems(page, actions)
+                    ContextTab.PROJECTS -> projectsListItems(page, actions)
+                    ContextTab.HOW_WE_KNOW -> personHowWeKnowItems(page, actions)
+                    ContextTab.PEOPLE -> orgPeopleItems(page, actions)
+                    ContextTab.HISTORY -> orgHistoryItems(page, actions)
+                }
+            }
         }
-        if (type == ContextType.PROJECT) ProjectDetailsDialog(st.projectProps.orEmpty(), onDismiss = { editing = false }) { status, start, end, props ->
-            editing = false; scope.launch { viewModel.context.setProjectDetails(id, status, start, end, props) }
+    }
+
+    // Full-screen pages over the page.
+    if (overlay == ContextOverlay.PREPARE) FullScreenOverlay(onDismiss = { overlay = null }) {
+        PrepareScreen(
+            target = PrepTarget.Entity(type, id),
+            viewModel = viewModel,
+            onNavigateBack = { overlay = null },
+            onOpenMeeting = { m, at -> overlay = null; onOpenMeeting(m, at) },
+            onOpenNote = { n -> overlay = null; onOpenNote(n) },
+            onRecordInto = { n, t, title -> overlay = null; onRecordInto(n, t, title) }
+        )
+    }
+    if (overlay == ContextOverlay.ASK) FullScreenOverlay(onDismiss = { overlay = null }) {
+        AskScreen(
+            initial = AskScope(type = type, id = id, label = name.ifBlank { askLabelFor(type) }),
+            viewModel = viewModel,
+            onNavigateBack = { overlay = null },
+            onOpenMeeting = { m, at -> overlay = null; onOpenMeeting(m, at) },
+            onOpenNote = { n -> overlay = null; onOpenNote(n) },
+            confidential = confidential
+        )
+    }
+
+    sourceRef?.let { s ->
+        SourceSheet(
+            source = s,
+            onOpenInTranscript = { m, at -> sourceRef = null; onOpenMeeting(m, at) },
+            onDismiss = { sourceRef = null }
+        )
+    }
+
+    savedFilter?.let { f ->
+        val answer by produceState<com.craftflowtechnologies.meetingmind.core.work.SavedAnswer?>(null, f) { value = viewModel.savedViews.answer(f, type to id) }
+        SavedAnswerSheet(answer, f.label, viewModel, onOpenMeeting, onOpenPerson = { onOpenContext(ContextType.PERSON, it) }, onDismiss = { savedFilter = null })
+    }
+
+    if (renaming) TextDialog(
+        "Rename", name,
+        if (type == ContextType.PERSON) "Everywhere $firstName appears — transcripts, summaries and tasks — will use the new name." else null,
+        onDismiss = { renaming = false }
+    ) { new ->
+        renaming = false
+        project?.let { viewModel.updateProject(it, name = new) }
+        person?.let { viewModel.rename(it, new) }
+    }
+    if (detailsOpen && type == ContextType.PROJECT) ProjectDetailsDialog(st?.projectProps.orEmpty(), onDismiss = { detailsOpen = false }) { status, start, end, props ->
+        detailsOpen = false
+        scope.launch { viewModel.context.setProjectDetails(id, status, start, end, props) }
+    }
+    if (detailsOpen && type == ContextType.ORG) st?.org?.let { org ->
+        OrgDetailsDialog(org, onDismiss = { detailsOpen = false }) { domains, description, urls, props ->
+            detailsOpen = false
+            scope.launch { viewModel.context.setOrgDetails(id, domains, description, urls, props) }
+        }
+    }
+    if (orgOpen) person?.let { p ->
+        TextDialog(settings.terms.organisation, orgName.orEmpty(), null, onDismiss = { orgOpen = false }) { viewModel.setOrganisation(p, it); orgOpen = false }
+    }
+    if (contactOpen) person?.let { p ->
+        ContactDialog(p, onDismiss = { contactOpen = false }) { email, phone ->
+            viewModel.updatePerson(
+                p.copy(
+                    emails = (listOfNotNull(email?.trim()?.lowercase()?.takeIf { WorkPeople.looksLikeEmail(it) }) + p.emails).distinct(),
+                    phones = (listOfNotNull(phone?.let(WorkPeople::normalisePhone)) + p.phones).distinct()
+                )
+            )
+            contactOpen = false
+        }
+    }
+    if (removing) person?.let { p ->
+        AlertDialog(
+            onDismissRequest = { removing = false },
+            containerColor = SurfaceBase,
+            title = { Text(PersonRemoval.title(p.name)) },
+            text = { Text(PersonRemoval.body(p.name), style = MM.type.secondary, color = MM.colors.inkSecondary) },
+            confirmButton = {
+                TextButton(
+                    onClick = { removing = false; viewModel.deletePerson(p); onNavigateBack() },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MM.colors.danger)
+                ) { Text(PersonRemoval.CONFIRM_LABEL) }
+            },
+            dismissButton = { TextButton(onClick = { removing = false }) { Text("Cancel") } }
+        )
+    }
+    if (merging) person?.let { p ->
+        ModalBottomSheet(onDismissRequest = { merging = false }, containerColor = SurfaceBase) {
+            Column(Modifier.navigationBarsPadding().padding(bottom = MM.space.m)) {
+                Text("${p.name} is the same person as…", style = MM.type.heading, color = MM.colors.ink, modifier = Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s))
+                everyone.filter { it.id != p.id }.take(30).forEach { other ->
+                    PersonRow(other, null) {
+                        viewModel.merge(p, other)
+                        merging = false
+                        onOpenContext(ContextType.PERSON, other.id)
+                    }
+                }
+            }
         }
     }
     if (addingMember) PickPersonDialog(everyone.map { it.id to it.name }, onDismiss = { addingMember = false }) { pid ->
-        addingMember = false; scope.launch { viewModel.context.addMember(id, pid) }
+        addingMember = false
+        scope.launch { viewModel.context.addMember(id, pid) }
+    }
+    if (recordPicker) RecordTypeSheet(
+        startsFor(settings.profile).filter { Workflows.isRecordable(it.type) },
+        onPick = { t ->
+            recordPicker = false
+            viewModel.newNote(t, id) { nid -> onRecordInto(nid, t, "${t.displayName} · $name") }
+        },
+        onDismiss = { recordPicker = false }
+    )
+    if (writePicker) RecordTypeSheet(startsFor(settings.profile), onPick = { t -> writePicker = false; viewModel.newNote(t, id, onOpenNote) }, onDismiss = { writePicker = false })
+    nudging?.let { NudgeSheet(it, viewModel) { nudging = null } }
+    editing?.let { t ->
+        WorkTaskSheet(t, viewModel, onDismiss = { editing = null }, onOpenSource = t.meetingId?.let { m -> { editing = null; onOpenMeeting(m, t.startMs) } })
     }
 }
+
+/** Opens a full-screen page over the current one. Back and the close control both dismiss it. */
+@Composable
+private fun FullScreenOverlay(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(modifier = Modifier.fillMaxSize(), color = SurfaceBase) { content() }
+    }
+}
+
+/** A plain row: a title, an optional detail under it, and the whole row is the tap target. */
+@Composable
+internal fun PageRow(title: String, detail: String?, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = MM.space.l, vertical = MM.space.s)
+    ) {
+        Text(title, style = MM.type.bodyStrong, color = MM.colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        detail?.let { Text(it, style = MM.type.caption, color = MM.colors.inkMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+    }
+}
+
+/** A note in a list: its kind tile, title and kind with the day. */
+@Composable
+internal fun WorkNoteRow(note: Note, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = MM.space.l, vertical = MM.space.s),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        WorkTypeTile(note.workflow, note.title)
+        Column(Modifier.padding(start = MM.space.m).weight(1f)) {
+            Text(note.title.ifBlank { note.workflow.displayName }, style = MM.type.bodyStrong, color = MM.colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(note.workflow.displayName + " · " + dayLabel(note.eventDate ?: note.createdAt), style = MM.type.caption, color = MM.colors.inkMuted)
+        }
+    }
+}
+
+@Composable
+private fun StatusPill(attention: Boolean, label: String) {
+    Surface(color = MM.colors.surfaceSunk, shape = MM.radius.pill) {
+        Text(
+            label,
+            style = MM.type.caption,
+            color = if (attention) MM.colors.warning else MM.colors.success,
+            modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs)
+        )
+    }
+}
+
+/** The value of one pulse row: a count, and the first thing behind it. */
+@Composable
+private fun PulseValue(count: Int, detail: String?) {
+    Text(
+        text = when {
+            count == 0 -> "Nothing"
+            detail == null -> "$count"
+            else -> "$count · $detail"
+        },
+        style = MM.type.secondary,
+        color = MM.colors.ink,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+/**
+ * The five pulse rows. Counts come from the header; the detail is the first item behind each count,
+ * so the header never shows a number it cannot explain.
+ */
+private fun pulseRowsFor(type: ContextType, header: ContextHeader, items: List<ItemEntity>, firstName: String): List<Pair<String, @Composable () -> Unit>> {
+    val mine = items.filter { it.itemKind == ItemKind.COMMITMENT && it.direction == Direction.MINE.name && ContextStatus.isOpen(it.itemStatus) }
+        .sortedBy { it.dueAt ?: Long.MAX_VALUE }
+    val theirs = items.filter { it.itemKind == ItemKind.COMMITMENT && it.direction == Direction.THEIRS.name && ContextStatus.isOpen(it.itemStatus) }
+        .sortedBy { it.dueAt ?: Long.MAX_VALUE }
+    val open = items.filter { it.itemKind != ItemKind.COMMITMENT && ContextStatus.isOpen(it.itemStatus) }
+    val decided = items.filter { it.itemKind == ItemKind.DECISION && it.itemStatus == ItemStatus.ACTIVE }.maxByOrNull { it.createdAt }
+    val youOwe: @Composable () -> Unit = { PulseValue(header.youOwe, mine.firstOrNull()?.text) }
+    val theyOwe: @Composable () -> Unit = { PulseValue(header.theyOwe, theirs.firstOrNull()?.text) }
+    val openValue: @Composable () -> Unit = { PulseValue(header.open, open.firstOrNull()?.text) }
+    val decidedValue: @Composable () -> Unit = { PulseValue(header.decided, decided?.text) }
+    val next: @Composable () -> Unit = {
+        val nextText = header.next?.let { n -> header.nextAt?.let { "$n · ${Pulse.shortDate(it)}" } ?: n }
+        Text(nextText ?: "Nothing dated", style = MM.type.secondary, color = MM.colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+    val theyLabel = if (type == ContextType.PERSON && firstName.isNotBlank()) "$firstName owes" else "They owe"
+    return listOf(
+        "You owe" to youOwe,
+        theyLabel to theyOwe,
+        "Open" to openValue,
+        "Decided" to decidedValue,
+        "Next" to next
+    )
+}
+
+/** The status and dates of a project, and whether they are set yet (so the line can ask for them). */
+private fun projectDetailLine(propsJson: String?): Pair<String, Boolean> {
+    val json = runCatching { JSONObject(propsJson.orEmpty()) }.getOrDefault(JSONObject())
+    val dates = listOf(json.optString("start"), json.optString("end")).filter { it.isNotBlank() }
+    val parts = listOfNotNull(json.optString("status").ifBlank { null }, dates.takeIf { it.isNotEmpty() }?.joinToString(" → "))
+    return if (parts.isEmpty()) "Add status and dates" to true else parts.joinToString("  ·  ") to false
+}
+
+private fun initialsOf(name: String): String =
+    name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }.ifEmpty { "?" }
 
 private fun briefTarget(type: ContextType, id: String) = when (type) {
-    ContextType.PROJECT -> com.craftflowtechnologies.meetingmind.core.work.BriefTarget.forProject(id)
-    ContextType.ORG -> com.craftflowtechnologies.meetingmind.core.work.BriefTarget.forClient(id)
-    ContextType.PERSON -> com.craftflowtechnologies.meetingmind.core.work.BriefTarget.forPerson(id)
+    ContextType.PROJECT -> BriefTarget.forProject(id)
+    ContextType.ORG -> BriefTarget.forClient(id)
+    ContextType.PERSON -> BriefTarget.forPerson(id)
 }
 
-private fun askLabel(type: ContextType) = when (type) { ContextType.PROJECT -> "This project"; ContextType.ORG -> "This organisation"; ContextType.PERSON -> "This person" }
-
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-private fun LazyListScope.contextHeaderItems(st: ContextState, onPrepare: () -> Unit, onBrief: () -> Unit, onAsk: () -> Unit) {
-    item(key = "ctx-header") {
-        val h = st.header
-        Column(Modifier.padding(horizontal = 20.dp).padding(top = 14.dp).testTag("context_header")) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                Fig("${h.youOwe}", "you owe"); Fig("${h.theyOwe}", "they owe"); Fig("${h.open}", "open"); Fig("${h.decided}", "decided")
-            }
-            h.next?.let { Text("Next: $it" + (h.nextAt?.let { d -> " · " + Pulse.shortDate(d) } ?: ""), fontSize = 13.sp, color = InkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp)) }
-            androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Pill("Prepare for conversation", filled = true, onClick = onPrepare)
-                Pill("✨ Create brief", onClick = onBrief)
-                Pill("Ask", onClick = onAsk)
-            }
-        }
-    }
-}
-
-private fun LazyListScope.orgItems(st: ContextState, onEdit: () -> Unit, onOpenProject: (String) -> Unit) {
-    val org = st.org ?: return
-    val domains = ContextRepository.list(org.domainsJson); val urls = ContextRepository.list(org.urlsJson); val props = ContextRepository.map(org.propertiesJson)
-    item(key = "ctx-org") {
-        WorkSectionTitle("About", "Edit", onTrailing = onEdit)
-        Column(Modifier.padding(horizontal = 20.dp)) {
-            if (org.description.isNotBlank()) Text(org.description, fontSize = 14.sp, color = Ink)
-            (domains.map { "@$it" } + urls).takeIf { it.isNotEmpty() }?.let { Text(it.joinToString("  ·  "), fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp)) }
-            props.forEach { (k, v) -> Text("$k: $v", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp)) }
-            if (org.description.isBlank() && domains.isEmpty() && urls.isEmpty() && props.isEmpty()) Text("Add a domain, a description or links.", fontSize = 13.sp, color = InkMuted, modifier = Modifier.clickable(onClick = onEdit))
-        }
-    }
-    if (st.projects.isNotEmpty()) {
-        item(key = "ctx-projects") { WorkSectionTitle("Projects", "${st.projects.size}") }
-        items(st.projects, key = { "cp-" + it.first }) { (pid, name) ->
-            Text(name, fontSize = 15.sp, color = Ink, fontWeight = FontWeight.Medium, modifier = Modifier.fillMaxWidth().clickable { onOpenProject(pid) }.padding(horizontal = 20.dp, vertical = 10.dp))
-        }
-    }
-}
-
-private fun LazyListScope.projectItems(st: ContextState, onEdit: () -> Unit, onAddMember: () -> Unit, onRemoveMember: (String) -> Unit, onOpenPerson: (String) -> Unit) {
-    val json = runCatching { JSONObject(st.projectProps.orEmpty()) }.getOrDefault(JSONObject())
-    val dates = listOf(json.optString("start"), json.optString("end")).filter { it.isNotBlank() }
-    val custom = json.optJSONObject("custom")?.let { o -> o.keys().asSequence().associateWith { o.optString(it) } }.orEmpty()
-    item(key = "ctx-project") {
-        WorkSectionTitle("Details", "Edit", onTrailing = onEdit)
-        Column(Modifier.padding(horizontal = 20.dp)) {
-            Text(listOfNotNull(json.optString("status").ifBlank { null }, dates.takeIf { it.isNotEmpty() }?.joinToString(" → ")).joinToString("  ·  ").ifBlank { "Add status and dates" },
-                fontSize = 14.sp, color = if (json.optString("status").isBlank() && dates.isEmpty()) InkMuted else Ink, modifier = Modifier.clickable(onClick = onEdit))
-            custom.forEach { (k, v) -> Text("$k: $v", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp)) }
-        }
-        WorkSectionTitle("Members", "Add", onTrailing = onAddMember)
-    }
-    if (st.members.isEmpty()) item(key = "ctx-nomembers") { EmptyLine("Nobody added yet.") }
-    items(st.members, key = { "cm-" + it.first }) { (pid, name, role) ->
-        Row(Modifier.fillMaxWidth().clickable { onOpenPerson(pid) }.padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(name + if (role.isNotBlank()) " · $role" else "", fontSize = 15.sp, color = Ink, modifier = Modifier.weight(1f))
-            TextButton(onClick = { onRemoveMember(pid) }) { Text("Remove") }
-        }
-    }
-}
-
-private fun LazyListScope.contextBottomItems(st: ContextState, viewModel: WorkViewModel, onOpenMeeting: (String, Long?) -> Unit, monthOnly: Boolean, onToggleMonth: () -> Unit) {
-    if (st.history.isNotEmpty()) {
-        item(key = "ctx-history") { WorkSectionTitle("Decision history", "${st.history.size}") }
-        items(st.history.take(12), key = { "ch-" + it.last().id }) { chain ->
-            val latest = chain.last()
-            val text = buildString {
-                append(latest.text).append(" (").append(Pulse.shortDate(latest.createdAt)).append(')')
-                chain.dropLast(1).asReversed().forEach { append(", replacing ").append(it.text).append(" (").append(Pulse.shortDate(it.createdAt)).append(')') }
-            }
-            HistoryLine(text, latest.id, viewModel, onOpenMeeting)
-        }
-    }
-    if (st.risks.isNotEmpty()) {
-        item(key = "ctx-risks") { WorkSectionTitle("Risks", "${st.risks.size}") }
-        items(st.risks, key = { "cr-" + it.id }) { r -> HistoryLine(r.text, r.id, viewModel, onOpenMeeting) }
-    }
-    val entries = if (monthOnly) st.timeline.filter { it.at >= startOfMonth() } else st.timeline
-    item(key = "ctx-timeline") { TimelineHeader(entries.size, monthOnly, onToggleMonth) }
-    items(entries.take(60), key = { "tl-${it.at}-${it.text.hashCode()}-${it.itemId}" }) { e ->
-        Row(Modifier.fillMaxWidth().clickable {
-            e.meetingId?.let { m -> onOpenMeeting(m, null) }
-        }.padding(horizontal = 20.dp, vertical = 7.dp)) {
-            Text(Pulse.shortDate(e.at), fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(end = 12.dp, top = 2.dp))
-            Text(e.text, fontSize = 14.sp, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun TimelineHeader(count: Int, monthOnly: Boolean, onToggleMonth: () -> Unit) {
-    WorkSectionTitle("Timeline", if (count == 0) null else "$count")
-    Row(Modifier.padding(horizontal = 16.dp)) { Chip("This month", monthOnly, Ink, onClick = onToggleMonth) }
-    if (count == 0) EmptyLine(if (monthOnly) "Nothing this month." else "Meetings and changes will build a timeline here.")
-}
-
-private fun startOfMonth(now: Long = System.currentTimeMillis()): Long =
-    Calendar.getInstance().apply { timeInMillis = now; set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.timeInMillis
-
-@Composable
-private fun HistoryLine(text: String, itemId: String, viewModel: WorkViewModel, onOpenMeeting: (String, Long?) -> Unit) {
-    val scope = rememberCoroutineScope()
-    Text(text, fontSize = 15.sp, color = Ink, maxLines = 4, overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().clickable { scope.launch { viewModel.evidenceOf(itemId)?.let { (m, at) -> onOpenMeeting(m, at) } } }.padding(horizontal = 20.dp, vertical = 8.dp))
-}
-
-@Composable
-private fun Fig(value: String, label: String) {
-    Column {
-        Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
-        Text(label, fontSize = 11.sp, color = InkMuted)
-    }
+private fun askLabelFor(type: ContextType) = when (type) {
+    ContextType.PROJECT -> "This project"
+    ContextType.ORG -> "This organisation"
+    ContextType.PERSON -> "This person"
 }
 
 @Composable
@@ -303,7 +791,13 @@ private fun ProjectDetailsDialog(propsJson: String, onDismiss: () -> Unit, onSav
 private fun PickPersonDialog(people: List<Pair<String, String>>, onDismiss: () -> Unit, onPick: (String) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = SurfaceBase, title = { Text("Add a member") },
-        text = { Column { people.take(30).forEach { (id, name) -> Text(name, fontSize = 16.sp, color = Ink, modifier = Modifier.fillMaxWidth().clickable { onPick(id) }.padding(vertical = 10.dp)) } } },
+        text = {
+            Column {
+                people.take(30).forEach { (pid, pname) ->
+                    Text(pname, style = MM.type.bodyStrong, color = MM.colors.ink, modifier = Modifier.fillMaxWidth().clickable { onPick(pid) }.padding(vertical = MM.space.s))
+                }
+            }
+        },
         confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
@@ -320,62 +814,10 @@ fun PersonContextScreen(
     onOpenContext: (ContextType, String) -> Unit,
     onOpenNote: (String) -> Unit,
     onOpenMeeting: (String, Long?) -> Unit,
-    onOpenBrief: (com.craftflowtechnologies.meetingmind.core.work.BriefTarget) -> Unit = {}
+    onOpenBrief: (BriefTarget) -> Unit = {}
 ) {
     val type by produceState<ContextType?>(null, personId) {
         value = if (viewModel.people.get(personId)?.kind == com.craftflowtechnologies.meetingmind.core.work.PersonKind.ORG) ContextType.ORG else ContextType.PERSON
     }
     type?.let { ContextScreen(it, personId, viewModel, onNavigateBack, onOpenContext, onOpenNote, onOpenMeeting, onRecordInto = { _, _, _ -> }, onOpenBrief = onOpenBrief) }
 }
-
-/**
- * The history view (docs/PLAN_PROFESSIONAL.md D5.5): what's on record in numbers, one cited
- * paragraph per month, what matters most, and what is still open. The lists and counts come from
- * the database at once; the monthly stories fill in when a model has written them.
- */
-@Composable
-private fun MemorySection(type: ContextType, id: String, lastMeetingId: String?, viewModel: WorkViewModel, onOpenMeeting: (String, Long?) -> Unit) {
-    var history by remember(type, id) { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.MemoryHistory?>(null) }
-    val version by viewModel.itemVersion.collectAsState(initial = 0L)
-    androidx.compose.runtime.LaunchedEffect(type, id, version) {
-        history = viewModel.memory.history(type, id, tell = false)
-        history = viewModel.memory.history(type, id, tell = true)
-    }
-    val h = history ?: return
-    if (h.months.isEmpty() && h.mostImportant.isEmpty() && h.stillOpen.isEmpty() && h.counts.meetings == 0) return
-    val scope = rememberCoroutineScope()
-    Column(Modifier.testTag("memory_history")) {
-        WorkSectionTitle("History")
-        val c = h.counts
-        Text(
-            listOf("${c.meetings} meetings", "${c.decisions} decisions", "${c.commitments} promises", "${c.questions} questions", "${c.risks} risks").joinToString("  ·  "),
-            fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(horizontal = 20.dp)
-        )
-        val told = h.months.filter { it.text != null }
-        if (told.isNotEmpty()) {
-            WorkSectionTitle("The story", top = 16.dp)
-            told.forEach { m ->
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
-                    Text(monthLabel(m.month), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = InkMuted)
-                    Text(m.text.orEmpty(), fontSize = 14.sp, color = Ink, lineHeight = 20.sp, modifier = Modifier.clickable {
-                        // A story cites its items: the first one opens its evidence.
-                        scope.launch { m.cites.firstNotNullOfOrNull { viewModel.evidenceOf(it) }?.let { (mt, at) -> onOpenMeeting(mt, at) } }
-                    })
-                }
-            }
-        }
-        if (h.mostImportant.isNotEmpty()) {
-            WorkSectionTitle("Most important", top = 16.dp)
-            h.mostImportant.forEach { i -> HistoryLine(i.text, i.id, viewModel, onOpenMeeting) }
-        }
-        val open = h.stillOpen.filter { i -> h.mostImportant.none { it.id == i.id } }
-        if (open.isNotEmpty()) {
-            WorkSectionTitle("Still open", "${open.size}", top = 16.dp)
-            open.take(10).forEach { i -> HistoryLine(i.text, i.id, viewModel, onOpenMeeting) }
-        }
-    }
-}
-
-private fun monthLabel(month: String): String = runCatching {
-    java.time.YearMonth.parse(month).format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.getDefault()))
-}.getOrDefault(month)
