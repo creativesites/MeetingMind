@@ -1142,7 +1142,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         composable(Routes.IMPORT_FILE, arguments = listOf(navArgument("path") { type = NavType.StringType })) { entry ->
             val vm: ImportViewModel = viewModel()
             val path = URLDecoder.decode(entry.arguments?.getString("path").orEmpty(), "UTF-8")
-            LaunchedEffect(path) { vm.handleSelectedUri(android.net.Uri.fromFile(java.io.File(path))) }
+            LaunchedEffect(path) {
+                if (com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(path)) {
+                    vm.handleYouTubeUrl(path)
+                } else {
+                    vm.handleSelectedUri(android.net.Uri.fromFile(java.io.File(path)))
+                }
+            }
             ImportScreen(
                 viewModel = vm, onNavigateBack = { navController.popBackStack() },
                 onStartProcessing = { meetingId, audioPath, durationMs ->
@@ -1363,7 +1369,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                             }.getOrDefault(com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP)
                             val openPolishedNote = noteId != null &&
                                 polishMode != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.OFF &&
-                                (type == RecordingType.SERMON || type == RecordingType.LECTURE || type == RecordingType.RESEARCH)
+                                (type == RecordingType.SERMON || type == RecordingType.LECTURE || type == RecordingType.RESEARCH ||
+                                    type == RecordingType.MOTIVATION || type == RecordingType.LIFE_SKILLS ||
+                                    meeting?.source == MeetingSource.YOUTUBE_VIDEO.name)
                             if (openPolishedNote) Routes.noteRoute(noteId!!) else Routes.meetingDetailRoute(finishedMeetingId)
                         }
                         navController.navigate(targetRoute) {
@@ -1575,7 +1583,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         // Only open straight into the note when not going to Work WrapUp; otherwise detail/note fits the workflow.
         val openNoteDirectly = noteId != null &&
             polishMode != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.OFF &&
-            (type == RecordingType.SERMON || type == RecordingType.LECTURE || type == RecordingType.RESEARCH)
+            (type == RecordingType.SERMON || type == RecordingType.LECTURE || type == RecordingType.RESEARCH ||
+                type == RecordingType.MOTIVATION || type == RecordingType.LIFE_SKILLS ||
+                meeting?.source == MeetingSource.YOUTUBE_VIDEO.name)
         return if (openNoteDirectly) Routes.noteRoute(noteId!!) else Routes.meetingDetailRoute(finishedMeetingId)
     }
 

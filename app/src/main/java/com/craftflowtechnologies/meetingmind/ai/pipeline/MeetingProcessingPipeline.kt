@@ -263,7 +263,15 @@ class MeetingProcessingPipeline(
         fun emit(step: String, rawPercent: Int, stage: ProcessingStage) = onProgress(step, monotonic.next(rawPercent), stage)
 
         try {
-            updateJob("Preparing audio...", 10, ProcessingStage.PREPARING_AUDIO)
+            val youtubeParsed = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.parse(existingMeeting.audioFilePath)
+                ?: com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.parse(audioFile.path)
+            var youtubeExtraction: com.craftflowtechnologies.meetingmind.ai.cloud.YouTubeExtractionResult? = null
+
+            updateJob(
+                if (youtubeParsed != null) "Connecting to YouTube video..." else "Preparing audio...",
+                10,
+                ProcessingStage.PREPARING_AUDIO
+            )
 
             // Terminology this recording is likely to contain, for engines that can bias
             // recognition toward known terms (brief §19). Built from things the app already knows
@@ -286,17 +294,37 @@ class MeetingProcessingPipeline(
             var localRunWords: List<CanonicalWord>? = null
             var cloudChunkCount = 1
             var cloudDegradedReason: String? = null
-            var effectiveProfile = processingProfile
+            var effectiveProfile = if (youtubeParsed != null) ProcessingProfile.INTERNET else processingProfile
             var vadCache: List<com.craftflowtechnologies.meetingmind.ai.transcript.SpeechRegion>? = null
             // Internet mode only means cloud when a key (or the managed route) is actually configured.
             // Without one the cloud is not tried, and the status must not claim that it is.
-            val cloudReady = processingProfile == ProcessingProfile.INTERNET && geminiTransport.refreshConfigured()
-            if (processingProfile == ProcessingProfile.INTERNET && !cloudReady) {
+            val cloudReady = effectiveProfile == ProcessingProfile.INTERNET && geminiTransport.refreshConfigured()
+            if (youtubeParsed != null) {
+                if (!cloudReady) {
+                    cloudDegradedReason = "YouTube video transcription requires Internet mode with Google's AI enabled in Settings."
+                } else {
+                    updateJob("Transcribing YouTube video & extracting key bytes with Google's AI...", 35, ProcessingStage.TRANSCRIBING)
+                    val initialType = runCatching {
+                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(existingMeeting.recordingType)
+                    }.getOrDefault(com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL)
+                    val ytEngine = com.craftflowtechnologies.meetingmind.ai.cloud.GeminiYouTubeEngine(geminiTransport)
+                    when (val ytRes = ytEngine.extractVideo(youtubeParsed.canonicalWatchUrl, initialType, existingMeeting.customContext)) {
+                        is AiResult.Success -> {
+                            youtubeExtraction = ytRes.value
+                            cloudWords = ytRes.value.words
+                            cloudChunkCount = 1
+                        }
+                        else -> {
+                            cloudDegradedReason = ytRes.describeFailure() ?: "Gemini could not transcribe this YouTube video."
+                        }
+                    }
+                }
+            } else if (processingProfile == ProcessingProfile.INTERNET && !cloudReady) {
                 Breadcrumbs.log("asr", "Internet mode without a Gemini key: transcribing on this phone")
                 updateJob("No Google AI key set — transcribing on this phone...", 30, ProcessingStage.TRANSCRIBING)
                 effectiveProfile = ProcessingProfile.OFFLINE
             }
-            if (cloudReady) {
+            if (cloudReady && youtubeParsed == null) {
                 updateJob("Transcribing with Google's AI...", 30, ProcessingStage.TRANSCRIBING)
                 val cloudStart = System.currentTimeMillis()
                 // The length the importer guessed can be wrong (it falls back to a minute); the
@@ -384,7 +412,7 @@ class MeetingProcessingPipeline(
             // a region boundary is never a transcript boundary. Best-effort: with no VAD model
             // installed the recording is windowed end to end instead of being skipped.
             val vadStart = System.currentTimeMillis()
-            val speechRegions = if (cloudWords != null || localRunWords != null) emptyList() else {
+            val speechRegions = if (cloudWords != null || localRunWords != null || youtubeParsed != null) emptyList() else {
                 updateJob("Detecting speech intervals (VAD)...", 20, ProcessingStage.DETECTING_SPEECH)
                 when (val vadResult = vad.detectSpeechIntervals(audioFile, totalDurationMs)) {
                     is AiResult.Success -> vadResult.value
@@ -402,7 +430,7 @@ class MeetingProcessingPipeline(
                 AiResult.Success(cloudWords)
             } else if (localRunWords != null) {
                 AiResult.Success(localRunWords)
-            } else if (cloudReady) {
+            } else if (cloudReady || youtubeParsed != null) {
                 // Both engines were tried and the recording is not fully transcribed.
                 AiResult.Failed(cloudDegradedReason ?: "Transcription didn't finish.")
             } else {
@@ -432,9 +460,9 @@ class MeetingProcessingPipeline(
                     // The audio recording itself is untouched and remains fully accessible.
                     // In Internet mode the cloud is what failed; the missing offline model is only
                     // why there was nothing to fall back on. Say what actually went wrong.
-                    val cloudFailed = cloudReady && cloudWords == null
+                    val cloudFailed = (cloudReady || youtubeParsed != null) && cloudWords == null
                     val message = if (cloudFailed) {
-                        "Google's AI couldn't transcribe this recording. ${cloudDegradedReason ?: "No reason was given."}"
+                        "Google's AI couldn't transcribe this ${if (youtubeParsed != null) "YouTube video" else "recording"}. ${cloudDegradedReason ?: "No reason was given."}"
                     } else asrResult.describeFailure() ?: "Local speech recognition is unavailable."
                     val isCrash = asrResult is AiResult.Failed || cloudFailed
                     updateJob(
@@ -484,14 +512,25 @@ class MeetingProcessingPipeline(
             val noSpeech = rawWords.isEmpty()
 
             // Resolved here because every layer below — structuring, cleanup, intelligence — is
-            // shaped by what the user was actually recording.
-            val recordingType = try {
+            // shaped by what the user was actually recording. For YouTube videos left on GENERAL
+            // ("Auto-detect"), Gemini's detected category shapes the downstream note and space.
+            val storedRecordingType = try {
                 com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(existingMeeting.recordingType)
             } catch (e: Exception) {
                 com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL
             }
+            val recordingType = if (
+                youtubeExtraction != null &&
+                storedRecordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL
+            ) {
+                youtubeExtraction.detectedRecordingType
+            } else {
+                storedRecordingType
+            }
+            val effectiveDurationMs = youtubeExtraction?.estimatedDurationMs?.takeIf { it > 0L } ?: totalDurationMs
             val singleSpeakerMode = expectedSpeakerCount == 1
-            val soloSpeakerName = if (existingMeeting.source == com.craftflowtechnologies.meetingmind.core.model.MeetingSource.LOCAL_RECORDING.name) "You" else "Speaker 1"
+            val soloSpeakerName = youtubeExtraction?.channelOrSpeaker
+                ?: if (existingMeeting.source == com.craftflowtechnologies.meetingmind.core.model.MeetingSource.LOCAL_RECORDING.name) "You" else "Speaker 1"
 
             // STEP 3: Diarization — "who was speaking, when". Skipped entirely for a confirmed
             // single speaker: running multi-speaker clustering on a recording the user already
@@ -572,7 +611,9 @@ class MeetingProcessingPipeline(
             val attributedWords = if (cloudWords != null) rawWords
                 else WordSpeakerAttributor.attribute(rawWords, diarizationTurns)
             fun nameForSpeaker(speakerId: String): String =
-                if (speakerId == SOLO_SPEAKER_ID) soloSpeakerName else defaultSpeakerNameFor(speakerIndexOf(speakerId))
+                if (speakerId == SOLO_SPEAKER_ID) soloSpeakerName
+                else if (youtubeExtraction != null && speakerIndexOf(speakerId) == 0 && !youtubeExtraction.channelOrSpeaker.isNullOrBlank()) youtubeExtraction.channelOrSpeaker
+                else defaultSpeakerNameFor(speakerIndexOf(speakerId))
 
             var canonical = CanonicalTranscriptAssembler.assemble(
                 meetingId = meetingId,
@@ -583,7 +624,9 @@ class MeetingProcessingPipeline(
                     meetingId = meetingId,
                     language = existingMeeting.language,
                     processingMode = effectiveProfile.name,
-                    transcriptionEngine = if (cloudWords != null) {
+                    transcriptionEngine = if (youtubeExtraction != null) {
+                        youtubeExtraction.modelId
+                    } else if (cloudWords != null) {
                         com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
                     } else if (modelId == ModelCatalog.omnilingualAsr300mInt8.id) {
                         "omnilingual-asr-300m-ctc"
@@ -594,10 +637,12 @@ class MeetingProcessingPipeline(
                     } else if (modelId == ModelCatalog.whisperTurboInt8.id) {
                         "whisper-turbo-int8"
                     } else LOCAL_TRANSCRIPTION_ENGINE,
-                    transcriptionModelId = if (cloudWords != null) {
+                    transcriptionModelId = if (youtubeExtraction != null) {
+                        youtubeExtraction.modelId
+                    } else if (cloudWords != null) {
                         com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
                     } else modelId,
-                    audioDurationMs = totalDurationMs,
+                    audioDurationMs = effectiveDurationMs,
                     chunkCount = cloudChunkCount,
                     stageDurationsMs = mapOf("vad" to vadDurationMs, "asr" to asrDurationMs, "diarization" to diarizationDurationMs)
                 ),
@@ -696,9 +741,40 @@ class MeetingProcessingPipeline(
             val summaryResult = if (noSpeech) {
                 AiResult.Failed(NO_SPEECH_MESSAGE)
             } else {
-                effectiveIntelligenceEngine.processMeeting(transcriptDomain, provisionalTitle, recordingType, existingMeeting.customContext)
+                effectiveIntelligenceEngine.processMeeting(
+                    transcriptDomain,
+                    youtubeExtraction?.videoTitle?.takeIf { it.isNotBlank() } ?: provisionalTitle,
+                    recordingType,
+                    existingMeeting.customContext
+                )
             }
-            val summary = (summaryResult as? AiResult.Success)?.value
+            val rawSummary = (summaryResult as? AiResult.Success)?.value
+            val summary = if (youtubeExtraction != null) {
+                val ytBytes = youtubeExtraction.retentionBytes.map { byte ->
+                    val mm = (byte.startMs / 60_000L).toInt()
+                    val ss = ((byte.startMs / 1000L) % 60L).toInt()
+                    val stamp = if (byte.startMs > 0L) String.format(java.util.Locale.US, " [%02d:%02d]", mm, ss) else ""
+                    "${byte.title}: ${byte.detail}$stamp"
+                }
+                if (rawSummary != null) {
+                    rawSummary.copy(
+                        title = youtubeExtraction.videoTitle.takeIf { it.isNotBlank() } ?: rawSummary.title,
+                        summary = rawSummary.summary.ifBlank { youtubeExtraction.summary },
+                        topics = (ytBytes + rawSummary.topics).distinct()
+                    )
+                } else {
+                    MeetingSummary(
+                        title = youtubeExtraction.videoTitle.ifBlank { provisionalTitle },
+                        summary = youtubeExtraction.summary,
+                        topics = ytBytes,
+                        decisions = emptyList(),
+                        actionItems = emptyList(),
+                        questions = emptyList()
+                    )
+                }
+            } else {
+                rawSummary
+            }
 
             // A person's own title (or a usable imported file name) is never re-generated. Skipping
             // the title model call here also avoids spending a whole LLM pass on a title that
@@ -876,9 +952,10 @@ class MeetingProcessingPipeline(
                 title = generatedTitle,
                 titleSource = titleDecision.source.name,
                 status = MeetingStatus.READY.name,
-                durationMs = totalDurationMs,
+                durationMs = effectiveDurationMs,
                 participantCount = uniqueSpeakers.size.coerceAtLeast(1),
                 summaryText = summary?.summary,
+                recordingType = recordingType.name,
                 updatedAt = System.currentTimeMillis(),
                 // How this meeting was actually processed. Recorded per meeting so a later build
                 // can tell which transcripts predate a pipeline change without inferring it from
@@ -894,9 +971,33 @@ class MeetingProcessingPipeline(
             // Finished: the resume checkpoint has done its job.
             AsrCheckpointStore(asrCheckpointDir(context)).clear(meetingId)
             com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionCheckpoints(transcriptionRegionsDir(context)).clear(meetingId)
-            // The recording's note picks up its generated title and summary. A failure here must
-            // never fail a recording that processed successfully.
-            runCatching { com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database).syncFromRecording(meetingId) }
+            // The recording's note picks up its generated title, summary, and (for auto-detected YouTube videos) workflow & notebook.
+            runCatching {
+                val noteRepo = com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
+                existingMeeting.noteId?.let { nid ->
+                    noteRepo.getNote(nid)?.let { existingNote ->
+                        val extraMeta = if (youtubeExtraction != null) {
+                            mapOf(
+                                "youtubeUrl" to youtubeExtraction.parsedUrl.canonicalWatchUrl,
+                                "youtubeVideoId" to youtubeExtraction.parsedUrl.videoId
+                            ) + listOfNotNull(youtubeExtraction.channelOrSpeaker?.let { "youtubeChannel" to it }).toMap()
+                        } else emptyMap()
+                        if (existingNote.workflow != recordingType || extraMeta.isNotEmpty()) {
+                            val targetNotebookId = if (existingNote.workflow != recordingType) {
+                                noteRepo.defaultNotebookFor(recordingType).id
+                            } else existingNote.notebookId
+                            noteRepo.updateNote(
+                                existingNote.copy(
+                                    workflow = recordingType,
+                                    notebookId = targetNotebookId,
+                                    metadata = existingNote.metadata + extraMeta
+                                )
+                            )
+                        }
+                    }
+                }
+                noteRepo.syncFromRecording(meetingId)
+            }
             runCatching {
                 val inboxDao = database.inboxDao()
                 val linkedInbox = inboxDao.getByMeetingId(meetingId)

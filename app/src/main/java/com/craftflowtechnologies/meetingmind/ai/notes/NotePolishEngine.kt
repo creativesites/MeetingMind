@@ -152,8 +152,12 @@ class NotePolishEngine(
             "- Organize into Overview, Key Discussion Points, Decisions Made, and Action Items (`- [ ] owner: task`)."
         RecordingType.INTERVIEW, RecordingType.CONSULTATION ->
             "- Organize into Context, Key Questions & Answers, Notable Quotes (`> `), and Agreed Next Steps (`- [ ]`)."
+        RecordingType.MOTIVATION ->
+            "- Organize for fast reading and high retention: `## Key Bytes (Quick Read)` (3–6 punchy, memorable takeaways), `## Core Mindset Shift`, `## Key Principles & Stories`, `## Memorable Quotes` (`> `), and `## Daily Habits & Challenge` (`- [ ]`)."
+        RecordingType.LIFE_SKILLS ->
+            "- Organize as an actionable playbook: `## Key Bytes (Quick Read)` (3–6 high-retention takeaways), `## Overview`, `## Step-by-Step Playbook` (`1. ` ordered steps), `## Do's & Mistakes to Avoid`, and `## Action Checklist` (`- [ ]`)."
         else ->
-            "- Organize into a brief Overview, Key Points (`- `), and Next Steps (`- [ ]`) if any were mentioned."
+            "- Organize into `## Key Bytes (Quick Read)`, a brief Overview, Key Points (`- `), and Next Steps (`- [ ]`) if any were mentioned."
     }
 
     private fun renderBoundedTranscript(segments: List<TranscriptSegment>): String {

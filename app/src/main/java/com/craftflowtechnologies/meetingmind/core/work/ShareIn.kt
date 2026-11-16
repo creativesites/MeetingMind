@@ -138,6 +138,9 @@ object ShareIn {
             TELEGRAM_MEDIA.matches(cleanName) || combined.contains("telegram", ignoreCase = true) -> {
                 if (mime?.startsWith("audio/") == true || cleanName.endsWith(".ogg", true)) "Telegram Voice Note" else "Telegram"
             }
+            combined.contains("com.google.android.youtube", ignoreCase = true) ||
+                combined.contains("youtube.com", ignoreCase = true) ||
+                combined.contains("youtu.be", ignoreCase = true) -> "YouTube"
             combined.contains("slack", ignoreCase = true) -> "Slack"
             combined.contains("com.google.android.gm", ignoreCase = true) || combined.contains("gmail", ignoreCase = true) -> "Gmail"
             combined.contains("com.microsoft.teams", ignoreCase = true) || combined.contains("teams", ignoreCase = true) -> "Microsoft Teams"

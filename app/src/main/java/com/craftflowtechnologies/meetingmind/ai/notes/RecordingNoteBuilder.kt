@@ -90,7 +90,19 @@ object RecordingNoteBuilder {
         val summaryTitle = when (recordingType) {
             RecordingType.DICTATION, RecordingType.JOURNAL -> "Overview"
             RecordingType.BIBLE_STUDY, RecordingType.DEVOTIONAL, RecordingType.PRAYER, RecordingType.TESTIMONY -> "Reflection Overview"
+            RecordingType.MOTIVATION -> "Core Mindset Shift"
+            RecordingType.LIFE_SKILLS -> "What This Teaches"
             else -> "Summary"
+        }
+        val topicsTitle = when (recordingType) {
+            RecordingType.MOTIVATION -> "Key Bytes & Principles (Quick Read)"
+            RecordingType.LIFE_SKILLS -> "Step-by-Step Playbook & Key Bytes"
+            else -> "Key Topics"
+        }
+        val actionsTitle = when (recordingType) {
+            RecordingType.MOTIVATION -> "Daily Challenge & Habits"
+            RecordingType.LIFE_SKILLS -> "Action Checklist (Try This)"
+            else -> "Action Items"
         }
 
         if (polishedBlocks.isNotEmpty()) {
@@ -125,9 +137,10 @@ object RecordingNoteBuilder {
                 if (summary.decisions.isEmpty() && summary.actionItems.isEmpty()) extractiveHighlights(segments) else emptyList()
             }
             if (topics.isNotEmpty()) {
-                heading(KEY_TOPICS, "Key Topics")
+                heading(KEY_TOPICS, topicsTitle)
+                val topicBlockType = if (recordingType == RecordingType.LIFE_SKILLS) NoteBlockType.NUMBERED else NoteBlockType.BULLET
                 topics.forEach { topic ->
-                    addBlock(KEY_TOPICS, NoteBlockType.BULLET, topic.trim())
+                    addBlock(KEY_TOPICS, topicBlockType, topic.trim())
                 }
             }
             if (summary.decisions.isNotEmpty()) {
@@ -137,7 +150,7 @@ object RecordingNoteBuilder {
                 }
             }
             if (summary.actionItems.isNotEmpty()) {
-                heading(KEY_ACTIONS, "Action Items")
+                heading(KEY_ACTIONS, actionsTitle)
                 summary.actionItems.filter { it.task.isNotBlank() }.forEach { item ->
                     val meta = listOfNotNull(
                         item.assigneeName?.takeIf { it.isNotBlank() },

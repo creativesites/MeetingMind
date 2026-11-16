@@ -375,4 +375,30 @@ class GeminiHttpTransportTest {
         assertEquals(120, done.usage?.promptTokens)
         assertEquals(80, done.usage?.cachedTokens)
     }
+
+    @Test
+    fun `externalMediaUri is serialized as file_data with video mime type`() = runBlocking {
+        credentials.setApiKey("yt-key")
+        enqueueGeneratedText("{}")
+
+        val res = transport.execute(
+            GeminiRequest(
+                modelId = "gemini-3.8-flash",
+                systemInstruction = "Extract video transcript.",
+                prompt = "Analyze this video.",
+                externalMediaUri = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                externalMediaMimeType = "video/mp4",
+                responseSchema = """{"type":"object"}"""
+            )
+        )
+
+        assertTrue(res is AiResult.Success)
+        val recorded = server.takeRequest()
+        assertTrue(recorded.path!!.contains("models/gemini-3.8-flash:generateContent"))
+        val body = org.json.JSONObject(recorded.body.readUtf8())
+        val parts = body.getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
+        val fileData = parts.getJSONObject(0).getJSONObject("file_data")
+        assertEquals("video/mp4", fileData.getString("mime_type"))
+        assertEquals("https://www.youtube.com/watch?v=dQw4w9WgXcQ", fileData.getString("file_uri"))
+    }
 }

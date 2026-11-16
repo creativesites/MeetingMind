@@ -97,12 +97,21 @@ export function modelAllowed(model, allowedCsv) {
   return String(allowedCsv || '').split(',').map((s) => s.trim()).filter(Boolean).includes(model);
 }
 
-/** A request that sends audio, or asks for a transcription, draws on the audio allowance; everything else is one action. */
+/** A request that sends uploaded audio, or asks for a transcription, draws on the audio allowance; YouTube URLs and text prompts draw on actions. */
 export function classifyRequest(body) {
   const config = body?.generationConfig;
   if (config && config.audioTranscriptionConfig) return 'audio';
   const parts = (body?.contents ?? []).flatMap((c) => c?.parts ?? []);
-  if (parts.some((p) => p && (p.file_data || p.fileData || p.inline_data || p.inlineData))) return 'audio';
+  const hasUploadedMedia = parts.some((p) => {
+    if (!p) return false;
+    if (p.inline_data || p.inlineData) return true;
+    const fd = p.file_data || p.fileData;
+    if (!fd) return false;
+    const uri = String(fd.file_uri || fd.fileUri || '');
+    if (/^https?:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(uri)) return false;
+    return true;
+  });
+  if (hasUploadedMedia) return 'audio';
   return 'action';
 }
 

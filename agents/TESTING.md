@@ -1,9 +1,9 @@
 # Testing
 
-> [!IMPORTANT]
-> **No local Gradle runs.** All Gradle tests, builds, compilation checks, and artifact generations are strictly executed by remote agents only — never locally. Do not run `./gradlew` on the local host machine.
+> [!NOTE]
+> **Local Gradle runs are allowed** (founder decision, 2026-11-16). Run the tests that match your change before committing.
 
-## Commands (Remote Runner Execution Only)
+## Commands
 - One area: `./gradlew --no-daemon -q -Dorg.gradle.jvmargs=-Xmx2g --max-workers=2 testDebugUnitTest --tests '*<Pattern>*'`
 - Full: `./gradlew --no-daemon -q -Dorg.gradle.jvmargs=-Xmx6g --max-workers=4 compileDebugKotlin testDebugUnitTest`
 - Screenshots (Roborazzi): add `-Proborazzi.test.record=true` to record, then look at the PNG yourself.
@@ -19,6 +19,11 @@
 7. **Colour guard.** `ColorLiteralGuardTest` fails on any `Color(0x...)` outside `ui/theme`. Use tokens (`MM.colors`) or the fixed palettes in `ui/theme/FixedColors.kt`.
 8. **Looks-passing-alone.** A test that passes alone and fails in the full suite is usually shared state (gotchas 3 and 4). Run it with its neighbours before calling it flaky.
 9. **Compose semantics.** `matchParentSize` is a `BoxScope` member, not a top-level import.
+
+## The test phone
+- Samsung Galaxy S20, connected over wireless debugging when the founder turns it on. Find it with `adb mdns services` or `adb devices -l`; if it is not listed, ask for the IP and port shown under Developer options > Wireless debugging, then `adb connect <ip>:<port>`.
+- Install: `./gradlew --no-daemon -q installDebug` (or `adb install -r app/build/outputs/apk/debug/*.apk`). Never `adb uninstall` or clear app data without asking: it holds the founder's notes.
+- Screen: `adb exec-out screencap -p > shot.png`; record with `adb shell screenrecord --time-limit 60 /sdcard/mm.mp4` then `adb pull`. Logs: `adb logcat -d | grep -i meetingmind`.
 
 ## Device checks (unit tests cannot cover these)
 - Moments: First Keep on a note that just finished; Unveil on opening a note from the Notes list.

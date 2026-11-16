@@ -379,6 +379,12 @@ fun InboxScreen(
                 }
                 val resolvedMeetingId = linked?.meetingId ?: item.meetingId
 
+                val isYouTubeItem = remember(item.kind, item.text, item.uri) {
+                    item.kind == InboxKind.URL.name &&
+                        com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(item.text ?: item.uri)
+                }
+                val isMediaOrYouTube = item.kind == InboxKind.AUDIO.name || item.kind == InboxKind.VIDEO.name || isYouTubeItem
+
                 InboxCard(
                     item = item,
                     linked = linked,
@@ -390,18 +396,20 @@ fun InboxScreen(
                     },
                     onChoose = { picking = item },
                     onDismiss = { viewModel.dismissInbox(item) },
-                    onQuickTranscribe = if (item.kind == InboxKind.AUDIO.name || item.kind == InboxKind.VIDEO.name) {
+                    onQuickTranscribe = if (isMediaOrYouTube) {
                         {
                             viewModel.transcribeInboxItem(item) { ok, msg ->
                                 Toast.makeText(
                                     context,
-                                    if (ok) "Transcribing voice note in background…" else (msg ?: "Couldn't start transcription"),
+                                    if (ok) (if (isYouTubeItem) "Extracting YouTube transcript & bytes…" else "Transcribing voice note in background…")
+                                    else (msg ?: "Couldn't start transcription"),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
                         }
                     } else null,
-                    onConfigureTranscribe = item.uri?.takeIf { item.kind == InboxKind.AUDIO.name || item.kind == InboxKind.VIDEO.name }?.let { path ->
+                    onConfigureTranscribe = (item.uri?.takeIf { item.kind == InboxKind.AUDIO.name || item.kind == InboxKind.VIDEO.name }
+                        ?: item.text?.takeIf { isYouTubeItem })?.let { path ->
                         { onImportAudio(path) }
                     },
                     onOpenNote = resolvedNoteId?.let { nid -> { onOpenNote(nid) } },
@@ -440,6 +448,10 @@ fun InboxScreen(
         }.getOrNull()
         val resolvedMeetingId = linked?.meetingId ?: currentItem.meetingId
 
+        val isCurrentYouTube = currentItem.kind == InboxKind.URL.name &&
+            com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(currentItem.text ?: currentItem.uri)
+        val isCurrentMediaOrYouTube = currentItem.kind == InboxKind.AUDIO.name || currentItem.kind == InboxKind.VIDEO.name || isCurrentYouTube
+
         InboxDetailSheet(
             item = currentItem,
             linked = linked,
@@ -456,7 +468,7 @@ fun InboxScreen(
                 inspecting = null
                 picking = itm
             },
-            onQuickTranscribe = if (currentItem.kind == InboxKind.AUDIO.name || currentItem.kind == InboxKind.VIDEO.name) {
+            onQuickTranscribe = if (isCurrentMediaOrYouTube) {
                 {
                     viewModel.transcribeInboxItem(currentItem) { ok, msg ->
                         Toast.makeText(
@@ -467,7 +479,8 @@ fun InboxScreen(
                     }
                 }
             } else null,
-            onConfigureTranscribe = currentItem.uri?.takeIf { currentItem.kind == InboxKind.AUDIO.name || currentItem.kind == InboxKind.VIDEO.name }?.let { path ->
+            onConfigureTranscribe = (currentItem.uri?.takeIf { currentItem.kind == InboxKind.AUDIO.name || currentItem.kind == InboxKind.VIDEO.name }
+                ?: currentItem.text?.takeIf { isCurrentYouTube })?.let { path ->
                 {
                     inspecting = null
                     onImportAudio(path)

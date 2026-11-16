@@ -74,7 +74,16 @@ object ShareIntentParser {
             parts += SharedPart(kindOf(type), uri = uri, title = subject, mime = type, source = sourceApp)
         }
         text?.trim()?.takeIf { it.isNotEmpty() }?.let { t ->
-            parts += if (URL.matches(t)) {
+            val yt = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.parse(t)
+            parts += if (yt != null) {
+                SharedPart(
+                    InboxKind.URL,
+                    text = yt.canonicalWatchUrl,
+                    title = subject?.takeIf { it.isNotBlank() } ?: "YouTube Video (${yt.videoId})",
+                    mime = mime,
+                    source = "YouTube"
+                )
+            } else if (URL.matches(t)) {
                 SharedPart(InboxKind.URL, text = t, title = subject?.takeIf { it.isNotBlank() } ?: hostOf(t), mime = mime, source = hostOf(t))
             } else {
                 SharedPart(InboxKind.TEXT, text = t, title = subject?.takeIf { it.isNotBlank() } ?: t.lineSequence().first().take(60), mime = mime, source = sourceApp)
@@ -115,7 +124,9 @@ class InboxRepository(private val database: MeetMindDatabase, private val clock:
                 createdAt = clock(),
                 source = resolvedSource,
                 mediaDurationMs = p.durationMs ?: copied?.durationMs,
-                transcriptionStatus = if (p.kind == InboxKind.AUDIO || p.kind == InboxKind.VIDEO) "PENDING" else "NONE"
+                val isYouTubeUrl = p.kind == InboxKind.URL &&
+                    com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(p.text ?: p.uri)
+                transcriptionStatus = if (p.kind == InboxKind.AUDIO || p.kind == InboxKind.VIDEO || isYouTubeUrl) "PENDING" else "NONE"
             ).also { dao.upsert(it) }
         }
     }

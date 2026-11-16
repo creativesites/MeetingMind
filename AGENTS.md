@@ -21,8 +21,9 @@ These rules apply to every agent working in this repository, human or AI. Keep t
 
 ## Work discipline
 
-- **No local Gradle runs:** All Gradle tests, builds, and compilation tasks must be executed by remote agents only — never run `./gradlew` commands locally.
-- Read `agents/TESTING.md` before dispatching tests to remote agents. It lists the gotchas that already cost us time.
+- **Local Gradle runs are allowed** (founder decision, 2026-11-16; replaces the 2026-11-02 remote-only rule). Compile and run the tests that match your change before you commit. Run long suites in the background.
+- **A real device is available:** the founder's Samsung Galaxy S20, over wireless debugging (`adb`), on request: install builds, run the app, record the screen, read logs. See `agents/TESTING.md`. Never wipe its data or uninstall without asking.
+- Read `agents/TESTING.md` before running tests. It lists the gotchas that already cost us time.
 - Run the tests that match your change first. Run the full suite before the APK, not for every small change.
 - Never weaken or delete a test to get green. Fix the cause, or report it.
 - Before deleting, overwriting or publishing anything, look at it first.
@@ -35,7 +36,7 @@ Full list: `agents/PRODUCT.md`. The short version:
 - A devotional is never empty. The bundled reading is always the fallback.
 - Every note gets its moment every time it is opened, including notes with no speech, typed notes, failed notes and sacred notes (founder decision, 2026-10-14). See `agents/PRODUCT.md`.
 - Circle content lives on the server. Personal notes stay local.
-- Learning is in production on `release/1.0-paid-launch`: student companion, active recall, exam prep, 10 academic domains, LaTeX/formula renderers.
+- Learning is in the MVP (founder decision, 2026-11-16). Release 1 scope follows `design/learning-vertical-design-spec.md`: Learn, Library, Progress, Practice as a mode, Ask Learning. Exam prep is Release 2 and Teach-Back is 1.1; their code is kept but has no entry point.
 
 ## Reporting
 

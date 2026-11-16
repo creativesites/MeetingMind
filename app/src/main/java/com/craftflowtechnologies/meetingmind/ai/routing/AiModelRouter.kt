@@ -77,9 +77,11 @@ object DefaultAiModelRouter : AiModelRouter {
     const val GEMINI_TRANSCRIBE_MODEL = "gemini-3.5-transcribe"
     const val GEMINI_FAST_MODEL = "gemini-3.8-flash"
     const val GEMINI_INTELLIGENCE_MODEL = "gemini-3.8-flash"
-    const val GEMINI_DEEP_REASONING_MODEL = "gemini-4-argon"
+    const val GEMINI_DEEP_REASONING_MODEL = "gemini-3.8-flash"
     const val GEMINI_LIVE_MODEL = "gemini-3.8-live"
     const val GEMINI_LIVE_EXTENDED_MODEL = "gemini-3.8-live-extended-thinking"
+    const val GEMINI_TTS_MODEL = "gemini-3.8-flash-tts"
+    const val GEMINI_TTS_LITE_MODEL = "gemini-3.8-flash-lite-tts"
 
     override fun route(route: AiRoute): ModelRoute = when (route) {
         AiRoute.LOCAL_TRANSCRIPTION -> ModelRoute(route, null, requiresNetwork = false)

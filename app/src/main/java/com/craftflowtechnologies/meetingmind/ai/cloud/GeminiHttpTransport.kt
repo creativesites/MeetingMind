@@ -116,7 +116,8 @@ class GeminiHttpTransport(
                 .post(body.toString().toRequestBody(JSON_MIME))
                 .build()
 
-            val timeoutMs = request.timeoutMs ?: if (fileUri != null) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS
+            val hasMedia = fileUri != null || !request.externalMediaUri.isNullOrBlank()
+            val timeoutMs = request.timeoutMs ?: if (hasMedia) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS
             val call = client.newBuilder().callTimeout(timeoutMs, TimeUnit.MILLISECONDS).build().newCall(httpRequest)
             val cancelReg = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
             try {
@@ -409,7 +410,17 @@ class GeminiHttpTransport(
     private fun buildGenerateBody(request: GeminiRequest, fileUri: String?): JSONObject {
         val contents = request.contentsJson?.let { runCatching { JSONArray(it) }.getOrNull() }
             ?: run {
-                val parts = JSONArray().put(JSONObject().put("text", buildPrompt(request)))
+                val parts = JSONArray()
+                val extUri = request.externalMediaUri?.takeIf { it.isNotBlank() }
+                if (extUri != null) {
+                    parts.put(
+                        JSONObject().put(
+                            "file_data",
+                            JSONObject().put("mime_type", request.externalMediaMimeType).put("file_uri", extUri)
+                        )
+                    )
+                }
+                parts.put(JSONObject().put("text", buildPrompt(request)))
                 if (fileUri != null) {
                     parts.put(
                         JSONObject().put(
@@ -467,8 +478,9 @@ class GeminiHttpTransport(
             .post(body.toString().toRequestBody(JSON_MIME))
             .build()
 
-        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: if (fileUri != null) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS, "${if (fileUri != null) "Analyse audio" else "Write"} with ${request.modelId}")
-        if (!reply.ok) return describeHttpFailure(if (fileUri != null) "Analysing the recording" else "Writing", reply.code, reply.body)
+        val hasMedia = fileUri != null || !request.externalMediaUri.isNullOrBlank()
+        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: if (hasMedia) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS, "${if (hasMedia) "Analyse media" else "Write"} with ${request.modelId}")
+        if (!reply.ok) return describeHttpFailure(if (hasMedia) "Analysing the recording" else "Writing", reply.code, reply.body)
         return extractText(reply.body)?.let { AiResult.Success(it) }
             ?: AiResult.Failed(describeEmptyResponse(reply.body))
     }

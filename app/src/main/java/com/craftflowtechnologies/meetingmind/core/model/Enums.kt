@@ -4,6 +4,7 @@ enum class MeetingSource {
     LOCAL_RECORDING,
     IMPORTED_AUDIO,
     IMPORTED_VIDEO,
+    YOUTUBE_VIDEO,
     REMOTE_BOT
 }
 

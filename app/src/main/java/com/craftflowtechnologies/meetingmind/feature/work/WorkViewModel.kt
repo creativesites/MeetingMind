@@ -296,11 +296,48 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         val added = inbox.add(listOf(part))
         added.forEach { proposeInbox(it) }
     }
-    /** Starts 1-tap background transcription for an audio or video item right inside the Inbox. */
+    /** Starts 1-tap background transcription for an audio, video, or YouTube URL item right inside the Inbox. */
     fun transcribeInboxItem(
         item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity,
         onResult: (Boolean, String?) -> Unit = { _, _ -> }
     ) = viewModelScope.launch(Dispatchers.IO) {
+        val ytParsed = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.parse(item.text ?: item.uri)
+        if (ytParsed != null) {
+            try {
+                inbox.updateTranscription(item.id, "TRANSCRIBING")
+                val app = getApplication<Application>()
+                val meetingId = java.util.UUID.randomUUID().toString()
+                val initialTitle = item.title?.takeIf { it.isNotBlank() && !it.startsWith("http", true) }
+                    ?: "YouTube Video (${ytParsed.videoId})"
+                val meetingRepo = com.craftflowtechnologies.meetingmind.core.repository.MeetingRepository(app, database)
+                val meeting = meetingRepo.createInitialMeeting(
+                    id = meetingId,
+                    title = initialTitle,
+                    source = com.craftflowtechnologies.meetingmind.core.model.MeetingSource.YOUTUBE_VIDEO,
+                    audioFilePath = ytParsed.canonicalWatchUrl,
+                    recordingType = com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
+                    speakerCountPreference = 1,
+                    titleSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI
+                )
+                inbox.updateTranscription(
+                    id = item.id,
+                    status = "TRANSCRIBING",
+                    meetingId = meeting.id
+                )
+                com.craftflowtechnologies.meetingmind.ai.pipeline.ProcessingScheduler.enqueue(
+                    context = app,
+                    meetingId = meeting.id,
+                    audioPath = ytParsed.canonicalWatchUrl,
+                    durationMs = 0L,
+                    expectedSpeakerCount = 1
+                )
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onResult(true, meeting.id) }
+            } catch (e: Exception) {
+                inbox.updateTranscription(item.id, "FAILED")
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onResult(false, e.localizedMessage ?: "Failed to start YouTube extraction") }
+            }
+            return@launch
+        }
         val path = item.uri?.takeIf { it.isNotBlank() } ?: run {
             kotlinx.coroutines.withContext(Dispatchers.Main) { onResult(false, "Audio file is missing") }
             return@launch

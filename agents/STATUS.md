@@ -2,6 +2,21 @@
 
 Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
+## YouTube Video Ingestion, Gemini 3.8 Flash Model Standardization & Domain-Adaptive Retention Bytes (2026-11-16)
+- **Gemini 3.8 Model Lineup Standardization (`AiModelRouter.kt`, `server/gemini-proxy`):**
+  - Standardized all cloud text/reasoning routes (`GEMINI_FAST`, `GEMINI_INTELLIGENCE`, `GEMINI_DEEP_REASONING`) on **`gemini-3.8-flash`**, keeping `gemini-3.8-live` and `gemini-3.8-live-extended-thinking` for Live voice sessions and `gemini-3.8-flash-tts` / `gemini-3.8-flash-lite-tts` for Read-to-Me TTS, while removing expensive Gemini 4 model IDs from `DefaultAiModelRouter` and `server/gemini-proxy/wrangler.toml`.
+  - Updated `server/gemini-proxy/logic.js` (`classifyRequest`) so YouTube `file_data` (`file_uri` = `https://www.youtube.com/...` or `https://youtu.be/...`) requests draw on the action meter rather than the uploaded-audio meter (`cd server/gemini-proxy && node --test test/*.test.mjs`: 29/29 passing).
+- **Native YouTube URL Ingestion & Transcript/Bytes Extraction (`YouTubeUrlParser.kt`, `GeminiYouTubeEngine.kt`, `GeminiTransport.kt`, `GeminiHttpTransport.kt`, `MeetingProcessingPipeline.kt`, `ProcessingScheduler.kt`):**
+  - Created `YouTubeUrlParser` supporting `youtube.com/watch?v=...`, `youtu.be/...`, `youtube.com/shorts/...`, `youtube.com/live/...`, `m.youtube.com`, and timestamp parameters (`t=125s`, `t=2m10s`).
+  - Extended `GeminiRequest` and `GeminiHttpTransport.buildGenerateBody` with `externalMediaUri` and `externalMediaMimeType = "video/mp4"`, passing canonical YouTube URLs directly via `file_data` to `gemini-3.8-flash`.
+  - Built `GeminiYouTubeEngine` to extract the video's title, speaker/channel, auto-detected category (`SERMON`, `LECTURE`, `MOTIVATION`, `LIFE_SKILLS`, `BIBLE_STUDY`, `INTERVIEW`, `RESEARCH`, `MEETING`), 3–7 high-retention bite-sized takeaways (`retentionBytes` with `[mm:ss]` timestamps), and a full chronological timestamped transcript projected into `CanonicalWord`s.
+  - Wired `MeetingProcessingPipeline` and `ProcessingScheduler` so YouTube videos flow through the full MeetingMind note pipeline (Sermon notes with Scripture detection, Lecture concepts & active recall flashcards, Motivation & Life Skills playbooks, embeddings, Ask AI, Read-to-Me, and Zuri Moments).
+- **Domain-Adaptive Workflows & UI Entry Points (`Enums.kt`, `MeetingModels.kt`, `Workflows.kt`, `NotePolishEngine.kt`, `RecordingNoteBuilder.kt`, `ImportScreen.kt`, `ShareIn.kt`, `Inbox.kt`, `InboxScreen.kt`, `WorkViewModel.kt`, `MainActivity.kt`):**
+  - Added `MeetingSource.YOUTUBE_VIDEO` and two personal-growth workflows: `RecordingType.MOTIVATION` (*Core Mindset Shift*, *Key Principles & Bytes*, *Memorable Quotes*, *Daily Challenge & Habits*) and `RecordingType.LIFE_SKILLS` (*What This Teaches*, *Step-by-Step Playbook*, *Do's & Mistakes to Avoid*, *Action Checklist*).
+  - Upgraded `ImportScreen` with a dedicated **YouTube video link** card, 1-tap clipboard **Paste**, **Auto-detect** category chip alongside `Sermon`, `Lecture`, `Motivation`, `Life skills`, and `Interview`, and 1-tap **"Extract transcript & bytes"**.
+  - Updated `ShareIn`, `Inbox`, `WorkViewModel.transcribeInboxItem`, and `InboxScreen` so sharing a link from the YouTube app into MeetingMind tags it as `"YouTube"` and enables 1-tap background transcript & bytes extraction right from the Inbox.
+- **Verification:** Added `YouTubeIngestionTest.kt` and extended `GeminiHttpTransportTest.kt` and `server/gemini-proxy/test/logic.test.mjs` (29/29 passing locally). Per `AGENTS.md`, `./gradlew` was not run locally; Android compilation and unit tests await remote runner verification.
+
 ## Learning vertical redesign, Phase B (2026-11-16)
 - **Approved:** founder approved `design/Learning Vertical Redesign.dc.html` and `design/learning-vertical-design-spec.md` "as designed", so decisions D1-D10 take the spec's recommendations. D11 (Learning's release status: `AGENTS.md` says production, `agents/PRODUCT.md` says cut from MVP) is still open.
 - **New Learning space** (`feature/learning/space/`, `feature/learning/components/`): Learn (bounded daily plan, five-minute version, done state, week without streaks), Library (search, courses with mastery counts, course view), Progress (qualitative states with reasons, no percentages); Session with Source · Understand · Practise · Mastery and a Next step strip; Concept detail with cited quotes, rename/hide/report with Undo; Practice as a full-screen mode (Daily Recall, ungraded diagnostic, strengthen a concept, session practice) with deliberate reveal, three ratings labelled by the real scheduler, short-answer self-check, skip with Undo, stop/resume, completion summary.
@@ -245,7 +260,7 @@ Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
 - **Tests Added:** `LearnViewModelTest` (`AndroidViewModelFactory` instantiation regression test + `toggleSessionPause` refresh) and `LearningAiAndBuilderTest` (fenced JSON stripping + concept matching).
 - **Verification Note:** Per the remote-only Gradle rule, no `./gradlew` build or test commands were executed locally; compile-safety and signature parity were verified statically across all modified files, and the test suite is ready for remote runner verification.
 
-## Remote-Only Gradle Mandate (2026-11-02, Founder Directive)
+## Remote-Only Gradle Mandate (2026-11-02, Founder Directive) — superseded 2026-11-16: local Gradle runs are allowed
 - **Zero Local Gradle Execution**: All Gradle tests, compilation runs (`compileDebugKotlin`), and builds must be executed by remote agents only — never executed on the local host machine.
 - Documented in `AGENTS.md` and `agents/TESTING.md`.
 

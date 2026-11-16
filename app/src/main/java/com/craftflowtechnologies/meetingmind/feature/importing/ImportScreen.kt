@@ -105,6 +105,8 @@ data class ImportMediaState(
     val extractionProgress: Float = 0f,
     val meetingId: String? = null,
     val extractedAudioFile: File? = null,
+    val youtubeUrl: String? = null,
+    val youtubeVideoId: String? = null,
     val error: String? = null,
     /** Import creates the meeting the instant a file is picked (so extraction can start right
      * away), before there's been any chance to ask what it is — this is filled in afterward,
@@ -205,6 +207,66 @@ class ImportViewModel @JvmOverloads constructor(
         }
     }
 
+    fun handleYouTubeUrl(rawUrl: String, customTitle: String? = null) {
+        cancelExtraction()
+        val parsed = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.parse(rawUrl)
+        if (parsed == null) {
+            _importState.value = _importState.value.copy(
+                error = "Please enter a valid YouTube link (e.g. youtube.com/watch?v=... or youtu.be/...)."
+            )
+            return
+        }
+        extractionJob = viewModelScope.launch {
+            try {
+                val meetingId = UUID.randomUUID().toString()
+                val initialTitle = customTitle?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: "YouTube Video (${parsed.videoId})"
+                val meeting = meetingRepository.createInitialMeeting(
+                    id = meetingId,
+                    title = initialTitle,
+                    source = MeetingSource.YOUTUBE_VIDEO,
+                    audioFilePath = parsed.canonicalWatchUrl,
+                    recordingType = _importState.value.recordingType,
+                    speakerCountPreference = 1,
+                    titleSource = if (!customTitle.isNullOrBlank()) {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.USER
+                    } else {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI
+                    }
+                )
+                runCatching {
+                    val inboxDao = MeetMindDatabase.getInstance(getApplication()).inboxDao()
+                    val matched = inboxDao.getByUri(parsed.canonicalWatchUrl) ?: inboxDao.getByUri(rawUrl.trim())
+                    if (matched != null) {
+                        inboxDao.updateTranscription(
+                            id = matched.id,
+                            status = "TRANSCRIBING",
+                            meetingId = meeting.id
+                        )
+                    }
+                }
+                _importState.value = ImportMediaState(
+                    fileName = parsed.canonicalWatchUrl,
+                    isVideo = true,
+                    meetingId = meeting.id,
+                    youtubeUrl = parsed.canonicalWatchUrl,
+                    youtubeVideoId = parsed.videoId,
+                    recordingType = com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
+                    speakerCountPreference = 1
+                )
+            } catch (e: Exception) {
+                _importState.value = _importState.value.copy(
+                    error = "Could not prepare YouTube link: ${e.localizedMessage}"
+                )
+            }
+        }
+    }
+
+    fun clearSelection() {
+        cancelExtraction()
+        _importState.value = ImportMediaState()
+    }
+
     fun cancelExtraction() {
         extractionJob?.cancel()
         extractionJob = null
@@ -254,8 +316,10 @@ fun ImportScreen(
 ) {
     val state by viewModel.importState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showAllTypes by remember { mutableStateOf(false) }
     var showSpeakerPicker by remember { mutableStateOf(false) }
+    var youtubeInput by remember { mutableStateOf("") }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -289,15 +353,12 @@ fun ImportScreen(
                         .testTag("import_back_btn")
                         .wrapContentSize(Alignment.Center)
                 )
-                Text("Import audio", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text("Import audio or YouTube", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             }
 
             val fileName = state.fileName
             if (fileName == null) {
-                // Nothing picked yet. The frame shows the screen with a file already in hand, so
-                // this is the one state it does not depict: keep it to the same visual language —
-                // one bordered card, the same bar-meter glyph, one action — rather than inventing
-                // a differently-styled dropzone.
+                // Nothing picked yet: allow picking an audio/video file OR pasting a YouTube link.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -323,8 +384,79 @@ fun ImportScreen(
                         Text("Browse", fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = InkSecondary)
                     }
                 }
+
+                // YouTube URL Card
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .padding(top = 14.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 18.dp, vertical = 16.dp)
+                        .testTag("import_youtube_card")
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("YouTube video link", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                            Text(
+                                "Sermons, lectures, motivation & life skills — transcribed into bytes",
+                                fontSize = 12.5.sp,
+                                color = InkMuted,
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                        }
+                        Text(
+                            text = "Paste",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Accent,
+                            modifier = Modifier
+                                .clickable {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                    val clipText = clipboard?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
+                                    if (clipText.isNotEmpty()) {
+                                        youtubeInput = clipText
+                                        if (com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(clipText)) {
+                                            viewModel.handleYouTubeUrl(clipText)
+                                        }
+                                    }
+                                }
+                                .padding(start = 10.dp, top = 4.dp, bottom = 4.dp)
+                                .testTag("import_youtube_paste_btn")
+                        )
+                    }
+                    OutlinedTextField(
+                        value = youtubeInput,
+                        onValueChange = { youtubeInput = it },
+                        placeholder = { Text("https://www.youtube.com/watch?v=...", fontSize = 13.sp) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                            .testTag("import_youtube_input")
+                    )
+                    if (youtubeInput.isNotBlank()) {
+                        Button(
+                            onClick = { viewModel.handleYouTubeUrl(youtubeInput) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                                .testTag("import_youtube_load_btn")
+                        ) {
+                            Text("Use YouTube link", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
             } else {
-                // The picked file, as #5c shows it: glyph, name, the real facts about it, Change.
+                // The picked file or YouTube link: glyph, name, facts, Change.
+                val isYouTube = state.youtubeUrl != null
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -346,11 +478,15 @@ fun ImportScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = listOfNotNull(
-                                    Formatters.formatDurationSummary(state.durationMs).takeIf { state.durationMs > 0 },
-                                    Formatters.formatBytes(state.sizeBytes).takeIf { state.sizeBytes > 0 },
-                                    if (state.isVideo) "video" else null
-                                ).joinToString(" · "),
+                                text = if (isYouTube) {
+                                    "YouTube video · ID ${state.youtubeVideoId.orEmpty()} · Gemini 3.8 Flash"
+                                } else {
+                                    listOfNotNull(
+                                        Formatters.formatDurationSummary(state.durationMs).takeIf { state.durationMs > 0 },
+                                        Formatters.formatBytes(state.sizeBytes).takeIf { state.sizeBytes > 0 },
+                                        if (state.isVideo) "video" else null
+                                    ).joinToString(" · ")
+                                },
                                 fontSize = 12.5.sp,
                                 color = InkMuted,
                                 modifier = Modifier.padding(top = 3.dp)
@@ -362,7 +498,10 @@ fun ImportScreen(
                             fontWeight = FontWeight.Medium,
                             color = InkSecondary,
                             modifier = Modifier
-                                .clickable { filePickerLauncher.launch(arrayOf("audio/*", "video/*")) }
+                                .clickable {
+                                    if (isYouTube) viewModel.clearSelection()
+                                    else filePickerLauncher.launch(arrayOf("audio/*", "video/*"))
+                                }
                                 .testTag("import_change_btn")
                         )
                     }
@@ -450,21 +589,38 @@ fun ImportScreen(
             }
 
             if (state.fileName != null) {
+                val isYouTube = state.youtubeUrl != null
                 SectionLabel("What is it")
-                // The four the frame shows, as chips. Every other type stays reachable through
-                // "More types", so importing a Sermon or a Journal is not made impossible by a
-                // frame that happened to depict four.
+                // For YouTube links, surface Auto-detect, Sermon, Lecture, Motivation, Life skills;
+                // for audio files, preserve the existing 4 chips + More types.
                 FlowRow(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val quickTypes = listOf(
-                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.MEETING,
-                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.INTERVIEW,
-                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE,
-                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.VOICE_MEMO
-                    )
+                    if (isYouTube) {
+                        ImportTypeChip(
+                            label = "Auto-detect",
+                            selected = state.recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
+                            onClick = { viewModel.selectRecordingType(com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL) }
+                        )
+                    }
+                    val quickTypes = if (isYouTube) {
+                        listOf(
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.MOTIVATION,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.LIFE_SKILLS,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.INTERVIEW
+                        )
+                    } else {
+                        listOf(
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.MEETING,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.INTERVIEW,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.VOICE_MEMO
+                        )
+                    }
                     quickTypes.forEach { type ->
                         ImportTypeChip(
                             label = type.displayName,
@@ -472,9 +628,11 @@ fun ImportScreen(
                             onClick = { viewModel.selectRecordingType(type) }
                         )
                     }
+                    val inQuickOrAuto = state.recordingType in quickTypes ||
+                        (isYouTube && state.recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL)
                     ImportTypeChip(
-                        label = if (state.recordingType in quickTypes) "More types" else state.recordingType.displayName,
-                        selected = state.recordingType !in quickTypes,
+                        label = if (inQuickOrAuto) "More types" else state.recordingType.displayName,
+                        selected = !inQuickOrAuto,
                         onClick = { showAllTypes = !showAllTypes }
                     )
                 }
@@ -534,18 +692,18 @@ fun ImportScreen(
                     )
                 }
 
+                val targetPath = state.youtubeUrl ?: state.extractedAudioFile?.absolutePath
                 Button(
                     onClick = {
                         val mId = state.meetingId
-                        val file = state.extractedAudioFile
-                        if (mId != null && file != null) {
+                        if (mId != null && targetPath != null) {
                             coroutineScope.launch {
                                 viewModel.applyRecordingContext()
-                                onStartProcessing(mId, file.absolutePath, state.durationMs)
+                                onStartProcessing(mId, targetPath, state.durationMs)
                             }
                         }
                     },
-                    enabled = state.meetingId != null && state.extractedAudioFile != null,
+                    enabled = state.meetingId != null && targetPath != null,
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
                     modifier = Modifier
@@ -555,7 +713,11 @@ fun ImportScreen(
                         .height(50.dp)
                         .testTag("import_transcribe_btn")
                 ) {
-                    Text("Start processing", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text(
+                        if (state.youtubeUrl != null) "Extract transcript & bytes" else "Start processing",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
+                    )
                 }
             }
         }

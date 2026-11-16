@@ -84,6 +84,10 @@ data class GeminiRequest(
     val cachedContent: String? = null,
     /** Structured multi-turn `contents` JSON array overriding single-turn [prompt]. */
     val contentsJson: String? = null,
+    /** External public media URI (e.g., a canonical YouTube video URL) passed directly via `file_data`. */
+    val externalMediaUri: String? = null,
+    /** MIME type for [externalMediaUri] when present. */
+    val externalMediaMimeType: String = "video/mp4",
     /** Native Gemini `tools` JSON array containing `functionDeclarations`. */
     val toolsJson: String? = null,
     /** Optional `functionCallingConfig.mode` (`AUTO`, `ANY`, `NONE`). */

@@ -148,6 +148,9 @@ object ProcessingScheduler {
     private suspend fun resumeOne(context: Context, database: MeetMindDatabase, meeting: MeetingEntity): String? {
         if (activeWork(context, meeting.id) != null) return null
         val path = meeting.audioFilePath
+        if (com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(path)) {
+            return enqueue(context, meeting.id, path, meeting.durationMs)?.let { meeting.id }
+        }
         val salvaged = com.craftflowtechnologies.meetingmind.core.audio.RecordingAudioSalvager
             .salvageForRecovery(context, meeting.id, path)
         if (salvaged == null) {

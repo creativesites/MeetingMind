@@ -78,6 +78,8 @@ test('requests with audio or a transcription config draw on the audio meter, the
   assert.equal(L.classifyRequest({ generationConfig: { audioTranscriptionConfig: {} } }), 'audio');
   assert.equal(L.classifyRequest({ contents: [{ parts: [{ file_data: { file_uri: 'x' } }] }] }), 'audio');
   assert.equal(L.classifyRequest({ contents: [{ parts: [{ fileData: { fileUri: 'x' } }] }] }), 'audio');
+  assert.equal(L.classifyRequest({ contents: [{ parts: [{ file_data: { file_uri: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', mime_type: 'video/mp4' } }] }] }), 'action');
+  assert.equal(L.classifyRequest({ contents: [{ parts: [{ fileData: { fileUri: 'https://youtu.be/dQw4w9WgXcQ', mimeType: 'video/mp4' } }] }] }), 'action');
   assert.equal(L.classifyRequest({ contents: [{ parts: [{ text: 'hi' }] }] }), 'action');
   assert.equal(L.classifyRequest({}), 'action');
   assert.equal(L.classifyRequest(null), 'action');
