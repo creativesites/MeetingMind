@@ -318,6 +318,7 @@ fun AutopilotSheet(
                     val res = state.result
                     val preview = state.gathered.preview
                     RecipeSelectorRow(
+                        recipes = recipes,
                         recommended = preview.recommendedRecipe,
                         selected = res.recipe,
                         onSelect = { recipe ->

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -380,6 +381,8 @@ private fun AddSubtaskField(onAdd: (String) -> Unit) {
     }
 }
 
+@Composable
+@ReadOnlyComposable
 internal fun priorityTint(priority: Int): Color = when (priority) {
     1 -> MM.colors.danger
     2 -> MM.colors.warning
