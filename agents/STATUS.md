@@ -2,6 +2,37 @@
 
 Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
+## Release v49 for closed testing, and the store setup (2026-11-16)
+- **Team pause:** every session committed its own work, and nothing is pushed:
+  - Report AI: `1bc6eba`.
+  - Notes: `bb5ba77`.
+  - Home and navigation: `a2677bb`, `c7059ba`.
+  - Work: `c399061`, `9b2802a`, `64fb252`.
+  - Learning: `af84cc8`.
+  - Circles: `969f0bd`, `1bd4e03`, `5c58c30`.
+  - Version 49: `41eec32`.
+- **Tests (verified):**
+  - The combined run: 655 tests, 639 passing at first. Every failure was then fixed and re-run green by its owner.
+  - Still failing:
+    - `ColorLiteralGuardTest` on `feature/onboarding/OnboardingScreen.kt` (21 hardcoded colours, 16 allowed), there since `a3ca467` on 2026-10-25. The founder decides.
+    - `DesignSystemGuardTest` on `core/ui/mm/AiCraft.kt` (from `8d97b49`).
+- **The bundle:** v49 `bundleRelease` is built on the founder's Mac with the upload key kept outside the repository (see `agents/PLAY_STORE.md`, "Building on the founder's Mac"). `local.properties` holds the store key, the proxy URL and the legal URLs.
+- **Live services (verified):**
+  - Gemini proxy: `https://meetingmind-gemini.meetingmind.workers.dev`. All three secrets are set, and a real request answered through it. Allowances follow `docs/RELEASE_BILLING_SETUP.md`: free 30 min and 30 actions, Pro 20 h and 1,200, Church 60 h and 4,000.
+  - Legal pages: `https://meetingmind-legal.meetingmind.workers.dev/privacy` and `/terms`. The privacy URL is set in Play Console (waiting in Publishing overview).
+- **Play Console:** the merchant account is set up. 6 subscriptions and the one-time product `pro_lifetime` are active. Launch offers are live (see `agents/PLAY_STORE.md`).
+- **RevenueCat:**
+  - A Google Play app (`goog_` key) is set up.
+  - The 7 Play products are attached to `meetingmind_pro`, `meetingmind_byok` and `meetingmind_church`.
+  - The `default` offering now has custom packages `monthly`, `yearly` and `lifetime`; the app matches package ids exactly, so the old `$rc_*` packages were never shown. BYOK and Church packages carry the Play products too.
+- **Open, for the founder:**
+  - A Google Cloud service account for RevenueCat (Play Developer API, financial and orders permissions). Without it, RevenueCat cannot validate real purchases.
+  - Uploading the v49 bundle to closed testing.
+  - Approving the Circles Worker and rules deploy, which carries Circles D5 and the AI-report route.
+  - Checking the Play Data safety form against `docs/DATA_SAFETY.md`.
+  - Deleting the old `$rc_*` packages.
+  - Switching the launch offers off when the promo ends.
+
 ## Notes rendering: no raw JSON, inline maths and chemistry, citations, YouTube source (2026-11-16)
 - Plan: `design/notes-blocks-and-math-plan.md` parts A, B and C, plus the founder's YouTube items (play on YouTube, source line at the bottom) and the note-editor hooks for "Report this" (part E).
 - **A. No raw JSON:**
