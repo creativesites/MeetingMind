@@ -61,6 +61,10 @@ object Routes {
     const val PLANS = "reading_plans"
     const val PRAYER_LIST = "prayer_list"
     const val TASKS = "tasks"
+    /** Tasks opened straight onto one task or one list (Work, reminders, links). Back goes to Tasks home. */
+    const val TASKS_OPEN = "tasks/open?task={task}&list={list}"
+    fun tasksOpenRoute(taskId: String? = null, listId: String? = null) =
+        "tasks/open" + listOfNotNull(taskId?.let { "task=$it" }, listId?.let { "list=$it" }).joinToString("&", prefix = "?").takeIf { taskId != null || listId != null }.orEmpty()
     const val APPEARANCE = "appearance"
     const val LANGUAGE = "language"
     const val PRAY = "pray?mode={mode}"
@@ -74,6 +78,9 @@ object Routes {
     const val WORK_SETTINGS = "work_settings"
     /** The Work Inbox: things shared into the app, waiting to be filed. */
     const val WORK_INBOX = "work_inbox"
+    /** A document read on the phone (PDF or scan) from the Work Inbox, optionally opened at a page. */
+    const val DOCUMENT = "work/document/{itemId}?page={page}"
+    fun documentRoute(itemId: String, page: Int? = null) = "work/document/$itemId" + (page?.let { "?page=$it" } ?: "")
     /** Imports a file already in the app (an inbox audio item) as a recording. */
     const val IMPORT_FILE = "import_file/{path}"
     fun importFileRoute(path: String) = "import_file/" + java.net.URLEncoder.encode(path, "UTF-8")

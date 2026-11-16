@@ -108,12 +108,21 @@ fun TasksScreen(
     vm: TasksViewModel,
     onNavigateBack: () -> Unit,
     onOpenNote: (String) -> Unit,
-    onOpenRecording: (String, Long?) -> Unit
+    onOpenRecording: (String, Long?) -> Unit,
+    /** Opens straight onto one task (from Work, a notification or a link); Back returns to Tasks home. */
+    initialTaskId: String? = null,
+    /** Opens straight onto one list. */
+    initialListId: String? = null
 ) {
     val colors = MM.colors
     val ctx = rememberTaskCtx(vm)
     val scope = rememberCoroutineScope()
-    val stack = remember { mutableStateListOf<TasksRoute>(TasksRoute.Home) }
+    val stack = remember {
+        mutableStateListOf<TasksRoute>(TasksRoute.Home).apply {
+            initialListId?.let { add(TasksRoute.OpenList(it)) }
+            initialTaskId?.let { add(TasksRoute.OpenTask(it)) }
+        }
+    }
     var sheet by remember { mutableStateOf<TaskSheet?>(null) }
     var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
     val snackbar = remember { SnackbarHostState() }

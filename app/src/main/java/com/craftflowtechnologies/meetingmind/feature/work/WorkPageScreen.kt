@@ -116,7 +116,11 @@ fun WorkPageScreen(
     /** No longer drawn inside Work (the in-vertical bar replaces it). Kept so existing callers still compile. */
     @Suppress("UNUSED_PARAMETER") onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null,
     /** Home in the in-vertical bar. Defaults to [onNavigateBack], which is where Work was opened from. */
-    onHome: (() -> Unit)? = null
+    onHome: (() -> Unit)? = null,
+    /** Opens the full task page in Tasks. Null keeps the in-place task editor. */
+    onOpenTaskPage: ((String) -> Unit)? = null,
+    /** Opens a Tasks list (a project's tasks) in Tasks. Null opens the project page instead. */
+    onOpenTaskList: ((String) -> Unit)? = null
 ) {
     val segment by page.segment.collectAsState()
     val query by page.query.collectAsState()
@@ -200,7 +204,9 @@ fun WorkPageScreen(
         )
     )
 
-    fun openTask(id: String) { viewModel.tasks.value.firstOrNull { it.id == id }?.let { editing = it } }
+    fun openTask(id: String) {
+        onOpenTaskPage?.invoke(id) ?: viewModel.tasks.value.firstOrNull { it.id == id }?.let { editing = it }
+    }
     fun openEntity(row: PulseAttention) {
         val id = row.entityId ?: return
         when (row.entityType) {
@@ -426,7 +432,7 @@ fun WorkPageScreen(
                         WorkSegment.PULSE -> PulsePane(pulseModel, pulseList)
                         WorkSegment.TASKS -> WorkTasksPane(
                             onOpenTask = ::openTask,
-                            onOpenList = onOpenProject
+                            onOpenList = { id -> onOpenTaskList?.invoke(id) ?: onOpenProject(id) }
                         )
                         WorkSegment.NOTES -> NotesContent(query, notes, now, projects, selectedIds, notesList, notesActions)
                         WorkSegment.PROJECTS -> WorkProjectsPane(
