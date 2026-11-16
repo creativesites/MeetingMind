@@ -78,7 +78,9 @@ internal fun WorkPageHeader(
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
     inboxCount: Int = 0,
-    onOpenInbox: (() -> Unit)? = null
+    onOpenInbox: (() -> Unit)? = null,
+    /** Work's own group for the shared app menu. Set: the ⋯ opens the app menu with Work first (and Settings one tap away). Null: the local ⋯ list. */
+    menuSection: (() -> com.craftflowtechnologies.meetingmind.core.navigation.MenuSection)? = null
 ) {
     val companionShown = rememberCompanionVisible(CompanionPage.HOME)
     val leading: (@Composable () -> Unit)? = if (companionShown) {
@@ -99,7 +101,15 @@ internal fun WorkPageHeader(
                 }
             }
             MenuButton(Icons.Rounded.Add, "New", addActions, tint = MM.colors.ink)
-            MenuButton(Icons.Rounded.MoreHoriz, "More", moreActions, tint = MM.colors.ink)
+            if (menuSection != null) {
+                com.craftflowtechnologies.meetingmind.core.navigation.AppMenuButton(
+                    focus = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK,
+                    tint = MM.colors.ink,
+                    local = menuSection
+                )
+            } else {
+                MenuButton(Icons.Rounded.MoreHoriz, "More", moreActions, tint = MM.colors.ink)
+            }
         }
         Row(
             Modifier.padding(top = MM.space.xs, bottom = MM.space.xs),

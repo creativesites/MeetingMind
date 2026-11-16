@@ -393,6 +393,18 @@ fun WorkPageScreen(
         WorkMenuAction("Work settings", onClick = onOpenSettings),
         WorkMenuAction("What Work does") { showWhatWork = true }
     )
+    val workMenu: () -> com.craftflowtechnologies.meetingmind.core.navigation.MenuSection = {
+        workMenuSection(
+            onAsk = { asking = true },
+            onInbox = onOpenInbox,
+            onTasks = { page.select(WorkSegment.TASKS) },
+            onWeeklyReview = onOpenWeeklyReview,
+            onAutopilot = { showAutopilotSheet = true },
+            onCircles = onOpenCircles,
+            onSettings = onOpenSettings,
+            onWhatWork = { showWhatWork = true }
+        )
+    }
     val barItems = WorkSegment.entries.map { VerticalBarItem(it.barKey, it.label, it.barIcon()) }
 
     Scaffold(
@@ -416,7 +428,8 @@ fun WorkPageScreen(
                 } else if (!searching) {
                     WorkPageHeader(
                         contextLine = contextLine(now, meetings.size, needs.size), addActions = addActions, moreActions = moreActions,
-                        onSearch = { searching = true }, inboxCount = inboxCount, onOpenInbox = onOpenInbox
+                        onSearch = { searching = true }, inboxCount = inboxCount, onOpenInbox = onOpenInbox,
+                        menuSection = workMenu
                     )
                 }
             }
@@ -517,3 +530,35 @@ object PendingWorkSegment {
 
 private fun pulseEventOf(e: CalendarEvent) =
     PulseEvent(e.key, e.title, e.begin, e.end, e.otherPeople, e.attendees.filter { a -> !a.isSelf }.mapNotNull { a -> a.email })
+
+
+/**
+ * Work's own group in the shared app menu (core/navigation/AppMenu): opened from the Work header, it leads the
+ * sheet, the rest of the app follows, and Settings is one tap away in the sheet header.
+ */
+internal fun workMenuSection(
+    onAsk: () -> Unit,
+    onInbox: () -> Unit,
+    onTasks: () -> Unit,
+    onWeeklyReview: () -> Unit,
+    onAutopilot: () -> Unit,
+    onCircles: () -> Unit,
+    onSettings: () -> Unit,
+    onWhatWork: () -> Unit
+): com.craftflowtechnologies.meetingmind.core.navigation.MenuSection {
+    fun row(id: String, label: String, icon: com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon, action: () -> Unit, hint: String? = null) =
+        com.craftflowtechnologies.meetingmind.core.navigation.MenuEntry(id, label, icon, com.craftflowtechnologies.meetingmind.core.navigation.MenuTarget.Run(action), hint)
+    return com.craftflowtechnologies.meetingmind.core.navigation.MenuSection(
+        "work", "Work", listOf(
+            row("work.ask", "Ask about my work", com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon.AI, onAsk, "Answers from your meetings, with the moment each was said"),
+            row("work.inbox", "Inbox", com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon.INBOX, onInbox, "Voice notes, files and scans to file"),
+            row("work.tasks", "Tasks", com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon.TASKS, onTasks),
+            row("work.review", "Weekly review", com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon.REVIEW, onWeeklyReview),
+            row("work.autopilot", "Autopilot", com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon.PLAN, onAutopilot, "Drafts after each recording · Pro"),
+            row("work.circles", "Team circles", com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon.CIRCLES, onCircles),
+            row("work.settings", "Work settings", com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon.SETTINGS, onSettings, "Profile, words, rhythm, privacy"),
+            row("work.about", "What Work does", com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon.PULSE, onWhatWork)
+        ),
+        com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK
+    )
+}
