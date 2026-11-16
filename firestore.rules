@@ -34,9 +34,13 @@ service cloud.firestore {
     function pollDoc(circleId, pollId) {
       return get(/databases/$(database)/documents/circles/$(circleId)/polls/$(pollId)).data;
     }
+    // Open means not closed by hand and, when the poll has a deadline (closesAt, epoch milliseconds), not yet past it.
     function pollIsOpen(circleId, pollId) {
       return exists(/databases/$(database)/documents/circles/$(circleId)/polls/$(pollId))
-        && pollDoc(circleId, pollId).closed == false;
+        && pollDoc(circleId, pollId).closed == false
+        && (!('closesAt' in pollDoc(circleId, pollId))
+            || pollDoc(circleId, pollId).closesAt == null
+            || request.time.toMillis() < pollDoc(circleId, pollId).closesAt);
     }
     function validCard(c) {
       return c is map
@@ -54,12 +58,13 @@ service cloud.firestore {
       allow get: if isMember(circleId);
       allow list, create, update, delete: if false;
 
-      // Member directory (role, displayName, joinedAt, muted). Written only by the Worker.
+      // Member directory (role, displayName, joinedAt, muted, external, title). Written only by the Worker.
       match /members/{uid} {
         allow get: if isMember(circleId);
         allow list: if isMember(circleId);
         allow create, delete: if false;
-        // Read receipts: a member sets only their own lastReadAt, to the server time.
+        // Read receipts: a member sets only their own lastReadAt, to the server time. Nothing else on the
+        // member doc is client-writable, so a member cannot set or change their own external flag.
         allow update: if isMember(circleId)
           && request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastReadAt'])

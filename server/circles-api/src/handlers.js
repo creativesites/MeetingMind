@@ -9,7 +9,7 @@ import { createUploadTicket, sendMessage, deleteMedia, checkPostAttachments, che
 import {
   LIMITS, RATE, REACTIONS, POST_TYPES, TEMPLATES, validId, cleanText, cleanVerseRef, normalizeSettings,
   generateCode, extractCodes, CHAT, shapePoll, shapeCelebration, clampInvite, joinDecision, canInvite, isAdmin, canModerate, shapePost, publishFromPending, assertNoAuthorLeak,
-  cleanTitle, cleanEvent, RSVP_STATES,
+  cleanTitle, cleanEvent, RSVP_STATES, DECISION_STATUSES, cleanBringList, isWorkCircle,
 } from "./logic.js";
 
 const C = (id) => `circles/${id}`;
@@ -298,7 +298,56 @@ async function join(ctx) {
   return result;
 }
 
+/**
+ * What an invite code is for, before the person joins. No membership, counter or invite writes. Shares the join
+ * failure budget and the same codes (not_found, revoked, expired, full) as join.
+ */
+async function previewInvite(ctx) {
+  const codes = extractCodes(String(ctx.body.code ?? ""));
+  await check(ctx.kv, `rl:joinfail:u:${ctx.uid}`, RATE.joinFailUser);
+  await check(ctx.kv, `rl:joinfail:ip:${ctx.ip}`, RATE.joinFailIp);
+  const failed = async (code, msg, status = 409) => {
+    await Promise.all([record(ctx.kv, `rl:joinfail:u:${ctx.uid}`, RATE.joinFailUser), record(ctx.kv, `rl:joinfail:ip:${ctx.ip}`, RATE.joinFailIp)]);
+    return new ApiError(status, code, msg);
+  };
+  let found = null;
+  for (const c of codes) { const d = await ctx.db.get(`invites/${c}`); if (d) { found = d; break; } }
+  if (!found) throw await failed("not_found", "That code wasn't found. Check it and try again.", 404);
+  const invite = found.data;
+  const circleDoc = await ctx.db.get(C(invite.circleId));
+  const circle = circleDoc?.data;
+  const err = joinDecision({
+    invite, nowMs: ctx.now.getTime(), memberCount: circle?.memberCount ?? 0, userCircleCount: 0,
+    alreadyMember: false, circleClosed: !circle || circle.closed,
+  });
+  if (err) throw await failed(err[0], err[1], err[0] === "not_found" ? 404 : err[0] === "expired" || err[0] === "revoked" ? 410 : 409);
+  const inviter = invite.createdBy ? await ctx.db.get(`${C(invite.circleId)}/members/${invite.createdBy}`) : null;
+  return {
+    circleId: invite.circleId,
+    name: circle.name,
+    space: circle.space || circle.settings?.space || "faith",
+    template: circle.template ?? null,
+    memberCount: circle.memberCount ?? 0,
+    coverPath: circle.coverPath ?? null,
+    inviterName: inviter?.data.displayName ?? null,
+  };
+}
+
 // ---------- membership ----------
+/** Owner and admins mark a person as external (outside the organisation). Work circles only. */
+async function setExternal(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const targetUid = str(ctx.body, "uid");
+  if (typeof ctx.body.external !== "boolean") throw bad("bad_request", "external must be true or false");
+  const { circle, member } = await load(ctx, circleId);
+  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can mark people as external.");
+  if (!isWorkCircle(circle)) throw new ApiError(409, "not_work_circle", "External members are only for work circles.");
+  const target = await ctx.db.get(`${C(circleId)}/members/${targetUid}`);
+  if (!target) throw notFound("That person");
+  await ctx.db.commit([w.update(`${C(circleId)}/members/${targetUid}`, { external: ctx.body.external })]);
+  return {};
+}
+
 /** An admin lets a waiting person in (approve) or turns them away (reject). */
 async function decideJoin(ctx) {
   const circleId = str(ctx.body, "circleId");
@@ -379,9 +428,10 @@ async function createEvent(ctx) {
   const { member } = await load(ctx, circleId);
   if (!canModerate(member.role)) throw new ApiError(403, "forbidden", "Only admins and moderators can add events.");
   const event = cleanEvent(ctx.body);
+  const bringList = cleanBringList(ctx.body.bringList);
   const id = newId();
   await ctx.db.commit([w.create(`${C(circleId)}/events/${id}`, {
-    ...event, status: "scheduled", createdBy: ctx.uid, createdByName: member.displayName, createdAt: ctx.now, updatedAt: ctx.now,
+    ...event, bringList, status: "scheduled", createdBy: ctx.uid, createdByName: member.displayName, createdAt: ctx.now, updatedAt: ctx.now,
   })]);
   return { eventId: id };
 }
@@ -400,7 +450,9 @@ async function updateEvent(ctx) {
   const current = await liveEvent(ctx, circleId, eventId);
   if (current.data.status === "cancelled") throw new ApiError(409, "event_cancelled", "This event was cancelled.");
   const event = cleanEvent({ ...current.data, ...ctx.body });
-  await ctx.db.commit([w.update(`${C(circleId)}/events/${eventId}`, { ...event, updatedAt: ctx.now })]);
+  const prior = Array.isArray(current.data.bringList) ? current.data.bringList : [];
+  const bringList = ctx.body.bringList === undefined ? prior : cleanBringList(ctx.body.bringList, prior);
+  await ctx.db.commit([w.update(`${C(circleId)}/events/${eventId}`, { ...event, bringList, updatedAt: ctx.now })]);
   return {};
 }
 
@@ -425,6 +477,40 @@ async function rsvp(ctx) {
   await ctx.db.commit([w.set(`${C(circleId)}/events/${eventId}/rsvps/${ctx.uid}`, {
     status: ctx.body.status, displayName: member.displayName, updatedAt: ctx.now,
   })]);
+  return {};
+}
+
+/**
+ * The Table: any member claims an unclaimed bring item, or releases their own claim. Admins may release anyone's.
+ * The claim is read and written in one transaction, so two people can't both bring the same thing.
+ */
+async function claimBringItem(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const eventId = str(ctx.body, "eventId");
+  const itemId = str(ctx.body, "itemId");
+  if (typeof ctx.body.claim !== "boolean") throw bad("bad_request", "claim must be true or false");
+  const { member } = await load(ctx, circleId);
+  const eventPath = `${C(circleId)}/events/${eventId}`;
+  await ctx.db.runTx(async (tx) => {
+    const ev = await tx.get(eventPath);
+    if (!ev) throw notFound("That event");
+    if (ev.data.status === "cancelled") throw new ApiError(409, "event_cancelled", "This event was cancelled.");
+    const items = Array.isArray(ev.data.bringList) ? ev.data.bringList : [];
+    const idx = items.findIndex((x) => x.id === itemId);
+    if (idx === -1) throw notFound("That item");
+    const holder = items[idx].claimedByUid || null;
+    let next;
+    if (ctx.body.claim) {
+      if (holder === ctx.uid) return [];
+      if (holder) throw new ApiError(409, "already_claimed", "Someone already said they'd bring that.");
+      next = items.map((x, i) => (i === idx ? { ...x, claimedByUid: ctx.uid, claimedByName: member.displayName } : x));
+    } else {
+      if (!holder) return [];
+      if (holder !== ctx.uid && !isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only the person who claimed it, or an admin, can release it.");
+      next = items.map((x, i) => (i === idx ? { id: x.id, text: x.text } : x));
+    }
+    return [w.update(eventPath, { bringList: next })];
+  });
   return {};
 }
 
@@ -517,6 +603,13 @@ async function createPost(ctx) {
     now: ctx.now,
     meta: b.meta
   });
+  // A new decision may replace a live decision in this circle; that one is marked replaced in the same write.
+  const replacesPostId = post.meta?.replacesPostId ?? null;
+  if (replacesPostId) {
+    const old = await livePost(ctx, circleId, replacesPostId);
+    if (old.type !== "decision") throw bad("bad_request", "Only a decision can be replaced.");
+    if (old.meta?.decisionStatus === "replaced") throw new ApiError(409, "already_replaced", "That decision was already replaced.");
+  }
   await hit(ctx.kv, `rl:createPost:${ctx.uid}`, RATE.createPost);
   const attachments = await checkPostAttachments(ctx, circleId, b.attachments);
   const id = newId();
@@ -530,6 +623,7 @@ async function createPost(ctx) {
     w.create(`${C(circleId)}/postAuthors/${id}`, authorDoc),
     w.create(`${C(circleId)}/${pending ? "pending" : "posts"}/${id}`, doc),
   ];
+  if (replacesPostId) writes.push(w.update(`${C(circleId)}/posts/${replacesPostId}`, { "meta.decisionStatus": "replaced", "meta.replacedByPostId": id }));
   if (requestId) {
     writes.push(w.set(`userMeta/${ctx.uid}/postRequests/${requestId}`, {
       postId: id,
@@ -652,6 +746,25 @@ async function setWorkStatus(ctx) {
     status,
     answeredAt: status === "answered" ? ctx.now : null,
   })]);
+  return {};
+}
+
+/** A decision's status. The post's author, an admin or a moderator may change it. Decision posts only. */
+async function setDecisionStatus(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const postId = str(ctx.body, "postId");
+  const status = ctx.body.status;
+  if (!DECISION_STATUSES.includes(status)) throw bad("bad_request", "Unknown decision status.");
+  const { member } = await load(ctx, circleId);
+  const post = await livePost(ctx, circleId, postId);
+  if (post.type !== "decision") throw bad("bad_request", "Only decisions have a status.");
+  const auth = await ctx.db.get(`${C(circleId)}/postAuthors/${postId}`);
+  const isAuthor = auth?.data?.authorUid === ctx.uid || post.authorUid === ctx.uid;
+  if (!isAuthor && !canModerate(member.role)) {
+    throw new ApiError(403, "forbidden", "Only the author, an admin or a moderator can change a decision's status.");
+  }
+  // Dotted paths merge into meta, so the other meta fields are left alone.
+  await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { "meta.decisionStatus": status })]);
   return {};
 }
 
@@ -959,7 +1072,8 @@ export const HANDLERS = {
   createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, setWorkStatus, toggleChecklistItem, deletePost,
   prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken, notifyChat,
   createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
-  decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp,
+  decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp, claimBringItem,
+  setExternal, setDecisionStatus, previewInvite,
   createUploadTicket, sendMessage, deleteMedia, removeAvatar,
 };
 export { POST_TYPES };

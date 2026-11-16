@@ -114,6 +114,13 @@ export const WORK_CODE_WORDS = ["SPRINT", "FOCUS", "LAUNCH", "ALIGN", "IMPACT", 
 export const LEARNING_CODE_WORDS = ["STUDY", "EXAM", "CLASS", "NOTES", "LEARN", "LOGIC", "ACADEMY", "THEORY", "CAMPUS", "SCHOLAR", "DEGREE", "HONOR", "TUTOR", "COURSE", "LECTURE", "THESIS", "REVISION", "RECALL", "FORMULA", "SYNTAX"];
 export const GENERAL_CODE_WORDS = ["CIRCLE", "CLUB", "SQUAD", "TRIBE", "CREW", "GUILD", "TABLE", "FORUM", "COMMON", "SPARK", "HARBOR", "HAVEN"];
 export const CODE_WORDS = FAITH_CODE_WORDS;
+// Templates that make a work circle when a circle has no explicit space (see isWorkCircle).
+export const WORK_TEMPLATES = ["project_team", "client_engagement", "exec_board", "department", "custom_work"];
+/** A decision's status. Anyone may post a new one as proposed or confirmed; "replaced" is set when a newer decision replaces it. */
+export const DECISION_STATUSES = ["proposed", "confirmed", "replaced"];
+export const CREATE_DECISION_STATUSES = ["proposed", "confirmed"];
+/** The Table: a bring list on an event. */
+export const BRING = { max: 20, textMax: 80 };
 export const ALL_CODE_WORDS = [...new Set([...FAITH_CODE_WORDS, ...WORK_CODE_WORDS, ...LEARNING_CODE_WORDS, ...GENERAL_CODE_WORDS])];
 // No vowels (no accidental words), no 0/1/I/L/O lookalikes.
 export const CODE_ALPHABET = "23456789BCDFGHJKMNPQRSTVWXZ";
@@ -225,6 +232,13 @@ export function cleanPostMeta(meta) {
     const s = meta.meetingDate.trim();
     if (s.length > 0) out.meetingDate = s.slice(0, 40);
   }
+  if (meta.decisionStatus !== undefined && meta.decisionStatus !== null) {
+    if (!CREATE_DECISION_STATUSES.includes(meta.decisionStatus)) throw bad("bad_request", "Invalid decision status");
+    out.decisionStatus = meta.decisionStatus;
+  }
+  if (typeof meta.replacesPostId === "string" && meta.replacesPostId.trim()) {
+    out.replacesPostId = validId(meta.replacesPostId.trim(), "replacesPostId");
+  }
   if (Array.isArray(meta.tags)) {
     const seen = new Set();
     const tags = [];
@@ -280,7 +294,12 @@ export function shapePost({ type, body, verseRef, anonymous, uid, authorName, se
   };
   const post = { ...base };
   const cleanMeta = cleanPostMeta(meta);
-  if (cleanMeta) post.meta = cleanMeta;
+  if (cleanMeta) {
+    if (type !== "decision" && (cleanMeta.decisionStatus !== undefined || cleanMeta.replacesPostId !== undefined)) {
+      throw bad("bad_request", "Only decisions can have a status or replace another decision.");
+    }
+    post.meta = cleanMeta;
+  }
   if (!anonymous) { post.authorUid = uid; post.authorName = authorName; }
   const authorDoc = { authorUid: uid, anonymous, authorName: anonymous ? null : authorName, createdAt: now };
   return { pending, post, authorDoc };
@@ -296,6 +315,48 @@ export function publishFromPending(pendingDoc, authorDoc, now) {
   const post = { ...pendingDoc, createdAt: pendingDoc.anonymous ? hourFloor(now) : now };
   if (!pendingDoc.anonymous) { post.authorUid = authorDoc.authorUid; post.authorName = authorDoc.authorName; }
   return post;
+}
+
+/** A work circle: its space is "work"; with no space on the circle, a work template makes it one. */
+export function isWorkCircle(circle) {
+  const space = circle?.space || circle?.settings?.space;
+  if (space) return space === "work";
+  return WORK_TEMPLATES.includes(circle?.template);
+}
+
+const defaultItemId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+
+/**
+ * An event's bring list (The Table), at most BRING.max items of at most BRING.textMax characters.
+ * Items arrive as plain strings (what the app sends) or as {id, text}. A string keeps the id and claim of an existing
+ * item with the same text; an object keeps them when its id matches an existing item and its text is unchanged.
+ * Claims survive only on kept items. Every other item gets a fresh id. Blank items are dropped.
+ */
+export function cleanBringList(input, existing = [], newId = defaultItemId) {
+  if (input === undefined || input === null) return [];
+  if (!Array.isArray(input)) throw bad("bad_request", "The bring list must be a list.");
+  if (input.length > BRING.max) throw bad("bad_request", `A bring list can have at most ${BRING.max} items.`);
+  const prior = Array.isArray(existing) ? existing : [];
+  const usedIds = new Set();
+  const out = [];
+  for (const item of input) {
+    const isObj = item !== null && typeof item === "object" && !Array.isArray(item);
+    const text = cleanText(isObj ? item.text : item, "bring item", { min: 0, max: BRING.textMax });
+    if (!text) continue;
+    const keep = isObj
+      ? (typeof item.id === "string" ? prior.find((p) => p.id === item.id) : undefined)
+      : prior.find((p) => p.text === text && !usedIds.has(p.id));
+    let id = keep && !usedIds.has(keep.id) ? keep.id : null;
+    while (!id || usedIds.has(id)) id = newId();
+    usedIds.add(id);
+    const row = { id, text };
+    if (keep && keep.id === id && keep.text === text && keep.claimedByUid) {
+      row.claimedByUid = keep.claimedByUid;
+      row.claimedByName = keep.claimedByName ?? "";
+    }
+    out.push(row);
+  }
+  return out;
 }
 
 // ---- chat & fun (FAITH_V2 section 2.2b) ----

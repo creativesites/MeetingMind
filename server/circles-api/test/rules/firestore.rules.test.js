@@ -356,3 +356,22 @@ test("typing: members write only their own short-lived doc; name and expiry are 
   await assertSucceeds(deleteDoc(typing("member")));
   await assertFails(deleteDoc(doc(as("member"), `circles/${C}/typing/admin`)));
 });
+
+test("poll votes: a poll past its closesAt refuses votes; one still open accepts them", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, `circles/${C}/polls/plpast`), { question: "Late?", optionIds: ["o0", "o1"], multi: false, closed: false, closesAt: Date.now() - 60_000 });
+    await setDoc(doc(db, `circles/${C}/polls/plfuture`), { question: "Soon?", optionIds: ["o0", "o1"], multi: false, closed: false, closesAt: Date.now() + 3_600_000 });
+  });
+  const vote = (uid) => ({ authorUid: uid, choices: ["o0"], updatedAt: serverTimestamp() });
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/polls/plpast/votes/member`), vote("member")));
+  await assertSucceeds(setDoc(doc(as("member"), `circles/${C}/polls/plfuture/votes/member`), vote("member")));
+});
+
+test("external flag: a member cannot set or change it on their own member doc; only the Worker writes it", async () => {
+  await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/member`), { external: true }));
+  await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/member`), { lastReadAt: serverTimestamp(), external: true }));
+  await assertFails(updateDoc(doc(as("admin"), `circles/${C}/members/admin`), { external: true }));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/members/newbie`), { role: "member", external: true }));
+  await assertSucceeds(getDoc(doc(as("member"), `circles/${C}/members/admin`)));
+});

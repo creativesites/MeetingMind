@@ -73,8 +73,9 @@ export function sniffMime(b, mime) {
     case "image/webp": return at(0, "RIFF") && at(8, "WEBP");
     case "application/pdf": return at(0, "%PDF-");
     case "audio/ogg": return at(0, "OggS");
-    case "audio/mp4":
-    case "video/mp4": return at(4, "ftyp");
+    case "audio/mp4": return at(4, "ftyp");
+    // QuickTime (.mov) files carry ftyp with the brand 'qt  '. They are not MP4, so a file declared as MP4 is refused.
+    case "video/mp4": return at(4, "ftyp") && !at(8, "qt  ");
     case "video/webm": return [0x1a, 0x45, 0xdf, 0xa3].every((v, i) => b[i] === v);
     // ADTS: 12-bit sync word 0xFFF, then layer bits 00.
     case "audio/aac": return b[0] === 0xff && (b[1] & 0xf6) === 0xf0;
