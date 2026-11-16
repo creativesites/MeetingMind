@@ -147,7 +147,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         searchJob = viewModelScope.launch {
             _isSearching.value = true
             delay(150)
-            val passage = com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser.findAll(newQuery).firstOrNull()?.reference
+            // "Open in the Bible" only for people who use the Faith space.
+            val showsFaith = runCatching {
+                com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(getApplication()).preferencesFlow.first().identity.showsFaith
+            }.getOrDefault(true)
+            val passage = if (!showsFaith) null else com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser.findAll(newQuery).firstOrNull()?.reference
             val scripture = passage?.let {
                 SearchResultItem(
                     meetingId = "", meetingTitle = it.display(), meetingDate = 0L, matchSnippet = "Open in the Bible",
@@ -530,6 +534,13 @@ private fun AnswerCard(a: AskState.Answered, onClose: () -> Unit, onOpen: (com.c
             Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(16.dp))
             Text("Answer", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp, color = Accent, modifier = Modifier.padding(start = 8.dp).weight(1f))
             AiCopyButton(text = a.answer.text)
+            com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                    com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.ASK_EVERYTHING, a.answer.text,
+                    moreNoteIds = a.answer.sources.mapNotNull { it.noteId },
+                    moreMeetingIds = a.answer.sources.mapNotNull { it.meetingId }
+                )
+            })
             IconButton(
                 onClick = onClose,
                 modifier = Modifier.sizeIn(minWidth = MMSize.minTouch, minHeight = MMSize.minTouch)

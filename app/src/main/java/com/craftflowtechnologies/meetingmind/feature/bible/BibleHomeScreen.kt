@@ -118,7 +118,10 @@ fun BibleHomeContent(state: BibleHomeState, actions: BibleHomeActions) {
             ScreenHeader(
                 title = "Bible",
                 leading = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = c.ink) } },
-                actions = { IconButton(onClick = actions.onSearch, modifier = Modifier.testTag("bible_home_search")) { Icon(Icons.Rounded.Search, "Search the Bible", tint = c.ink) } }
+                actions = {
+                    IconButton(onClick = actions.onSearch, modifier = Modifier.testTag("bible_home_search")) { Icon(Icons.Rounded.Search, "Search the Bible", tint = c.ink) }
+                    com.craftflowtechnologies.meetingmind.core.navigation.AppMenuButton(focus = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH)
+                }
             )
         },
         hero = { ContinueHero(state, actions) },

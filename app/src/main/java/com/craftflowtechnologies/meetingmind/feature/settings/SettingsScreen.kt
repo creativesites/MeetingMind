@@ -277,7 +277,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun setSpaces(spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) = viewModelScope.launch { userPrefs.setSpaces(spaces) }
+    fun setSpaces(spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) = viewModelScope.launch { com.craftflowtechnologies.meetingmind.core.navigation.SpaceSchedules.setSpaces(getApplication(), spaces) }
     fun setLook(look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) = viewModelScope.launch { userPrefs.setLook(look) }
     fun setCardStyle(style: com.craftflowtechnologies.meetingmind.core.identity.CardStyle) = viewModelScope.launch { userPrefs.setCardStyle(style) }
     fun setAvatar(uri: android.net.Uri) = viewModelScope.launch {
@@ -472,8 +472,8 @@ fun SettingsScreen(
     if (showSpaces) {
         androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showSpaces = false }, containerColor = MM.colors.surfaceRaised) {
             Column(Modifier.padding(horizontal = MM.space.l).padding(bottom = MM.space.xl)) {
-                Text("What's MeetingMind for you?", style = MM.type.title, color = MM.colors.ink)
-                Text("Only these spaces show in Home, Notes and Record.", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.m))
+                Text("Your spaces", style = MM.type.title, color = MM.colors.ink)
+                Text("Choose what MeetingMind is for. Tap a space to turn it on or off.", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.m))
                 com.craftflowtechnologies.meetingmind.core.identity.SpacesPicker(prefs.identity.spaces) { viewModel.setSpaces(it) }
             }
         }

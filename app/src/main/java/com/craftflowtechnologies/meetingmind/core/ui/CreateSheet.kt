@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.rounded.SmartDisplay
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -42,7 +44,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 
-enum class CreateAction { RECORD, NOTE, MEDIA, IMPORT }
+enum class CreateAction { RECORD, NOTE, MEDIA, IMPORT, YOUTUBE }
 
 /**
  * What the bar's New action opens. Record comes first and largest: it is still the thing people
@@ -71,7 +73,24 @@ fun CreateSheet(onPick: (CreateAction) -> Unit, onDismiss: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CreateTile("Write a note", Icons.Filled.EditNote, Modifier.weight(1f)) { onPick(CreateAction.NOTE) }
                 CreateTile("Photos & video", Icons.Filled.PhotoLibrary, Modifier.weight(1f)) { onPick(CreateAction.MEDIA) }
-                CreateTile("Import audio", Icons.Filled.FileUpload, Modifier.weight(1f)) { onPick(CreateAction.IMPORT) }
+                CreateTile("Import a file", Icons.Filled.FileUpload, Modifier.weight(1f)) { onPick(CreateAction.IMPORT) }
+            }
+            Spacer(Modifier.height(10.dp))
+            // Notes from a YouTube link: its own row, so it is never hidden behind "Import".
+            Surface(
+                onClick = { onPick(CreateAction.YOUTUBE) }, shape = RoundedCornerShape(18.dp), color = SurfaceSunk,
+                border = BorderStroke(1.dp, Line), modifier = Modifier.fillMaxWidth().testTag("create_youtube")
+            ) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = CircleShape, color = AccentWash, modifier = Modifier.size(40.dp)) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.SmartDisplay, contentDescription = null, tint = Accent, modifier = Modifier.size(21.dp)) }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Notes from a YouTube video", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                        Text("Paste a link to a lecture, sermon or talk", fontSize = 12.5.sp, color = InkSecondary)
+                    }
+                }
             }
             Text(
                 "Every recording gets its own note, so what you write and what was said stay together.",

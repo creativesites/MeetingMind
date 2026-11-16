@@ -206,7 +206,9 @@ fun NotesScreen(
     var searchOpen by remember { mutableStateOf(false) }
     val homeMode = isRoot && !folders
     val showHero = homeMode && !query.isFiltered && !query.isSearching && searchText.isBlank()
-    val latestMeeting = remember(state.items) {
+    val showsWork = NotebookSpace.WORK in appIdentity.spaces
+    val latestMeeting = remember(state.items, showsWork) {
+        if (!showsWork) return@remember null
         state.items.filter { it.hasRecording && Workflows.space(it.note.workflow) == NotebookSpace.WORK }
             .maxByOrNull { it.note.eventDate ?: it.note.createdAt }
     }

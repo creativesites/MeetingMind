@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.identity.LocalAppLook
+import com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity
+import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.ui.EntryPoints
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 
@@ -54,17 +56,25 @@ fun HomeQuickAccessRow(
     showLearn: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    // Work remains represented by its richer Work & Projects card; devotional and notes already
-    // have stronger entry points elsewhere on Today.
+    // Only the spaces the person uses (Settings › What it's for). The row checks this itself, so
+    // every home that shows it hides a turned-off space without each caller remembering to.
+    // Verticals lead, in the bar's order, so Work and Learning are as visible as Faith.
+    val identity = LocalAppIdentity.current
+    val work = showWork && NotebookSpace.WORK in identity.spaces
+    val learn = showLearn && onOpenLearn != null && NotebookSpace.LEARNING in identity.spaces
+    val faith = identity.showsFaith
     val items = buildList {
-        add(QuickAccessItem(EntryPoints.quickFaith.id, EntryPoints.quickFaith.label, Icons.Filled.Church, onOpenFaith))
+        if (work) add(QuickAccessItem(EntryPoints.quickWork.id, EntryPoints.quickWork.label, Icons.Filled.Work, onOpenWork))
+        if (learn) add(QuickAccessItem(EntryPoints.quickLearn.id, EntryPoints.quickLearn.label, Icons.Filled.School, onOpenLearn!!))
+        if (faith) add(QuickAccessItem(EntryPoints.quickFaith.id, EntryPoints.quickFaith.label, Icons.Filled.Church, onOpenFaith))
         onOpenCreate?.let { add(QuickAccessItem(EntryPoints.quickCreate.id, EntryPoints.quickCreate.label, Icons.Filled.Palette, it)) }
-        if (showWork) add(QuickAccessItem(EntryPoints.quickWork.id, EntryPoints.quickWork.label, Icons.Filled.Work, onOpenWork))
-        if (showLearn && onOpenLearn != null) add(QuickAccessItem(EntryPoints.quickLearn.id, EntryPoints.quickLearn.label, Icons.Filled.School, onOpenLearn))
-        add(QuickAccessItem(EntryPoints.quickPrayer.id, EntryPoints.quickPrayer.label, Icons.Filled.Favorite, onOpenPrayer))
-        add(QuickAccessItem(EntryPoints.quickDevotional.id, EntryPoints.quickDevotional.label, Icons.AutoMirrored.Filled.MenuBook, onOpenWord))
-        onOpenTestimonies?.let { add(QuickAccessItem(EntryPoints.quickTestimonies.id, EntryPoints.quickTestimonies.label, Icons.Filled.Celebration, it)) }
+        if (faith) {
+            add(QuickAccessItem(EntryPoints.quickPrayer.id, EntryPoints.quickPrayer.label, Icons.Filled.Favorite, onOpenPrayer))
+            add(QuickAccessItem(EntryPoints.quickDevotional.id, EntryPoints.quickDevotional.label, Icons.AutoMirrored.Filled.MenuBook, onOpenWord))
+            onOpenTestimonies?.let { add(QuickAccessItem(EntryPoints.quickTestimonies.id, EntryPoints.quickTestimonies.label, Icons.Filled.Celebration, it)) }
+        }
     }
+    if (items.isEmpty()) return
     LazyRow(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(14.dp),

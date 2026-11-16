@@ -91,7 +91,8 @@ class DevotionalRepository(
     suspend fun setProfile(profile: DevotionalProfile) {
         val before = prefs.devotionalProfile.first()
         prefs.setDevotionalProfile(profile)
-        DevotionalScheduler.sync(context, profile)
+        // Scheduled only while the Faith space is on (core/navigation/SpaceSchedules.kt).
+        DevotionalScheduler.sync(context, com.craftflowtechnologies.meetingmind.core.navigation.SpaceSchedules.devotionalFor(profile, prefs.preferencesFlow.first().identity.spaces))
         // Changing plan keeps the archive; today's plan reading, if that is what is on the page, becomes the new plan's.
         if (profile.source == DevotionalSource.CLASSIC && (before.planId != profile.planId || before.source != DevotionalSource.CLASSIC)) {
             runCatching { switchTodayToPlan(java.time.LocalDate.now(), profile) }

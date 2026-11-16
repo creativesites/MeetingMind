@@ -375,6 +375,8 @@ class OnboardingViewModel(
                 val current = prefs.devotionalProfile.first()
                 prefs.setDevotionalProfile(commitReading(current, _reading.value))
             }
+            // The devotional and faith reminders follow the spaces just chosen.
+            runCatching { com.craftflowtechnologies.meetingmind.core.navigation.SpaceSchedules.sync(getApplication()) }
             _bible.value?.let { t ->
                 // Becomes the reading Bible now, and downloads in the background for offline use.
                 prefs.setBibleVersionId(t.intId)

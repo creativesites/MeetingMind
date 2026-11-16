@@ -93,7 +93,7 @@ class MainActivity : FragmentActivity() {
         com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.handle(intent)
         // Something shared into the app: it becomes a Work Inbox item, and only on a fresh launch (not a rotation).
         if (savedInstanceState == null && com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
-            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+            handleShare(intent)
         }
         // The database opens (and migrates) before anything reads it. If it can't, the recovery
         // screen offers the data back instead of the app crashing or wiping it (PRD_M0 §4.1).
@@ -176,9 +176,8 @@ class MainActivity : FragmentActivity() {
     private fun startBackgroundSync() {
         lifecycleScope.launch {
             runCatching {
-                val profile = UserPreferencesManager(applicationContext).devotionalProfile.first()
-                com.craftflowtechnologies.meetingmind.core.devotional.DevotionalScheduler.sync(applicationContext, profile)
-                com.craftflowtechnologies.meetingmind.core.faith.ReminderScheduler.sync(applicationContext, UserPreferencesManager(applicationContext).reminderSettings.first())
+                // Devotional and faith reminders run only while the Faith space is on.
+                com.craftflowtechnologies.meetingmind.core.navigation.SpaceSchedules.sync(applicationContext)
                 UserPreferencesManager(applicationContext).let { it.syncWorkRhythm(it.workSettings.first()) }
                 com.craftflowtechnologies.meetingmind.core.widget.Widgets.refresh(applicationContext)
             }
@@ -230,7 +229,28 @@ class MainActivity : FragmentActivity() {
         com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.handle(intent)
         com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.handle(intent)
         if (com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
+            handleShare(intent)
+        }
+    }
+
+    /**
+     * Something shared into the app. A YouTube link opens "Notes from a YouTube video" straight
+     * away, and is also filed in the Work Inbox when Work is on. Anything else goes to the Inbox.
+     */
+    private fun handleShare(intent: android.content.Intent) {
+        val youTube = com.craftflowtechnologies.meetingmind.feature.importing.YouTubeLinks.sharedLink(intent)
+        if (youTube == null) {
             com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+            return
+        }
+        com.craftflowtechnologies.meetingmind.feature.importing.YouTubeLinkRequests.offer(youTube)
+        lifecycleScope.launch {
+            val spaces = runCatching {
+                com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(applicationContext).preferencesFlow.first().identity.spaces
+            }.getOrNull()
+            if (spaces == null || com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces) {
+                com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+            }
         }
     }
 }
@@ -355,7 +375,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val route = when (destination) {
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME -> Routes.HOME
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NOTES -> Routes.NOTES
-                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH -> com.craftflowtechnologies.meetingmind.core.ui.TabSlots.route(tabSlot, Routes.WORK, Routes.SEARCH)
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH -> Routes.SEARCH
+                // The bar's space places (core/navigation/BarConfig.kt).
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.WORK -> Routes.WORK
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.LEARN -> Routes.LEARN
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH -> Routes.FAITH
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.TASKS -> Routes.TASKS
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NONE -> Routes.HOME
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NEW -> Routes.HOME
@@ -438,7 +463,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     val routesWithNav = setOf(Routes.HOME, Routes.NOTES, Routes.SEARCH, Routes.SETTINGS)
     val onProcessingScreen = currentRoute == Routes.PROCESSING
 
+    // The app menu (core/navigation/AppMenu.kt): every space and feature, from any screen.
+    val appMenu = com.craftflowtechnologies.meetingmind.core.navigation.rememberAppMenuState()
+    val youTubeSheet = com.craftflowtechnologies.meetingmind.feature.importing.rememberYouTubeSheetState()
     androidx.compose.runtime.CompositionLocalProvider(
+        com.craftflowtechnologies.meetingmind.core.navigation.LocalAppMenu provides appMenu.controller,
+        com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet provides youTubeSheet.controller,
         com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionOpenSettings provides { navController.navigate(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) },
         com.craftflowtechnologies.meetingmind.core.ui.mm.LocalAiOpenSettings provides { navController.navigate(Routes.SETTINGS) }
     ) {
@@ -474,7 +504,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val setupVm: com.craftflowtechnologies.meetingmind.feature.setup.SetupViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
             val setupState by setupVm.state.collectAsState()
             val setupSnoozedUntil by setupVm.snoozedUntil.collectAsState()
+            // A vertical's home falls back to Today while its space is turned off (core/navigation).
             val homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance.current.homeStyle
+                .effectiveFor(com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current.spaces)
             // The Circles card is on the Today and Work homes. Other homes never load circles, so no sign-in happens for them.
             val homeCirclesVm: com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel? =
                 if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY ||
@@ -592,6 +624,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
                 onOpenLearn = { navController.navigate(Routes.LEARN) },
+                onOpenTasks = { navController.navigate(Routes.TASKS) },
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 homeCircles = homeCircles,
                 onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
@@ -753,6 +786,17 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 )
             }
 
+            // Faith keeps the app bar, so the other spaces, Notes and New are one tap away inside it.
+            androidx.compose.material3.Scaffold(
+                contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+                bottomBar = {
+                    com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
+                        current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH,
+                        onNavigate = { if (it != com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH) navigateToPrimary(it) }
+                    )
+                }
+            ) { faithBar ->
+            Box(Modifier.padding(bottom = faithBar.calculateBottomPadding())) {
             if (assistantOpen) {
                 com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(
                     session = lib.forLearningNote(noteId),
@@ -774,6 +818,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onRecordSermon = { navController.navigate(Routes.recordTypeRoute(RecordingType.SERMON)) },
                     onOpenJourney = { navController.navigate(Routes.FAITH_JOURNEY) },
                     onOpenScripture = { navController.navigate(Routes.FAITH_SCRIPTURE) },
+            }
+            }
                     onOpenBible = { navController.navigate(Routes.BIBLE_HOME) },
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
                     onGuideToday = { r -> navController.navigate(Routes.bibleSessionRoute(r.passageId(), "today")) },
@@ -1175,14 +1221,25 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             if (path != null) {
                 com.craftflowtechnologies.meetingmind.feature.work.DocumentViewerScreen(
                     itemId = itemId,
+            val presetType = entry.arguments?.getString("type")?.let { t ->
+                runCatching { com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(t) }.getOrNull()
+            }
                     title = item?.title ?: "Document",
                     filePath = path,
                     onBack = { navController.popBackStack() },
+                    // Loading the link resets the kind, so the sheet's choice is applied once it has loaded.
+                    if (presetType != null) {
+                        vm.importState.first { it.youtubeUrl != null || it.error != null }
+                        vm.selectRecordingType(presetType)
+                    }
                     initialPage = entry.arguments?.getInt("page") ?: 1
                 )
             }
         }
-        composable(Routes.IMPORT_FILE, arguments = listOf(navArgument("path") { type = NavType.StringType })) { entry ->
+        composable(Routes.IMPORT_FILE, arguments = listOf(
+            navArgument("path") { type = NavType.StringType },
+            navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null }
+        )) { entry ->
             val vm: ImportViewModel = viewModel()
             val path = URLDecoder.decode(entry.arguments?.getString("path").orEmpty(), "UTF-8")
             LaunchedEffect(path) {
@@ -1582,6 +1639,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     if (showCreateSheet) {
         com.craftflowtechnologies.meetingmind.core.ui.CreateSheet(
             onPick = { action ->
+                    com.craftflowtechnologies.meetingmind.core.ui.CreateAction.YOUTUBE -> youTubeSheet.controller.open()
                 showCreateSheet = false
                 when (action) {
                     com.craftflowtechnologies.meetingmind.core.ui.CreateAction.RECORD -> navController.navigate(Routes.RECORDING)
@@ -1646,6 +1704,17 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         onOpen = { id ->
             recoveryScope.launch {
                 navController.navigate(resolveProcessedTargetRoute(id))
+    com.craftflowtechnologies.meetingmind.core.navigation.AppMenuHost(
+        state = appMenu,
+        navigate = { route -> navController.navigate(route) { launchSingleTop = true } },
+        onCreate = { showCreateSheet = true },
+        onYouTube = { from -> youTubeSheet.controller.open(from) }
+    )
+    com.craftflowtechnologies.meetingmind.feature.importing.YouTubeSheetHost(
+        state = youTubeSheet,
+        navigate = { route -> navController.navigate(route) { launchSingleTop = true } }
+    )
+
             }
         },
         onShowAll = { navController.navigate(Routes.NOTES) { popUpTo(Routes.HOME) { saveState = true }; launchSingleTop = true; restoreState = true } },

@@ -92,6 +92,7 @@ fun HomeModeHeader(
     val devData = devotional?.devotional
     val scripture = devData?.scripture?.firstOrNull()
     Column(modifier.fillMaxWidth()) {
+        val appMenu = com.craftflowtechnologies.meetingmind.core.navigation.LocalAppMenu.current
         HomeHeroHeader(
             identity = identity,
             greeting = remember(identity, now / 3_600_000) { Greetings.pick(identity) },
@@ -105,7 +106,7 @@ fun HomeModeHeader(
             listState = listState,
             // The home has its own next-up card, so the floating tile stays off.
             showTile = false,
-            onAvatar = {},
+            onAvatar = { appMenu.open(null) },
             onSearch = onSearch,
             onInbox = onInbox,
             onSwitch = { today.setFocus(HomeModes.next(mode, offered)) },

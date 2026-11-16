@@ -44,8 +44,11 @@ fun homePickerLabel(style: HomeStyle): String =
 @Composable
 fun HomePicker(selected: HomeStyle, onSelect: (HomeStyle) -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.testTag("home_picker"), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-        HomePickerOrder.forEach { style ->
-            val on = style == selected
+        // Only homes whose space is on (the Work and Learn homes need theirs).
+        val spaces = com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current.spaces
+        val shownSelected = selected.effectiveFor(spaces)
+        HomePickerOrder.filter { it.usableWith(spaces) }.forEach { style ->
+            val on = style == shownSelected
             val row: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = {
                 Row(
                     Modifier.selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(style) }).fillMaxWidth(),

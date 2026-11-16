@@ -137,6 +137,8 @@ fun TodayScreen(
     onOpenFaith: () -> Unit = {},
     onOpenWork: () -> Unit = {},
     onOpenLearn: () -> Unit = {},
+    /** The Tasks card in "Your spaces". */
+    onOpenTasks: () -> Unit = {},
     onOpenCircles: () -> Unit = {},
     /** What the Circles tile shows; the caller loads it (see HomeCirclesViewModel). */
     homeCircles: HomeCircles = HomeCircles.Loading,
@@ -193,7 +195,8 @@ fun TodayScreen(
     var showLayers by remember { mutableStateOf(false) }
     var showJump by remember { mutableStateOf(false) }
 
-    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) viewModel.setAvatar(uri) }
+    // The avatar opens the app menu; the photo itself is changed in Settings › Account.
+    val appMenu = com.craftflowtechnologies.meetingmind.core.navigation.LocalAppMenu.current
     val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) viewModel.setCalendarEnabled(true) }
 
     // Refresh each minute while Home is showing.
@@ -289,7 +292,7 @@ fun TodayScreen(
                     // The floating "Up next" card is hidden on the Today home; the layout reads cleaner without it.
                     showTile = false,
                     listState = listState,
-                    onAvatar = { avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    onAvatar = { appMenu.open(null) },
                     onSearch = onSearch,
                     onInbox = { showInbox = true },
                     onSwitch = { viewModel.setFocus(switchTo) },
@@ -309,6 +312,37 @@ fun TodayScreen(
                     onSelect = { viewModel.setFocus(it) },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+            }
+
+            // Your spaces: Work, Learning and Faith (whichever the person uses) and Tasks, one tap each,
+            // right under the hero so every vertical is visible in the first seconds on Home.
+            item(key = "spaces") {
+                val (tasksDue, learnDue) = com.craftflowtechnologies.meetingmind.feature.today.home.rememberSpaceCounts()
+                com.craftflowtechnologies.meetingmind.feature.today.home.SpacesRow(
+                    glance = com.craftflowtechnologies.meetingmind.feature.today.home.SpaceGlance(
+                        nextTitle = todayItems.firstOrNull { it.start >= now }?.title,
+                        todayCount = todayItems.size,
+                        devotionalTitle = devotional?.devotional?.title,
+                        learnDue = learnDue, tasksDue = tasksDue
+                    ),
+                    onOpen = { space ->
+                        when (space) {
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK -> onOpenWork()
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING -> onOpenLearn()
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH -> onOpenFaith()
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL -> onNewNote()
+                        }
+                    },
+                    onOpenTasks = onOpenTasks,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            }
+            // Notes from a YouTube video: always one tap from Today, and a copied link offers itself.
+            item(key = "youtube") {
+                Column(Modifier.padding(horizontal = 16.dp).padding(top = 12.dp)) {
+                    com.craftflowtechnologies.meetingmind.feature.importing.YouTubeClipboardBanner(Modifier.padding(bottom = 10.dp))
+                    com.craftflowtechnologies.meetingmind.feature.importing.YouTubeHomeCard()
+                }
             }
 
             if (appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.CAPTURE)) item(key = "capture") {
@@ -366,28 +400,38 @@ fun TodayScreen(
 
             // Stories from today: three shareable cards drawn from the devotional.
             val dev = devotional?.devotional
-            if (dev != null && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.STORIES)) item(key = "stories") {
+            if (dev != null && identity.showsFaith && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.STORIES)) item(key = "stories") {
+                // Only AI-written devotionals can be reported (bundled readings are written by people).
+                val aiWritten = dev.origin == com.craftflowtechnologies.meetingmind.core.devotional.DevotionalOrigin.CLOUD_AI ||
+                    dev.origin == com.craftflowtechnologies.meetingmind.core.devotional.DevotionalOrigin.DEVICE_AI
+                fun report(vararg parts: String?) = if (!aiWritten) null else com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                    feature = com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.HOME_STORY,
+                    text = parts.filterNotNull().filter { it.isNotBlank() }.joinToString("\n\n")
+                )
                 val cards = listOf(
                     StoryCardData(
                         reference = dev.scripture.firstOrNull()?.display() ?: "Today",
                         headline = dev.keyText ?: dev.title,
                         body = dev.reflection.firstOrNull().orEmpty(),
                         caption = dev.title,
-                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.DEVOTIONAL) }
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.DEVOTIONAL) },
+                        report = report(dev.keyText ?: dev.title, dev.reflection.firstOrNull())
                     ),
                     StoryCardData(
                         reference = "Reflection",
                         headline = dev.liveItToday ?: "One thing to do today",
                         body = dev.reflection.getOrNull(1).orEmpty(),
                         caption = "Live it today",
-                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.WORD) }
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.WORD) },
+                        report = report(dev.liveItToday, dev.reflection.getOrNull(1))
                     ),
                     StoryCardData(
                         reference = "Prayer",
                         headline = dev.prayer ?: "Lord, shape this day",
                         body = dev.question.orEmpty(),
                         caption = dev.insight?.author ?: "Prayer",
-                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.PRAYER) }
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.PRAYER) },
+                        report = report(dev.prayer, dev.question)
                     )
                 )
                 StoryCards(cards, onShareAll = { onOpenStories(null) }, modifier = Modifier.padding(top = 20.dp))

@@ -23,10 +23,19 @@ import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Church
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Church
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.runtime.remember
+import com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity
+import com.craftflowtechnologies.meetingmind.core.navigation.BarConfig
+import com.craftflowtechnologies.meetingmind.core.navigation.BarSlot
+import com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.runtime.compositionLocalOf
@@ -56,22 +65,23 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 
 /**
- * The app's four primary destinations, plus New.
+ * The bar's destinations: Today and Notes, the New action, then two places that follow the
+ * person's spaces ([BarConfig]): Work, Learn, Faith, Tasks or Search.
  *
- * New is a filled action between the tabs, not a fifth destination: it opens the Create sheet,
- * where Record comes first, then a written note, photos and import (docs/PLAN_V1.md §2). The AI
- * Engine lives under Settings; it is something set up once, not somewhere people go daily.
+ * New is a filled action between the tabs, not a destination: it opens the Create sheet, where
+ * Record comes first, then a written note, photos and import (docs/PLAN_V1.md §2). Settings is no
+ * longer in the bar; it is in the app menu, opened from the avatar on every home.
  */
 enum class BottomNavDestination {
     HOME, NOTES, NEW, SEARCH, SETTINGS,
-    /** No tab is current (a screen reached from elsewhere, such as Search when its slot holds Work). */
+    WORK, LEARN, FAITH, TASKS,
+    /** No tab is current (a screen reached from elsewhere, such as Settings). */
     NONE
 }
 
 /**
- * What the fourth slot is (docs/PLAN_PROFESSIONAL.md §7.4). Search, unless the person put Work
- * there; it is the same destination either way, so tags and the route table are unchanged, and
- * the route it opens is chosen by [TabSlots.route].
+ * The old Work-or-Search choice for the fourth slot (docs/PLAN_PROFESSIONAL.md §7.4). The bar now
+ * follows the person's spaces ([BarConfig]); this is kept for screens that still read it.
  */
 val LocalTabSlot = compositionLocalOf { TabSlot.SEARCH }
 
@@ -91,15 +101,28 @@ private data class NavItem(
     val isAction: Boolean = false
 )
 
+private fun slotItem(slot: BarSlot): NavItem = when (slot) {
+    BarSlot.WORK -> NavItem(BottomNavDestination.WORK, "Work", Icons.Filled.Work, Icons.Outlined.Work)
+    BarSlot.LEARN -> NavItem(BottomNavDestination.LEARN, "Learn", Icons.Filled.School, Icons.Outlined.School)
+    BarSlot.FAITH -> NavItem(BottomNavDestination.FAITH, "Faith", Icons.Filled.Church, Icons.Outlined.Church)
+    BarSlot.TASKS -> NavItem(BottomNavDestination.TASKS, "Tasks", Icons.Filled.TaskAlt, Icons.Outlined.TaskAlt)
+    BarSlot.SEARCH -> NavItem(BottomNavDestination.SEARCH, "Search", Icons.Filled.Search, Icons.Outlined.Search)
+}
+
+/** The places after New, for the person's spaces and Home. */
 @Composable
-private fun navItems(slot: TabSlot) = listOf(
+fun rememberBarSlots(): List<BarSlot> {
+    val identity = LocalAppIdentity.current
+    val home = LocalAppearance.current.homeStyle
+    return remember(identity.spaces, identity.faithFirst, home) { BarConfig.slots(identity, home) }
+}
+
+@Composable
+private fun navItems(slots: List<BarSlot>) = listOf(
     NavItem(BottomNavDestination.HOME, stringResource(R.string.nav_today), Icons.Filled.Home, Icons.Outlined.Home),
     NavItem(BottomNavDestination.NOTES, stringResource(R.string.nav_notes), Icons.AutoMirrored.Filled.Notes, Icons.AutoMirrored.Outlined.Notes),
-    NavItem(BottomNavDestination.NEW, "New", Icons.Filled.Add, Icons.Filled.Add, isAction = true),
-    if (slot == TabSlot.WORK) NavItem(BottomNavDestination.SEARCH, stringResource(R.string.nav_work), Icons.Filled.Work, Icons.Outlined.Work)
-    else NavItem(BottomNavDestination.SEARCH, stringResource(R.string.action_search), Icons.Filled.Search, Icons.Outlined.Search),
-    NavItem(BottomNavDestination.SETTINGS, stringResource(R.string.nav_settings), Icons.Filled.Settings, Icons.Outlined.Settings)
-)
+    NavItem(BottomNavDestination.NEW, "New", Icons.Filled.Add, Icons.Filled.Add, isAction = true)
+) + slots.map(::slotItem)
 
 /**
  * A floating pill navigation bar.
@@ -142,7 +165,7 @@ fun AppBottomNavigationBar(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                navItems(LocalTabSlot.current).forEach { item ->
+                navItems(rememberBarSlots()).forEach { item ->
                     when {
                         item.isAction -> if (showNewAction) NewAction { onNavigate(BottomNavDestination.NEW) }
                         item.destination == current -> ActiveNavChip(item)

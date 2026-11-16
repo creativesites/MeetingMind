@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material.icons.rounded.WbSunny
@@ -174,6 +175,8 @@ fun FaithHomeContent(
                     IconButton(onClick = actions.onAssistant, modifier = Modifier.testTag("faith_assistant")) {
                         Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = "Ask the assistant", tint = c.ink)
                     }
+                    // The app menu with Faith first: every Faith feature, the other spaces and Settings.
+                    com.craftflowtechnologies.meetingmind.core.navigation.AppMenuButton(focus = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH)
                 }
             )
         },
@@ -253,6 +256,14 @@ fun FaithHomeContent(
                         modifier = Modifier.padding(horizontal = MM.space.s).testTag("faith_record_sermon"),
                         leading = { Icon(Icons.Rounded.Mic, null, tint = c.inkSecondary) },
                         trailing = { Chevron() }, onClick = actions.onRecordSermon
+                    )
+                    val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
+                    ListRow(
+                        title = "Sermon from a YouTube video", subtitle = "Paste a link: sermon notes, scripture and key points",
+                        modifier = Modifier.padding(horizontal = MM.space.s).testTag("faith_youtube_sermon"),
+                        leading = { Icon(Icons.Rounded.SmartDisplay, null, tint = c.inkSecondary) },
+                        trailing = { Chevron() },
+                        onClick = { youTube.open(from = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH) }
                     )
                 }
             }

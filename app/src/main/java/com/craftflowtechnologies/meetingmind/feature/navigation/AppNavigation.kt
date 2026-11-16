@@ -18,6 +18,9 @@ object Routes {
     const val SEARCH = "search"
     const val MODELS = "models"
     const val SETTINGS = "settings"
+    /** Settings opened at one group (from a vertical's menu), e.g. "faith". Plain [SETTINGS] stays the hub. */
+    const val SETTINGS_GROUP = "settings_group/{group}"
+    fun settingsGroupRoute(group: String) = "settings_group/$group"
     const val INTEGRATIONS = "integrations"
     const val RECIPES = "recipes"
     /** Plans. [trigger] is a PaywallTrigger name; it only labels where the person came from. */
@@ -82,8 +85,10 @@ object Routes {
     const val DOCUMENT = "work/document/{itemId}?page={page}"
     fun documentRoute(itemId: String, page: Int? = null) = "work/document/$itemId" + (page?.let { "?page=$it" } ?: "")
     /** Imports a file already in the app (an inbox audio item) as a recording. */
-    const val IMPORT_FILE = "import_file/{path}"
-    fun importFileRoute(path: String) = "import_file/" + java.net.URLEncoder.encode(path, "UTF-8")
+    const val IMPORT_FILE = "import_file/{path}?type={type}"
+    /** [type] is an optional RecordingType name to pre-select (the YouTube link sheet sets it). */
+    fun importFileRoute(path: String, type: String? = null) =
+        "import_file/" + java.net.URLEncoder.encode(path, "UTF-8") + (type?.let { "?type=$it" } ?: "")
     /** One context page for a person, an organisation or a project (D5.2). */
     const val CONTEXT = "context/{type}/{id}"
     /** An Intelligence Brief: [kind] is a BriefKind name, and the id is the meeting, organisation, project or person ("-" for the weekly one). */
