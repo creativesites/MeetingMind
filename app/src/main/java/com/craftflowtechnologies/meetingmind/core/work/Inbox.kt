@@ -114,6 +114,8 @@ class InboxRepository(private val database: MeetMindDatabase, private val clock:
             val resolvedSource = p.source?.takeIf { it.isNotBlank() && it != "Shared" }
                 ?: copied?.inferredSource
                 ?: ShareIn.inferSource(uri = p.uri, fileName = copied?.name ?: p.title, mime = p.mime, rawSource = p.source)
+            val isYouTubeUrl = p.kind == InboxKind.URL &&
+                com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(p.text ?: p.uri)
             InboxItemEntity(
                 id = "inbox_${UUID.randomUUID()}",
                 kind = p.kind.name,
@@ -124,8 +126,6 @@ class InboxRepository(private val database: MeetMindDatabase, private val clock:
                 createdAt = clock(),
                 source = resolvedSource,
                 mediaDurationMs = p.durationMs ?: copied?.durationMs,
-                val isYouTubeUrl = p.kind == InboxKind.URL &&
-                    com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(p.text ?: p.uri)
                 transcriptionStatus = if (p.kind == InboxKind.AUDIO || p.kind == InboxKind.VIDEO || isYouTubeUrl) "PENDING" else "NONE"
             ).also { dao.upsert(it) }
         }
