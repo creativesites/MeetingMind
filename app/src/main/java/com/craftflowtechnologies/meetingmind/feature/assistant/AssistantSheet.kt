@@ -408,6 +408,11 @@ private fun AssistantBubble(
     onRetry: (() -> Unit)?
 ) {
     var showThinking by remember { mutableStateOf(false) }
+    var hiddenAfterReport by remember { mutableStateOf(false) }
+    if (hiddenAfterReport) {
+        com.craftflowtechnologies.meetingmind.core.aireport.HiddenAfterReportLine(onShow = { hiddenAfterReport = false })
+        return
+    }
     Column(
         Modifier.fillMaxWidth().animateContentSize().semantics { liveRegion = LiveRegionMode.Polite },
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -479,6 +484,14 @@ private fun AssistantBubble(
         if (m.text.isNotBlank() && !m.error && !m.streaming) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 AiCopyButton(text = m.text)
+                com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(
+                    source = {
+                        com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                            com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.ASSISTANT, m.text, modelId = m.provider
+                        )
+                    },
+                    onHide = { hiddenAfterReport = true }
+                )
                 m.provider?.let { Text("via $it", fontSize = 11.5.sp, color = InkFaint) }
             }
         }

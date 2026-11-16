@@ -187,6 +187,15 @@ fun BriefScreen(
                                 style = MM.type.caption, color = c.inkMuted, modifier = Modifier.weight(1f)
                             )
                             Pill(if (writing) "Writing…" else "Refresh") { if (!writing) refresh++ }
+                            // Play's AI-content policy: the brief can be reported. Confidential briefs stay on the phone.
+                            if (!writing) com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                                com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                                    com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.WORK_BRIEF,
+                                    BriefCopy.plain(b, options),
+                                    mustStayOnDevice = b.confidential,
+                                    moreMeetingIds = b.evidence.mapNotNull { it.meetingId }.distinct()
+                                )
+                            })
                         }
                     }
                 }

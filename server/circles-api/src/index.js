@@ -4,11 +4,14 @@ import { ApiError } from "./errors.js";
 import { Firestore } from "./firestore.js";
 import { Fcm } from "./fcm.js";
 import { HANDLERS } from "./handlers.js";
+import { reportAiContent } from "./aireport.js";
 import { runDigest } from "./digest.js";
 import { uploadMedia, downloadMedia, uploadAvatar, downloadAvatar, sweepOrphans } from "./media.js";
 import { parseServiceAccount } from "./google.js";
 
 const MAX_BODY = 32 * 1024;
+// Routes that need no sign-in. Each validates its own body and rate-limits by a keyed hash of the IP.
+const PUBLIC_HANDLERS = { reportAiContent };
 const json = (obj, status = 200, requestId) => new Response(JSON.stringify({ ...obj, requestId }), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Request-Id": requestId } });
 const err = (status, code, message, requestId) => json({ ok: false, error: { code, message } }, status, requestId);
 function safeErrorDetail(value) {
@@ -43,10 +46,11 @@ export async function handle(request, env, ctxExec, deps = {}) {
   const avatarDl = request.method === "GET" ? /^\/v1\/avatar\/([^/]+)\/([^/]+)$/.exec(url.pathname) : null;
   if (up || dl || avatarUp || avatarDl) return mediaRoute(request, env, deps, requestId, { up, dl, avatarUp, avatarDl });
   const m = /^\/v1\/([A-Za-z]+)$/.exec(url.pathname);
-  const handler = m && Object.hasOwn(HANDLERS, m[1]) ? HANDLERS[m[1]] : null;
+  const isPublic = !!m && Object.hasOwn(PUBLIC_HANDLERS, m[1]);
+  const handler = isPublic ? PUBLIC_HANDLERS[m[1]] : m && Object.hasOwn(HANDLERS, m[1]) ? HANDLERS[m[1]] : null;
   if (request.method !== "POST" || !handler) return err(404, "not_found", "Not found", requestId);
   try {
-    const { uid } = await (deps.authenticate || authenticate)(request, env);
+    const { uid } = isPublic ? { uid: null } : await (deps.authenticate || authenticate)(request, env);
     const len = parseInt(request.headers.get("Content-Length") || "0", 10);
     if (len > MAX_BODY) return err(413, "too_large", "Request too large", requestId);
     const text = await request.text();

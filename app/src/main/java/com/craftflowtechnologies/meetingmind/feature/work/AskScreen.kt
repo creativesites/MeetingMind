@@ -366,6 +366,15 @@ private fun ModelPanel(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Answer", style = MM.type.overline, color = MM.colors.accent, modifier = Modifier.weight(1f))
                     AiCopyButton(text = body)
+                    // Play's AI-content policy: an answer can be reported. Confidential work stays on the phone.
+                    com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                        com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                            com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.WORK_ASK, body,
+                            mustStayOnDevice = confidential,
+                            moreNoteIds = a.sources.mapNotNull { it.noteId },
+                            moreMeetingIds = a.sources.mapNotNull { it.meetingId }
+                        )
+                    })
                 }
                 Text(
                     citedAnnotatedString(body, MM.colors.accent),

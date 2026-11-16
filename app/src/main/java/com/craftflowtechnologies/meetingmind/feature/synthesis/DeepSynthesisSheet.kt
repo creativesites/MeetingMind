@@ -589,11 +589,29 @@ private fun InsightCard(
     onOpenSource: (DeepSynthesisSource) -> Unit
 ) {
     val c = MM.colors
+    var hiddenAfterReport by remember(insight) { mutableStateOf(false) }
+    val refs = insight.sourceIds.mapNotNull { sourcesById[it] }
+    if (hiddenAfterReport) {
+        com.craftflowtechnologies.meetingmind.core.aireport.HiddenAfterReportLine(onShow = { hiddenAfterReport = false })
+        return
+    }
     MMCard {
-        Text(insight.heading, style = MM.type.bodyStrong, color = c.ink)
+        Row(verticalAlignment = Alignment.Top) {
+            Text(insight.heading, style = MM.type.bodyStrong, color = c.ink, modifier = Modifier.weight(1f))
+            com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(
+                source = {
+                    com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                        com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.DEEP_SYNTHESIS,
+                        "${insight.heading}\n${insight.detail}",
+                        moreNoteIds = refs.mapNotNull { it.noteId },
+                        moreMeetingIds = refs.mapNotNull { it.meetingId }
+                    )
+                },
+                onHide = { hiddenAfterReport = true }
+            )
+        }
         Spacer(Modifier.height(MM.space.xs))
         Text(insight.detail, style = MM.type.body, color = c.inkSecondary)
-        val refs = insight.sourceIds.mapNotNull { sourcesById[it] }
         if (refs.isNotEmpty()) {
             Spacer(Modifier.height(MM.space.s))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {

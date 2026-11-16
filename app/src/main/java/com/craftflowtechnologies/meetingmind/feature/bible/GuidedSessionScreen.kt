@@ -446,6 +446,18 @@ private fun Suggested(help: StepHelp?, onUse: ((String) -> Unit)?) {
         help.loading -> Text("Zuri is thinking of questions…", style = MM.type.caption, color = c.inkMuted)
         help.line != null -> StatusLine(StatusKind.Info, help.line, modifier = Modifier.testTag("session_ai_line"))
         else -> Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            // Play's AI-content policy: what Zuri suggested can be reported.
+            if (help.fromAi && (help.context.isNotEmpty() || help.questions.isNotEmpty())) {
+                androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("Suggested by AI", style = MM.type.caption, color = c.inkMuted, modifier = Modifier.weight(1f))
+                    com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                        com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                            com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.BIBLE_STUDY,
+                            (help.context.map { it.text } + help.questions).joinToString("\n")
+                        )
+                    })
+                }
+            }
             if (help.context.isNotEmpty()) {
                 Text("Background, suggested by AI", style = MM.type.caption, color = c.inkMuted)
                 SelectionContainer {

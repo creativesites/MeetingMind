@@ -367,6 +367,13 @@ fun DevotionalContent(
 private val DATE = DateTimeFormatter.ofPattern("EEEE, d MMMM")
 
 /** Who wrote a devotional, in a word, for the day's list. */
+/** The AI-written words of a devotional, for a report. Scripture is fetched from the Bible, so it is left out. */
+private fun devotionalReportText(d: com.craftflowtechnologies.meetingmind.core.devotional.Devotional): String =
+    listOfNotNull(d.title, d.keyText, d.motivation, d.liveItToday, d.question, d.prayer)
+        .plus(d.reflection).plus(d.application)
+        .filter { it.isNotBlank() }
+        .joinToString("\n\n")
+
 private fun writerLabel(d: DailyDevotional): String = when (d.devotional.origin) {
     DevotionalOrigin.CLOUD_AI -> "Gemini"
     DevotionalOrigin.DEVICE_AI -> "On phone"
@@ -810,8 +817,21 @@ private fun Footer(
     val d = today.devotional
     Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
         // Truthful provenance: when it was written and by whom.
-        DevotionalStatus.writtenLine(d.origin, d.engine, today.note.createdAt)?.let {
-            Text(it, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, modifier = Modifier.testTag("devotional_written_line"))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            DevotionalStatus.writtenLine(d.origin, d.engine, today.note.createdAt)?.let {
+                Text(it, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, modifier = Modifier.weight(1f).testTag("devotional_written_line"))
+            } ?: Spacer(Modifier.weight(1f))
+            // Play's AI-content policy: an AI-written devotional can be reported from the page.
+            if (d.origin == DevotionalOrigin.CLOUD_AI || d.origin == DevotionalOrigin.DEVICE_AI) {
+                com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                    com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                        com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.DEVOTIONAL,
+                        devotionalReportText(d),
+                        modelId = d.engine,
+                        noteId = today.note.id
+                    )
+                })
+            }
         }
         if (d.origin == DevotionalOrigin.CLASSIC) Text(d.label, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted)
         today.note.metadata["devotionalFallback"]?.let {

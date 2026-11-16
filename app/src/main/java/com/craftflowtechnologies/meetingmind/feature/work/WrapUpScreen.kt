@@ -338,7 +338,8 @@ fun WrapUpScreen(
             f = i, owners = ownerChoices(speakers, self?.name), onDismiss = { editing = null },
             onText = { viewModel.setText(i, it) }, onKind = { viewModel.setKind(i, it) }, onOwner = { viewModel.setOwner(i, it) },
             onDue = { viewModel.setDue(i, it) }, onAnswer = { viewModel.setAnswer(i, it) },
-            onDelete = { editing = null; viewModel.dismiss(i) }, onPlay = { onPlay(i.startMs) }
+            onDelete = { editing = null; viewModel.dismiss(i) }, onPlay = { onPlay(i.startMs) },
+            meetingId = meeting?.id
         )
     }
     if (checkSheet) WrapUpCheckSheet(
@@ -622,7 +623,8 @@ private fun WrapUpEditSheet(
     onDue: (String?) -> Unit,
     onAnswer: (String) -> Unit,
     onDelete: () -> Unit,
-    onPlay: () -> Unit
+    onPlay: () -> Unit,
+    meetingId: String? = null
 ) {
     var text by remember(f.id) { mutableStateOf(f.text) }
     var typedOwner by remember(f.id) { mutableStateOf("") }
@@ -697,6 +699,12 @@ private fun WrapUpEditSheet(
 
             Row(Modifier.fillMaxWidth().padding(top = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onDelete) { Text("Dismiss", color = Danger) }
+                // Play's AI-content policy: a finding the AI wrote can be reported.
+                com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                    com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                        com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.WORK_PULSE, f.text, meetingId = meetingId
+                    )
+                })
                 Spacer(Modifier.weight(1f))
                 Button(
                     onClick = { if (text != f.text) onText(text); onDismiss() },

@@ -67,6 +67,7 @@ media older than 24 hours that no message, post, pending request or cover refere
 | `syncCounts` | member | recomputes comment/reaction counters after client-side comment writes (idempotent, 20 s debounce) |
 | `commentAsAuthor` | the hidden author of an anonymous prayer request | `circleId, postId, body, parentId?` -> `commentId`. Written by the service account with no `authorUid` and `author: true` (shown as "Requester"); 60/h |
 | `report` | member | `circleId, postId, reason?` |
+| `reportAiContent` | **anyone, no sign-in** | `reportId, feature, reason, comment?, text, model, appVersion, createdAt`; any other field is refused. Stored in `aiReports/{reportId}` (idempotent); 20/h per keyed hash of the IP. See `design/ai-content-reporting.md` |
 | `myCircles` | any signed-in | `circleIds` the caller is still a member of |
 | `reportMessage` | member | `circleId, messageId, reason?`; reporter stored as a keyed hash |
 | `createPoll` | member | `circleId, question, options[2-6], multi?` -> `pollId, messageId` (10/h). Votes are written by clients under rules (doc id = uid, open polls only) |

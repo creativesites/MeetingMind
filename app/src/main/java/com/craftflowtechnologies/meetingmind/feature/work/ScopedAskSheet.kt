@@ -220,7 +220,17 @@ fun ScopedAskSheet(
                     a.text?.let { body ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Answer", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp, color = Accent)
-                            AiCopyButton(text = body)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                AiCopyButton(text = body)
+                                // Play's AI-content policy. The sources decide whether the report may leave the phone.
+                                com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                                    com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                                        com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.WORK_ASK, body,
+                                        moreNoteIds = a.sources.mapNotNull { it.noteId },
+                                        moreMeetingIds = a.sources.mapNotNull { it.meetingId }
+                                    )
+                                })
+                            }
                         }
                         Text(citedAnnotatedString(body, Accent), fontSize = 15.sp, color = Ink, lineHeight = 22.sp, modifier = Modifier.testTag("ask_answer"))
                     }

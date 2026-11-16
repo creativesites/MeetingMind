@@ -2,6 +2,26 @@
 
 Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
+## Report AI content, Play AI-Generated Content policy (2026-11-16)
+- **Founder-approved design:** `design/ai-content-reporting.md` (part E of `design/notes-blocks-and-math-plan.md`). A "Report this" flag on every AI surface opens one sheet: a reason, an optional comment, an optional Hide, then Send.
+  - **What is sent:** only the flagged passage, the reason, the comment, the feature, the model and the app version.
+  - **What stays on the phone:** on-device mode, private notes and confidential or keep-on-device Work give a copy-only report.
+- **Code:**
+  - `core/aireport/`: the model, the privacy rule, a file queue with a WorkManager sender, and the sheet and button.
+  - Screens: recording summary and Ask, assistant, deep synthesis, AI devotionals, live prayer, Bible study, Work Ask, Brief and Wrap-up.
+  - Other sessions wired notes blocks, Learning, Circles AI briefs, Search and Home story cards.
+- **Server:** `server/circles-api/src/aireport.js` adds `POST /v1/reportAiContent`. It needs no sign-in, refuses unknown fields, stores reports in Firestore `aiReports/{reportId}` and allows 20 an hour per keyed IP hash. `npm test` passes 112/112.
+- **Tests:** `AiReportPayloadTest` 13/13, `AiReportPolicyTest` 3/3 and `AiReportQueueTest` 7/7 pass, and the whole app compiles with every hook (Learning session run, 13:27).
+- **Before release reports reach the founder:**
+  - Deploy the Circles Worker: `cd server/circles-api && npx wrangler deploy`. Until then, reports wait in the phone's queue (up to 50, for 30 days) and send after the deploy.
+  - No new CI secret: the app uses `CIRCLES_API_URL`, which defaults to the production Worker.
+  - Firestore rules need no change: the catch-all already denies clients `aiReports`.
+- **Open:**
+  - Founder: a support email for copied reports (`AiReports.SUPPORT_EMAIL` is null, so copies name no address).
+  - The Learning studio's lecture summary flag (asked of the Learning session).
+  - Explicit Gemini `safetySettings`, as a separate task.
+  - Not yet checked on the phone.
+
 ## Work premium redesign, Phase B (2026-11-16)
 - **Founder-approved design:** `design/work-vertical-design-spec.md` §R (revision 2) and `design/Work Vertical Redesign.dc.html`. Implemented on this branch in these commits:
   - `47c39a4`: Task data-loss fix, schema 31 and Work UI kit (`core/ui/work`). The fix: `Task.toEntity` dropped `waitingOn`, `sourceItemId` and `space`.

@@ -57,6 +57,12 @@ import com.craftflowtechnologies.meetingmind.core.common.Formatters
 import com.craftflowtechnologies.meetingmind.core.model.ChatMessage
 import com.craftflowtechnologies.meetingmind.core.model.Speaker
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
+import com.craftflowtechnologies.meetingmind.core.aireport.AiFeature
+import com.craftflowtechnologies.meetingmind.core.aireport.AiReportSheetHost
+import com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource
+import com.craftflowtechnologies.meetingmind.core.aireport.HiddenAfterReportLine
+import com.craftflowtechnologies.meetingmind.core.aireport.ReportAiButton
+import com.craftflowtechnologies.meetingmind.core.aireport.rememberAiReportState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.AiCopyButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.AiThinkingSkeleton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.isNearBottom
@@ -89,10 +95,15 @@ fun AskAiPanel(
     onOpenInTranscript: (Long) -> Unit,
     modifier: Modifier = Modifier,
     onStopQuestion: (() -> Unit)? = null,
-    streamingReply: String? = null
+    streamingReply: String? = null,
+    /** The recording, so a report of an answer can respect its privacy. */
+    meetingId: String? = null
 ) {
     var inputText by remember { mutableStateOf("") }
     var openCitation by remember { mutableStateOf<Pair<String, String>?>(null) } // messageId to MM:SS label
+    val reportState = rememberAiReportState()
+    var hiddenAnswers by remember { mutableStateOf(emptySet<String>()) }
+    AiReportSheetHost(reportState)
     val listState = rememberLazyListState()
 
     LaunchedEffect(chatMessages.size, isAnswering) {
@@ -158,6 +169,8 @@ fun AskAiPanel(
             items(chatMessages, key = { it.id }) { msg ->
                 if (msg.isUser) {
                     Text(text = msg.content, style = RecordingPageType.askQuestion)
+                } else if (msg.id in hiddenAnswers) {
+                    HiddenAfterReportLine(onShow = { hiddenAnswers = hiddenAnswers - msg.id })
                 } else {
                     Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
                         AskAnswerText(
@@ -193,6 +206,11 @@ fun AskAiPanel(
                                 modifier = Modifier.weight(1f)
                             )
                             AiCopyButton(text = msg.content)
+                            ReportAiButton(onClick = {
+                                reportState.open(AiReportSource(AiFeature.ASK_RECORDING, msg.content, meetingId = meetingId)) {
+                                    hiddenAnswers = hiddenAnswers + msg.id
+                                }
+                            })
                         }
                     }
                 }

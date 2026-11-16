@@ -1329,6 +1329,7 @@ fun MeetingDetailScreen(
             when (currentTab) {
                 RecordingDetailTab.OVERVIEW -> com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.OverviewStepper(
                     summary = meeting?.summaryPreview,
+                    meetingId = viewModel.meetingId,
                     openQuestionCount = questions.count { !it.resolved },
                     decisions = decisions,
                     actionItems = actionItems,
@@ -1387,6 +1388,7 @@ fun MeetingDetailScreen(
                         isAnswering = isAnswering,
                         pendingQuestion = pendingQuestion,
                         streamingReply = streamingReply,
+                        meetingId = viewModel.meetingId,
                         onSendQuestion = { viewModel.askQuestion(it) },
                         onStopQuestion = { viewModel.cancelAsk() },
                         onPlayFrom = { viewModel.jumpToTimestamp(it) },

@@ -1,5 +1,10 @@
 package com.craftflowtechnologies.meetingmind.feature.prayer
 
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -140,6 +145,17 @@ internal fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onCl
     val mood = moodOf(ui)
     val ended = mood == Mood.ENDED
     var captions by rememberSaveable { mutableStateOf(true) }
+    // Play's AI-content policy: what the companion says can be reported (flag, or long-press a line).
+    val report = com.craftflowtechnologies.meetingmind.core.aireport.rememberAiReportState()
+    com.craftflowtechnologies.meetingmind.core.aireport.AiReportSheetHost(report)
+    val reportLine: (String) -> Unit = { text ->
+        report.open(
+            com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.PRAYER, text,
+                modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_LIVE_MODEL
+            )
+        )
+    }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(ended) { while (!ended) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) } }
     // The screen stays awake for the whole conversation, and is let go when it ends.
@@ -168,6 +184,11 @@ internal fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onCl
                         color = FixedWhite.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
                 Spacer(Modifier.weight(1f))
+                ui.lines.lastOrNull { !it.mine && it.text.isNotBlank() }?.let { last ->
+                    com.craftflowtechnologies.meetingmind.core.aireport.ReportAiButton(
+                        onClick = { reportLine(last.text) }, tint = FixedWhite.copy(alpha = 0.7f)
+                    )
+                }
                 IconButton(onClick = { captions = !captions }, modifier = Modifier.testTag("pray_captions")) {
                     Icon(if (captions) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled, contentDescription = if (captions) "Hide words" else "Show words", tint = FixedWhite.copy(alpha = 0.8f))
                 }
@@ -201,7 +222,7 @@ internal fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onCl
 
             // The conversation, fading out at the top like a page scrolling away.
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (captions) Conversation(ui.lines, Modifier.fillMaxSize())
+                if (captions) Conversation(ui.lines, Modifier.fillMaxSize(), onReport = reportLine)
                 else Text("Words are hidden. Just pray — the companion is listening.", color = FixedWhite.copy(alpha = 0.45f), fontSize = 14.sp, fontStyle = FontStyle.Italic,
                     textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(32.dp))
             }
@@ -309,7 +330,7 @@ private fun Notes(modifier: Modifier) {
 }
 
 @Composable
-private fun Conversation(lines: List<PrayLine>, modifier: Modifier) {
+private fun Conversation(lines: List<PrayLine>, modifier: Modifier, onReport: (String) -> Unit = {}) {
     val state = rememberLazyListState()
     LaunchedEffect(lines.size, lines.lastOrNull()?.text?.length) { if (lines.isNotEmpty()) state.animateScrollToItem(lines.size - 1) }
     LazyColumn(
@@ -334,7 +355,12 @@ private fun Conversation(lines: List<PrayLine>, modifier: Modifier) {
                 )
             } else Text(
                 l.text, color = FixedWhite.copy(alpha = if (latest) 1f else 0.5f), fontSize = if (latest) 21.sp else 18.sp, lineHeight = if (latest) 30.sp else 26.sp,
-                fontFamily = FontFamily.Serif, modifier = Modifier.fillMaxWidth().padding(end = 12.dp)
+                fontFamily = FontFamily.Serif,
+                modifier = Modifier.fillMaxWidth().padding(end = 12.dp)
+                    .pointerInput(l.text) { detectTapGestures(onLongPress = { onReport(l.text) }) }
+                    .semantics {
+                        customActions = listOf(CustomAccessibilityAction("Report this") { onReport(l.text); true })
+                    }
             )
         }
     }
