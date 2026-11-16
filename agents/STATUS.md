@@ -2,6 +2,41 @@
 
 Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
+## Work premium redesign, Phase B (2026-11-16)
+- **Founder-approved design:** `design/work-vertical-design-spec.md` §R (revision 2) and `design/Work Vertical Redesign.dc.html`. Implemented on this branch in these commits:
+  - `47c39a4`: Task data-loss fix, schema 31 and Work UI kit (`core/ui/work`). The fix: `Task.toEntity` dropped `waitingOn`, `sourceItemId` and `space`.
+  - `a29045e`: Work home.
+  - `1e9b329`: document reading engine.
+  - `4a64665`: Brief, Autopilot and Wrap-up.
+  - `e0a907e`: context pages, Prepare and Ask.
+  - `27acb34`: Tasks app.
+  - `ff91863`: Work hub and in-vertical bar.
+  - `130220f`: Tasks open routes.
+  - `dc0fb82`: Inbox and documents.
+  - `5ec1740`: MainActivity wiring.
+  - `292bf47`: a one-line compile fix for the YouTube commit.
+- **What works now (in code):**
+  - **Work bar:** Work has its own bottom bar (Home · Pulse · Tasks · Notes · Projects · Decisions). Pulse changes by time of day.
+  - **Work home:** kept and elevated with a Briefing card, day ribbon, Up next, tasks, projects and people.
+  - **Tasks:** a first-class, app-wide manager (smart views, lists and board, task page, natural-language quick add, Plan my day, swipe).
+  - **PDFs and scans:** read on the phone (PdfBox-Android plus ML Kit text recognition, unbundled), with page-cited suggestions and a viewer.
+  - **Brief controls:** all of them.
+  - **Autopilot:** tasks go to review by default.
+  - **Wrap-up:** type change and a Done check.
+  - **Follow-up:** Copy and channel preview.
+  - **Context pages:** one layout for project, person and organisation.
+- **Schema:** version 31 (migration 30→31, additive). `schemas/31.json` is committed.
+- **Not verified:** nothing compiled or run by this session, per AGENTS.md. Priority remote checks:
+  - `compileDebugKotlin`
+  - `testDebugUnitTest`, especially `Migration30To31Test`, `QuickAddParserTest`, `TaskManagerRepositoryTest`, `TasksViewModelTest`, `PageChunkSelectorTest`, `DocumentInboxTest`, `InboxTest`, `PulseLogicTest`, `BriefOptionsTest`, `AutopilotTasksModeTest`, `ContextPageLogicTest` and `WorkPageViewModelTest`
+  - Work and Tasks screenshots in Paper and Graphite
+  - device: PDF reading memory on a 2 GB phone, and release APK size after PdfBox
+- **Open:**
+  - The Work header's app-menu button waits for `core/navigation/AppMenu.kt` (app-navigation session).
+  - Tasks has no Nudge from Waiting on, no drag reorder and no sort options yet.
+  - Brief headings stay English when the language changes.
+  - minSdk 24 uses `java.time` without desugaring (pre-existing; founder's call).
+
 ## YouTube Video Ingestion, Gemini 3.8 Flash Model Standardization & Domain-Adaptive Retention Bytes (2026-11-16)
 - **Gemini 3.8 Model Lineup Standardization (`AiModelRouter.kt`, `server/gemini-proxy`):**
   - Standardized all cloud text/reasoning routes (`GEMINI_FAST`, `GEMINI_INTELLIGENCE`, `GEMINI_DEEP_REASONING`) on **`gemini-3.8-flash`**, keeping `gemini-3.8-live` and `gemini-3.8-live-extended-thinking` for Live voice sessions and `gemini-3.8-flash-tts` / `gemini-3.8-flash-lite-tts` for Read-to-Me TTS, while removing expensive Gemini 4 model IDs from `DefaultAiModelRouter` and `server/gemini-proxy/wrangler.toml`.
