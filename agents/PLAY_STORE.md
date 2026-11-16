@@ -9,6 +9,24 @@ Trigger either way:
 
 Tags cannot always be pushed from every environment. If the tag push fails, use the branch trigger, or run the workflow by hand from the Actions tab.
 
+## Building on the founder's Mac instead (2026-11-16)
+The founder may build the bundle locally with the upload key kept outside the repository:
+- `local.properties` (gitignored) holds `revenuecat.apiKey` (the `goog_` key), `gemini.proxyUrl`,
+  `legal.privacyPolicyUrl` and `legal.termsOfUseUrl`. `circles.apiUrl` has a default.
+- Signing comes from the environment: `KEYSTORE_PATH` (the `.jks` outside the repo), `KEYSTORE_PASSWORD`,
+  `KEY_PASSWORD`. Never copy the keystore or its passwords into the repository.
+- Live values (2026-11-16): proxy `https://meetingmind-gemini.meetingmind.workers.dev`; legal pages
+  `https://meetingmind-legal.meetingmind.workers.dev/privacy` and `/terms` (source: `server/legal`).
+
+## Store products (created 2026-11-16)
+Subscriptions (each with one auto-renewing base plan, ids `monthly` / `yearly`):
+`pro_monthly` $12.99, `pro_yearly` $99.99, `byok_monthly` $4.99, `byok_yearly` $44.99,
+`church_monthly` $49.99, `church_yearly` $499.99 (South Korea capped at ₩599,000).
+One-time: `pro_lifetime` $199.99 (purchase option `buy`).
+Launch offers (new customers only, live now): `pro_monthly:monthly:launch-1m-free-2m-499` (1 month free,
+then 2 months at 62% off), `pro_yearly:yearly:launch-first-year-30off` (first year $69.99),
+`byok_monthly:monthly:launch-3m-free` (3 months free). Play offers have no end date: switch them off by hand.
+
 ## Secrets (repository settings, never in code)
 - `KEYSTORE_BASE64` (the upload keystore, base64 with `base64 -w0 upload.jks`)
 - `KEYSTORE_PASSWORD`, `KEY_PASSWORD`
@@ -16,7 +34,7 @@ Tags cannot always be pushed from every environment. If the tag push fails, use 
 - Optional: `SYSTEM_DEEPSEEK_API_KEY`, `YOUVERSION_APP_KEY`, `DEEPSEEK_PROXY_URL`
 
 ## Before you release
-- Bump `versionCode` in `app/build.gradle.kts` (currently 43; `versionName` follows it). Play rejects a repeated code.
+- Bump `versionCode` in `app/build.gradle.kts` (currently 49; `versionName` follows it). Play rejects a repeated code.
 - Run the full unit suite on the commit being released.
 - Check the release build has no debug-only features on: the dev-only flags are in `app/build.gradle.kts` (`COMPANION_LIVE_WHISPER`, `FEATURE_*`).
 
@@ -27,7 +45,7 @@ Tags cannot always be pushed from every environment. If the tag push fails, use 
 
 ## Store listing and data safety
 - Data safety declarations: `docs/DATA_SAFETY.md`.
-- Learning is out of the MVP. Do not describe it in the store listing.
+- Learning is in the MVP (founder decision, 2026-11-16). The store listing may describe it.
 
 ## Paywall go-live (what the code expects)
 The code is complete. These steps need the store accounts, so they are done outside the repo.

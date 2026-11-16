@@ -31,3 +31,6 @@ release-secrets/
 
 firebase-debug.log
 .worktrees/
+
+# Wrangler (Cloudflare) local state
+.wrangler/
