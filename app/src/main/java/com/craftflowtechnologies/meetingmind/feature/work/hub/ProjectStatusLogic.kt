@@ -36,7 +36,7 @@ fun projectStatus(counts: ProjectCounts, lastActivity: Long?, now: Long): Projec
         ProjectStatusKind.DECISION_PENDING, "To confirm",
         "${plural(counts.pendingDecisions, "decision")} not confirmed yet"
     )
-    lastActivity == null -> ProjectStatus(ProjectStatusKind.QUIET, "No activity yet", "Nothing recorded for this project")
+    lastActivity == null -> ProjectStatus(ProjectStatusKind.QUIET, "Quiet", "No activity yet")
     now - lastActivity >= PROJECT_QUIET_DAYS * DAY_MS -> ProjectStatus(
         ProjectStatusKind.QUIET, "Quiet",
         "No activity for ${(now - lastActivity) / DAY_MS} days"

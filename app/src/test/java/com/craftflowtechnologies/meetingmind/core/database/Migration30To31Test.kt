@@ -65,8 +65,8 @@ class Migration30To31Test {
                     "VALUES ('t_plain', 'Read Romans 8', '', 'TASK', 'NONE', 1000, 1000, NULL, 0, NULL, 'PERSONAL')"
             )
             db.execSQL(
-                "INSERT INTO inbox_items (id, kind, uri, text, title, status, proposedJson, createdAt, processedAt, resultRefJson) " +
-                    "VALUES ('ib1', 'PDF', NULL, NULL, 'Contract', 'NEW', NULL, 1000, NULL, NULL)"
+                "INSERT INTO inbox_items (id, kind, uri, text, title, status, proposedJson, createdAt, processedAt, resultRefJson, transcriptionStatus) " +
+                    "VALUES ('ib1', 'PDF', NULL, NULL, 'Contract', 'NEW', NULL, 1000, NULL, NULL, 'NONE')"
             )
             db.execSQL(
                 "INSERT INTO item_evidence (id, itemId, segmentIdsJson, quote) VALUES ('ev1', 'item_1', '[]', 'the budget is 400')"

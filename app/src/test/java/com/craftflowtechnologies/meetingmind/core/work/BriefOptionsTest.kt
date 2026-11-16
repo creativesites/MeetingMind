@@ -37,7 +37,8 @@ class BriefOptionsTest {
     @Test fun `the default options keep every section and every quote`() {
         val shaped = BriefShaper.shape(full, BriefOptions.DEFAULT)
         assertEquals(3, shaped.changes.size)
-        assertEquals(listOf("d1", "dr1"), shaped.decisions.map { it.text })
+        assertEquals(listOf("d1"), shaped.decisions.map { it.text })
+        assertEquals(listOf("dr1"), shaped.decisionsRequired.map { it.text })
         assertEquals(1, shaped.recommended.size)
         assertEquals(3, shaped.evidence.size)
     }

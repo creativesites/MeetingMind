@@ -103,7 +103,8 @@ object BriefShaper {
 
         val executive = if (BriefSection.EXECUTIVE in on) brief.executive else emptyList()
         val changes = if (BriefSection.CHANGES in on) cap(brief.changes) else emptyList()
-        val decisions = if (BriefSection.DECISIONS in on) cap(brief.decisions + brief.decisionsRequired) else emptyList()
+        val decisions = if (BriefSection.DECISIONS in on) cap(brief.decisions) else emptyList()
+        val decisionsRequired = if (BriefSection.DECISIONS in on) cap(brief.decisionsRequired) else emptyList()
         val youOwe = if (BriefSection.COMMITMENTS in on) cap(brief.youOwe) else emptyList()
         val theyOwe = if (BriefSection.COMMITMENTS in on) cap(brief.theyOwe) else emptyList()
         val risks = if (BriefSection.RISKS in on) cap(brief.risks) else emptyList()
@@ -112,7 +113,7 @@ object BriefShaper {
         val recommended = if (BriefSection.RECOMMENDED in on && options.length.showRecommended) brief.recommended else emptyList()
 
         val shaped = brief.copy(
-            executive = executive, changes = changes, decisions = decisions, decisionsRequired = emptyList(),
+            executive = executive, changes = changes, decisions = decisions, decisionsRequired = decisionsRequired,
             youOwe = youOwe, theyOwe = theyOwe, risks = risks, questions = questions, next7 = next7, recommended = recommended
         )
         // The quotes behind the lines go with the appendix: a line that cites nothing shown has no quote to open.
@@ -171,6 +172,7 @@ object BriefCopy {
     /** The sections that print, in the order the screen shows them. */
     fun sections(brief: Brief): List<Pair<String, List<BriefLine>>> = listOf(
         "What changed" to brief.changes,
+        "Decisions to make" to brief.decisionsRequired,
         "Decisions" to brief.decisions,
         "You owe" to brief.youOwe,
         "They owe" to brief.theyOwe,

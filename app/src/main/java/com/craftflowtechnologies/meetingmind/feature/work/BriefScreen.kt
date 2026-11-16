@@ -210,6 +210,7 @@ fun BriefScreen(
                     item { ProseSkeleton() }
                 }
                 section("What changed", b.changes, b, open, ::toggle, onOpenMeeting)
+                section("Decisions to make", b.decisionsRequired, b, open, ::toggle, onOpenMeeting)
                 section("Decisions", b.decisions, b, open, ::toggle, onOpenMeeting)
                 section("You owe", b.youOwe, b, open, ::toggle, onOpenMeeting)
                 section("They owe", b.theyOwe, b, open, ::toggle, onOpenMeeting)

@@ -215,7 +215,7 @@ object QuickAddParser {
             name == q -> 0
             name.startsWith(q) -> 1
             q.length >= 3 && name.contains(q) -> 2
-            levenshtein(q, name) <= maxEdits(q.length) -> 3
+            q.first() == name.first() && levenshtein(q, name) <= maxEdits(q.length) -> 3
             else -> null
         }
     }
