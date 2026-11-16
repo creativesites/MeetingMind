@@ -12,7 +12,9 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -59,8 +61,6 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompan
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
-enum class HomeTab(val label: String) { Feed("Feed"), Chat("Chat"), Members("Members") }
-
 /** Entry point: wires the two view models and the sheets around [CircleHomeContent]. */
 @Composable
 fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
@@ -83,7 +83,11 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     val accountState by account.state.collectAsState()
     val create = rememberCreateController()
 
-    var tab by rememberSaveable { mutableStateOf(HomeTab.Feed) }
+    var tab by rememberSaveable { mutableStateOf(CircleTab.Home) }
+    var updatesFilter by remember { mutableStateOf<String?>(null) }
+    var showRhythm by remember { mutableStateOf(false) }
+    var showMedia by remember { mutableStateOf(false) }
+    var deckCards by remember { mutableStateOf<List<CircleHomeDigest.DeckCard>?>(null) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showTypes by remember { mutableStateOf(false) }
     var showInvite by remember { mutableStateOf(false) }
@@ -119,7 +123,11 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
                     actionLabel = "View"
                 )
                 if (res == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                    tab = if (alert.destination == com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat) HomeTab.Chat else HomeTab.Feed
+                    tab = when {
+                        alert.destination == com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat -> CircleTab.Chat
+                        alert.postId != null -> CircleTab.Updates
+                        else -> CircleTab.Home
+                    }
                     alert.postId?.let(home::openThread)
                 }
             }
@@ -131,16 +139,20 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
         val t = target ?: return@LaunchedEffect
         if (t.circleId != circleId) return@LaunchedEffect
         showSettings = false
-        tab = if (t.destination == com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat) HomeTab.Chat else HomeTab.Feed
+        tab = when {
+            t.destination == com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat -> CircleTab.Chat
+            t.postId != null -> CircleTab.Updates
+            else -> CircleTab.Home
+        }
         t.postId?.let(home::openThread)
         com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consumeTarget()
     }
-    LaunchedEffect(tab, chatState.messages.size) { if (tab == HomeTab.Chat) chat.markRead() }
+    LaunchedEffect(tab, chatState.messages.size) { if (tab == CircleTab.Chat) chat.markRead() }
     DisposableEffect(circleId, tab) {
         com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.activeCircleId = circleId
         com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.activeDestination = when (tab) {
-            HomeTab.Chat -> com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat
-            HomeTab.Feed, HomeTab.Members -> com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Feed
+            CircleTab.Chat -> com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat
+            CircleTab.Home, CircleTab.Updates, CircleTab.People -> com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Feed
         }
         onDispose {
             if (com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.activeCircleId == circleId) {
@@ -155,7 +167,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     if (showSettings && circle != null) {
         CircleSettingsContent(
             circle = circle, me = state.me, onBack = { showSettings = false },
-            onSave = home::saveSettings, onCover = home::setCover, onMute = home::setMuted, onLeave = { home.leave(onBack) },
+            onSave = home::saveSettings, onCover = home::setCover, onMute = home::setMuted, onLeave = { home.leave { CircleRhythm.clear(context, circleId); onBack() } },
             account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict
         )
     } else {
@@ -172,7 +184,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onPinPost = home::pinFeedPost,
             onOpenEvent = { openingEvent = it; home.openEvent(it.id) },
             onNewEvent = { editingEvent = null; showEventForm = true },
-            onOpenChat = { tab = HomeTab.Chat },
+            onOpenChat = { tab = CircleTab.Chat },
             onStartPost = home::openComposer,
             onPhoto = home::addPhoto,
             onInvite = { home.createInvite(); showInvite = true },
@@ -188,7 +200,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onToggleBookmark = home::toggleBookmark,
             onDismissCatchUp = home::markCatchUpSeen,
             onDismissPrompt = home::dismissTodayPrompt,
-            onToggleChecklistItem = home::toggleChecklistItem
+            onToggleChecklistItem = home::toggleChecklistItem,
+            onSetDecisionStatus = home::setDecisionStatus,
+            onReplaceDecision = home::replaceDecision
         )
         val chatActions = ChatActions(
             onDraft = chat::setDraft, onSend = chat::send, onReply = chat::startReply, onCancelReply = chat::cancelReply,
@@ -217,13 +231,26 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
                 onSetTitle = { titling = it }, onDecideJoin = home::decideJoin,
                 onMemberClick = { activeMemberInfo = it },
                 onUpdatePhoto = home::setProfilePhoto,
-                onRemovePhoto = home::removeProfilePhoto
+                onRemovePhoto = home::removeProfilePhoto,
+                onSetExternal = home::setExternal
             ),
             snackbar = snackbar, onBack = onBack, onSettings = { showSettings = true },
             onInvite = { home.createInvite(); showInvite = true }, onSearch = { showSearch = true }, onRetry = { },
             savedDraft = savedDraft,
             targetChatMessageId = targetChatMessageId,
-            onScrollHandled = { targetChatMessageId = null }
+            onScrollHandled = { targetChatMessageId = null },
+            // The dock's ＋ opens the composer straight away; the type follows the words (D6).
+            onCompose = if (state.me != null) ({ home.openComposer(PostType.Note) }) else null,
+            homeNav = HomeNav(
+                onOpenUpdates = { f -> updatesFilter = f; tab = CircleTab.Updates },
+                onOpenPeople = { tab = CircleTab.People },
+                onCatchUp = { deckCards = CircleHomeDigest.catchUp(state, System.currentTimeMillis()) }
+            ),
+            updatesFilter = updatesFilter,
+            onFilterConsumed = { updatesFilter = null },
+            onNotifications = { showRhythm = true },
+            onMedia = { showMedia = true },
+            onDecisions = { updatesFilter = "Decisions"; tab = CircleTab.Updates }
         )
     }
 
@@ -243,6 +270,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
         onPhotoRefused = { scope.launch { snackbar.showSnackbar("That file couldn't be read or is too large.") } },
         onDiscardDraft = home::discardDraft,
         uploading = composer.uploading,
+        isAdmin = state.isAdmin,
         members = state.members,
         meta = composer.meta,
         onMetaChange = home::setMeta
@@ -275,7 +303,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onDismiss = { activeMemberInfo = null },
             onMessage = { _ ->
                 activeMemberInfo = null
-                tab = HomeTab.Chat
+                tab = CircleTab.Chat
                 chat.setDraft("@${m.displayName} ")
             },
             onSetTitle = { targetMember -> titling = targetMember; activeMemberInfo = null },
@@ -283,7 +311,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onRemove = { mem -> home.remove(mem); activeMemberInfo = null },
             circleId = circle?.id,
             onUpdatePhoto = home::setProfilePhoto,
-            onRemovePhoto = home::removeProfilePhoto
+            onRemovePhoto = home::removeProfilePhoto,
+            isWork = circle?.isWork == true,
+            onSetExternal = if (state.isAdmin && circle?.isWork == true) ({ mem, ext -> home.setExternal(mem, ext); activeMemberInfo = null }) else null
         )
     }
     activeVerse?.let { ref ->
@@ -329,7 +359,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onRsvp = { home.rsvp(e.id, it) },
             onEdit = { openingEvent = null; home.openEvent(null); editingEvent = e; showEventForm = true },
             onCancel = { home.cancelEvent(e.id); openingEvent = null; home.openEvent(null) },
-            onDismiss = { openingEvent = null; home.openEvent(null) }
+            onDismiss = { openingEvent = null; home.openEvent(null) },
+            onClaimBringItem = { itemId, claim -> home.claimBringItem(e.id, itemId, claim) },
+            isWork = circle?.isWork == true
         )
     }
     if (showEventForm && circle != null) {
@@ -349,17 +381,39 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             chat = chatState,
             now = now,
             onOpenPost = { post ->
-                tab = HomeTab.Feed
+                tab = CircleTab.Updates
                 home.openThread(post.id)
             },
             onOpenChat = {
-                tab = HomeTab.Chat
+                tab = CircleTab.Chat
             },
             onOpenChatMessage = { messageId ->
-                tab = HomeTab.Chat
+                tab = CircleTab.Chat
                 targetChatMessageId = messageId
             },
             onDismiss = { showSearch = false }
+        )
+    }
+    if (showRhythm && circle != null) CircleRhythmSheet(
+        circleId = circle.id, name = circle.name, isWork = circle.isWork, muted = state.me?.muted == true,
+        onMute = home::setMuted, onDismiss = { showRhythm = false }
+    )
+    if (showMedia && circle != null) {
+        val allMedia = remember(state.posts) { state.posts.flatMap { it.post.attachments } }
+        SharedMediaSheet(circle.id, allMedia, onDismiss = { showMedia = false })
+    }
+    val cards = deckCards
+    if (cards != null && circle != null) {
+        val closeDeck = { deckCards = null; home.markCatchUpSeen() }
+        CatchUpDeckSheet(
+            cards = cards, circle = circle, now = now,
+            actions = FeedActions(
+                onPray = home::pray,
+                onReact = { p, k -> home.react(p, k) },
+                onOpenThread = { p -> closeDeck(); tab = CircleTab.Updates; home.openThread(p.id) },
+                onOpenEvent = { e -> closeDeck(); openingEvent = e; home.openEvent(e.id) }
+            ),
+            onDone = closeDeck
         )
     }
     deleting?.let { p ->
@@ -373,14 +427,15 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     }
 }
 
-/** The screen without view models: header, tabs and the active tab. Screenshot tests render this directly. */
+/** The screen without view models: header, the active place and the thumb dock. Screenshot tests render this directly. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CircleHomeContent(
     state: CircleHomeUiState,
     chat: ChatUiState,
     draft: String,
-    tab: HomeTab,
-    onTab: (HomeTab) -> Unit,
+    tab: CircleTab,
+    onTab: (CircleTab) -> Unit,
     now: Long,
     feed: FeedActions,
     chatActions: ChatActions,
@@ -393,9 +448,20 @@ fun CircleHomeContent(
     onSearch: () -> Unit = {},
     savedDraft: com.craftflowtechnologies.meetingmind.core.circles2.ComposerDraft? = null,
     targetChatMessageId: String? = null,
-    onScrollHandled: () -> Unit = {}
+    onScrollHandled: () -> Unit = {},
+    /** The dock's ＋. Null hides it (not a member yet, or still loading). */
+    onCompose: (() -> Unit)? = null,
+    homeNav: HomeNav = HomeNav(),
+    updatesFilter: String? = null,
+    onFilterConsumed: () -> Unit = {},
+    onNotifications: () -> Unit = {},
+    onMedia: () -> Unit = {},
+    onDecisions: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    var menuOpen by remember { mutableStateOf(false) }
+    // While typing, the dock steps aside so the message bar rides the keyboard.
+    val showDock = !WindowInsets.isImeVisible
     val circle = state.circle
     val canInvite = circle != null && state.me != null && (state.isAdmin || circle.settings.whoCanInvite == WhoCanInvite.Members)
     var notifyDismissed by rememberSaveable(circle?.id) { mutableStateOf(false) }
@@ -444,15 +510,23 @@ fun CircleHomeContent(
                         }
                     }
                     if (circle != null) {
-                        Surface(
-                            onClick = onSettings,
-                            shape = CircleShape,
-                            color = MM.colors.surfaceRaised,
-                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Settings, "Circle settings", tint = MM.colors.inkSecondary, modifier = Modifier.size(18.dp))
+                        Box {
+                            Surface(
+                                onClick = { menuOpen = true },
+                                shape = CircleShape,
+                                color = MM.colors.surfaceRaised,
+                                border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Rounded.MoreVert, "More for this ${circle.groupWord.lowercase()}", tint = MM.colors.inkSecondary, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, containerColor = MM.colors.surfaceRaised) {
+                                DropdownMenuItem(text = { Text("Notifications and daily rhythm", color = MM.colors.ink) }, onClick = { menuOpen = false; onNotifications() })
+                                DropdownMenuItem(text = { Text("Photos and files", color = MM.colors.ink) }, onClick = { menuOpen = false; onMedia() })
+                                if (circle.isWork) DropdownMenuItem(text = { Text("Decision ledger", color = MM.colors.ink) }, onClick = { menuOpen = false; onDecisions() })
+                                DropdownMenuItem(text = { Text("Settings", color = MM.colors.ink) }, onClick = { menuOpen = false; onSettings() })
                             }
                         }
                     }
@@ -529,10 +603,6 @@ fun CircleHomeContent(
                             }
                         }
                     }
-                    SegmentedControl(
-                        listOf("Feed", if (chat.unread > 0 && tab != HomeTab.Chat) "Chat · ${chat.unread}" else "Chat", "Members"),
-                        tab.ordinal, { onTab(HomeTab.entries[it]) }, Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s)
-                    )
                     if (!notificationsEnabled && !notifyDismissed && state.me != null && !state.me.muted) {
                         Box(Modifier.padding(horizontal = MM.space.l, vertical = MM.space.xs)) {
                             StatusLine(
@@ -554,24 +624,35 @@ fun CircleHomeContent(
                         }
                     }
                     when (tab) {
-                        HomeTab.Feed -> FeedTab(state, now, feed, Modifier.weight(1f), savedDraft = savedDraft)
-                        HomeTab.Chat -> ChatTab(
+                        CircleTab.Home -> CircleHomeTab(state, now, feed, homeNav, Modifier.weight(1f))
+                        CircleTab.Updates -> FeedTab(
+                            state, now, feed, Modifier.weight(1f), savedDraft = savedDraft,
+                            homeSections = false, filterRequest = updatesFilter, onFilterConsumed = onFilterConsumed
+                        )
+                        CircleTab.Chat -> ChatTab(
                             state = chat,
                             draft = draft,
                             now = now,
                             actions = chatActions,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).then(if (showDock) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier),
                             isFaith = circle?.let { !it.isWork && it.settings.space != "learning" } ?: true,
                             space = circle?.settings?.space ?: "faith",
                             scrollToMessageId = targetChatMessageId,
                             onScrollHandled = onScrollHandled
                         )
-                        HomeTab.Members -> MembersTab(state, members, Modifier.weight(1f))
+                        CircleTab.People -> MembersTab(state, members, Modifier.weight(1f))
                     }
+                    if (showDock) CircleDock(
+                        tab = tab,
+                        isWork = circle.isWork,
+                        chatUnread = if (tab == CircleTab.Chat) 0 else chat.unread,
+                        onTab = onTab,
+                        onCompose = onCompose
+                    )
                 }
             }
         }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(MM.space.l))
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = MM.space.l, end = MM.space.l, bottom = 76.dp))
     }
 }
 

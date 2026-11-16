@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import com.craftflowtechnologies.meetingmind.core.circles2.InvitePreview
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -125,7 +126,6 @@ fun CirclesListScreen(
     val vm: CirclesListViewModel = viewModel(factory = CirclesListViewModel.Factory(repo))
     val list by vm.list.collectAsState()
     val join by vm.join.collectAsState()
-    val streak by vm.streak.collectAsState()
     val account: AccountViewModel = viewModel(factory = AccountViewModel.Factory(repo))
     val accountState by account.state.collectAsState()
     val askNotifications = rememberNotificationAsk()
@@ -148,8 +148,7 @@ fun CirclesListScreen(
         onRefresh = vm::refresh,
         account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict,
         onDiagnostics = { showDiagnostics = true },
-        onCreateInSpace = onCreateInSpace,
-        streak = streak
+        onCreateInSpace = onCreateInSpace
     )
     if (showDiagnostics) {
         val firebaseProject = remember { runCatching { com.google.firebase.FirebaseApp.getInstance().options.projectId }.getOrNull() ?: "Firebase not initialized" }
@@ -204,8 +203,7 @@ fun CirclesListContent(
     onSwitch: () -> Unit = {},
     onDismissConflict: () -> Unit = {},
     onDiagnostics: () -> Unit = {},
-    onCreateInSpace: ((String?) -> Unit)? = null,
-    streak: CircleStreakUi = CircleStreakUi()
+    onCreateInSpace: ((String?) -> Unit)? = null
 ) {
     val canAct = state !is CirclesListState.NotConnected
     val hasManyCircles = (state as? CirclesListState.Ready)?.circles?.let { it.size >= 3 } == true
@@ -425,13 +423,6 @@ fun CirclesListContent(
                             item(key = "featured_${featured.id}") {
                                 FeaturedCircleCard(featured, modifier = Modifier.animateItem()) { onOpen(featured.id) }
                             }
-                            item(key = "daily_circle_pulse") {
-                                DailyCirclePulseCard(
-                                    streak = streak,
-                                    onOpenCircle = { onOpen(featured.id) },
-                                    modifier = Modifier.animateItem()
-                                )
-                            }
                             if (filteredCircles.size > 1) {
                                 item(key = "all_circles_section_header") {
                                     Box(Modifier.animateItem()) {
@@ -640,6 +631,25 @@ private fun CircleRow(c: Circle, modifier: Modifier = Modifier, onClick: () -> U
     }
 }
 
+/** What a code leads to, shown before the person joins. The cover is generated: real covers need membership. */
+@Composable
+private fun JoinPreviewCard(p: InvitePreview) {
+    MMCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
+            RippleCover(seed = p.circleId ?: p.name, modifier = Modifier.size(56.dp).clip(MM.radius.card))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                Text(p.name, style = MM.type.heading, color = MM.colors.ink)
+                Text(
+                    "${spaceLabel(p.space)} · ${p.memberCount} ${if (p.memberCount == 1) "member" else "members"}",
+                    style = MM.type.caption,
+                    color = MM.colors.inkSecondary
+                )
+                p.inviterName?.let { Text("Invited by $it", style = MM.type.secondary, color = MM.colors.inkSecondary) }
+            }
+        }
+    }
+}
+
 @Composable
 fun JoinSheet(join: JoinUiState, onDismiss: () -> Unit, onPaste: (String) -> Unit, onName: (String) -> Unit, onJoin: () -> Unit) {
     val clipboard = LocalClipboardManager.current
@@ -657,103 +667,11 @@ fun JoinSheet(join: JoinUiState, onDismiss: () -> Unit, onPaste: (String) -> Uni
             if (join.code != null) StatusLine(StatusKind.Info, "Found the code ${join.code}.")
             else StatusLine(StatusKind.Warning, "No code found yet. A code looks like GRACE-7K2Q.")
         }
+        join.preview?.let { JoinPreviewCard(it) }
+        join.previewError?.let { StatusLine(StatusKind.Warning, it) }
         CircleField(join.name, onName, "Your name in this circle", placeholder = "How should people see you?")
         join.error?.let { StatusLine(StatusKind.Error, it) }
         if (join.pending) StatusLine(StatusKind.Info, "Request sent. An admin will let you in once they've checked it.")
         if (!join.pending) PrimaryButton(if (join.busy) "Joining..." else "Join", onJoin, enabled = join.canJoin, modifier = Modifier.fillMaxWidth())
-    }
-}
-
-@Composable
-private fun DailyCirclePulseCard(
-    streak: CircleStreakUi,
-    onOpenCircle: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val fireTint = if (streak.checkedInToday) MM.colors.gold else MM.colors.accent
-    MMCard(modifier = modifier) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(
-                modifier = Modifier.weight(1f).padding(end = MM.space.s),
-                verticalArrangement = Arrangement.spacedBy(MM.space.xs)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                ) {
-                    Icon(
-                        Icons.Rounded.LocalFireDepartment,
-                        contentDescription = null,
-                        tint = fireTint,
-                        modifier = Modifier.size(MMSize.iconSmall)
-                    )
-                    Text(
-                        if (streak.days > 0) "${streak.days}-day streak" else "Start your streak today",
-                        style = MM.type.bodyStrong,
-                        color = MM.colors.ink
-                    )
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                ) {
-                    if (streak.checkedInToday) {
-                        Surface(
-                            shape = MM.radius.pill,
-                            color = MM.colors.accentWash,
-                            border = BorderStroke(MMSize.hairline, MM.colors.accent.copy(alpha = 0.35f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                            ) {
-                                Icon(
-                                    Icons.Rounded.CheckCircle,
-                                    contentDescription = null,
-                                    tint = MM.colors.accent,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    "Checked in today",
-                                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MM.colors.accent
-                                )
-                            }
-                        }
-                    } else {
-                        Surface(
-                            shape = MM.radius.pill,
-                            color = MM.colors.surfaceSunk,
-                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
-                        ) {
-                            Text(
-                                "Open a circle to check in",
-                                style = MM.type.caption,
-                                color = MM.colors.inkSecondary,
-                                modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs)
-                            )
-                        }
-                    }
-                }
-            }
-            Surface(
-                shape = MM.radius.pill,
-                color = MM.colors.accentWash,
-                border = BorderStroke(MMSize.hairline, MM.colors.accent),
-                modifier = Modifier.clickable(onClick = onOpenCircle)
-            ) {
-                Text(
-                    if (streak.checkedInToday) "Continue" else "Check in now",
-                    style = MM.type.secondary.copy(fontWeight = FontWeight.SemiBold),
-                    color = MM.colors.accent,
-                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
-                )
-            }
-        }
     }
 }

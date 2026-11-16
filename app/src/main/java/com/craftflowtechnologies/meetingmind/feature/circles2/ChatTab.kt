@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Forward
 import androidx.compose.material.icons.rounded.Image
@@ -1579,6 +1580,18 @@ fun MessageActionsSheet(
             ActionSheetRow(Icons.Rounded.CheckCircle, "Create action item") { actions.onPromoteToPost(m, PostType.Task); onDismiss() }
             ActionSheetRow(Icons.Rounded.CheckCircleOutline, "Log decision") { actions.onPromoteToPost(m, PostType.Decision); onDismiss() }
             ActionSheetRow(Icons.Rounded.WarningAmber, "Flag blocker") { actions.onPromoteToPost(m, PostType.Blocker); onDismiss() }
+        }
+        // Faith & general spaces: turn a chat message into a post. Plain text only; system, poll, chain and deleted messages are excluded.
+        if (space != "work" && !m.deleted && m.text.isNotBlank() && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply)) {
+            Text(
+                "Make it a post",
+                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                color = MM.colors.inkSecondary,
+                modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs)
+            )
+            ActionSheetRow(Icons.Rounded.VolunteerActivism, "Prayer request") { actions.onPromoteToPost(m, PostType.Prayer); onDismiss() }
+            ActionSheetRow(Icons.Rounded.Celebration, "Testimony") { actions.onPromoteToPost(m, PostType.Testimony); onDismiss() }
+            ActionSheetRow(Icons.Rounded.Favorite, "Encouragement") { actions.onPromoteToPost(m, PostType.Encouragement); onDismiss() }
         }
         if (isAdmin) ActionSheetRow(Icons.Rounded.PushPin, if (pinnedId == m.id) "Unpin" else "Pin to top") { if (pinnedId == m.id) actions.onUnpin() else actions.onPin(m); onDismiss() }
         if (!mine) ActionSheetRow(Icons.Rounded.Flag, "Report") { actions.onReport(m); onDismiss() }

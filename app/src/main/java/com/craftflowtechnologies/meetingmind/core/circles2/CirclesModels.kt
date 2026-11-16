@@ -185,7 +185,18 @@ data class Circle(
 /** [title] is a display label such as "Pastor". It never changes what the person may do; [role] does. */
 @Immutable
 /** [avatarVersion] is null when the person has no profile photo. The photo itself is fetched by uid and version. */
-data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L, val title: String? = null, val lastReadAt: Long = 0L, val avatarVersion: Long? = null)
+data class Member(
+    val uid: String,
+    val displayName: String,
+    val role: Role,
+    val muted: Boolean = false,
+    val joinedAt: Long = 0L,
+    val title: String? = null,
+    val lastReadAt: Long = 0L,
+    val avatarVersion: Long? = null,
+    /** Outside the organisation (work circles). Set by an owner or admin; shown as the EXT tag. */
+    val external: Boolean = false
+)
 
 @Immutable
 enum class WorkPriority(val wire: String, val label: String) {
@@ -210,6 +221,16 @@ enum class WorkStatus(val wire: String, val label: String) {
     }
 }
 
+/** A decision's status. "Replaced" is set by the Worker when a newer decision replaces this one. */
+@Immutable
+enum class DecisionStatus(val wire: String, val label: String) {
+    Proposed("proposed", "Proposed"),
+    Confirmed("confirmed", "Confirmed"),
+    Replaced("replaced", "Replaced");
+
+    companion object { fun from(wire: String?): DecisionStatus? = entries.firstOrNull { it.wire == wire } }
+}
+
 @Immutable
 data class ChecklistItem(
     val id: String,
@@ -230,10 +251,18 @@ data class PostMeta(
     val decisionOwner: String? = null,
     val meetingDate: String? = null,
     val tags: List<String> = emptyList(),
-    val checklist: List<ChecklistItem> = emptyList()
+    val checklist: List<ChecklistItem> = emptyList(),
+    /** Decision posts only. The phone sends proposed or confirmed; the Worker sets replaced. */
+    val decisionStatus: DecisionStatus? = null,
+    /** Decision posts only: the live decision this one replaces. */
+    val replacesPostId: String? = null,
+    /** Read-only on the phone. The Worker sets it on the decision that was replaced. Never sent. */
+    val replacedByPostId: String? = null
 ) {
     val isEmpty: Boolean
-        get() = listOfNotNull(sourceKind, sourceId, assigneeUid, assigneeName, dueText, priority, blockedOn, decisionOwner, meetingDate).all { it.toString().isBlank() } && dueAt == null && tags.isEmpty() && checklist.isEmpty()
+        get() = listOfNotNull(sourceKind, sourceId, assigneeUid, assigneeName, dueText, priority, blockedOn, decisionOwner, meetingDate).all { it.toString().isBlank() } &&
+            dueAt == null && tags.isEmpty() && checklist.isEmpty() &&
+            decisionStatus == null && replacesPostId.isNullOrBlank() && replacedByPostId.isNullOrBlank()
 }
 
 @Immutable
@@ -390,6 +419,17 @@ enum class CelebrationKind(val wire: String, val label: String) {
 /** The companion forms the Worker accepts, by id. */
 val COMPANION_IDS: List<String> = listOf("zuri", "nas", "wren", "page")
 
+/** One thing people are asked to bring to an event (The Table). [claimedByUid] is null while nobody has said they'll bring it. */
+@Immutable
+data class BringItem(
+    val id: String,
+    val text: String,
+    val claimedByUid: String? = null,
+    val claimedByName: String? = null
+) {
+    val claimed: Boolean get() = claimedByUid != null
+}
+
 /** Event fields as shown. [startsAt] and [endsAt] are epoch milliseconds (UTC); [timeZone] is the IANA zone to show them in. */
 @Immutable
 data class CircleEvent(
@@ -402,7 +442,9 @@ data class CircleEvent(
     val endsAt: Long,
     val timeZone: String,
     val status: String,
-    val createdByName: String
+    val createdByName: String,
+    /** Up to 20 items. Empty when the event has none. */
+    val bringList: List<BringItem> = emptyList()
 ) {
     val cancelled: Boolean get() = status == "cancelled"
 }
@@ -416,7 +458,7 @@ enum class RsvpAnswer(val wire: String, val label: String) {
 @Immutable
 data class Rsvp(val uid: String, val displayName: String, val answer: RsvpAnswer)
 
-/** What an admin writes for an event. The Worker checks times, zone and link. */
+/** What an admin writes for an event. The Worker checks times, zone and link. [bringList] is the whole list: it replaces the old one. */
 @Immutable
 data class EventDraft(
     val title: String,
@@ -425,7 +467,23 @@ data class EventDraft(
     val onlineUrl: String?,
     val startsAt: Long,
     val endsAt: Long,
-    val timeZone: String
+    val timeZone: String,
+    val bringList: List<String> = emptyList()
+)
+
+/**
+ * What a code leads to, before joining. [circleId] is null only if the Worker omits it. [coverPath] is a storage path,
+ * which only members can download. [inviterName] is null when the inviter has left.
+ */
+@Immutable
+data class InvitePreview(
+    val circleId: String?,
+    val name: String,
+    val space: String,
+    val template: String?,
+    val memberCount: Int,
+    val coverPath: String?,
+    val inviterName: String?
 )
 
 /** Someone waiting to be let in (joinApproval on). Admins see these; the Worker decides them. */

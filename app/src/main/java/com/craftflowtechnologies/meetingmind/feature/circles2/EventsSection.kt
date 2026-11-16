@@ -13,6 +13,7 @@ import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -29,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.calendar.CalendarExporter
+import com.craftflowtechnologies.meetingmind.core.circles2.BringItem
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.EventDraft
 import com.craftflowtechnologies.meetingmind.core.circles2.Rsvp
@@ -148,7 +150,7 @@ private fun DayTile(e: CircleEvent) {
     }
 }
 
-/** Details, who is coming, the person's own answer, and admin edit or cancel. */
+/** Details, who is coming, the person's own answer, what to bring, and admin edit or cancel. */
 @Composable
 fun EventSheet(
     event: CircleEvent,
@@ -158,7 +160,11 @@ fun EventSheet(
     onRsvp: (RsvpAnswer) -> Unit,
     onEdit: () -> Unit,
     onCancel: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** Claim (true) or release (false) a bring item. Release is for the holder, or an admin. */
+    onClaimBringItem: (itemId: String, claim: Boolean) -> Unit = { _, _ -> },
+    /** Work circles call the list a checklist. */
+    isWork: Boolean = false
 ) {
     val mine = rsvps.firstOrNull { it.uid == myUid }?.answer
     val context = LocalContext.current
@@ -169,6 +175,16 @@ fun EventSheet(
         if (event.location.isNotBlank()) Text(event.location, style = MM.type.body, color = MM.colors.ink)
         event.onlineUrl?.let { Text("Online: $it", style = MM.type.secondary, color = MM.colors.inkSecondary) }
         if (event.description.isNotBlank()) Text(event.description, style = MM.type.body, color = MM.colors.ink)
+        if (event.bringList.isNotEmpty()) {
+            BringListBlock(
+                title = if (isWork) "Checklist" else "What to bring",
+                items = event.bringList,
+                myUid = myUid,
+                isAdmin = isAdmin,
+                enabled = !event.cancelled,
+                onClaim = onClaimBringItem
+            )
+        }
         if (event.cancelled) {
             StatusLine(StatusKind.Warning, "This event was cancelled.")
         } else {
@@ -221,6 +237,65 @@ fun EventSheet(
     }
 }
 
+/** The most items on one event's list. The Worker refuses more. */
+internal const val BRING_MAX = 20
+private const val BRING_TEXT_MAX = 80
+
+/** The texts an edit form starts from, so saving an event never drops its list. */
+internal fun initialBringTexts(existing: CircleEvent?): List<String> = existing?.bringList?.map { it.text }.orEmpty()
+
+/** What the form sends: trimmed, capped, blanks dropped. */
+internal fun draftBringList(texts: List<String>): List<String> =
+    texts.map { it.trim().take(BRING_TEXT_MAX) }.filter { it.isNotEmpty() }.take(BRING_MAX)
+
+/** The line under a bring item: who has it, or that nobody does yet. */
+internal fun bringStatus(item: BringItem, myUid: String?): String = when {
+    item.claimedByUid == null -> "Nobody yet"
+    item.claimedByUid == myUid -> "You're bringing this"
+    else -> "${item.claimedByName?.takeIf { it.isNotBlank() } ?: "Someone"} is bringing it"
+}
+
+@Composable
+private fun BringListBlock(
+    title: String,
+    items: List<BringItem>,
+    myUid: String?,
+    isAdmin: Boolean,
+    enabled: Boolean,
+    onClaim: (itemId: String, claim: Boolean) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+        Text(title, style = MM.type.bodyStrong, color = MM.colors.ink)
+        MMCard {
+            items.forEachIndexed { idx, item ->
+                if (idx > 0) HorizontalDivider(color = MM.colors.line)
+                BringRow(item, myUid, isAdmin, enabled, onClaim)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BringRow(item: BringItem, myUid: String?, isAdmin: Boolean, enabled: Boolean, onClaim: (itemId: String, claim: Boolean) -> Unit) {
+    val mine = myUid != null && item.claimedByUid == myUid
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = MMSize.minTouch).padding(vertical = MM.space.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(item.text, style = MM.type.body, color = MM.colors.ink)
+            Text(bringStatus(item, myUid), style = MM.type.caption, color = MM.colors.inkSecondary)
+        }
+        if (enabled) {
+            when {
+                item.claimedByUid == null -> SecondaryButton("I'll bring it", { onClaim(item.id, true) })
+                mine || isAdmin -> TextAction("Release", { onClaim(item.id, false) })
+            }
+        }
+    }
+}
+
 private data class EventTemplate(val title: String, val durationMs: Long, val description: String)
 
 /** Create or edit an event. Times come from quick choices; the Worker checks the link and the zone. */
@@ -267,6 +342,8 @@ fun EventFormSheet(
     var link by remember { mutableStateOf(existing?.onlineUrl.orEmpty()) }
     var startAt by remember { mutableStateOf(existing?.startsAt ?: presets.first()) }
     var duration by remember { mutableStateOf(existing?.let { it.endsAt - it.startsAt }?.takeIf { it > 0 } ?: HOUR_MS) }
+    // Starts from the event's own items, so saving an edit keeps the list and the claims on unchanged items.
+    val bring = remember { mutableStateListOf<String>().apply { addAll(initialBringTexts(existing)) } }
     var showDate by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
     val dateState = rememberDatePickerState(initialSelectedDateMillis = startAt)
@@ -314,6 +391,21 @@ fun EventFormSheet(
         CircleField(description, { description = it.take(1000) }, "Details (optional)", minLines = 2, maxLines = 5)
         CircleField(location, { location = it.take(200) }, "Where (optional)", placeholder = "214 Maple St")
         CircleField(link, { link = it.take(300) }, "Online link (optional)", placeholder = "https://")
+        Text(
+            if (space.equals("work", ignoreCase = true)) "Checklist (optional)" else "What to bring (optional)",
+            style = MM.type.bodyStrong,
+            color = MM.colors.ink
+        )
+        bring.forEachIndexed { idx, text ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                CircleField(text, { bring[idx] = it.take(BRING_TEXT_MAX) }, "Item ${idx + 1}", modifier = Modifier.weight(1f))
+                TextAction("Remove", { bring.removeAt(idx) })
+            }
+        }
+        if (bring.size < BRING_MAX) {
+            SecondaryButton("Add item", { bring.add("") }, modifier = Modifier.fillMaxWidth())
+        }
+        Text("${bring.size} of $BRING_MAX", style = MM.type.caption, color = MM.colors.inkMuted)
         Text("When", style = MM.type.bodyStrong, color = MM.colors.ink)
         Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
             presets.forEachIndexed { i, at ->
@@ -327,7 +419,14 @@ fun EventFormSheet(
         Text("${whenText(startAt, zone)} · shown in ${zone.replace('_', ' ')}", style = MM.type.secondary, color = MM.colors.inkSecondary)
         PrimaryButton(
             if (existing == null) "Add event" else "Save event",
-            { onSave(EventDraft(title.trim(), description.trim(), location.trim(), link.trim().ifBlank { null }, startAt, startAt + duration, zone)) },
+            {
+                onSave(
+                    EventDraft(
+                        title.trim(), description.trim(), location.trim(), link.trim().ifBlank { null }, startAt, startAt + duration, zone,
+                        bringList = draftBringList(bring.toList())
+                    )
+                )
+            },
             enabled = title.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         )

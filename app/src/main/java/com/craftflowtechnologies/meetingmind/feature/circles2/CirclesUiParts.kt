@@ -23,6 +23,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -36,6 +37,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -262,7 +265,10 @@ fun MemberInfoSheet(
     onRemove: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null,
     circleId: String? = null,
     onUpdatePhoto: ((PickedFile) -> Unit)? = null,
-    onRemovePhoto: (() -> Unit)? = null
+    onRemovePhoto: (() -> Unit)? = null,
+    /** True for a work circle: shows the outside-the-organisation switch to admins. */
+    isWork: Boolean = false,
+    onSetExternal: ((com.craftflowtechnologies.meetingmind.core.circles2.Member, Boolean) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -322,6 +328,24 @@ fun MemberInfoSheet(
                     color = MM.colors.line
                 )
                 Text("Member since $joined", style = MM.type.caption, color = MM.colors.inkMuted)
+            }
+        }
+
+        if (isWork && onSetExternal != null && me?.role?.isAdmin == true) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Outside the organisation", style = MM.type.bodyStrong, color = MM.colors.ink)
+                    Text(
+                        "Briefs shared here will ask for an extra confirmation.",
+                        style = MM.type.secondary,
+                        color = MM.colors.inkSecondary
+                    )
+                }
+                Switch(
+                    checked = member.external,
+                    onCheckedChange = { onSetExternal(member, it) },
+                    modifier = Modifier.semantics { contentDescription = "Outside the organisation, ${member.displayName}" }
+                )
             }
         }
 

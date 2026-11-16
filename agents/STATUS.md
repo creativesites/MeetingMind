@@ -87,6 +87,41 @@ Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
   - **Not mine:** `DesignSystemGuardTest` fails on `core/ui/mm/AiCraft.kt` (`fontSize = …sp`, from `8d97b49`); its owner needs to fix it.
   - **Pre-existing:** minSdk 24 uses `java.time` without core-library desugaring, a crash risk on Android 7. It's the founder's call.
 
+## Circles experience redesign: Phase B, paused for the team pause (2026-11-16)
+- Design files: `design/Circles Experience Redesign.dc.html`, plus `design/circles-{experience-design-spec,motion-spec,innovation-concepts}.md`.
+- **Founder decisions:**
+  - D1: yes. D2: yes. D4: yes, plus Faith Home polish. D5: yes, as recommended. D6: yes.
+  - **D3: paused.** Contribution counts and "Top contributor" stay untouched until the founder decides. The case for removing them was sent to the founder.
+- **Done (Android):**
+  - Thumb dock (`CircleDock.kt`): Home or Overview · Updates · ＋ · Chat · People. It hides while typing. The ⋯ menu holds notifications and daily rhythm, photos and files, the decision ledger and settings. Every Circle gets a generated `RippleCover`.
+  - Faith Home and Work Overview (`CircleHomeTab.kt`, built by the pure `CircleHomeDigest.kt`), plus the catch-up deck.
+  - Updates is the feed without the old top stack.
+  - The Pulse card is gone from the list. Opt-in Daily rhythm (`CircleRhythm.kt`, WorkManager, 07:00–21:00 slots, no counts), cleared on leave.
+  - D6: in-app PDF reader (`PdfReader.kt`), composer type suggestions (`TypeSuggester.kt`), "Make it a post" in Faith chat.
+  - D5 UI:
+    - External tag, plus an admin switch in Work circles.
+    - Decision status: proposed, confirmed or replaced, with "Replace with a new decision".
+    - Invite preview in the Join sheet.
+    - Event bring-list ("What to bring" or "Checklist", with claim and release).
+    - A second confirmation before any meeting share to a circle with external members.
+  - AI-content report on meeting briefs (Home and the post menu).
+- **Done (server):** the D5 Worker package in `server/circles-api` and `firestore.rules`: `setExternal`, `setDecisionStatus`, decision `replacesPostId`, `previewInvite`, event `bringList` and `claimBringItem`. Also poll `closesAt` enforcement in the rules, and QuickTime-as-MP4 refused. See `docs/CIRCLES_BACKEND_HANDOFF.md` §10.
+- **Verified:**
+  - `npm test` in `server/circles-api` passes 112/112, including the AI-report tests now on the branch.
+  - The whole app compiles (APK built by the Learning session, 13:04).
+  - Every `feature.circles2` and `core.circles2` unit test class passes, including `CirclesD5Test` (16/16) and `ColorLiteralGuardTest` for the Circles files. The Learning session ran them at 13:27, with re-runs after.
+  - Not verified: rules emulator tests, device or TalkBack checks, screenshot review.
+- **⚠ Deploy before testers use the new Circles features:** the Worker (`wrangler deploy`) and the rules (`firebase deploy --only firestore:rules`) must be deployed (needs the founder's yes). Without it:
+  - What breaks: External, decision status, invite preview and bring-list calls fail with a friendly error.
+  - What still works: the existing features, and the dock, Home and Overview (they need no server change).
+  - Poll deadlines are not enforced until the rules are deployed.
+- **Open for next time:**
+  - The founder's D3 decision.
+  - Device pass: the dock with the keyboard, the PDF reader on real PDFs, Daily rhythm delivery.
+  - Run the rules emulator tests.
+  - Motion from `circles-motion-spec.md` (threshold transition, answered-prayer glow) is not built.
+  - Threaded replies (`parentId`) and the upload ring with retry (spec §15 steps 2–3) are not built.
+
 ## App-wide navigation, spaces and home discoverability (2026-11-16)
 - **Spaces really switch off:** Settings › What it's for is now one row per space with a switch (theme tokens, readable in dark mode; the last space can't be turned off and says why). A space that is off is hidden from the bar, the app menu, the quick-access row (now self-gated, Work · Learn · Faith first), Today's devotional stories, the hero's scripture banner, Notes' work-meeting hero, the Bible search result, and the home picker. A vertical's home falls back to Today while its space is off (`HomeStyle.effectiveFor`). The devotional and faith reminders stop while Faith is off and come back with the person's settings when it is turned on (`core/navigation/SpaceSchedules.kt`).
 - **Bar follows spaces (Work spec R2):** Today · Notes · New, then two places: the Home's own vertical first, then Work, Learning, Faith; free places go to Tasks, then Search (`core/navigation/BarConfig.kt`). Settings left the bar. `TabSlotTest` replaced by `BottomBarTest` (the slot it tested was retired by R2).

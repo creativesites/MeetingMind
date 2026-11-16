@@ -82,6 +82,8 @@ data class CircleHomeUiState(
     /** I'm no longer in this circle (removed, left on another phone, or it was closed). */
     val gone: Boolean = false,
     val unreadFeedCount: Int = 0,
+    /** When I last opened this circle's posts on this phone (0 = never). Drives "since you were here" and the catch-up deck. */
+    val lastVisitAt: Long = 0L,
     val savedCount: Int = 0,
     val streakDays: Int = 0,
     val checkedInToday: Boolean = false,
@@ -234,6 +236,7 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
             failure = if (removed) null else failure,
             gone = removed,
             unreadFeedCount = unreadCount,
+            lastVisitAt = lastVisit,
             savedCount = feedPosts.count { it.saved },
             streakDays = habit.streakDays,
             checkedInToday = habit.checkedInToday,
@@ -648,6 +651,40 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     fun reject(p: PendingPost) { viewModelScope.launch { repo.api.rejectPost(circleId, p.id).fold(onOk = { say("Not shared.") }, onErr = ::fail) } }
 
     // ---------- members ----------
+    /** Work circles: marks someone as outside the organisation. Shares to this circle then ask for a second confirmation. */
+    fun setExternal(m: Member, external: Boolean) {
+        viewModelScope.launch {
+            repo.setExternal(circleId, m.uid, external).fold(
+                onOk = { say(if (external) "${m.displayName} is marked as external." else "${m.displayName} is no longer marked as external.") },
+                onErr = ::fail
+            )
+        }
+    }
+
+    fun setDecisionStatus(post: Post, status: com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus) {
+        viewModelScope.launch {
+            repo.setDecisionStatus(circleId, post.id, status).fold(onOk = { say("Decision marked ${status.label.lowercase()}.") }, onErr = ::fail)
+        }
+    }
+
+    /** Starts a new decision that replaces [post]. The old one stays on record, marked replaced, once the new one is posted. */
+    fun replaceDecision(post: Post) {
+        openWorkComposer(
+            PostType.Decision, "",
+            PostMeta(replacesPostId = post.id, decisionStatus = com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Confirmed)
+        )
+    }
+
+    /** The Table: say you'll bring something, or let it go. */
+    fun claimBringItem(eventId: String, itemId: String, claim: Boolean) {
+        viewModelScope.launch {
+            repo.claimBringItem(circleId, eventId, itemId, claim).fold(
+                onOk = { say(if (claim) "Thank you. It's on your list." else "Released.") },
+                onErr = ::fail
+            )
+        }
+    }
+
     fun setRole(m: Member, role: Role) { viewModelScope.launch { repo.api.setRole(circleId, m.uid, role).fold(onOk = { say("${m.displayName} is now ${role.label.lowercase()}.") }, onErr = ::fail) } }
     /** A display title such as "Pastor". Blank clears it. The title never changes what the person can do. */
     fun setTitle(m: Member, title: String) {

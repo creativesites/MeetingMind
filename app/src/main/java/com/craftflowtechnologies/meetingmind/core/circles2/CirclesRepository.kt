@@ -239,4 +239,28 @@ class CirclesRepository(
 
     suspend fun toggleChecklistItem(circleId: String, postId: String, itemId: String, done: Boolean? = null): CirclesResult<Unit> =
         if (!api.isConfigured) CirclesFailure.notConnected.asResult() else api.toggleChecklistItem(circleId, postId, itemId, done)
+
+    /** Owner and admins only, work circles only. */
+    suspend fun setExternal(circleId: String, uid: String, external: Boolean): CirclesResult<Unit> =
+        if (!api.isConfigured) CirclesFailure.notConnected.asResult() else api.setExternal(circleId, uid, external)
+
+    suspend fun setDecisionStatus(circleId: String, postId: String, status: DecisionStatus): CirclesResult<Unit> =
+        if (!api.isConfigured) CirclesFailure.notConnected.asResult() else api.setDecisionStatus(circleId, postId, status)
+
+    /**
+     * Looks at an invite before joining. Needs the same sign-in as join. [code] is anything the person pasted (a bare
+     * code, a whole message); garbage gets the same inline message as join. Changes nothing on the server.
+     */
+    suspend fun previewInvite(code: String): CirclesResult<InvitePreview> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        val bare = InviteCodes.extract(code)
+            ?: return CirclesResult.Err(CirclesFailure(FailureKind.Rejected, "That doesn't look like a Circles code. It looks like GRACE-7K2Q.", "bad_code"))
+        val signedIn = uid()
+        if (signedIn is CirclesResult.Err) return CirclesResult.Err(signedIn.failure)
+        return api.previewInvite(bare)
+    }
+
+    /** The Table: claim an open item, or release it. */
+    suspend fun claimBringItem(circleId: String, eventId: String, itemId: String, claim: Boolean): CirclesResult<Unit> =
+        if (!api.isConfigured) CirclesFailure.notConnected.asResult() else api.claimBringItem(circleId, eventId, itemId, claim)
 }

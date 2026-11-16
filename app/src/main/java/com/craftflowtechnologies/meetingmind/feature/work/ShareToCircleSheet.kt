@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
@@ -40,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult
+import com.craftflowtechnologies.meetingmind.core.circles2.DataState
+import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.PostMeta
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
@@ -49,6 +52,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
+import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.core.work.Finding
 import com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy
 import com.craftflowtechnologies.meetingmind.feature.circles2.CircleSheet
@@ -56,8 +60,15 @@ import com.craftflowtechnologies.meetingmind.feature.circles2.CirclesPalette
 import com.craftflowtechnologies.meetingmind.feature.circles2.PostTypeBadge
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.UUID
+
+/** How many people in a circle are outside the organisation. Null when the member list could not be read. */
+internal fun externalCount(members: DataState<List<Member>>): Int? = when (members) {
+    is DataState.Ready -> members.value.count { it.external }
+    else -> null
+}
 
 @Composable
 fun ShareToCircleSheet(
@@ -90,6 +101,8 @@ fun ShareToCircleSheet(
     var sending by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var publishedCount by remember { mutableStateOf<Int?>(null) }
+    // The circle's name and how many people in it are outside the organisation, while the second confirmation is open.
+    var externalPrompt by remember { mutableStateOf<Pair<String, Int>?>(null) }
 
     CircleSheet(onDismiss) {
         Row(
@@ -311,13 +324,10 @@ fun ShareToCircleSheet(
                         val totalSelected = (if (shareSummary) 1 else 0) + selectedDecisions.size + selectedTasks.size
                         val buttonLabel = if (sending) "Publishing…" else "Publish $totalSelected items to ${currentCircle.name}"
 
-                        PrimaryButton(
-                            buttonLabel,
-                            onClick = {
-                                if (totalSelected == 0) return@PrimaryButton
-                                sending = true
-                                errorMsg = null
-                                scope.launch {
+                        val publish: () -> Unit = {
+                            sending = true
+                            errorMsg = null
+                            scope.launch {
                                     var count = 0
                                     if (shareSummary && !summary.isNullOrBlank()) {
                                         val briefContent = "📋 Meeting Brief: $meetingTitle\n\n$summary"
@@ -378,11 +388,42 @@ fun ShareToCircleSheet(
                                     } else {
                                         errorMsg = "Could not publish to circle. Please try again."
                                     }
+                            }
+                        }
+                        PrimaryButton(
+                            buttonLabel,
+                            onClick = {
+                                if (totalSelected == 0) return@PrimaryButton
+                                // Whatever is shared goes to everyone in the circle, so check for outside people first.
+                                sending = true
+                                scope.launch {
+                                    val outside = externalCount(repo.data.observeMembers(currentCircle.id).first { it !is DataState.Loading })
+                                    sending = false
+                                    when {
+                                        outside == null -> { errorMsg = "Couldn't check who is in this circle. Please try again." }
+                                        outside > 0 -> { externalPrompt = currentCircle.name to outside }
+                                        else -> publish()
+                                    }
                                 }
                             },
                             enabled = !sending && totalSelected > 0 && privacyCheck != null,
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        externalPrompt?.let { (circleName, outside) ->
+                            AlertDialog(
+                                onDismissRequest = { externalPrompt = null },
+                                text = {
+                                    Text(
+                                        "$circleName includes people outside your organisation ($outside). They'll see what you share from this meeting. Share anyway?",
+                                        style = MM.type.body,
+                                        color = MM.colors.inkSecondary
+                                    )
+                                },
+                                confirmButton = { TextAction("Share", { externalPrompt = null; publish() }) },
+                                dismissButton = { TextAction("Cancel", { externalPrompt = null }) }
+                            )
+                        }
                     }
                 }
             }

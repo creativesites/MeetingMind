@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.core.circles2.ChecklistItem
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
@@ -242,9 +243,17 @@ fun ComposerSheet(
     uploading: Boolean = state.uploading,
     members: List<Member> = emptyList(),
     meta: PostMeta? = null,
-    onMetaChange: (PostMeta?) -> Unit = {}
+    onMetaChange: (PostMeta?) -> Unit = {},
+    isAdmin: Boolean = false
 ) {
     BackHandler(enabled = state.open) { onDismiss() }
+    // Type suggestion reads the body after a 400 ms pause, and a dismissed chip stays hidden for this composer session.
+    var suggestBody by remember { mutableStateOf(state.body) }
+    LaunchedEffect(state.body) {
+        delay(400)
+        suggestBody = state.body
+    }
+    var suggestionDismissed by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var videoNotice by remember { mutableStateOf<String?>(null) }
@@ -301,6 +310,13 @@ fun ComposerSheet(
     val availableTypes = remember(circle) {
         (listOf(PostType.Note) + circle.settings.allowedTypes).distinct()
     }
+    val suggestedType = if (suggestionDismissed) null else PostTypeSuggester.suggest(
+        body = suggestBody,
+        current = type,
+        allowed = availableTypes,
+        isWork = circle.isWork,
+        isAdmin = isAdmin
+    )
     val parsedRef = remember(state.verse) {
         if (state.verse.isNotBlank()) ScriptureReferenceParser.parse(state.verse.trim()) else null
     }
@@ -659,6 +675,31 @@ fun ComposerSheet(
                             if (selectedStudyNote == null) "Pick from Study Journal" else "Change Study Note",
                             { showStudyPicker = true }
                         )
+                    }
+                }
+            }
+        }
+
+        // "The type follows the words": a dismissable hint above the field. Switch keeps the words (openComposer keeps the body).
+        if (suggestedType != null) {
+            Surface(
+                shape = MM.radius.pill,
+                color = MM.colors.accentWash,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    Modifier.padding(start = MM.space.m, end = MM.space.xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Looks like ${PostTypeSuggester.describe(suggestedType)} ·",
+                        style = MM.type.caption,
+                        color = MM.colors.ink,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextAction("Switch", onClick = { onTypeChange(suggestedType) })
+                    IconButton(onClick = { suggestionDismissed = true }) {
+                        Icon(Icons.Rounded.Close, "Dismiss suggestion", tint = MM.colors.inkSecondary)
                     }
                 }
             }

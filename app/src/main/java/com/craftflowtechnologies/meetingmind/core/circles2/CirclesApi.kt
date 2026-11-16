@@ -104,6 +104,15 @@ interface CirclesApi {
     suspend fun removeAvatar(): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
     /** A member's profile photo, for members of [circleId] only. */
     suspend fun downloadAvatar(circleId: String, uid: String): CirclesResult<ByteArray> = CirclesFailure.notConnected.asResult()
+
+    /** Marks a member external (or not). Owner and admins only, work circles only. The Worker writes members/{uid}.external. */
+    suspend fun setExternal(circleId: String, uid: String, external: Boolean): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
+    /** Sets a decision's status. The post's author, an admin or a moderator may. Decision posts only. */
+    suspend fun setDecisionStatus(circleId: String, postId: String, status: DecisionStatus): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
+    /** What an invite code leads to, before joining. Changes nothing. [code] is the bare code (see InviteCodes). */
+    suspend fun previewInvite(code: String): CirclesResult<InvitePreview> = CirclesFailure.notConnected.asResult()
+    /** The Table: claim an unclaimed bring item, or release it (release is for the holder, or an admin). */
+    suspend fun claimBringItem(circleId: String, eventId: String, itemId: String, claim: Boolean): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
 }
 
 /** Used when CIRCLES_API_URL is empty. Every call says so plainly. */
@@ -156,6 +165,10 @@ object NotConfiguredCirclesApi : CirclesApi {
     override suspend fun registerToken(token: String) = no<Unit>()
     override suspend fun unregisterToken(token: String) = no<Unit>()
     override suspend fun notifyChat(circleId: String, hasMentions: Boolean) = no<Unit>()
+    override suspend fun setExternal(circleId: String, uid: String, external: Boolean) = no<Unit>()
+    override suspend fun setDecisionStatus(circleId: String, postId: String, status: DecisionStatus) = no<Unit>()
+    override suspend fun previewInvite(code: String) = no<InvitePreview>()
+    override suspend fun claimBringItem(circleId: String, eventId: String, itemId: String, claim: Boolean) = no<Unit>()
 }
 
 /** JSON bodies, kept pure so tests can assert exactly what leaves the phone. */
@@ -169,10 +182,12 @@ object CirclesJson {
         .put("guidelines", s.guidelines)
         .put("space", s.space)
 
+    /** Always sends the bring list: the draft's list replaces the event's list (an empty list clears it). */
     fun event(circleId: String, d: EventDraft): JSONObject = JSONObject()
         .put("circleId", circleId).put("title", d.title).put("description", d.description)
         .put("location", d.location).put("onlineUrl", d.onlineUrl ?: "")
         .put("startsAt", d.startsAt).put("endsAt", d.endsAt).put("timeZone", d.timeZone)
+        .put("bringList", JSONArray(d.bringList))
 
     fun postMeta(m: PostMeta): JSONObject = JSONObject().apply {
         if (!m.sourceKind.isNullOrBlank()) put("sourceKind", m.sourceKind)
@@ -186,6 +201,8 @@ object CirclesJson {
         if (!m.decisionOwner.isNullOrBlank()) put("decisionOwner", m.decisionOwner)
         if (!m.meetingDate.isNullOrBlank()) put("meetingDate", m.meetingDate)
         if (m.tags.isNotEmpty()) put("tags", JSONArray(m.tags))
+        m.decisionStatus?.let { put("decisionStatus", it.wire) }
+        if (!m.replacesPostId.isNullOrBlank()) put("replacesPostId", m.replacesPostId)
         if (m.checklist.isNotEmpty()) {
             put("checklist", JSONArray(m.checklist.map { item ->
                 JSONObject()
@@ -469,6 +486,32 @@ class HttpCirclesApi(
     override suspend fun notifyChat(circleId: String, hasMentions: Boolean) =
         unit("notifyChat", JSONObject().put("circleId", circleId).put("hasMentions", hasMentions))
 
+    override suspend fun setExternal(circleId: String, uid: String, external: Boolean): CirclesResult<Unit> =
+        unit("setExternal", JSONObject().put("circleId", circleId).put("uid", uid).put("external", external))
+
+    override suspend fun setDecisionStatus(circleId: String, postId: String, status: DecisionStatus): CirclesResult<Unit> =
+        unit("setDecisionStatus", post(circleId, postId).put("status", status.wire))
+
+    override suspend fun previewInvite(code: String): CirclesResult<InvitePreview> =
+        call("previewInvite", JSONObject().put("code", code.take(2000))).flatMap { o ->
+            val name = nullableText(o, "name")
+            if (name == null) CirclesFailure.server().asResult<InvitePreview>()
+            else CirclesResult.Ok(
+                InvitePreview(
+                    circleId = nullableText(o, "circleId"),
+                    name = name,
+                    space = nullableText(o, "space") ?: "faith",
+                    template = nullableText(o, "template"),
+                    memberCount = if (o.has("memberCount")) o.optInt("memberCount") else 0,
+                    coverPath = nullableText(o, "coverPath"),
+                    inviterName = nullableText(o, "inviterName")
+                )
+            )
+        }
+
+    override suspend fun claimBringItem(circleId: String, eventId: String, itemId: String, claim: Boolean): CirclesResult<Unit> =
+        unit("claimBringItem", JSONObject().put("circleId", circleId).put("eventId", eventId).put("itemId", itemId).put("claim", claim))
+
     override suspend fun uploadAvatar(bytes: ByteArray, mime: String): CirclesResult<Long> {
         if (!isConfigured) return CirclesFailure.notConnected.asResult()
         val token = when (val t = tokenProvider()) {
@@ -517,6 +560,8 @@ class HttpCirclesApi(
     }
 
     private fun post(circleId: String, postId: String) = JSONObject().put("circleId", circleId).put("postId", postId)
+    /** A text field, or null when it is missing, JSON null or blank. (optString would turn JSON null into "null".) */
+    private fun nullableText(o: JSONObject, key: String): String? = if (o.isNull(key)) null else o.optString(key).takeIf { it.isNotBlank() }
     private fun str(o: JSONObject, key: String): CirclesResult<String> =
         o.optString(key).takeIf { it.isNotBlank() }?.let { CirclesResult.Ok(it) } ?: CirclesFailure.server().asResult()
 }

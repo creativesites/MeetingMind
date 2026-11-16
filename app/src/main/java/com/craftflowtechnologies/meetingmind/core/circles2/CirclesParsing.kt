@@ -52,7 +52,11 @@ object CirclesParsing {
     }
 
     fun member(uid: String, d: Map<String, Any?>): Member =
-        Member(uid, str(d, "displayName")?.ifBlank { null } ?: "Member", Role.from(str(d, "role")), d["muted"] == true, millis(d["joinedAt"]), str(d, "title")?.ifBlank { null }, millis(d["lastReadAt"]), (d["avatarVersion"] as? Number)?.toLong())
+        Member(
+            uid, str(d, "displayName")?.ifBlank { null } ?: "Member", Role.from(str(d, "role")), d["muted"] == true, millis(d["joinedAt"]),
+            str(d, "title")?.ifBlank { null }, millis(d["lastReadAt"]), (d["avatarVersion"] as? Number)?.toLong(),
+            external = d["external"] == true
+        )
 
     private fun counts(m: Map<String, Any?>): PostCounts {
         val r = map(m["reactions"])
@@ -85,7 +89,10 @@ object CirclesParsing {
             decisionOwner = str(m, "decisionOwner")?.ifBlank { null },
             meetingDate = str(m, "meetingDate")?.ifBlank { null },
             tags = tags,
-            checklist = checklist
+            checklist = checklist,
+            decisionStatus = DecisionStatus.from(str(m, "decisionStatus")),
+            replacesPostId = str(m, "replacesPostId")?.ifBlank { null },
+            replacedByPostId = str(m, "replacedByPostId")?.ifBlank { null }
         )
         return if (meta.isEmpty) null else meta
     }
@@ -180,7 +187,30 @@ object CirclesParsing {
         val title = str(d, "title") ?: return null
         return CircleEvent(
             id, title, str(d, "description").orEmpty(), str(d, "location").orEmpty(), str(d, "onlineUrl")?.ifBlank { null },
-            millis(d["startsAt"]), millis(d["endsAt"]), str(d, "timeZone").orEmpty(), str(d, "status") ?: "scheduled", str(d, "createdByName").orEmpty()
+            millis(d["startsAt"]), millis(d["endsAt"]), str(d, "timeZone").orEmpty(), str(d, "status") ?: "scheduled", str(d, "createdByName").orEmpty(),
+            bringList = bringList(d["bringList"])
+        )
+    }
+
+    /** The Table's items. Malformed items (no id or text) are dropped rather than shown blank. */
+    fun bringList(v: Any?): List<BringItem> = (v as? List<*>).orEmpty().mapNotNull { item ->
+        val m = map(item)
+        val itemId = str(m, "id")?.ifBlank { null } ?: return@mapNotNull null
+        val text = str(m, "text")?.ifBlank { null } ?: return@mapNotNull null
+        BringItem(itemId, text, str(m, "claimedByUid")?.ifBlank { null }, str(m, "claimedByName")?.ifBlank { null })
+    }
+
+    /** The preview of an invite code. Null when the Worker's answer has no circle name. */
+    fun invitePreview(d: Map<String, Any?>): InvitePreview? {
+        val name = str(d, "name")?.ifBlank { null } ?: return null
+        return InvitePreview(
+            circleId = str(d, "circleId")?.ifBlank { null },
+            name = name,
+            space = str(d, "space")?.ifBlank { null } ?: "faith",
+            template = str(d, "template")?.ifBlank { null },
+            memberCount = int(d, "memberCount"),
+            coverPath = str(d, "coverPath")?.ifBlank { null },
+            inviterName = str(d, "inviterName")?.ifBlank { null }
         )
     }
 

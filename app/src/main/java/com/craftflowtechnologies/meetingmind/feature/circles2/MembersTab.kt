@@ -53,7 +53,9 @@ class MemberActions(
     /** View profile / info for this member. */
     val onMemberClick: (Member) -> Unit = {},
     val onUpdatePhoto: (PickedFile) -> Unit = {},
-    val onRemovePhoto: () -> Unit = {}
+    val onRemovePhoto: () -> Unit = {},
+    /** Marks a member as outside the organisation (work circles). Owners and admins only. */
+    val onSetExternal: (Member, Boolean) -> Unit = { _, _ -> }
 ) { companion object { val None = MemberActions() } }
 
 @Composable
@@ -246,7 +248,7 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
                 items(leaders, key = { it.uid }) { m ->
                     val count = postsByUid[m.uid]?.size ?: 0
                     val isTop = m.uid == topContributorUid
-                    MemberCard(circle.id, m, me, actions, count, isTop)
+                    MemberCard(circle.id, m, me, actions, count, isTop, isWork = circle.isWork)
                 }
             }
             if (regulars.isNotEmpty()) {
@@ -254,7 +256,7 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
                 items(regulars, key = { it.uid }) { m ->
                     val count = postsByUid[m.uid]?.size ?: 0
                     val isTop = m.uid == topContributorUid
-                    MemberCard(circle.id, m, me, actions, count, isTop)
+                    MemberCard(circle.id, m, me, actions, count, isTop, isWork = circle.isWork)
                 }
             }
         }
@@ -283,9 +285,10 @@ fun MemberRow(
     me: Member?,
     actions: MemberActions,
     postCount: Int = 0,
-    isTopContributor: Boolean = false
+    isTopContributor: Boolean = false,
+    isWork: Boolean = false
 ) {
-    MemberCard(circleId, m, me, actions, postCount, isTopContributor)
+    MemberCard(circleId, m, me, actions, postCount, isTopContributor, isWork)
 }
 
 @Composable
@@ -295,7 +298,8 @@ private fun MemberCard(
     me: Member?,
     actions: MemberActions,
     postCount: Int = 0,
-    isTopContributor: Boolean = false
+    isTopContributor: Boolean = false,
+    isWork: Boolean = false
 ) {
     var menu by remember { mutableStateOf(false) }
     val isMe = m.uid == me?.uid
@@ -327,6 +331,7 @@ private fun MemberCard(
                     )
                     m.title?.takeIf { it.isNotBlank() }?.let { TitleTag(it) }
                     if (m.role != Role.Member) RoleTag(m.role)
+                    if (isWork && m.external) ExternalTag()
                 }
                 Text(
                     if (joined != null) "Joined $joined · ${m.role.label}" else m.role.label,
@@ -396,6 +401,23 @@ private fun MemberCard(
                 Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.inkMuted, modifier = Modifier.size(20.dp))
             }
         }
+    }
+}
+
+/** Small tag on a work-circle member who is outside the organisation. */
+@Composable
+private fun ExternalTag() {
+    Surface(
+        shape = MM.radius.pill,
+        color = MM.colors.surfaceSunk,
+        border = BorderStroke(MMSize.hairline, MM.colors.line)
+    ) {
+        Text(
+            "External",
+            style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+            color = MM.colors.inkSecondary,
+            modifier = Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs / 2)
+        )
     }
 }
 

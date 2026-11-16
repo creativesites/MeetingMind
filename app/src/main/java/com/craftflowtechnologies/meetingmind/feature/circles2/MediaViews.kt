@@ -257,36 +257,14 @@ fun AttachmentTile(
     else MediaImage(circleId = circleId, path = a.path, modifier = modifier, contentDescription = contentDescription, allowFullscreen = true)
 }
 
-/** A PDF document on a post, as a tile: filename, badge, and size. */
+/** A PDF document on a post, as a tile: filename, badge, and size. Tapping opens the in-app [PdfReaderDialog]. */
 @Composable
 private fun PdfTile(circleId: String, a: MediaAttachment, modifier: Modifier, contentDescription: String) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var loading by remember { mutableStateOf(false) }
+    var showReader by remember { mutableStateOf(false) }
     Box(
         modifier
             .background(MM.colors.surfaceSunk)
-            .clickable(enabled = !loading) {
-                loading = true
-                scope.launch {
-                    val file = CircleMediaCache.fetchToFile(context, circleId, a.path, "pdf")
-                    loading = false
-                    if (file != null) {
-                        runCatching {
-                            val uri = FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.fileprovider",
-                                file
-                            )
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(uri, "application/pdf")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(Intent.createChooser(intent, "Open PDF"))
-                        }
-                    }
-                }
-            }
+            .clickable { showReader = true }
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center
     ) {
@@ -302,11 +280,7 @@ private fun PdfTile(circleId: String, a: MediaAttachment, modifier: Modifier, co
                     .background(CirclesPalette.Accent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
-                if (loading) {
-                    CircularProgressIndicator(Modifier.size(20.dp), color = CirclesPalette.Accent, strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Rounded.InsertDriveFile, null, tint = CirclesPalette.Accent, modifier = Modifier.size(26.dp))
-                }
+                Icon(Icons.Rounded.InsertDriveFile, null, tint = CirclesPalette.Accent, modifier = Modifier.size(26.dp))
             }
             Text(
                 a.name ?: "Document.pdf",
@@ -321,6 +295,9 @@ private fun PdfTile(circleId: String, a: MediaAttachment, modifier: Modifier, co
                 color = MM.colors.inkSecondary
             )
         }
+    }
+    if (showReader) {
+        PdfReaderDialog(circleId = circleId, attachment = a, onDismiss = { showReader = false })
     }
 }
 

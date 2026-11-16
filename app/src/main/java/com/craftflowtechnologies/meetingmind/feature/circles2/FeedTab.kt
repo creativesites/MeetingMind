@@ -140,7 +140,11 @@ class FeedActions(
     val onToggleBookmark: (Post) -> Unit = {},
     val onDismissCatchUp: () -> Unit = {},
     val onDismissPrompt: () -> Unit = {},
-    val onToggleChecklistItem: (Post, ChecklistItem) -> Unit = { _, _ -> }
+    val onToggleChecklistItem: (Post, ChecklistItem) -> Unit = { _, _ -> },
+    /** Decisions (D5): the author or a moderator sets Proposed or Confirmed. */
+    val onSetDecisionStatus: (Post, com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus) -> Unit = { _, _ -> },
+    /** Starts a new decision that replaces this one; the old one stays on record, marked replaced. */
+    val onReplaceDecision: (Post) -> Unit = {}
 ) { companion object { val None = FeedActions() } }
 
 @Composable
@@ -149,7 +153,12 @@ fun FeedTab(
     now: Long,
     actions: FeedActions,
     modifier: Modifier = Modifier,
-    savedDraft: com.craftflowtechnologies.meetingmind.core.circles2.ComposerDraft? = null
+    savedDraft: com.craftflowtechnologies.meetingmind.core.circles2.ComposerDraft? = null,
+    /** False on the Updates tab: Home and the dock now carry the hero, catch-up, events, composer and work strips. */
+    homeSections: Boolean = true,
+    /** A filter another place asked for ("Prayer", "Decisions"); applied once, then [onFilterConsumed]. */
+    filterRequest: String? = null,
+    onFilterConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -211,6 +220,9 @@ fun FeedTab(
     var showSharedMediaSheet by remember { mutableStateOf(false) }
     var selectedFilter by rememberSaveable { mutableStateOf("All") }
     var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(filterRequest) {
+        if (filterRequest != null) { selectedFilter = filterRequest; selectedTag = null; onFilterConsumed() }
+    }
 
     val nextSyncEvent = remember(state.events, now) {
         state.events
@@ -276,8 +288,8 @@ fun FeedTab(
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
         state.failure?.let { f -> item { StatusLine(StatusKind.Warning, f.message) } }
-        item { CircleHero(circle, state, actions) }
-        if (state.unreadFeedCount > 0) {
+        if (homeSections) item { CircleHero(circle, state, actions) }
+        if (homeSections && state.unreadFeedCount > 0) {
             item(key = "catch_up_banner") {
                 CatchUpCard(
                     state = state,
@@ -288,7 +300,7 @@ fun FeedTab(
                 )
             }
         }
-        if (!state.promptDismissedToday && state.circle != null) {
+        if (homeSections && !state.promptDismissedToday && state.circle != null) {
             item(key = "today_prompt_card") {
                 TodayPromptCard(
                     circle = state.circle,
@@ -328,12 +340,12 @@ fun FeedTab(
                 }
             }
         }
-        if (circle.isWork && nextSyncEvent != null) {
+        if (homeSections && circle.isWork && nextSyncEvent != null) {
             item(key = "work_next_sync") {
                 NextSyncMeetingStrip(nextSyncEvent, actions.onOpenEvent)
             }
         }
-        item {
+        if (homeSections) item {
             ComposerCard(
                 circle = circle,
                 state = state,
@@ -343,7 +355,7 @@ fun FeedTab(
                 onPdfClick = { pickPdf.launch("application/pdf") }
             )
         }
-        if (circle.isWork) {
+        if (homeSections && circle.isWork) {
             item(key = "work_pulse") {
                 WorkPulseStrip(
                     openTasks = openTasksCount,
@@ -354,8 +366,8 @@ fun FeedTab(
                 )
             }
         }
-        item { EventsSection(state.events, now, actions.onOpenEvent, if (state.canModerate) actions.onNewEvent else null) }
-        if (allMedia.isNotEmpty()) {
+        if (homeSections) item { EventsSection(state.events, now, actions.onOpenEvent, if (state.canModerate) actions.onNewEvent else null) }
+        if (homeSections && allMedia.isNotEmpty()) {
             item { SharedMediaSection(circle.id, allMedia, onSeeAll = { showSharedMediaSheet = true }) }
         }
         item(key = "feed_filter_chips") {
@@ -546,7 +558,7 @@ private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedAc
                     if (state.members.size > 5) {
                         Surface(shape = MM.radius.pill, color = Color.Black.copy(alpha = 0.6f), modifier = Modifier.size(34.dp)) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text("+${state.members.size - 5}", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                                Text("+${state.members.size - 5}", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = com.craftflowtechnologies.meetingmind.ui.theme.CirclesFixedColors.White)
                             }
                         }
                     }
@@ -566,7 +578,7 @@ private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedAc
                 ) {
                     Surface(
                         shape = MM.radius.pill,
-                        color = Color.White,
+                        color = com.craftflowtechnologies.meetingmind.ui.theme.CirclesFixedColors.White,
                         modifier = Modifier.weight(1f).clickable(onClick = actions.onOpenChat)
                     ) {
                         Row(
@@ -594,8 +606,8 @@ private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedAc
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
                             ) {
-                                Icon(Icons.Rounded.PersonAdd, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                Text("Invite", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold), color = Color.White)
+                                Icon(Icons.Rounded.PersonAdd, null, tint = com.craftflowtechnologies.meetingmind.ui.theme.CirclesFixedColors.White, modifier = Modifier.size(16.dp))
+                                Text("Invite", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold), color = com.craftflowtechnologies.meetingmind.ui.theme.CirclesFixedColors.White)
                             }
                         }
                     }
@@ -693,7 +705,7 @@ private fun ComposerCard(
                 Text(
                     "Post",
                     style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
+                    color = MM.colors.onAccent,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
                 )
             }
@@ -790,6 +802,9 @@ fun PostCard(
     onSelectTag: ((String) -> Unit)? = null
 ) {
     val post = item.post
+    // AI-written briefs can be reported (Play AI-content policy). Held outside the menu so the sheet outlives it.
+    val aiReport = com.craftflowtechnologies.meetingmind.core.aireport.rememberAiReportState()
+    com.craftflowtechnologies.meetingmind.core.aireport.AiReportSheetHost(aiReport)
     val c = MM.colors
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -898,6 +913,20 @@ fun PostCard(
                     if (post.type == PostType.Task && !post.answered && (item.mine || canModerate)) {
                         MenuItem("Mark completed") { menu = false; actions.onMarkAnswered(post) }
                     }
+                    if (post.type == PostType.Decision && post.meta?.decisionStatus != com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Replaced) {
+                        val ds = post.meta?.decisionStatus
+                        if (item.mine || canModerate) {
+                            if (ds != com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Confirmed) MenuItem("Mark confirmed") { menu = false; actions.onSetDecisionStatus(post, com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Confirmed) }
+                            if (ds != com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Proposed) MenuItem("Mark as proposed") { menu = false; actions.onSetDecisionStatus(post, com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Proposed) }
+                        }
+                        MenuItem("Replace with a new decision") { menu = false; actions.onReplaceDecision(post) }
+                    }
+                    if (post.type == PostType.Brief && post.meta?.sourceKind == "meeting") {
+                        com.craftflowtechnologies.meetingmind.core.aireport.ReportAiMenuItem {
+                            menu = false
+                            aiReport.open(com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.CIRCLE_BRIEF, post.body))
+                        }
+                    }
                     if (isAdmin) MenuItem(if (pinned) "Unpin" else "Pin to top") { menu = false; actions.onPinPost(if (pinned) null else post) }
                     if (post.type == PostType.Prayer) MenuItem("Start a prayer chain") { menu = false; actions.onStartChain(post) }
                     if (item.mine) MenuItem("Edit") { menu = false; actions.onEdit(post) }
@@ -952,7 +981,23 @@ fun PostCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("Decision record 📋", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = CirclesPalette.RoseInk)
+                        val ds = post.meta?.decisionStatus
+                        Text(
+                            when (ds) {
+                                com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Proposed -> "Decision · proposed"
+                                com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Confirmed -> "Decision · confirmed"
+                                com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Replaced -> "Decision · replaced by a newer one"
+                                null -> "Decision record"
+                            },
+                            style = MM.type.caption.copy(
+                                fontWeight = FontWeight.Bold,
+                                textDecoration = if (ds == com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Replaced) TextDecoration.LineThrough else null
+                            ),
+                            color = if (ds == com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Replaced) MM.colors.inkMuted else CirclesPalette.RoseInk
+                        )
+                        if (post.meta?.replacesPostId != null) {
+                            Text("· replaces an earlier decision", style = MM.type.caption, color = MM.colors.inkSecondary)
+                        }
                     }
                 }
             }

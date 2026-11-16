@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleSettings
+import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
+import com.craftflowtechnologies.meetingmind.core.circles2.FailureKind
+import com.craftflowtechnologies.meetingmind.core.circles2.InvitePreview
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleTemplate
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesRepository
@@ -12,6 +15,8 @@ import com.craftflowtechnologies.meetingmind.core.circles2.InviteCodes
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.circles2.ReactionKind
 import com.craftflowtechnologies.meetingmind.core.circles2.WhoCanInvite
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,11 +35,36 @@ data class JoinUiState(
     val busy: Boolean = false,
     val error: String? = null,
     /** The request is with an admin. Shown instead of opening the circle. */
-    val pending: Boolean = false
+    val pending: Boolean = false,
+    /** What the code leads to, once the Worker has said. Null while unknown; never blocks Join. */
+    val preview: InvitePreview? = null,
+    /** A friendly line when the preview could not be shown. Null for quiet failures. */
+    val previewError: String? = null
 ) {
     /** The code found in [input], shown back to the person so they can see what will be used. */
     val code: String? get() = InviteCodes.extract(input)
     val canJoin: Boolean get() = code != null && !busy
+}
+
+/** A short wait after the last keystroke before looking up a pasted code. */
+internal const val PREVIEW_DEBOUNCE_MS = 400L
+
+/** A friendly line for a failed preview. Null means say nothing: Join still works and shows its own errors. */
+internal fun previewErrorLine(f: CirclesFailure): String? = when {
+    f.kind == FailureKind.RateLimited || f.code == "rate_limited" -> "You're checking codes too fast. Wait a bit and try again."
+    f.code == "not_found" -> "We couldn't find a circle for that code. Check it and try again."
+    f.code == "expired" -> "That code has expired. Ask for a new one."
+    f.code == "revoked" -> "That code was turned off. Ask for a new one."
+    f.code == "full" -> "That code has reached its limit. Ask for a new one."
+    else -> null
+}
+
+/** The space as people read it on the card. */
+internal fun spaceLabel(space: String): String = when (space.lowercase()) {
+    "work" -> "Work"
+    "learning" -> "Learning"
+    "general" -> "General"
+    else -> "Faith"
 }
 
 class CirclesListViewModel(private val repo: CirclesRepository) : ViewModel() {
@@ -66,8 +96,29 @@ class CirclesListViewModel(private val repo: CirclesRepository) : ViewModel() {
         refreshEngagement()
     }
 
-    fun resetJoin() { _join.value = JoinUiState(name = repo.displayName) }
-    fun onPaste(text: String) = _join.update { it.copy(input = text.take(4000), error = null) }
+    private var previewJob: Job? = null
+
+    fun resetJoin() {
+        previewJob?.cancel()
+        _join.value = JoinUiState(name = repo.displayName)
+    }
+
+    /**
+     * Pasting clears the old preview. When the text holds a code, waits [PREVIEW_DEBOUNCE_MS] after the last change
+     * and asks the Worker what the code leads to. The lookup only shows if the code is still the one in the box.
+     */
+    fun onPaste(text: String) {
+        _join.update { it.copy(input = text.take(4000), error = null, preview = null, previewError = null) }
+        previewJob?.cancel()
+        val code = InviteCodes.extract(text) ?: return
+        previewJob = viewModelScope.launch {
+            delay(PREVIEW_DEBOUNCE_MS)
+            repo.previewInvite(code).fold(
+                onOk = { p -> _join.update { if (it.code == code) it.copy(preview = p, previewError = null) else it } },
+                onErr = { f -> _join.update { if (it.code == code) it.copy(preview = null, previewError = previewErrorLine(f)) else it } }
+            )
+        }
+    }
     fun onJoinName(text: String) = _join.update { it.copy(name = text.take(40), error = null) }
 
     /** Joins with whatever was pasted. Every failure becomes an inline message. */
