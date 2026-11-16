@@ -506,6 +506,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PROFESSIONAL) com.craftflowtechnologies.meetingmind.feature.work.ProfessionalHome(
                 today = vm,
                 work = viewModel(viewModelStoreOwner = context as ComponentActivity),
+                onOpenBrief = { navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.WEEKLY)) },
+                onOpenWeeklyReview = { navController.navigate(Routes.WEEKLY_REVIEW) },
                 onRecord = { navController.navigate(Routes.RECORDING) },
                 onRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
                 onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
@@ -901,6 +903,22 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.LanguageSelectionViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.settings.LanguageSelectionScreen(vm, onNavigateBack = { navController.popBackStack() })
         }
+        composable(
+            Routes.TASKS_OPEN,
+            arguments = listOf(
+                navArgument("task") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("list") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.tasks.TasksViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.tasks.TasksScreen(
+                vm, onNavigateBack = { navController.popBackStack() },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenRecording = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                initialTaskId = entry.arguments?.getString("task"),
+                initialListId = entry.arguments?.getString("list")
+            )
+        }
         composable(Routes.TASKS) {
             val vm: com.craftflowtechnologies.meetingmind.feature.tasks.TasksViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.tasks.TasksScreen(
@@ -1118,7 +1136,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 onStartCircle = { navController.navigate(Routes.circleCreateRoute("work")) },
                 onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) },
-                onNavigateBottomNav = navigateToPrimary
+                onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) },
+                onOpenTaskPage = { navController.navigate(Routes.tasksOpenRoute(taskId = it)) },
+                onOpenTaskList = { navController.navigate(Routes.tasksOpenRoute(listId = it)) }
             )
         }
         composable(Routes.WEEKLY_REVIEW) {
@@ -1136,8 +1156,31 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onImportAudio = { path -> navController.navigate(Routes.importFileRoute(path)) },
                 onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
-                onOpenProcessing = openProcessing
+                onOpenProcessing = openProcessing,
+                onOpenDocument = { id, page -> navController.navigate(Routes.documentRoute(id, page)) },
+                onOpenProject = { navController.navigate(Routes.projectRoute(it)) }
             )
+        }
+        composable(
+            Routes.DOCUMENT,
+            arguments = listOf(
+                navArgument("itemId") { type = NavType.StringType },
+                navArgument("page") { type = NavType.IntType; defaultValue = 1 }
+            )
+        ) { entry ->
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
+            val itemId = entry.arguments?.getString("itemId").orEmpty()
+            val item by androidx.compose.runtime.produceState<com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity?>(null, itemId) { value = vm.inboxItem(itemId) }
+            val path = item?.uri
+            if (path != null) {
+                com.craftflowtechnologies.meetingmind.feature.work.DocumentViewerScreen(
+                    itemId = itemId,
+                    title = item?.title ?: "Document",
+                    filePath = path,
+                    onBack = { navController.popBackStack() },
+                    initialPage = entry.arguments?.getInt("page") ?: 1
+                )
+            }
         }
         composable(Routes.IMPORT_FILE, arguments = listOf(navArgument("path") { type = NavType.StringType })) { entry ->
             val vm: ImportViewModel = viewModel()
@@ -1197,7 +1240,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             com.craftflowtechnologies.meetingmind.feature.work.BriefScreen(
                 target = com.craftflowtechnologies.meetingmind.core.work.BriefTarget.of(kind, entry.arguments?.getString("id").orEmpty()), viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
-                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onOpenTarget = { t -> navController.navigate(Routes.brief(t.kind, t.scope.cacheKey.second)) { popUpTo(Routes.BRIEF) { inclusive = true } } }
             )
         }
         composable(Routes.CONTEXT, arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType })) { entry ->
