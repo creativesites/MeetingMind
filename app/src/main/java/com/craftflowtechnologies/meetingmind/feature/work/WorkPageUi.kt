@@ -1,6 +1,5 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +18,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Inbox
@@ -40,12 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -58,26 +53,23 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompan
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
-import com.craftflowtechnologies.meetingmind.R
-import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
 /** One entry of the ＋ or ⋯ menu. [badge] shows a count beside the label when above 0. */
 internal data class WorkMenuAction(val label: String, val badge: Int = 0, val onClick: () -> Unit)
 
-/**
- * The Work header (WORK_UX §2): "Work", one context line, and Search, ＋, ⋯ — a light header on the
- * page background like every other screen. §3 forbids dark full-bleed surfaces anywhere on this
- * page, so the old sunset image and black scrim are gone. The ⋯ icon carries the Inbox count only
- * when it is above 0.
- */
-/** The Work header companion: small and crisp (T0). */
+/** The Work companion in the header (T0): small and crisp. */
 private val WorkCompanionSize = 40.dp
 
 /** The companion in a Work empty state (§5.5: 96 dp). */
 internal val EmptyCompanionSize = 96.dp
 
+/**
+ * The Work header: "Work", one context line, and four actions: Work search (scoped to Work, with a fallback to
+ * everything), Inbox (the only Inbox door besides the Pulse row, with its count as a badge), ＋ and ⋯. The global app
+ * bar is not shown inside Work; the in-vertical bar below the pane carries Home.
+ */
 @Composable
 internal fun WorkPageHeader(
     contextLine: String,
@@ -85,38 +77,29 @@ internal fun WorkPageHeader(
     moreActions: List<WorkMenuAction>,
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null,
+    inboxCount: Int = 0,
     onOpenInbox: (() -> Unit)? = null
 ) {
-    val inbox = moreActions.sumOf { it.badge }
     val companionShown = rememberCompanionVisible(CompanionPage.HOME)
-    // The header is a light header on the page background (WORK_UX §2/§3), so its icons use ink.
-    val leading: (@Composable () -> Unit)? = when {
-        onBack != null -> {
-            { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.ink) } }
-        }
-        companionShown -> {
-            { ZuriSlot(CompanionPage.HOME, WorkCompanionSize) }
-        }
-        else -> null
-    }
+    val leading: (@Composable () -> Unit)? = if (companionShown) {
+        { ZuriSlot(CompanionPage.HOME, WorkCompanionSize) }
+    } else null
     Column(modifier.fillMaxWidth()) {
         ScreenHeader(title = "Work", leading = leading) {
-            // Search in Work opens the app-wide search, so its label says exactly that.
-            IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search everything", tint = MM.colors.ink) }
+            IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search Work", tint = MM.colors.ink) }
             if (onOpenInbox != null) {
                 IconButton(onClick = onOpenInbox) {
-                    if (inbox > 0) {
-                        BadgedBox(badge = { Badge(containerColor = MM.colors.accent, contentColor = MM.colors.onAccent) { Text(inbox.toString(), style = MM.type.caption) } }) {
-                            Icon(Icons.Rounded.Inbox, "Work Inbox ($inbox)", tint = MM.colors.ink)
+                    if (inboxCount > 0) {
+                        BadgedBox(badge = { Badge(containerColor = MM.colors.accent, contentColor = MM.colors.onAccent) { Text(inboxCount.toString(), style = MM.type.caption) } }) {
+                            Icon(Icons.Rounded.Inbox, "Work Inbox, $inboxCount waiting", tint = MM.colors.ink)
                         }
                     } else {
                         Icon(Icons.Rounded.Inbox, "Work Inbox", tint = MM.colors.ink)
                     }
                 }
             }
-            MenuButton(Icons.Rounded.Add, "New", addActions, badge = 0, tint = MM.colors.ink)
-            MenuButton(Icons.Rounded.MoreHoriz, if (inbox > 0) "More, $inbox in Inbox" else "More", moreActions, badge = if (onOpenInbox == null) inbox else 0, tint = MM.colors.ink)
+            MenuButton(Icons.Rounded.Add, "New", addActions, tint = MM.colors.ink)
+            MenuButton(Icons.Rounded.MoreHoriz, "More", moreActions, tint = MM.colors.ink)
         }
         Row(
             Modifier.padding(top = MM.space.xs, bottom = MM.space.xs),
@@ -134,16 +117,10 @@ internal fun WorkPageHeader(
 }
 
 @Composable
-private fun MenuButton(icon: ImageVector, description: String, actions: List<WorkMenuAction>, badge: Int, tint: Color) {
+private fun MenuButton(icon: ImageVector, description: String, actions: List<WorkMenuAction>, tint: Color) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) {
-            if (badge > 0) {
-                BadgedBox(badge = { Badge(containerColor = MM.colors.accent, contentColor = MM.colors.onAccent) { Text(badge.toString(), style = MM.type.caption) } }) {
-                    Icon(icon, description, tint = tint)
-                }
-            } else Icon(icon, description, tint = tint)
-        }
+        IconButton(onClick = { open = true }) { Icon(icon, description, tint = tint) }
         DropdownMenu(open, { open = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.card) {
             actions.forEach { a ->
                 DropdownMenuItem(

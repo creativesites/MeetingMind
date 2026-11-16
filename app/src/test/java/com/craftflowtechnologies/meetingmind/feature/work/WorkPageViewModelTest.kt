@@ -31,8 +31,6 @@ class WorkPageViewModelTest {
     @Before fun setUp() = Dispatchers.setMain(dispatcher)
     @After fun tearDown() = Dispatchers.resetMain()
 
-    private class FakeStore(override var last: String? = null) : SegmentStore
-
     private class FakeData(count: Int = 10) : WorkPageData {
         val notes = (1..count).map { WorkNoteItem("n%02d".format(it), "Note $it", "", null, RecordingType.MEETING, (1000L - it), false, false, false, NoteTranscriptStatus.None, 0, Cursor(1000L - it, "n%02d".format(it))) }
         val calls = mutableListOf<Triple<Cursor?, WorkNoteSort, WorkNoteFilters>>()
@@ -47,50 +45,36 @@ class WorkPageViewModelTest {
             searches += query to offset
             return notes.take(2).mapIndexed { i, n -> n.copy(cursor = Cursor((offset + i).toLong(), "%06d".format(offset + i))) }.drop(offset).take(limit)
         }
-        override suspend fun tasksPage(after: Cursor?, limit: Int, waiting: Boolean) = emptyList<WorkTaskRow>()
         override suspend fun setPinned(noteId: String, pinned: Boolean) = Unit
         override suspend fun moveToProject(noteId: String, notebookId: String?) = Unit
         override suspend fun trash(noteId: String) { trashed += noteId }
         override suspend fun restore(noteId: String) { restored += noteId }
-        override suspend fun toggleTask(taskId: String) = Unit
-        override suspend fun addTask(title: String) = Unit
     }
 
-    private fun vm(data: WorkPageData = FakeData(), handle: SavedStateHandle = SavedStateHandle(), store: SegmentStore = FakeStore(), size: Int = 3) =
-        WorkPageViewModel(data, handle, store, pageSize = size, searchDebounceMs = 100)
+    private fun vm(data: WorkPageData = FakeData(), handle: SavedStateHandle = SavedStateHandle(), size: Int = 3) =
+        WorkPageViewModel(data, handle, pageSize = size, searchDebounceMs = 100)
 
-    // ---------------------------------------------------------------- default segment
+    // ---------------------------------------------------------------- pane
 
-    @Test fun `with nothing remembered the default is Today when there are meetings or needs`() = runTest(dispatcher) {
-        val a = vm(); assertNull(a.segment.value); a.resolveDefault(2, 0); assertEquals(WorkSegment.TODAY, a.segment.value)
-        val b = vm(); b.resolveDefault(0, 3); assertEquals(WorkSegment.TODAY, b.segment.value)
-        val c = vm(); c.resolveDefault(0, 0); assertEquals(WorkSegment.NOTES, c.segment.value)
+    @Test fun `Work always opens on Pulse when nothing was chosen in this session`() = runTest(dispatcher) {
+        assertEquals(WorkSegment.PULSE, vm().segment.value)
     }
 
-    @Test fun `a remembered segment beats the default and the default does not override a later choice`() = runTest(dispatcher) {
-        val remembered = vm(store = FakeStore("TASKS"))
-        assertEquals(WorkSegment.TASKS, remembered.segment.value)
-        remembered.resolveDefault(5, 5)
-        assertEquals(WorkSegment.TASKS, remembered.segment.value)
-
-        val fresh = vm(); fresh.resolveDefault(0, 0); fresh.select(WorkSegment.PROJECTS); fresh.resolveDefault(9, 9)
-        assertEquals(WorkSegment.PROJECTS, fresh.segment.value)
-    }
-
-    @Test fun `choosing a segment is remembered for the next launch and survives process death`() = runTest(dispatcher) {
-        val store = FakeStore(); val handle = SavedStateHandle()
-        vm(store = store, handle = handle).select(WorkSegment.NOTES)
-        assertEquals("NOTES", store.last)
-        // Process death: the store is empty (new install of prefs) but the handle was restored.
-        val restored = vm(handle = SavedStateHandle(handle.keys().associateWith { handle.get<Any>(it) }), store = FakeStore())
+    @Test fun `a chosen pane survives process death through the saved state, and a fresh launch opens on Pulse`() = runTest(dispatcher) {
+        val handle = SavedStateHandle()
+        vm(handle = handle).select(WorkSegment.NOTES)
+        // Process death: the handle is restored, so the pane comes back.
+        val restored = vm(handle = SavedStateHandle(handle.keys().associateWith { handle.get<Any>(it) }))
         assertEquals(WorkSegment.NOTES, restored.segment.value)
-        // A relaunch: the handle is gone, the store remains.
-        assertEquals(WorkSegment.NOTES, vm(store = store).segment.value)
+        // A relaunch: nothing is kept across launches, so the page opens on Pulse again.
+        assertEquals(WorkSegment.PULSE, vm().segment.value)
     }
 
-    @Test fun `the default is not stored as a choice`() = runTest(dispatcher) {
-        val store = FakeStore(); val v = vm(store = store); v.resolveDefault(1, 0)
-        assertNull(store.last)
+    @Test fun `search for notes returns the first ranked page and nothing for a blank query`() = runTest(dispatcher) {
+        val data = FakeData(); val v = vm(data)
+        assertTrue(v.searchNotes("   ").isEmpty())
+        assertEquals(listOf("n01", "n02"), v.searchNotes("note").map { it.id })
+        assertEquals(listOf("note" to 0), data.searches)
     }
 
     // ---------------------------------------------------------------- filter state

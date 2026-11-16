@@ -8,6 +8,7 @@ import com.craftflowtechnologies.meetingmind.core.database.ItemLinkEntity
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.database.MeetingEntity
 import com.craftflowtechnologies.meetingmind.core.database.NoteEntity
+import com.craftflowtechnologies.meetingmind.core.database.ProjectItemCounts
 import com.craftflowtechnologies.meetingmind.core.database.TaskEntity
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
@@ -25,6 +26,20 @@ import java.util.UUID
 
 /** A recording waiting for its Wrap-up, or for its follow-up to be sent. */
 data class MeetingRow(val meetingId: String, val noteId: String?, val title: String, val at: Long, val durationMs: Long, val type: RecordingType)
+
+/** A queued recording is only "stuck" (and shown under Needs you) after it has waited this long. */
+const val QUEUED_STALE_MS = 30 * 60_000L
+
+/**
+ * Whether a recording needs the person under Needs you: its processing failed (ERROR), a local model must be
+ * installed (MODEL_REQUIRED), or it has been QUEUED since before [now] minus [QUEUED_STALE_MS]. Mirrors the
+ * predicate in [WorkDao.observeFailed]; the audio is kept in every case.
+ */
+fun needsRecovery(status: String, updatedAt: Long, now: Long): Boolean = when (status) {
+    "ERROR", "MODEL_REQUIRED" -> true
+    "QUEUED" -> updatedAt < now - QUEUED_STALE_MS
+    else -> false
+}
 
 /** Work notes list order (WORK_UX §2.2). */
 enum class WorkNoteSort { RECENT, MEETING_DATE, TITLE }
@@ -89,8 +104,11 @@ class WorkRepository(private val database: MeetMindDatabase) {
         }
     }
 
-    /** Recordings whose processing failed (see [WorkDao.observeFailed]). Shown under Needs you, with Open. */
-    fun observeFailed(): Flow<List<MeetingRow>> = work.observeFailed().map { list ->
+    /**
+     * Recordings that need the person (see [WorkDao.observeFailed] and [needsRecovery]). Shown under Needs you:
+     * Try again or Open. A queued recording counts once it has waited [QUEUED_STALE_MS].
+     */
+    fun observeFailed(): Flow<List<MeetingRow>> = work.observeFailed(System.currentTimeMillis() - QUEUED_STALE_MS).map { list ->
         withContext(Dispatchers.IO) { list.map { it.row() } }
     }
 
@@ -352,6 +370,18 @@ class WorkRepository(private val database: MeetMindDatabase) {
 
     /** The whole decision log, newest first, including what was replaced. */
     fun observeDecisionLog(limit: Int = 500): Flow<List<FindingRow>> = database.itemDao().observeDecisions(limit).map { l -> l.map { it.toRow() } }
+
+    /** Requirements, newest first (Decisions › Requirements). Empty for profiles that do not use the kind. */
+    fun observeRequirements(limit: Int = 200): Flow<List<FindingRow>> = work.observeItemsOfKind("REQUIREMENT", limit).map { l -> l.map { it.toRow() } }
+
+    /** Per-project counts that decide each project's status line. Start of today is read when the flow is made. */
+    fun observeProjectItemCounts(): Flow<List<ProjectItemCounts>> =
+        work.observeProjectItemCounts(DueDates.startOfDay(System.currentTimeMillis()))
+
+    /** A decision the person has agreed to: PROPOSED becomes ACTIVE (In force). */
+    suspend fun confirmDecision(itemId: String) {
+        ItemRepository(database).setStatus(itemId, ItemStatus.ACTIVE)
+    }
 
     fun observeOpenQuestions(limit: Int = 200): Flow<List<FindingRow>> = database.itemDao().observeOpenQuestions(limit).map { l -> l.map { it.toRow() } }
 

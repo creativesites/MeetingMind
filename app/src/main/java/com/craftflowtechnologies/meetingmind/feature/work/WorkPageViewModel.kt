@@ -1,7 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
 import android.app.Application
-import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -38,28 +37,12 @@ interface WorkPageData {
     suspend fun notesPage(after: Cursor?, limit: Int, sort: WorkNoteSort, filters: WorkNoteFilters): List<WorkNoteItem>
     /** Ranked search results from [offset]. Each row's cursor is its rank. */
     suspend fun search(query: String, offset: Int, limit: Int): List<WorkNoteItem>
-    suspend fun tasksPage(after: Cursor?, limit: Int, waiting: Boolean): List<WorkTaskRow>
     suspend fun setPinned(noteId: String, pinned: Boolean)
     suspend fun moveToProject(noteId: String, notebookId: String?)
     suspend fun trash(noteId: String)
     suspend fun restore(noteId: String)
-    suspend fun toggleTask(taskId: String)
-    suspend fun addTask(title: String)
     /** The note as text, for the share sheet. */
     suspend fun shareText(noteId: String): String? = null
-}
-
-/** The last segment the person chose, kept across launches. */
-interface SegmentStore {
-    var last: String?
-}
-
-class PrefsSegmentStore(context: Context) : SegmentStore {
-    private val prefs = context.getSharedPreferences("work_state", Context.MODE_PRIVATE)
-    override var last: String?
-        get() = prefs.getString(KEY, null)
-        set(v) { prefs.edit().putString(KEY, v).apply() }
-    private companion object { const val KEY = "work_page_segment" }
 }
 
 /** One-off things the screen reacts to. */
@@ -92,55 +75,36 @@ class RepoWorkPageData(private val work: WorkRepository, private val notes: Note
     override suspend fun search(query: String, offset: Int, limit: Int) =
         work.searchWorkNotes(query, limit, offset).items(null) { i, n -> Cursor((offset + i).toLong(), "%06d".format(offset + i)) }
 
-    override suspend fun tasksPage(after: Cursor?, limit: Int, waiting: Boolean): List<WorkTaskRow> {
-        val page = work.workTasksPage(after, limit, waiting)
-        val tasks = work.toWorkTasks(page)
-        return page.mapIndexed { i, e -> WorkTaskRow(tasks[i], work.workTaskCursor(e)) }
-    }
-
     override suspend fun setPinned(noteId: String, pinned: Boolean) { notes.setPinned(noteId, pinned) }
     override suspend fun moveToProject(noteId: String, notebookId: String?) { notes.moveToNotebook(noteId, notebookId) }
     override suspend fun trash(noteId: String) { notes.moveToTrash(noteId) }
     override suspend fun restore(noteId: String) { notes.restoreFromTrash(noteId) }
-    override suspend fun toggleTask(taskId: String) { work.toggle(taskId) }
-    override suspend fun addTask(title: String) { work.addTask(title) }
     override suspend fun shareText(noteId: String): String? =
         notes.getDocument(noteId)?.let { com.craftflowtechnologies.meetingmind.core.notes.NoteText.markdown(it.blocks, it.note.title) }
 }
 
 /**
- * The Work page's own state (WORK_UX §2): the segment, the Notes filters and search, and the two paged lists.
- * Anything the person chose lives in [SavedStateHandle], so rotation and process death bring it back; the
- * segment is also remembered across launches. Lists are bounded keyset pages (30 rows), never a full-table flow.
+ * The Work page's own state: the pane, the Notes filters and search, and the paged notes list. Anything the person
+ * chose lives in [SavedStateHandle], so rotation and process death bring it back. The pane is not stored across
+ * launches: Work always opens on Pulse. Lists are bounded keyset pages (30 rows), never a full-table flow.
+ * Tasks, decisions and projects are read by their own panes, so this class does not hold them.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class WorkPageViewModel(
     private val data: WorkPageData,
     private val saved: SavedStateHandle = SavedStateHandle(),
-    private val store: SegmentStore,
     private val pageSize: Int = KeysetPager.DEFAULT_PAGE_SIZE,
     private val searchDebounceMs: Long = 250
 ) : ViewModel() {
 
-    // ---------------------------------------------------------------- segment
+    // ---------------------------------------------------------------- pane
 
-    private val _segment = MutableStateFlow<WorkSegment?>(
-        (saved.get<String>(KEY_SEGMENT) ?: store.last)?.let { n -> WorkSegment.entries.firstOrNull { it.name == n } }
+    private val _segment = MutableStateFlow(
+        saved.get<String>(KEY_SEGMENT)?.let { n -> WorkSegment.entries.firstOrNull { it.name == n } } ?: WorkSegment.PULSE
     )
-    /** Null until the page has either a remembered segment or enough information to pick the default. */
-    val segment: StateFlow<WorkSegment?> = _segment.asStateFlow()
+    val segment: StateFlow<WorkSegment> = _segment.asStateFlow()
 
     fun select(s: WorkSegment) {
-        _segment.value = s
-        saved[KEY_SEGMENT] = s.name
-        store.last = s.name
-        ensureLoaded(s)
-    }
-
-    /** Picks the default when nothing was remembered. Does nothing once a segment is set. */
-    fun resolveDefault(meetingsToday: Int, needsYou: Int) {
-        if (_segment.value != null) return
-        val s = defaultSegment(meetingsToday, needsYou)
         _segment.value = s
         saved[KEY_SEGMENT] = s.name
         ensureLoaded(s)
@@ -237,66 +201,25 @@ class WorkPageViewModel(
 
     suspend fun shareText(item: WorkNoteItem): String = data.shareText(item.id) ?: item.displayTitle
 
-    // ---------------------------------------------------------------- tasks
-
-    private val _waiting = MutableStateFlow(saved[KEY_WAITING] ?: false)
-    /** False = Mine, true = Waiting on. */
-    val waiting: StateFlow<Boolean> = _waiting.asStateFlow()
-
-    private val taskPagers = listOf(false, true).associateWith { w ->
-        KeysetPager(viewModelScope, pageSize, { r: WorkTaskRow -> r.cursor }) { after, limit -> data.tasksPage(after, limit, w) }
-    }
-    private val tasksStarted = mutableSetOf<Boolean>()
-    val tasks: StateFlow<PagedState<WorkTaskRow>> = _waiting.flatMapLatest { taskPagers.getValue(it).state }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, PagedState(isLoadingFirst = true))
-
-    private fun currentTasks() = taskPagers.getValue(_waiting.value)
-
-    fun setWaiting(w: Boolean) {
-        _waiting.value = w
-        saved[KEY_WAITING] = w
-        ensureTasks()
-    }
-
-    private fun ensureTasks() { if (tasksStarted.add(_waiting.value)) currentTasks().loadMore() }
-
-    fun loadMoreTasks() = currentTasks().loadMore()
-    fun retryTasks() = currentTasks().retry()
-    fun refreshTasks() = currentTasks().refresh()
-
-    fun completeTask(row: WorkTaskRow) = viewModelScope.launch {
-        runCatching { data.toggleTask(row.task.id) }
-            .onSuccess { currentTasks().update { l -> l.filter { it.task.id != row.task.id } } }
-            .onFailure { _events.tryEmit(WorkPageEvent.Failed("update the task")) }
-    }
-
-    fun addTask(title: String) = viewModelScope.launch {
-        if (title.isBlank()) return@launch
-        runCatching { data.addTask(title) }
-            .onSuccess { taskPagers.getValue(false).refresh(); tasksStarted += false }
-            .onFailure { _events.tryEmit(WorkPageEvent.Failed("add the task")) }
-    }
+    /** The notes that match [query] (ranked full-text search, first page), for the Work search pane. */
+    suspend fun searchNotes(query: String, limit: Int = 20): List<WorkNoteItem> =
+        if (query.isBlank()) emptyList() else runCatching { data.search(query.trim(), 0, limit) }.getOrDefault(emptyList())
 
     // ---------------------------------------------------------------- lifecycle
 
     private fun ensureLoaded(s: WorkSegment) {
-        when (s) {
-            WorkSegment.NOTES -> if (!notesStarted) { notesStarted = true; notesPager.value.loadMore() }
-            WorkSegment.TASKS -> ensureTasks()
-            else -> Unit
-        }
+        if (s == WorkSegment.NOTES && !notesStarted) { notesStarted = true; notesPager.value.loadMore() }
     }
 
     /** The screen was shown again: reload what is already on screen so edits made elsewhere appear. Does nothing before the first load. */
     fun onResume() {
         if (notesStarted && (notes.value.items.isNotEmpty() || notes.value.endReached)) notesPager.value.refresh()
-        if (_segment.value == WorkSegment.TASKS && tasksStarted.contains(_waiting.value)) currentTasks().refresh()
     }
 
     private val _events = MutableSharedFlow<WorkPageEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<WorkPageEvent> = _events
 
-    init { _segment.value?.let { ensureLoaded(it) } }
+    init { ensureLoaded(_segment.value) }
 
     companion object {
         internal const val KEY_SEGMENT = "work_segment"
@@ -304,13 +227,12 @@ class WorkPageViewModel(
         internal const val KEY_PROJECT = "work_project"
         internal const val KEY_SORT = "work_sort"
         internal const val KEY_SEARCH = "work_search"
-        internal const val KEY_WAITING = "work_waiting"
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as Application
                 val db = MeetMindDatabase.getInstance(app)
-                WorkPageViewModel(RepoWorkPageData(WorkRepository(db), NoteRepository(app, db)), createSavedStateHandle(), PrefsSegmentStore(app))
+                WorkPageViewModel(RepoWorkPageData(WorkRepository(db), NoteRepository(app, db)), createSavedStateHandle())
             }
         }
     }

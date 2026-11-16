@@ -5,15 +5,28 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddTask
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.EventNote
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Inbox
+import androidx.compose.material.icons.rounded.Notes
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -21,12 +34,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.Lifecycle
@@ -37,26 +49,43 @@ import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.Workflows
 import com.craftflowtechnologies.meetingmind.core.timeline.DeepTarget
 import com.craftflowtechnologies.meetingmind.core.timeline.ItemKind
-import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRowModel
-import com.craftflowtechnologies.meetingmind.core.ui.mm.SegmentedControl
+import com.craftflowtechnologies.meetingmind.core.ui.work.AttentionTone
+import com.craftflowtechnologies.meetingmind.core.ui.work.RibbonBlock
+import com.craftflowtechnologies.meetingmind.core.ui.work.VerticalBar
+import com.craftflowtechnologies.meetingmind.core.ui.work.VerticalBarItem
+import com.craftflowtechnologies.meetingmind.core.work.AttentionAction
+import com.craftflowtechnologies.meetingmind.core.work.AttentionKind
+import com.craftflowtechnologies.meetingmind.core.work.AttentionRow as PulseAttention
 import com.craftflowtechnologies.meetingmind.core.work.BriefTarget
+import com.craftflowtechnologies.meetingmind.core.work.ContextType
 import com.craftflowtechnologies.meetingmind.core.work.DueDates
 import com.craftflowtechnologies.meetingmind.core.work.PulseEvent
-import com.craftflowtechnologies.meetingmind.core.work.TabSlot
 import com.craftflowtechnologies.meetingmind.core.work.WorkTask
 import com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel
 import com.craftflowtechnologies.meetingmind.feature.today.UpNextTile
 import com.craftflowtechnologies.meetingmind.feature.today.timeFormat
 import com.craftflowtechnologies.meetingmind.feature.today.timeLabel
+import com.craftflowtechnologies.meetingmind.feature.work.hub.PulseFacts
+import com.craftflowtechnologies.meetingmind.feature.work.hub.NeedCandidate
+import com.craftflowtechnologies.meetingmind.feature.work.hub.NeedRank
+import com.craftflowtechnologies.meetingmind.feature.work.hub.PulseMoment
+import com.craftflowtechnologies.meetingmind.feature.work.hub.WorkSearchPane
+import com.craftflowtechnologies.meetingmind.feature.work.hub.pulseMoment
+import com.craftflowtechnologies.meetingmind.feature.work.hub.rankNeeds
+import com.craftflowtechnologies.meetingmind.feature.work.hub.weeklyReviewDue
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
+import java.util.Date
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * The Work page (WORK_UX §2): a light header, four sticky segments (Today, Notes, Tasks, Projects) and, under
- * them, what the person came for. It replaces the old Work space and the Work content of the professional home.
+ * The Work vertical (design/work-vertical-design-spec.md §R2, §5.1, §6). It opens on Pulse, the follow-through for
+ * today. The in-vertical bottom bar lists the panes (Pulse, Tasks, Notes, Projects, Decisions) with Home first. The
+ * global app bar is not drawn here. The header carries Work search, the Inbox (its only door besides the Pulse row),
+ * ＋ and ⋯.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,85 +113,51 @@ fun WorkPageScreen(
     onOpenCircles: () -> Unit = {},
     onStartCircle: () -> Unit = {},
     onOpenPaywall: (com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger) -> Unit = {},
-    /** Set when Work is the bar's fourth slot: the page then carries the bar, with Work current. */
-    onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null
+    /** No longer drawn inside Work (the in-vertical bar replaces it). Kept so existing callers still compile. */
+    @Suppress("UNUSED_PARAMETER") onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null,
+    /** Home in the in-vertical bar. Defaults to [onNavigateBack], which is where Work was opened from. */
+    onHome: (() -> Unit)? = null
 ) {
     val segment by page.segment.collectAsState()
     val query by page.query.collectAsState()
     val notes by page.notes.collectAsState()
-    val tasks by page.tasks.collectAsState()
-    val waiting by page.waiting.collectAsState()
     val settings by viewModel.settings.collectAsState()
-    val myTasks by viewModel.myTasks.collectAsState()
     val toReview by viewModel.toReview.collectAsState()
     val failed by viewModel.failed.collectAsState()
-    val followUps by viewModel.followUps.collectAsState()
     val projects by viewModel.projects.collectAsState()
-    val recentNotes by viewModel.workNotes.collectAsState()
-    val titles by viewModel.titles.collectAsState()
-    val inboxItems by viewModel.inboxItems.collectAsState()
     val inboxCount by viewModel.inboxCount.collectAsState()
     val pulse by viewModel.pulse.collectAsState()
+    val self by viewModel.self.collectAsState()
     val upNext by today.upNext.collectAsState()
     val now by today.now.collectAsState()
     val todayItems by today.today.collectAsState()
-    val decisionLog by viewModel.decisionLog.collectAsState()
-    val openQuestions by viewModel.openQuestions.collectAsState()
     val terms = settings.terms
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val circlesRepo = remember {
-        try {
-            com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
-        } catch (_: Exception) {
-            null
-        }
-    }
-    val circlesState by (circlesRepo?.circles() ?: kotlinx.coroutines.flow.flowOf(com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState.NotConnected)).collectAsState(com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState.Loading)
-    val workCircles = remember(circlesState) {
-        when (val s = circlesState) {
-            is com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState.Ready -> {
-                s.circles.filter { it.isWork }.map { c ->
-                    WorkCircleItem(
-                        id = c.id,
-                        name = c.name,
-                        groupWord = c.groupWord,
-                        memberCount = c.memberCount,
-                        onClick = { onOpenCircle(c.id) }
-                    )
-                }
-            }
-            else -> emptyList()
-        }
-    }
-
     var recordPicker by remember { mutableStateOf(false) }
     var writePicker by remember { mutableStateOf(false) }
     var showAutopilotSheet by remember { mutableStateOf(false) }
+    var showWhatWork by remember { mutableStateOf(false) }
     var newProject by remember { mutableStateOf(false) }
     var filterPicker by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf<List<WorkNoteItem>>(emptyList()) }
     var preparing by remember { mutableStateOf<PrepTarget?>(null) }
     var editing by remember { mutableStateOf<WorkTask?>(null) }
     var nudging by remember { mutableStateOf<WorkTask?>(null) }
-    var savedViews by remember { mutableStateOf(false) }
     var asking by remember { mutableStateOf(false) }
-    var savedFilter by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.SavedFilter?>(null) }
+    var searching by rememberSaveable { mutableStateOf(false) }
     var selectedIds by rememberSaveable(stateSaver = listSaver<Set<String>, String>({ it.toList() }, { it.toSet() })) { mutableStateOf(emptySet<String>()) }
     val snackbar = remember { SnackbarHostState() }
 
-    // Each segment keeps its own scroll position through navigation and rotation.
-    val todayList = rememberLazyListState()
     val notesList = rememberLazyListState()
-    val tasksList = rememberLazyListState()
-    val projectsList = rememberLazyListState()
+    val pulseList = rememberLazyListState()
 
     // A Prep notification opens the sheet here, for the event it named.
     val pendingPrep by com.craftflowtechnologies.meetingmind.core.work.PendingPrepare.event.collectAsState()
     pendingPrep?.let { e -> PrepareSheet(PrepTarget.Event(e), viewModel, onOpenMeeting, onDismiss = { com.craftflowtechnologies.meetingmind.core.work.PendingPrepare.event.value = null }) }
 
-    // Another screen (the Work home's Task button) can ask for a segment; it is taken once and then cleared.
+    // Another screen (Home's Task button) can ask for a pane; it is taken once and then cleared.
     val requestedSegment by PendingWorkSegment.request.collectAsState()
     LaunchedEffect(requestedSegment) { requestedSegment?.let { page.select(it); PendingWorkSegment.request.value = null } }
 
@@ -184,92 +179,178 @@ fun WorkPageScreen(
         }
     }
 
-    // ---------------------------------------------------------------- today's figures
-    val endOfToday = DueDates.startOfDay(now) + 86_400_000L
+    // ---------------------------------------------------------------- today
+    val startOfToday = DueDates.startOfDay(now)
     val meetings = remember(todayItems) { todayItems.filter { it.kind == ItemKind.EVENT && !it.allDay && it.target is DeepTarget.Event } }
-    val needs = remember(myTasks, toReview, followUps, failed, titles, now / 60_000) {
-        buildList {
-            val due = myTasks.filter { it.dueAt != null && it.dueAt < endOfToday }.sortedBy { it.dueAt }
-            val (late, soon) = due.partition { it.isOverdue(now) }
-            fun task(t: WorkTask) = NeedsItem("t-${t.id}", t.title, listOfNotNull(dueLabel(t.dueAt, true, now)?.first, t.meetingId?.let { titles[it] }).joinToString(" · "), "Done") { viewModel.toggle(t) }
-            late.forEach { add(task(it)) }
-            toReview.forEach { r -> add(NeedsItem("r-${r.meetingId}", r.title, "${r.type.displayName} · ${dayLabel(r.at, now)} · ready to wrap up", "Review") { onOpenWrapUp(r.meetingId, false) }) }
-            followUps.forEach { r -> add(NeedsItem("f-${r.meetingId}", r.title, "${r.type.displayName} · ${dayLabel(r.at, now)} · follow-up not sent", "Send") { onOpenWrapUp(r.meetingId, true) }) }
-            failed.forEach { r -> add(NeedsItem("x-${r.meetingId}", r.title, "${r.type.displayName} · ${dayLabel(r.at, now)} · didn't process", "Open") { onOpenProcessing(r.meetingId) }) }
-            soon.forEach { add(task(it)) }
-        }
-    }
-
-    // Open on Today when there are meetings or things that need the person; otherwise on Notes. Waits briefly for the data.
-    val liveMeetings by rememberUpdatedState(meetings.size)
-    val liveNeeds by rememberUpdatedState(needs.size)
-    LaunchedEffect(segment) {
-        if (segment == null) {
-            val hit = withTimeoutOrNull(DEFAULT_WAIT_MS) { snapshotFlow { liveMeetings to liveNeeds }.first { it.first > 0 || it.second > 0 } }
-            page.resolveDefault(hit?.first ?: liveMeetings, hit?.second ?: liveNeeds)
-        }
-    }
-
+    val calEvents = remember(meetings) { meetings.mapNotNull { (it.target as? DeepTarget.Event)?.event } }
     val fmt = timeFormat()
-    val projectColors = projects.associate { it.notebook.id to projectColor(it) }
-    val fallbackColor = MM.colors.inkFaint
-    val todayModel = run {
-        val heroEvent = (upNext as? UpNextTile.Event)
-        val hero: TodayHero? = when {
-            heroEvent != null -> {
-                val e = heroEvent.event
-                val line = pulse.today.firstOrNull { it.event.key == e.key }
-                val last = heroEvent.prep?.lastTitle?.let { "Last time: $it" } ?: line?.withLabel?.let { "Last time: with $it" }
-                val open = line?.open?.takeIf { it > 0 }?.let { "$it open ${if (it == 1) "item" else "items"}" }
-                val lastTime = listOfNotNull(last, open).joinToString(" · ").ifEmpty { if (line?.firstMeeting == true) "Nothing on record with them yet" else null }
-                val others = e.otherPeople
-                TodayHero.Meeting(
-                    whenLabel = UpNext.whenLabel(e, now, java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)), title = e.title,
-                    withLine = if (others.isEmpty()) null else "With " + others.take(3).joinToString(", ") + if (others.size > 3) " +${others.size - 3}" else "",
-                    lastTime = lastTime,
-                    onPrepare = { preparing = PrepTarget.Event(pulseEventOf(e)) },
-                    onRecord = { today.noteForEvent(e) { id, type -> onRecordEvent(id, type, e.title, UpNext.speakerCount(e)) } }
-                )
+    val heroEvent = upNext as? UpNextTile.Event
+    val nextEvent: CalendarEvent? = heroEvent?.event ?: calEvents.filter { it.end >= now }.minByOrNull { it.begin }
+
+    val moment = pulseMoment(
+        PulseFacts(
+            now = now,
+            meetingsToday = calEvents.size,
+            meetingsEndedToday = calEvents.count { it.end < now },
+            nextMeetingStart = calEvents.filter { it.end >= now }.minOfOrNull { it.begin },
+            prepLeadMs = settings.prepLeadMinutes * 60_000L,
+            unreviewed = toReview.size,
+            weeklyReviewDue = weeklyReviewDue(settings, now),
+            coldStart = pulse.coldStart
+        )
+    )
+
+    fun openTask(id: String) { viewModel.tasks.value.firstOrNull { it.id == id }?.let { editing = it } }
+    fun openEntity(row: PulseAttention) {
+        val id = row.entityId ?: return
+        when (row.entityType) {
+            ContextType.PROJECT -> onOpenProject(id)
+            ContextType.PERSON, ContextType.ORG -> onOpenPerson(id)
+            null -> Unit
+        }
+    }
+    fun openAttention(row: PulseAttention) {
+        val meeting = row.meetingId
+        when {
+            meeting != null -> onOpenMeeting(meeting, row.startMs)
+            row.entityId != null -> openEntity(row)
+            else -> page.select(WorkSegment.TASKS)
+        }
+    }
+
+    fun countLine(n: Int, one: String, many: String): String = if (n <= 0) "None" else "$n ${if (n == 1) one else many}"
+
+    val hero: PulseHero? = when (moment) {
+        PulseMoment.BEFORE_MEETING -> nextEvent?.let { e ->
+            val line = pulse.today.firstOrNull { it.event.key == e.key }
+            val others = e.otherPeople
+            PulseHero.Next(
+                whenLabel = UpNext.whenLabel(e, now, java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)),
+                title = e.title,
+                withLine = if (others.isEmpty()) null else "With " + others.take(3).joinToString(", ") + if (others.size > 3) " +${others.size - 3}" else "",
+                lines = listOf(
+                    "You owe" to countLine(line?.youOwe ?: 0, "item", "items"),
+                    "They owe" to countLine(line?.theyOwe ?: 0, "item", "items"),
+                    "Still open" to countLine((line?.questions ?: 0) + (line?.decisionsNeeded ?: 0), "item", "items")
+                ),
+                blocks = calEvents.map { ev ->
+                    RibbonBlock(
+                        start = localTimeOf(ev.begin), end = localTimeOf(ev.end), title = ev.title,
+                        onClick = { today.noteForEvent(ev) { id, _ -> onOpenNote(id) } }, past = ev.end < now
+                    )
+                },
+                now = localTimeOf(now),
+                onPrepare = { preparing = PrepTarget.Event(pulseEventOf(e)) },
+                onRecord = { today.noteForEvent(e) { id, type -> onRecordEvent(id, type, e.title, UpNext.speakerCount(e)) } }
+            )
+        }
+        PulseMoment.AFTER_MEETINGS -> toReview.firstOrNull()?.let { r ->
+            PulseHero.ToReview(
+                headline = "To review · ${r.title}",
+                sub = "${r.type.displayName} · ${dayLabel(r.at, now)} · check the findings, then the follow-up is ready",
+                onReview = { onOpenWrapUp(r.meetingId, false) }
+            )
+        }
+        PulseMoment.WEEKLY_REVIEW -> PulseHero.Weekly(onStart = onOpenWeeklyReview)
+        PulseMoment.FIRST_DAY -> PulseHero.FirstDay(
+            calendarLine = calEvents.filter { it.begin >= now }.minByOrNull { it.begin }
+                ?.let { e -> "${e.title} · ${fmt.format(Date(e.begin))}" },
+            onRecord = { recordPicker = true },
+            onWrite = { writePicker = true },
+            onInbox = onOpenInbox
+        )
+        PulseMoment.QUIET -> null
+    }
+
+    // ---------------------------------------------------------------- needs you
+    val needCandidates = buildList<NeedCandidate<PulseNeed>> {
+        failed.forEach { r ->
+            add(NeedCandidate(NeedRank.FAILED, PulseNeed(
+                key = "x-${r.meetingId}", kind = "Didn't finish processing", title = r.title,
+                line = "${r.type.displayName} · ${dayLabel(r.at, now)} · the audio is safe",
+                verb = "Try again", tone = AttentionTone.DANGER, icon = Icons.Filled.Warning,
+                onVerb = { onOpenProcessing(r.meetingId) }, onOpen = { onOpenMeeting(r.meetingId, null) }
+            )))
+        }
+        pulse.attention.forEach { row ->
+            val past = (row.dueAt ?: Long.MAX_VALUE) < startOfToday
+            when (row.kind) {
+                AttentionKind.YOU_OWE -> add(NeedCandidate(NeedRank.YOU_OWE_DUE, PulseNeed(
+                    key = "o-${row.itemId ?: row.taskId}", kind = "You owe", title = row.title, line = row.detail,
+                    verb = if (row.taskId != null) "Done" else "Open", tone = AttentionTone.ACCENT, icon = Icons.Filled.AddTask,
+                    onVerb = {
+                        if (row.taskId != null) scope.launch { viewModel.toggle(viewModel.asTask(row)) } else openAttention(row)
+                    },
+                    onOpen = { openAttention(row) }
+                )))
+                AttentionKind.THEY_OWE -> {
+                    val nudge = AttentionAction.NUDGE in row.actions
+                    add(NeedCandidate(if (past) NeedRank.THEY_OWE_PAST else NeedRank.THEY_OWE_OPEN, PulseNeed(
+                        key = "w-${row.itemId ?: row.taskId}", kind = "Waiting on", title = row.title, line = row.detail,
+                        verb = if (nudge) "Nudge" else "Open", tone = AttentionTone.WARNING, icon = Icons.Filled.Groups,
+                        onVerb = { if (nudge) scope.launch { nudging = viewModel.asTask(row) } else openAttention(row) },
+                        onOpen = { openAttention(row) }
+                    )))
+                }
+                AttentionKind.DECISION_NEEDED -> add(NeedCandidate(NeedRank.DECISION, PulseNeed(
+                    key = "d-${row.itemId}", kind = "Decision needed", title = row.title, line = row.detail,
+                    verb = "Review", tone = AttentionTone.ACCENT, icon = Icons.Filled.CheckCircle,
+                    onVerb = { openAttention(row) }, onOpen = { openAttention(row) }
+                )))
+                AttentionKind.QUIET -> add(NeedCandidate(NeedRank.QUIET, PulseNeed(
+                    key = "q-${row.entityId}", kind = "Gone quiet", title = row.title, line = row.detail,
+                    verb = "Open", tone = AttentionTone.NEUTRAL, icon = Icons.Filled.EventNote,
+                    onVerb = { openEntity(row) }, onOpen = { openEntity(row) }
+                )))
             }
-            needs.isNotEmpty() -> TodayHero.Attention(needs.first())
-            else -> null
         }
-        fun row(item: com.craftflowtechnologies.meetingmind.core.timeline.TimelineItem): ScheduleRow {
-            val e = (item.target as DeepTarget.Event).event
-            return ScheduleRow(item.id, item.title, e.otherPeople.take(3).joinToString(", ").ifEmpty { e.location }, timeLabel(item, fmt)) { today.noteForEvent(e) { id, _ -> onOpenNote(id) } }
+        if (inboxCount > 0) add(NeedCandidate(NeedRank.INBOX, PulseNeed(
+            key = "inbox", kind = "Inbox",
+            title = if (inboxCount == 1) "1 item in your Inbox" else "$inboxCount items in your Inbox",
+            line = "Waiting to be filed or transcribed", verb = "Review", tone = AttentionTone.ACCENT, icon = Icons.Rounded.Inbox,
+            onVerb = onOpenInbox, onOpen = onOpenInbox
+        )))
+    }
+    val ranked = rankNeeds(needCandidates, limit = 4)
+    val needs = ranked.map { it.value }
+
+    // Since yesterday: the changes the Pulse measured, each one a sentence that opens its evidence.
+    val changes = pulse.changes.flatMap { group ->
+        group.lines.map { line ->
+            PulseChange(line.text) {
+                line.itemId?.let { id -> scope.launch { viewModel.evidenceOf(id)?.let { (m, at) -> onOpenMeeting(m, at) } } }
+            }
         }
-        val latestInbox = inboxItems.firstOrNull()
-        val latestInboxSource = latestInbox?.let { formatSource(it.source) }
-        val latestInboxTitle = latestInbox?.let { formatInboxDisplayTitle(it.title, it.kind, latestInboxSource) }
-        TodayModel(
-            hero = hero,
-            needs = if (hero is TodayHero.Attention) needs.drop(1) else needs,
-            needsTotal = needs.size,
-            upcoming = meetings.filter { (it.end ?: it.start) >= now }.map(::row),
-            earlier = meetings.filter { (it.end ?: it.start) < now }.map(::row),
-            recent = recentNotes.take(RECENT_NOTES).map { n ->
-                RecentNote(n.id, NoteRowModel(
-                    title = n.title.ifBlank { n.workflow.displayName }, preview = previewOf(n.plainText), spaceColor = projectColors[n.notebookId] ?: fallbackColor,
-                    timeLabel = noteTimeLabel(n.eventDate ?: n.updatedAt, now), pinned = n.pinned, isPrivate = n.isPrivate
-                )) { onOpenNote(n.id) }
+    }
+
+    fun scheduleRow(item: com.craftflowtechnologies.meetingmind.core.timeline.TimelineItem): ScheduleRow {
+        val e = (item.target as DeepTarget.Event).event
+        return ScheduleRow(item.id, item.title, e.otherPeople.take(3).joinToString(", ").ifEmpty { e.location }, timeLabel(item, fmt)) {
+            today.noteForEvent(e) { id, _ -> onOpenNote(id) }
+        }
+    }
+    val upcomingRows = meetings.filter { (it.end ?: it.start) >= now }.map { scheduleRow(it) }
+    val earlierRows = meetings.filter { (it.end ?: it.start) < now }.map { scheduleRow(it) }
+    val pulseModel = run {
+        val firstName = self?.name?.trim()?.substringBefore(' ')?.takeIf { it.isNotEmpty() }
+        val hour = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
+        val greeting = (when { hour < 12 -> "Good morning"; hour < 17 -> "Good afternoon"; else -> "Good evening" }) + (firstName?.let { ", $it" } ?: "")
+        val quiet = needs.isEmpty() && hero == null
+        PulseModel(
+            headline = if (quiet) "Nothing needs you today" else greeting,
+            sentence = when {
+                needs.isNotEmpty() -> "${needs.first().title} is the one to look at first."
+                moment == PulseMoment.FIRST_DAY -> "Record a meeting, and tomorrow's Pulse knows what was said."
+                else -> null
             },
-            glance = TodayGlance(
-                openTasks = myTasks.size,
-                decisionsThisWeek = decisionLog.count { it.createdAt > now - 7 * 86_400_000L },
-                openQuestions = openQuestions.size
-            ),
-            circles = workCircles,
-            onStartCircle = onStartCircle,
-            onAllCircles = onOpenCircles,
-            inboxCount = inboxCount,
-            latestInboxTitle = latestInboxTitle,
-            latestInboxSource = latestInboxSource,
-            latestInboxTranscribed = latestInbox?.transcriptionStatus == "COMPLETED",
-            onOpenInbox = onOpenInbox,
-            onOpenWeeklyReview = onOpenWeeklyReview,
-            onOpenBrief = { onOpenBrief(BriefTarget.weekly) },
-            onOpenPeople = { onOpenAll(WorkTab.PEOPLE) },
-            onOpenAutopilot = { showAutopilotSheet = true }
+            hero = hero,
+            needs = needs,
+            needsTotal = needCandidates.size,
+            sinceLabel = pulse.sinceLabel,
+            changes = changes,
+            today = upcomingRows,
+            earlier = earlierRows,
+            onAsk = { asking = true }
         )
     }
 
@@ -289,81 +370,71 @@ fun WorkPageScreen(
             onRecord = { recordPicker = true }, onWriteNote = { writePicker = true }
         )
     }
-    val tasksActions = remember(page, titles, context) {
-        TasksActions(
-            onWaiting = page::setWaiting, onAdd = { page.addTask(it) }, onDone = { page.completeTask(it) }, onEdit = { editing = it.task },
-            onOpenSource = { r -> r.task.meetingId?.let { onOpenMeeting(it, r.task.startMs) } }, onNudge = { nudging = it.task },
-            onLoadMore = page::loadMoreTasks, onRetry = page::retryTasks, onRefresh = page::refreshTasks,
-            onSyncExternal = { r ->
-                val sendIntent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, r.task.title)
-                context.startActivity(Intent.createChooser(sendIntent, "Send task to…"))
-            }
-        )
-    }
     val selectedNotes = notes.items.filter { it.id in selectedIds }
 
     val addActions = listOf(
         WorkMenuAction("Record meeting") { recordPicker = true },
         WorkMenuAction("Write note") { writePicker = true },
-        WorkMenuAction("Add task") { page.select(WorkSegment.TASKS); page.setWaiting(false) },
-        WorkMenuAction("Start team circle", onClick = onStartCircle),
-        WorkMenuAction("Import", onClick = onImport)
+        WorkMenuAction("Add task") { page.select(WorkSegment.TASKS) },
+        WorkMenuAction("Import", onClick = onImport),
+        WorkMenuAction("Add to Inbox", onClick = onOpenInbox)
     )
-    val moreActions = listOfNotNull(
-        WorkMenuAction("Inbox", inboxCount, onOpenInbox),
-        WorkMenuAction("Team circles", onClick = onOpenCircles),
+    val moreActions = listOf(
+        WorkMenuAction("Ask about my work") { asking = true },
         WorkMenuAction("Weekly review", onClick = onOpenWeeklyReview),
-        WorkMenuAction("Brief") { onOpenBrief(BriefTarget.weekly) },
-        WorkMenuAction("Autopilot Workflows · Pro") { showAutopilotSheet = true },
-        WorkMenuAction("People & ${terms.organisations.lowercase()}") { onOpenAll(WorkTab.PEOPLE) },
-        WorkMenuAction("Decision log") { onOpenAll(WorkTab.DECISIONS) },
-        WorkMenuAction("Open questions") { onOpenAll(WorkTab.QUESTIONS) },
-        WorkMenuAction("Risks") { onOpenAll(WorkTab.RISKS) },
-        if (com.craftflowtechnologies.meetingmind.BuildConfig.FEATURE_SAVED_VIEWS) WorkMenuAction("Saved views") { savedViews = true } else null,
-        WorkMenuAction("Work settings", onClick = onOpenSettings)
+        WorkMenuAction("Autopilot · Pro") { showAutopilotSheet = true },
+        WorkMenuAction("Team circles", onClick = onOpenCircles),
+        WorkMenuAction("Work settings", onClick = onOpenSettings),
+        WorkMenuAction("What Work does") { showWhatWork = true }
     )
+    val barItems = WorkSegment.entries.map { VerticalBarItem(it.barKey, it.label, it.barIcon()) }
 
     Scaffold(
         containerColor = MM.colors.background,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (onNavigateBottomNav != null && settings.tabSlot == TabSlot.WORK) {
-                com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
-                    current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH, onNavigate = onNavigateBottomNav
-                )
-            }
+            VerticalBar(
+                items = barItems,
+                selected = segment.barKey,
+                onSelect = { key ->
+                    WorkSegment.entries.firstOrNull { it.barKey == key }?.let { s -> searching = false; page.select(s) }
+                },
+                homeItem = onHome ?: onNavigateBack
+            )
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).statusBarsPadding().testTag("work_page")) {
             Column(Modifier.padding(horizontal = MM.space.l)) {
                 if (selecting) {
                     SelectionBar(selectedIds.size, onMove = { moving = selectedNotes }, onDelete = { page.delete(selectedNotes); selectedIds = emptySet() }, onClose = { selectedIds = emptySet() })
-                } else {
+                } else if (!searching) {
                     WorkPageHeader(
                         contextLine = contextLine(now, meetings.size, needs.size), addActions = addActions, moreActions = moreActions,
-                        onSearch = onSearch, onBack = if (onNavigateBottomNav != null && settings.tabSlot == TabSlot.WORK) null else onNavigateBack,
-                        onOpenInbox = onOpenInbox
+                        onSearch = { searching = true }, inboxCount = inboxCount, onOpenInbox = onOpenInbox
                     )
                 }
-                SegmentedControl(WorkSegment.entries.map { it.label }, segment?.ordinal ?: -1, { page.select(WorkSegment.entries[it]) })
             }
-            Box(Modifier.weight(1f)) {
-                when (segment) {
-                    null -> Unit
-                    WorkSegment.TODAY -> TodayContent(
-                        todayModel, todayList, onAllNotes = { page.select(WorkSegment.NOTES) },
-                        onRecord = { recordPicker = true }, onWriteNote = { writePicker = true },
-                        onAddTask = { page.select(WorkSegment.TASKS); page.setWaiting(false) },
-                        onShowTasks = { page.select(WorkSegment.TASKS) },
-                        onAsk = { asking = true },
-                        onOpenList = onOpenAll
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when {
+                    searching -> WorkSearchPane(
+                        viewModel = viewModel, page = page,
+                        onOpenNote = onOpenNote, onOpenMeeting = onOpenMeeting, onOpenPerson = onOpenPerson,
+                        onOpenTask = ::openTask, onAsk = { asking = true }, onSearchEverything = onSearch,
+                        onClose = { searching = false }
                     )
-                    WorkSegment.NOTES -> NotesContent(query, notes, now, projects, selectedIds, notesList, notesActions)
-                    WorkSegment.TASKS -> TasksContent(waiting, tasks, now, titles, tasksList, tasksActions)
-                    WorkSegment.PROJECTS -> ProjectsContent(
-                        projects, terms.project, terms.projects, now, projectsList,
-                        onOpen = { onOpenProject(it.notebook.id) }, onNew = { newProject = true }
-                    )
+                    else -> when (segment) {
+                        WorkSegment.PULSE -> PulsePane(pulseModel, pulseList)
+                        WorkSegment.TASKS -> WorkTasksPane(
+                            onOpenTask = ::openTask,
+                            onOpenList = onOpenProject
+                        )
+                        WorkSegment.NOTES -> NotesContent(query, notes, now, projects, selectedIds, notesList, notesActions)
+                        WorkSegment.PROJECTS -> WorkProjectsPane(
+                            viewModel = viewModel, projectWord = terms.project, initialTab = ProjectsTab.PROJECTS, now = now,
+                            onOpenProject = onOpenProject, onOpenPerson = onOpenPerson, onNewProject = { newProject = true }
+                        )
+                        WorkSegment.DECISIONS -> WorkDecisionsPane(viewModel = viewModel, onOpenMeeting = onOpenMeeting)
+                    }
                 }
             }
         }
@@ -393,19 +464,22 @@ fun WorkPageScreen(
     preparing?.let { PrepareSheet(it, viewModel, onOpenMeeting, onDismiss = { preparing = null }) }
     nudging?.let { NudgeSheet(it, viewModel) { nudging = null } }
     editing?.let { t ->
-        WorkTaskSheet(t, viewModel, onDismiss = { editing = null; page.refreshTasks() },
+        WorkTaskSheet(t, viewModel, onDismiss = { editing = null },
             onOpenSource = { t.meetingId?.let { m -> editing = null; onOpenMeeting(m, t.startMs) } ?: t.noteId?.let { n -> editing = null; onOpenNote(n) } })
     }
-    if (savedViews) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { savedViews = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.sheet) {
-        Column(Modifier.padding(bottom = MM.space.l)) { SavedFilterRow { savedViews = false; savedFilter = it } }
-    }
-    savedFilter?.let { f ->
-        val answer by androidx.compose.runtime.produceState<com.craftflowtechnologies.meetingmind.core.work.SavedAnswer?>(null, f) { value = viewModel.savedViews.answer(f) }
-        SavedAnswerSheet(answer, f.label, viewModel, onOpenMeeting, onOpenPerson, onDismiss = { savedFilter = null })
+    if (showWhatWork) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showWhatWork = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.sheet) {
+        Column(Modifier.padding(horizontal = MM.space.l).padding(bottom = MM.space.xl), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(MM.space.s)) {
+            Text("What Work does", style = MM.type.heading, color = MM.colors.ink)
+            Text(
+                "Work turns your meetings into the promises, decisions and people you can find again. It remembers what was said and when, and it shows only what needs you. Your recordings stay on this phone unless you turn on a cloud model.",
+                style = MM.type.secondary, color = MM.colors.inkSecondary
+            )
+        }
     }
     if (showAutopilotSheet) {
         com.craftflowtechnologies.meetingmind.feature.automation.AutopilotSheet(
             target = com.craftflowtechnologies.meetingmind.feature.automation.AutopilotTarget.LatestSession,
+            workOnly = true,
             onDismiss = { showAutopilotSheet = false },
             onOpenPaywall = { trigger ->
                 showAutopilotSheet = false
@@ -419,8 +493,16 @@ fun WorkPageScreen(
     }
 }
 
-private const val DEFAULT_WAIT_MS = 400L
-private const val RECENT_NOTES = 5
+/** A pane's bar icon. */
+private fun WorkSegment.barIcon(): ImageVector = when (this) {
+    WorkSegment.PULSE -> Icons.Filled.EventNote
+    WorkSegment.TASKS -> Icons.Rounded.Check
+    WorkSegment.NOTES -> Icons.Rounded.Notes
+    WorkSegment.PROJECTS -> Icons.Rounded.FolderOpen
+    WorkSegment.DECISIONS -> Icons.Rounded.Flag
+}
+
+private fun localTimeOf(ms: Long): LocalTime = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalTime()
 
 /** A segment another screen asks the Work page to open. Set it, then open Work; the page takes it and clears it. */
 object PendingWorkSegment {

@@ -18,11 +18,14 @@ import java.util.Locale
  * are grouped under headers. No Android and no database here, so each rule has a plain unit test.
  */
 
-enum class WorkSegment(val label: String) { TODAY("Today"), NOTES("Notes"), TASKS("Tasks"), PROJECTS("Projects") }
+/**
+ * The panes of Work, in the order of the in-vertical bottom bar (after Home). Work always opens on [PULSE]; the
+ * pane is remembered only for the life of the screen, never across launches.
+ */
+enum class WorkSegment(val label: String) { PULSE("Pulse"), TASKS("Tasks"), NOTES("Notes"), PROJECTS("Projects"), DECISIONS("Decisions") }
 
-/** Today when there are meetings or items that need the person today; otherwise the notes. */
-fun defaultSegment(meetingsToday: Int, needsYou: Int): WorkSegment =
-    if (meetingsToday > 0 || needsYou > 0) WorkSegment.TODAY else WorkSegment.NOTES
+/** The key a pane is known by in [com.craftflowtechnologies.meetingmind.core.ui.work.VerticalBar] and its test tags. */
+val WorkSegment.barKey: String get() = name.lowercase()
 
 /** The multi-select chips above the notes list. [MEETINGS] and [MY_NOTES] exclude each other. */
 enum class NoteChip(val label: String) {
