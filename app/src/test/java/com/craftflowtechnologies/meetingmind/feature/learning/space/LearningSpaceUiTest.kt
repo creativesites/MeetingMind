@@ -63,7 +63,7 @@ class LearningSpaceUiTest {
 
     private fun actions(onRecord: () -> Unit = {}) = LearningSpaceActions(
         onBack = {}, onOpenSpace = {}, onOpenSession = {}, onStartPractice = {},
-        onRecordLecture = onRecord, onWriteStudyNote = {}, onAsk = {}
+        onRecordLecture = onRecord, onWriteStudyNote = {}
     )
 
     private fun item(id: String, type: LearningActivityType, options: List<String> = emptyList(), answer: String) = LearningActivity(

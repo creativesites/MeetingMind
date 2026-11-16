@@ -1,5 +1,11 @@
 package com.craftflowtechnologies.meetingmind.feature.learning.space
 
+import com.craftflowtechnologies.meetingmind.core.aireport.AiFeature
+import com.craftflowtechnologies.meetingmind.core.aireport.AiReportSheetHost
+import com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource
+import com.craftflowtechnologies.meetingmind.core.aireport.ReportAiMenuItem
+import com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction
+import com.craftflowtechnologies.meetingmind.core.aireport.rememberAiReportState
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,7 +63,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import com.craftflowtechnologies.meetingmind.core.audio.PlaybackController
+import java.io.File
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -111,8 +120,7 @@ fun SessionStudioScreen(
     onBack: () -> Unit,
     onOpenNotes: (noteId: String) -> Unit,
     onPlayMoment: (meetingId: String, startMs: Long) -> Unit,
-    onStartPractice: () -> Unit,
-    onAsk: () -> Unit
+    onStartPractice: () -> Unit
 ) {
     val detail by viewModel.activeSessionDetail.collectAsState()
     val loading by viewModel.isLoadingSession.collectAsState()
@@ -131,9 +139,19 @@ fun SessionStudioScreen(
     var citation by remember { mutableStateOf<LearningEvidence?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var askOpen by rememberSaveable { mutableStateOf(false) }
+    var askPrefill by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Only show the detail that belongs to this route, never a previous session's.
     val current = detail?.takeIf { it.session.noteId == noteId || it.session.id == noteId }
+
+    fun openAsk(prefill: String? = null) {
+        val c = current ?: return
+        viewModel.openAsk(c.session.id)
+        askPrefill = prefill
+        askOpen = true
+    }
 
     fun showInTranscript(ev: LearningEvidence) {
         citation = null
@@ -170,7 +188,7 @@ fun SessionStudioScreen(
                         onStrengthen = {
                             viewModel.startConceptPractice(d.session.id, openConcept.id) { onStartPractice() }
                         },
-                        onAsk = onAsk,
+                        onAsk = { openAsk("Explain ${openConcept.name} in simple terms.") },
                         onRename = { newName ->
                             val old = openConcept
                             viewModel.renameConcept(old, newName)
@@ -217,12 +235,22 @@ fun SessionStudioScreen(
                         practiceError = practiceError,
                         onBack = onBack,
                         onOpenNotes = { onOpenNotes(d.session.noteId) },
-                        onAsk = onAsk,
+                        onAsk = { openAsk() },
                         onTogglePause = { viewModel.toggleSessionPause(d.session.id) },
                         onOpenConcept = { openConceptId = it.id },
                         onSegment = { seg ->
                             highlightSegmentId = seg.id
-                            meetingId?.let { onPlayMoment(it, seg.startMs) }
+                            // Play the line right here; open the recording only if its audio is missing.
+                            meetingId?.let { mid ->
+                                scope.launch {
+                                    val audio = viewModel.citationAudioFor(mid)
+                                    if (audio != null) {
+                                        PlaybackController.playAt(context, audio.recordingId, audio.title, File(audio.filePath), seg.startMs)
+                                    } else {
+                                        onPlayMoment(mid, seg.startMs)
+                                    }
+                                }
+                            }
                         },
                         onNextStep = { step ->
                             when (step.kind) {
@@ -250,14 +278,27 @@ fun SessionStudioScreen(
             evidence = ev,
             sourceTitle = current?.session?.title ?: "This lecture",
             onDismiss = { citation = null },
-            onPlay = if (meetingId != null && ev.startMs != null) {
-                { citation = null; onPlayMoment(meetingId!!, ev.startMs!!) }
-            } else null,
+            resolveAudio = viewModel::citationAudioFor,
+            fallbackMeetingId = meetingId,
             onShowInTranscript = if (segments.isNotEmpty()) {
                 { showInTranscript(ev) }
             } else {
                 { citation = null; current?.let { onOpenNotes(it.session.noteId) } }
             }
+        )
+    }
+
+    val askSession = current
+    if (askOpen && askSession != null) {
+        AskLearningSheet(
+            viewModel = viewModel,
+            sessionId = askSession.session.id,
+            hasCourse = !askSession.session.courseName.isNullOrBlank(),
+            concepts = askSession.concepts,
+            onDismiss = { askOpen = false; askPrefill = null },
+            onStartPractice = onStartPractice,
+            onShowInTranscript = { ev -> askOpen = false; showInTranscript(ev) },
+            initialQuestion = askPrefill
         )
     }
 }
@@ -323,6 +364,7 @@ private fun SessionBody(
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() }
                 )
             }
+            TextAction("Ask", onClick = onAsk, modifier = Modifier.testTag("session_ask"))
             SessionMenu(paused = session.isPaused, onOpenNotes = onOpenNotes, onAsk = onAsk, onTogglePause = onTogglePause)
         }
         Column(Modifier.padding(horizontal = LearningTheme.readingGutter, vertical = MM.space.s)) {
@@ -342,7 +384,7 @@ private fun SessionBody(
             if (practiceError != null) item { StatusLine(StatusKind.Error, practiceError) }
             if (practiceBusy) item { StatusLine(StatusKind.Info, "Getting your questions ready…") }
             when (pane) {
-                SessionPane.UNDERSTAND -> understandPane(summary, building, concepts, onOpenConcept, onOpenNotes)
+                SessionPane.UNDERSTAND -> understandPane(summary, building, concepts, onOpenConcept, onOpenNotes, noteId = detail.session.noteId)
                 SessionPane.SOURCE -> sourcePane(segments, highlightSegmentId, onSegment, onOpenNotes)
                 SessionPane.PRACTISE -> practisePane(detail, concepts, onStartDiagnostic, onPractiseAll, onStrengthen)
                 SessionPane.MASTERY -> masteryPane(detail, concepts, onOpenConcept, session.isPaused, onTogglePause)
@@ -421,12 +463,17 @@ private fun LazyListScope.understandPane(
     building: Boolean,
     concepts: List<LearningConcept>,
     onOpenConcept: (LearningConcept) -> Unit,
-    onOpenNotes: () -> Unit
+    onOpenNotes: () -> Unit,
+    noteId: String? = null
 ) {
     if (building) item { StatusLine(StatusKind.Info, "Building your study guide…") }
     item {
         Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-            Text("SUMMARY", style = MM.type.overline, color = MM.colors.inkMuted)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("SUMMARY", style = MM.type.overline, color = MM.colors.inkMuted, modifier = Modifier.weight(1f))
+                // The summary is AI-written: "Report this" sits with it (Play AI-content policy).
+                if (summary != null) ReportAiAction(source = { AiReportSource(AiFeature.LECTURE_NOTES, summary, noteId = noteId) })
+            }
             if (summary != null) {
                 Text(summary, style = LearningTheme.type.reading, color = MM.colors.ink)
             } else {
@@ -672,6 +719,9 @@ private fun ConceptDetail(
 ) {
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
+    // "Report this" for the AI-written concept (Play AI-content policy). Not offered once the student has edited it.
+    val reportState = rememberAiReportState()
+    AiReportSheetHost(reportState)
     val last = remember(detail) { lastAttemptByConcept(detail.attempts)[concept.id] }
     val hasPractice = remember(detail, concept.id) { conceptSet(detail, concept.id).isNotEmpty() }
     val evidence = concept.evidence.filter { it.isShowable }
@@ -697,6 +747,16 @@ private fun ConceptDetail(
                         text = { Text(if (concept.isStale) "Undo report" else "Report a problem", style = MM.type.body) },
                         onClick = { menu = false; onReport() }
                     )
+                    if (!concept.isUserEdited) ReportAiMenuItem {
+                        menu = false
+                        reportState.open(
+                            AiReportSource(
+                                AiFeature.LECTURE_NOTES,
+                                listOfNotNull(concept.name, concept.definition, concept.emphasis).filter { it.isNotBlank() }.joinToString("\n"),
+                                noteId = detail.session.noteId
+                            )
+                        )
+                    }
                 }
             }
         }

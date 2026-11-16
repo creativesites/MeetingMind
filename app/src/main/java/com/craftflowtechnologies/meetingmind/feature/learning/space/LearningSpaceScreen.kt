@@ -1,5 +1,13 @@
 package com.craftflowtechnologies.meetingmind.feature.learning.space
 
+import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
+import com.craftflowtechnologies.meetingmind.core.model.RecordingType
+import com.craftflowtechnologies.meetingmind.feature.navigation.Routes
+import com.craftflowtechnologies.meetingmind.core.navigation.AppMenuButton
+import com.craftflowtechnologies.meetingmind.core.navigation.MenuEntry
+import com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon
+import com.craftflowtechnologies.meetingmind.core.navigation.MenuSection
+import com.craftflowtechnologies.meetingmind.core.navigation.MenuTarget
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -102,7 +110,8 @@ data class LearningSpaceActions(
     val onStartPractice: () -> Unit,
     val onRecordLecture: () -> Unit,
     val onWriteStudyNote: () -> Unit,
-    val onAsk: () -> Unit
+    val onImport: () -> Unit = {},
+    val onOpenNote: (noteId: String) -> Unit = {}
 )
 
 /**
@@ -121,6 +130,35 @@ fun LearningSpaceScreen(
         val isHome = onNavigateBottomNav != null
         var tab by rememberSaveable { mutableStateOf(SpaceTab.LEARN) }
         var openCourseId by rememberSaveable { mutableStateOf<String?>(null) }
+        var creating by rememberSaveable { mutableStateOf(false) }
+        var createCourseId by rememberSaveable { mutableStateOf<String?>(null) }
+        var askOpen by rememberSaveable { mutableStateOf(false) }
+        val startCreate: (String?) -> Unit = { preset -> createCourseId = preset; creating = true }
+        val openAsk: () -> Unit = { viewModel.openAsk(null); askOpen = true }
+        // Learning's own menu, on the main app menu as its base (like Work's): read when the menu opens.
+        val menu: () -> MenuSection = {
+            learningMenu(
+                hasSessions = viewModel.sessions.value.isNotEmpty(),
+                onNewSession = { startCreate(null) },
+                onAsk = openAsk,
+                onDailyRecall = { viewModel.startDailyRecall(false) { actions.onStartPractice() } },
+                onLibrary = { openCourseId = null; tab = SpaceTab.LIBRARY },
+                onProgress = { openCourseId = null; tab = SpaceTab.PROGRESS }
+            )
+        }
+
+        if (creating) {
+            CreateSessionFlow(
+                viewModel = viewModel,
+                presetCourseId = createCourseId,
+                onClose = { creating = false },
+                onRecord = actions.onRecordLecture,
+                onImport = actions.onImport,
+                onOpenNote = actions.onOpenNote,
+                onOpenSession = actions.onOpenSession
+            )
+            return@LearningAccent
+        }
 
         if (!isHome && openCourseId != null) BackHandler { openCourseId = null }
         else if (!isHome && tab != SpaceTab.LEARN) BackHandler { tab = SpaceTab.LEARN }
@@ -142,16 +180,30 @@ fun LearningSpaceScreen(
                 }
             }
         ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            // Status bar padding sits outside the scrolling list, so content never slides under the clock.
+            Box(Modifier.fillMaxSize().padding(padding).statusBarsPadding()) {
                 val course = openCourseId?.let { id -> viewModel.courses.collectAsState().value.firstOrNull { it.notebook.id == id } }
                 when {
-                    isHome -> LearnPane(viewModel, actions, isHome = true)
-                    course != null -> CoursePane(course, viewModel, actions, onBack = { openCourseId = null })
-                    tab == SpaceTab.LEARN -> LearnPane(viewModel, actions, isHome = false)
-                    tab == SpaceTab.LIBRARY -> LibraryPane(viewModel, actions, onOpenCourse = { openCourseId = it })
-                    else -> ProgressPane(viewModel, actions)
+                    isHome -> LearnPane(viewModel, actions, isHome = true, onAsk = openAsk, menu = menu)
+                    course != null -> CoursePane(course, viewModel, actions, onBack = { openCourseId = null }, onAddSession = { startCreate(course.notebook.id) })
+                    tab == SpaceTab.LEARN -> LearnPane(viewModel, actions, isHome = false, onAsk = openAsk, menu = menu)
+                    tab == SpaceTab.LIBRARY -> LibraryPane(viewModel, actions, onOpenCourse = { openCourseId = it }, onNewSession = { startCreate(null) }, menu = menu)
+                    else -> ProgressPane(viewModel, actions, menu = menu)
                 }
             }
+        }
+
+        if (askOpen) {
+            val concepts by viewModel.allConcepts.collectAsState()
+            AskLearningSheet(
+                viewModel = viewModel,
+                sessionId = null,
+                hasCourse = false,
+                concepts = concepts,
+                onDismiss = { askOpen = false },
+                onStartPractice = actions.onStartPractice,
+                onShowInTranscript = null
+            )
         }
     }
 }
@@ -203,7 +255,7 @@ private fun PaneList(content: LazyListScope.() -> Unit) {
 
 @Composable
 private fun PaneHeader(title: String, subtitle: String?, onBack: (() -> Unit)?, trailing: @Composable () -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().statusBarsPadding(), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (onBack != null) {
             IconButton(onClick = onBack, modifier = Modifier.padding(end = MM.space.xs)) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = MM.colors.ink)
@@ -220,7 +272,7 @@ private fun PaneHeader(title: String, subtitle: String?, onBack: (() -> Unit)?, 
 // ───────────────────────────── Learn ─────────────────────────────
 
 @Composable
-private fun LearnPane(viewModel: LearnViewModel, actions: LearningSpaceActions, isHome: Boolean) {
+private fun LearnPane(viewModel: LearnViewModel, actions: LearningSpaceActions, isHome: Boolean, onAsk: () -> Unit, menu: () -> MenuSection) {
     val brief by viewModel.dailyBrief.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val lectures by viewModel.lectureNotes.collectAsState()
@@ -258,7 +310,11 @@ private fun LearnPane(viewModel: LearnViewModel, actions: LearningSpaceActions, 
                 onBack = if (isHome) null else actions.onBack,
                 trailing = {
                     if (isHome) TextAction("Open Learning", onClick = actions.onOpenSpace, modifier = Modifier.testTag("learn_open_space"))
-                    else if (sessions.isNotEmpty()) TextAction("Ask", onClick = actions.onAsk)
+                    else {
+                        if (sessions.isNotEmpty()) TextAction("Ask", onClick = onAsk, modifier = Modifier.testTag("learn_ask"))
+                        // The app menu with Learning's own section first: the other spaces, Notes, Settings, one tap away.
+                        AppMenuButton(focus = NotebookSpace.LEARNING, local = menu)
+                    }
                 }
             )
         }
@@ -382,7 +438,7 @@ private fun FirstRun(actions: LearningSpaceActions) {
         InsetPanel(Modifier.fillMaxWidth()) {
             Text("HOW IT WORKS", style = MM.type.overline, color = MM.colors.inkMuted)
             listOf(
-                "Record or write. Your lecture stays on your phone.",
+                "Record or write. Your recordings are saved on this phone.",
                 "Get a study guide with the key concepts and where they came from.",
                 "Practise a few minutes a day. Reviews are spaced so you remember."
             ).forEachIndexed { i, line ->
@@ -458,7 +514,13 @@ private fun SessionRow(session: LearningSession, lectures: List<LearningReposito
 // ───────────────────────────── Library ─────────────────────────────
 
 @Composable
-private fun LibraryPane(viewModel: LearnViewModel, actions: LearningSpaceActions, onOpenCourse: (String) -> Unit) {
+private fun LibraryPane(
+    viewModel: LearnViewModel,
+    actions: LearningSpaceActions,
+    onOpenCourse: (String) -> Unit,
+    onNewSession: () -> Unit,
+    menu: () -> MenuSection
+) {
     val courses by viewModel.courses.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val lectures by viewModel.lectureNotes.collectAsState()
@@ -470,7 +532,11 @@ private fun LibraryPane(viewModel: LearnViewModel, actions: LearningSpaceActions
         .sortedByDescending { it.updatedAt }
 
     PaneList {
-        item(key = "header") { PaneHeader("Library", subtitle = "${courses.size} courses · ${sessions.size} sessions", onBack = null) }
+        item(key = "header") {
+            PaneHeader("Library", subtitle = "${courses.size} courses · ${sessions.size} sessions", onBack = null) {
+                AppMenuButton(focus = NotebookSpace.LEARNING, local = menu)
+            }
+        }
         if (sessions.isNotEmpty() || courses.isNotEmpty()) item(key = "search") {
             OutlinedTextField(
                 value = query,
@@ -485,10 +551,7 @@ private fun LibraryPane(viewModel: LearnViewModel, actions: LearningSpaceActions
             )
         }
         item(key = "create") {
-            Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s), verticalAlignment = Alignment.CenterVertically) {
-                SecondaryButton(EntryPoints.learnRecordLecture.label, onClick = actions.onRecordLecture)
-                TextAction(EntryPoints.learnWriteStudyNote.label, onClick = actions.onWriteStudyNote)
-            }
+            PrimaryButton("New study session", onClick = onNewSession, modifier = Modifier.fillMaxWidth().testTag("learn_new_session"))
         }
         if (shownCourses.isNotEmpty()) {
             item(key = "courses_h") { SectionHeader("Courses", count = shownCourses.size) }
@@ -541,7 +604,8 @@ private fun CoursePane(
     course: LearningRepository.LearningCourse,
     viewModel: LearnViewModel,
     actions: LearningSpaceActions,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onAddSession: () -> Unit
 ) {
     val sessions by viewModel.sessions.collectAsState()
     val lectures by viewModel.lectureNotes.collectAsState()
@@ -581,6 +645,7 @@ private fun CoursePane(
             Text("No sessions in this course yet.", style = MM.type.body, color = MM.colors.inkSecondary)
         }
         items(courseSessions, key = { "cs_${it.id}" }) { s -> SessionRow(s, lectures, onClick = { actions.onOpenSession(s.noteId) }) }
+        item(key = "add") { TextAction("Add a session to this course", onClick = onAddSession, modifier = Modifier.testTag("learn_course_add")) }
     }
 }
 
@@ -604,7 +669,7 @@ private fun AttentionRow(concept: LearningConcept, sessionTitle: String?, onStre
 // ───────────────────────────── Progress ─────────────────────────────
 
 @Composable
-private fun ProgressPane(viewModel: LearnViewModel, actions: LearningSpaceActions) {
+private fun ProgressPane(viewModel: LearnViewModel, actions: LearningSpaceActions, menu: () -> MenuSection) {
     val concepts by viewModel.allConcepts.collectAsState()
     val courses by viewModel.courses.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
@@ -616,7 +681,9 @@ private fun ProgressPane(viewModel: LearnViewModel, actions: LearningSpaceAction
 
     PaneList {
         item(key = "header") {
-            PaneHeader("Progress", subtitle = "Built from your answers over time. No scores, no predictions.", onBack = null)
+            PaneHeader("Progress", subtitle = "Built from your answers over time. No scores, no predictions.", onBack = null) {
+                AppMenuButton(focus = NotebookSpace.LEARNING, local = menu)
+            }
         }
         if (concepts.isEmpty()) {
             item(key = "empty") {
@@ -678,3 +745,27 @@ private fun ProgressPane(viewModel: LearnViewModel, actions: LearningSpaceAction
         }
     }
 }
+
+/**
+ * Learning's own menu section, shown first when the app menu is opened in Learning (the main menu
+ * is the base; this replaces its short Learning group). Pure, so its rows are unit-tested.
+ */
+internal fun learningMenu(
+    hasSessions: Boolean,
+    onNewSession: () -> Unit,
+    onAsk: () -> Unit,
+    onDailyRecall: () -> Unit,
+    onLibrary: () -> Unit,
+    onProgress: () -> Unit
+): MenuSection = MenuSection(
+    "learn", "Learning", listOfNotNull(
+        MenuEntry("learn.new", "New study session", MenuIcon.CREATE, MenuTarget.Run(onNewSession), "Record, use what you have, import or write"),
+        if (hasSessions) MenuEntry("learn.ask", "Ask Learning", MenuIcon.AI, MenuTarget.Run(onAsk), "Answers from your lectures, with the moment each was said") else null,
+        if (hasSessions) MenuEntry("learn.recall", "Daily recall", MenuIcon.PRACTICE, MenuTarget.Run(onDailyRecall), "Today's reviews, spaced so you remember") else null,
+        MenuEntry("learn.library", "Library", MenuIcon.LIBRARY, MenuTarget.Run(onLibrary), "Courses and sessions"),
+        MenuEntry("learn.progress", "Progress", MenuIcon.PULSE, MenuTarget.Run(onProgress), "What you know, built from your answers"),
+        MenuEntry("learn.record", "Record a lecture", MenuIcon.RECORD, MenuTarget.Go(Routes.recordTypeRoute(RecordingType.LECTURE))),
+        MenuEntry("learn.youtube", "Lecture from a YouTube video", MenuIcon.VIDEO, MenuTarget.YouTube(NotebookSpace.LEARNING), "Paste a link, get notes and practice cards"),
+        MenuEntry("learn.import", "Learn from a file", MenuIcon.IMPORT, MenuTarget.Go(Routes.IMPORT), "Audio and documents")
+    ), NotebookSpace.LEARNING
+)

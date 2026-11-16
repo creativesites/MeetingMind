@@ -21,8 +21,8 @@ These rules apply to every agent working in this repository, human or AI. Keep t
 
 ## Work discipline
 
-- **Local Gradle runs are allowed** (founder decision, 2026-11-16; replaces the 2026-11-02 remote-only rule). Compile and run the tests that match your change before you commit. Run long suites in the background.
-- **A real device is available:** the founder's Samsung Galaxy S20, over wireless debugging (`adb`), on request: install builds, run the app, record the screen, read logs. See `agents/TESTING.md`. Never wipe its data or uninstall without asking.
+- **Local Gradle runs are allowed** (founder decision, 2026-11-16; replaces the 2026-11-02 remote-only rule). Compile and run the tests that match your change before you commit. Run long suites in the background. Only one session runs Gradle at a time (8 GB Mac). Today that is the Learning session; other sessions ask it to run builds and tests (see `agents/TESTING.md`).
+- **A real device is available:** the founder's Samsung Galaxy S20+ (SM-G985F), over wireless debugging (`adb`), on request: install builds, run the app, record the screen, read logs. See `agents/TESTING.md`. Never wipe its data or uninstall without asking.
 - Read `agents/TESTING.md` before running tests. It lists the gotchas that already cost us time.
 - Run the tests that match your change first. Run the full suite before the APK, not for every small change.
 - Never weaken or delete a test to get green. Fix the cause, or report it.

@@ -43,7 +43,7 @@ class YouTubeIngestionTest {
     }
 
     @Test
-    fun `default model router keeps gemini-3_8-flash and live/tts models`() {
+    fun `default model router keeps gemini-3_8-flash and the live and tts models`() {
         assertEquals("gemini-3.8-flash", DefaultAiModelRouter.route(AiRoute.GEMINI_FAST).modelId)
         assertEquals("gemini-3.8-flash", DefaultAiModelRouter.route(AiRoute.GEMINI_INTELLIGENCE).modelId)
         assertEquals("gemini-3.8-flash", DefaultAiModelRouter.route(AiRoute.GEMINI_DEEP_REASONING).modelId)

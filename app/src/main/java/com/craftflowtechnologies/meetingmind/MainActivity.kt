@@ -765,9 +765,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         ) { backStackEntry ->
             val noteId = backStackEntry.arguments?.getString("noteId").orEmpty()
             val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = viewModel()
-            var assistantOpen by remember { mutableStateOf(false) }
-
             LaunchedEffect(noteId) {
                 if (noteId.isNotBlank()) {
                     vm.loadSessionDetail(noteId)
@@ -781,17 +778,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onBack = { navController.popBackStack() },
                     onOpenNotes = { id -> navController.navigate(Routes.noteRoute(id)) },
                     onPlayMoment = { meetingId, startMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startMs)) },
-                    onStartPractice = { navController.navigate(Routes.learnPracticeRoute()) },
-                    onAsk = { assistantOpen = true }
-                )
-            }
-
-            if (assistantOpen) {
-                com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(
-                    session = lib.forLearningNote(noteId),
-                    onOpenNote = { assistantOpen = false; navController.navigate(Routes.noteRoute(it)) },
-                    onOpenTasks = { assistantOpen = false; navController.navigate(Routes.TASKS) },
-                    onDismiss = { assistantOpen = false }
+                    onStartPractice = { navController.navigate(Routes.learnPracticeRoute()) }
                 )
             }
         }
@@ -1554,10 +1541,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
 
-        composable(Routes.SETTINGS) {
+        // Settings: the hub, or opened at one group from a vertical's menu (settings_group/faith).
+        val settingsDestination: @Composable (String?) -> Unit = { startGroup ->
             val vm: SettingsViewModel = viewModel()
             SettingsScreen(
                 viewModel = vm,
+                startGroup = startGroup,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToModels = { navController.navigate(Routes.MODELS) },
                 onNavigateBottomNav = navigateToPrimary,
@@ -1592,6 +1581,11 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 }
             )
         }
+        composable(Routes.SETTINGS) { settingsDestination(null) }
+        composable(
+            Routes.SETTINGS_GROUP,
+            arguments = listOf(navArgument("group") { type = NavType.StringType })
+        ) { entry -> settingsDestination(entry.arguments?.getString("group")) }
 
         // INTEGRATIONS (W13)
         composable(Routes.INTEGRATIONS) {
@@ -1820,8 +1814,6 @@ private fun LearnHomeHost(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-    val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = viewModel()
-    var assistantOpen by remember { mutableStateOf(false) }
 
     // The Learning space (design/learning-vertical-design-spec.md). Exam Prep and Teach-Back are
     // Release 2 and 1.1, so the space has no entry to them (decision D3); their code is kept.
@@ -1843,16 +1835,8 @@ private fun LearnHomeHost(
                     navController.navigate(Routes.noteRoute(noteId))
                 }
             },
-            onAsk = { assistantOpen = true }
+            onImport = { navController.navigate(Routes.IMPORT) },
+            onOpenNote = { id -> navController.navigate(Routes.noteRoute(id)) }
         )
     )
-
-    if (assistantOpen) {
-        com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(
-            session = lib.learning,
-            onOpenNote = { assistantOpen = false; navController.navigate(Routes.noteRoute(it)) },
-            onOpenTasks = { assistantOpen = false; navController.navigate(Routes.TASKS) },
-            onDismiss = { assistantOpen = false }
-        )
-    }
 }

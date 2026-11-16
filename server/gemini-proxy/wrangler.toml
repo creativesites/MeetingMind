@@ -14,7 +14,7 @@ FOUNDER_MULTIPLIER = "1.5"
 # Create with: npx wrangler kv namespace create CACHE, then paste its id here. Caches RevenueCat lookups for 5 minutes.
 [[kv_namespaces]]
 binding = "CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "66eaf5a3aa3b471f8917c433b33e6115"
 
 [[durable_objects.bindings]]
 name = "LEDGER"

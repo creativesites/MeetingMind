@@ -622,6 +622,41 @@ class LearningAiEngine(
         )
     }
 
+    /**
+     * Ask Learning: a grounded answer from [ranked] passages. Falls back to quoting the closest
+     * passages when no model answers, and never returns an uncited claim as "from your lecture".
+     */
+    suspend fun answerFromSources(question: String, ranked: List<Pair<AskPassage, Double>>): LearningAnswer {
+        val passages = ranked.map { it.first }
+        val extractive = LearningAsk.extractiveAnswer(question, ranked)
+        if (passages.isEmpty()) return extractive
+        val raw = runCatching { generateText(LearningAsk.groundedPrompt(question, passages), LearningAsk.ANSWER_SCHEMA) }.getOrNull()
+            ?: return extractive
+        val obj = runCatching { JSONObject(stripMarkdownCodeFences(raw)) }.getOrNull() ?: return extractive
+        val text = obj.optString("answer").trim()
+        if (text.isBlank()) return extractive
+        val cited = LearningAsk.citedIn(text, passages)
+        return when {
+            !obj.optBoolean("inSource", true) -> LearningAnswer(
+                text = text, kind = AnswerKind.NOT_IN_SOURCE, cited = emptyList(), closest = passages.firstOrNull()
+            )
+            // An answer that cites nothing can't be checked, so show the passages instead.
+            cited.isEmpty() -> extractive
+            else -> LearningAnswer(
+                text = text, kind = AnswerKind.FROM_SOURCE, cited = cited,
+                unclearSource = cited.any { (it.confidence ?: 1f) < LearningAsk.UnclearConfidence }
+            )
+        }
+    }
+
+    /** General knowledge, only when the student asks for it. Null when no model is available. */
+    suspend fun answerGenerally(question: String): LearningAnswer? {
+        val raw = runCatching { generateText(LearningAsk.generalPrompt(question), LearningAsk.ANSWER_SCHEMA) }.getOrNull() ?: return null
+        val text = runCatching { JSONObject(stripMarkdownCodeFences(raw)).optString("answer").trim() }.getOrNull()
+        if (text.isNullOrBlank()) return null
+        return LearningAnswer(text = text, kind = AnswerKind.GENERAL, cited = emptyList())
+    }
+
     suspend fun generateHintLadder(
         context: Context,
         prompt: String,

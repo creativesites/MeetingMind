@@ -5,7 +5,12 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
+import com.craftflowtechnologies.meetingmind.ai.learning.AskPassage
 import com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine
+import com.craftflowtechnologies.meetingmind.ai.learning.LearningAnswer
+import com.craftflowtechnologies.meetingmind.ai.learning.LearningAsk
+import com.craftflowtechnologies.meetingmind.core.model.LearningEvidence
+import com.craftflowtechnologies.meetingmind.feature.learning.components.CitationAudio
 import com.craftflowtechnologies.meetingmind.ai.learning.MistakeExplanation
 import com.craftflowtechnologies.meetingmind.ai.learning.SimpleExplanation
 import com.craftflowtechnologies.meetingmind.ai.learning.TeachBackEvaluation
@@ -1353,6 +1358,263 @@ class LearnViewModel @JvmOverloads constructor(
         }
     }
 
+    // ───────────────────────── Citations: play the moment in place ─────────────────────────
+
+    /** The recording behind a meeting id, if its audio file is on this phone. */
+    suspend fun citationAudioFor(meetingId: String): CitationAudio? = withContext(Dispatchers.IO) {
+        val m = runCatching { database.meetingDao().getMeetingById(meetingId) }.getOrNull() ?: return@withContext null
+        val path = m.audioFilePath?.takeIf { java.io.File(it).exists() } ?: return@withContext null
+        CitationAudio(recordingId = m.id, title = m.title.ifBlank { "Lecture" }, filePath = path)
+    }
+
+    // ───────────────────────── Ask Learning (design spec §9, D10) ─────────────────────────
+
+    private val _askTurns = MutableStateFlow<List<AskTurn>>(emptyList())
+    val askTurns: StateFlow<List<AskTurn>> = _askTurns.asStateFlow()
+
+    private val _askScope = MutableStateFlow(AskScopeKind.SESSION)
+    val askScope: StateFlow<AskScopeKind> = _askScope.asStateFlow()
+
+    private var askKey: String? = null
+
+    /**
+     * Opens Ask for a session ([sessionId]) or for everything (null). A new context starts a new
+     * conversation; reopening the same one keeps it.
+     */
+    fun openAsk(sessionId: String?) {
+        val key = sessionId ?: "all"
+        if (key != askKey) {
+            askKey = key
+            _askTurns.value = emptyList()
+            _askScope.value = if (sessionId != null) AskScopeKind.SESSION else AskScopeKind.ALL
+        }
+    }
+
+    fun setAskScope(scope: AskScopeKind) {
+        _askScope.value = scope
+    }
+
+    /** What the current scope is called, for "Searching …" and "not in …" lines. */
+    fun askScopeLabel(scope: AskScopeKind = _askScope.value): String {
+        val session = _activeSessionDetail.value?.session?.takeIf { askKey == it.id }
+        return when (scope) {
+            AskScopeKind.SESSION -> session?.title ?: "this session"
+            AskScopeKind.COURSE -> session?.courseName?.takeIf { it.isNotBlank() } ?: "this course"
+            AskScopeKind.ALL -> "all your sessions"
+        }
+    }
+
+    fun ask(question: String) {
+        val q = question.trim()
+        if (q.isEmpty() || _askTurns.value.any { it.pending }) return
+        val scope = _askScope.value
+        val label = askScopeLabel(scope)
+        val turn = AskTurn(id = "ask_${UUID.randomUUID()}", question = q, scope = scope, scopeLabel = label, pending = true)
+        _askTurns.value = _askTurns.value + turn
+        viewModelScope.launch {
+            val answer = try {
+                val passages = gatherPassages(scope)
+                val ranked = LearningAsk.rank(q, passages)
+                aiEngine.answerFromSources(q, ranked)
+            } catch (e: Exception) {
+                Log.e("LearnViewModel", "Ask Learning failed", e)
+                null
+            }
+            updateTurn(turn.id) {
+                it.copy(
+                    pending = false,
+                    answer = answer,
+                    error = if (answer == null) "Something went wrong while searching. Try asking again." else null
+                )
+            }
+        }
+    }
+
+    /** General knowledge, only on the student's request, always labelled as not from the lecture. */
+    fun askGenerally(turnId: String) {
+        val turn = _askTurns.value.firstOrNull { it.id == turnId } ?: return
+        updateTurn(turnId) { it.copy(generalPending = true) }
+        viewModelScope.launch {
+            val general = runCatching { aiEngine.answerGenerally(turn.question) }.getOrNull()
+            updateTurn(turnId) {
+                it.copy(
+                    generalPending = false,
+                    general = general,
+                    error = if (general == null) "A general answer needs an AI model, and none is available right now." else null
+                )
+            }
+        }
+    }
+
+    private fun updateTurn(id: String, change: (AskTurn) -> AskTurn) {
+        _askTurns.value = _askTurns.value.map { if (it.id == id) change(it) else it }
+    }
+
+    private suspend fun gatherPassages(scope: AskScopeKind): List<AskPassage> {
+        val detail = _activeSessionDetail.value?.takeIf { askKey == it.session.id }
+        val sessionsNow = learningRepo.observeSessions().first()
+        val titles = sessionsNow.associate { it.id to it.title }
+        val summaries = learningRepo.observeLectureNotes().first()
+        fun summaryPassages(sessionIds: Set<String>) = summaries
+            .filter { it.sessionId in sessionIds && it.summary.isNotBlank() }
+            .map { AskPassage(0, it.summary, LearningEvidence(noteId = it.noteId, meetingId = it.meetingId, quote = it.summary.take(220)), it.title) }
+        return when {
+            scope == AskScopeKind.SESSION && detail != null -> {
+                val title = detail.session.title
+                val segments = _activeSessionSegments.value
+                val meetingId = _activeSessionMeetingId.value
+                val transcript = LearningAsk.transcriptPassages(segments, detail.session.noteId, meetingId, title)
+                val notes = if (segments.isEmpty()) {
+                    LearningAsk.notePassages(_activeSessionDocument.value?.note?.plainText.orEmpty(), detail.session.noteId, title)
+                } else emptyList()
+                transcript + notes + LearningAsk.conceptPassages(detail.concepts) { title } + summaryPassages(setOf(detail.session.id))
+            }
+            else -> {
+                val course = detail?.session?.courseName?.takeIf { it.isNotBlank() }
+                val ids = if (scope == AskScopeKind.COURSE && course != null) {
+                    sessionsNow.filter { it.courseName.equals(course, ignoreCase = true) }.map { it.id }.toSet()
+                } else sessionsNow.map { it.id }.toSet()
+                val concepts = learningRepo.observeAllConcepts().first().filter { it.sessionId in ids }
+                LearningAsk.conceptPassages(concepts) { titles[it] ?: "Your notes" } + summaryPassages(ids)
+            }
+        }
+    }
+
+    /**
+     * "Quiz me" on an answer: practice on the concepts the question and answer are about, from
+     * the student's own questions. Nothing new is invented.
+     */
+    fun quizFromAnswer(turn: AskTurn, onReady: () -> Unit) {
+        viewModelScope.launch {
+            _isLoadingPractice.value = true
+            _practiceError.value = null
+            try {
+                val text = (turn.question + " " + (turn.answer?.text ?: "")).lowercase()
+                val all = learningRepo.observeAllConcepts().first()
+                val active = _activeSessionDetail.value?.takeIf { askKey == it.session.id }
+                val pool = if (turn.scope == AskScopeKind.SESSION && active != null) active.concepts.filter { !it.isDismissed } else all
+                val matched = pool.filter { it.name.length > 2 && text.contains(it.name.lowercase()) }.take(3)
+                val items = mutableListOf<LearningActivity>()
+                val concepts = mutableListOf<LearningConcept>()
+                matched.map { it.sessionId }.distinct().forEach { sid ->
+                    val d = if (active?.session?.id == sid) active else learningRepo.getSessionDetail(sid)
+                    if (d != null) {
+                        concepts += d.concepts
+                        matched.filter { it.sessionId == sid }.forEach { c -> items += conceptSet(d, c.id) }
+                    }
+                }
+                if (items.isEmpty() && active != null) {
+                    items += diagnosticSet(active)
+                    concepts += active.concepts
+                }
+                if (items.isEmpty()) {
+                    _practiceError.value = "There are no practice questions on this yet."
+                } else {
+                    beginMode(PracticeKind.SET, "Quiz: ${turn.question.take(40)}", items.distinctBy { it.id }.take(6), concepts)
+                    onReady()
+                }
+            } catch (e: Exception) {
+                Log.e("LearnViewModel", "Quiz me failed", e)
+                _practiceError.value = "Practice could not be loaded. Try again."
+            } finally {
+                _isLoadingPractice.value = false
+            }
+        }
+    }
+
+    // ───────────────────────── Create a study session (3 steps) ─────────────────────────
+
+    private val _createStage = MutableStateFlow<CreateStage?>(null)
+    val createStage: StateFlow<CreateStage?> = _createStage.asStateFlow()
+
+    private val _createdNoteId = MutableStateFlow<String?>(null)
+    val createdNoteId: StateFlow<String?> = _createdNoteId.asStateFlow()
+
+    private val _createError = MutableStateFlow<String?>(null)
+    val createError: StateFlow<String?> = _createError.asStateFlow()
+
+    /** A course chosen before recording, applied to the next lecture that arrives. */
+    private var pendingRecordCourse: Pair<String, Long>? = null
+
+    fun resetCreate() {
+        _createStage.value = null
+        _createdNoteId.value = null
+        _createError.value = null
+    }
+
+    /**
+     * Step 3, "Build": puts an existing recording or note in the chosen course and builds its study
+     * guide and questions. The source itself is never changed.
+     */
+    fun buildStudySession(noteId: String, choice: CourseChoice) {
+        _createError.value = null
+        _createdNoteId.value = null
+        viewModelScope.launch {
+            try {
+                _createStage.value = CreateStage.COURSE
+                val courseId = resolveCourse(choice)
+                if (courseId != null) learningRepo.assignNotesToCourse(courseId, listOf(noteId))
+                _createStage.value = CreateStage.GUIDE
+                val meeting = withContext(Dispatchers.IO) { database.meetingDao().getMeetingByNoteId(noteId) }
+                val title = noteRepo.getNote(noteId)?.title?.ifBlank { null } ?: meeting?.title ?: "Study session"
+                val session = learningRepo.ensureSessionForNote(noteId = noteId, meetingId = meeting?.id, title = title)
+                learningRepo.bootstrapSessionMaterials(session.id, force = false, allowDefaultFallback = true)
+                _createStage.value = CreateStage.READY
+                _createdNoteId.value = noteId
+            } catch (e: Exception) {
+                Log.e("LearnViewModel", "Failed to build study session", e)
+                _createError.value = "The study guide couldn't be built. Your recording and notes are unchanged. Try again."
+            }
+        }
+    }
+
+    /** Write study notes: makes the note in the chosen course and opens it. */
+    fun createNotesSession(choice: CourseChoice, onCreated: (noteId: String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val courseId = resolveCourse(choice)
+                createStudyNote(title = "Study notes", courseNotebookId = courseId, onCreated = onCreated)
+            } catch (e: Exception) {
+                Log.e("LearnViewModel", "Failed to create study notes", e)
+                _createError.value = "The note couldn't be created. Try again."
+            }
+        }
+    }
+
+    /** Record a lecture: remembers the course so the lecture lands in it when it is ready. */
+    fun prepareRecording(choice: CourseChoice, onReady: () -> Unit) {
+        viewModelScope.launch {
+            val courseId = runCatching { resolveCourse(choice) }.getOrNull()
+            pendingRecordCourse = courseId?.let { it to System.currentTimeMillis() }
+            onReady()
+        }
+    }
+
+    /** Files a lecture recorded after [prepareRecording] into the course chosen for it, once. */
+    private fun applyPendingRecordCourse(lectures: List<LearningRepository.LectureNoteSummary>) {
+        val (courseId, since) = pendingRecordCourse ?: return
+        val fresh = lectures.firstOrNull { !it.isAssignedToCourse && it.hasRecording && it.updatedAt >= since } ?: return
+        pendingRecordCourse = null
+        assignNoteToCourse(fresh.noteId, courseId)
+    }
+
+    init {
+        viewModelScope.launch {
+            lectureNotes.collect { applyPendingRecordCourse(it) }
+        }
+    }
+
+    private suspend fun resolveCourse(choice: CourseChoice): String? = when (choice) {
+        is CourseChoice.None -> null
+        is CourseChoice.Existing -> choice.notebookId
+        is CourseChoice.New -> learningRepo.createOrUpdateCourse(
+            name = choice.name.trim(),
+            properties = CourseProperties(courseCode = choice.code.trim(), lecturer = choice.lecturer.trim()),
+            colorHex = null,
+            icon = null
+        ).notebook.id
+    }
+
     override fun onCleared() {
         super.onCleared()
         studyTimerJob?.cancel()
@@ -1375,3 +1637,28 @@ data class PracticeResult(
     val reason: String?,
     val nextReviewDays: Int
 )
+
+/** How widely Ask Learning searches. Session is the default; it never searches the web. */
+enum class AskScopeKind(val label: String) { SESSION("This session"), COURSE("This course"), ALL("All sessions") }
+
+data class AskTurn(
+    val id: String,
+    val question: String,
+    val scope: AskScopeKind,
+    val scopeLabel: String,
+    val pending: Boolean = false,
+    val answer: LearningAnswer? = null,
+    val generalPending: Boolean = false,
+    val general: LearningAnswer? = null,
+    val error: String? = null
+)
+
+/** Step 2 of creating a session. */
+sealed interface CourseChoice {
+    data object None : CourseChoice
+    data class Existing(val notebookId: String) : CourseChoice
+    data class New(val name: String, val code: String = "", val lecturer: String = "") : CourseChoice
+}
+
+/** Step 3 stages, shown honestly as done / now / waiting. */
+enum class CreateStage { COURSE, GUIDE, READY }

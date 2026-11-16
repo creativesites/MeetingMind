@@ -1,5 +1,10 @@
 package com.craftflowtechnologies.meetingmind.feature.learning.space
 
+import com.craftflowtechnologies.meetingmind.core.aireport.AiFeature
+import com.craftflowtechnologies.meetingmind.core.aireport.AiReportSheetHost
+import com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource
+import com.craftflowtechnologies.meetingmind.core.aireport.ReportAiMenuItem
+import com.craftflowtechnologies.meetingmind.core.aireport.rememberAiReportState
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -142,7 +147,17 @@ fun PracticeModeScreen(
             .testTag("learn_practice_mode")
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+            // "Report this" for the AI-written question and answer (Play AI-content policy); never the student's own answer.
+            val reportState = rememberAiReportState()
+            AiReportSheetHost(reportState)
+            val current = activities.getOrNull(index)?.takeIf { !finished && introDone }
             PracticeTopBar(
+                onReportAi = current?.let { act ->
+                    {
+                        val noteId = viewModel.sessions.value.firstOrNull { it.id == act.sessionId }?.noteId
+                        reportState.open(AiReportSource(AiFeature.PRACTICE, (listOf(act.prompt, act.expectedAnswer) + act.options).filter { it.isNotBlank() }.joinToString("\n"), noteId = noteId))
+                    }
+                },
                 title = title,
                 counter = when {
                     activities.isEmpty() || finished || !introDone -> null
@@ -244,7 +259,7 @@ fun PracticeModeScreen(
             evidence = ev,
             sourceTitle = title,
             onDismiss = { citation = null },
-            onPlay = null,
+            resolveAudio = viewModel::citationAudioFor,
             onShowInTranscript = activities.getOrNull(index)?.sessionId?.let { sid ->
                 { citation = null; onOpenSession(sid) }
             }
@@ -257,7 +272,8 @@ private fun PracticeTopBar(
     title: String,
     counter: String?,
     onClose: () -> Unit,
-    onSkip: (() -> Unit)?
+    onSkip: (() -> Unit)?,
+    onReportAi: (() -> Unit)? = null
 ) {
     var menu by remember { mutableStateOf(false) }
     Row(
@@ -279,15 +295,16 @@ private fun PracticeTopBar(
             }
         }
         Box {
-            if (onSkip != null) {
+            if (onSkip != null || onReportAi != null) {
                 IconButton(onClick = { menu = true }) {
                     Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = MM.colors.inkSecondary)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(
+                    if (onSkip != null) DropdownMenuItem(
                         text = { Text("Skip for now", style = MM.type.body) },
                         onClick = { menu = false; onSkip() }
                     )
+                    if (onReportAi != null) ReportAiMenuItem { menu = false; onReportAi() }
                 }
             } else {
                 Spacer(Modifier.size(MMSize.minTouch))

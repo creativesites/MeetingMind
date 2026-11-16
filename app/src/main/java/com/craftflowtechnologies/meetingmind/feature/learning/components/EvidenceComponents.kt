@@ -19,12 +19,30 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Notes
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import com.craftflowtechnologies.meetingmind.core.audio.PlaybackController
+import com.craftflowtechnologies.meetingmind.core.audio.PlaybackPhase
+import java.io.File
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +53,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.model.LearningEvidence
 import com.craftflowtechnologies.meetingmind.core.ui.mm.HeroCard
-import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.ui.theme.LearningTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
@@ -151,9 +168,14 @@ fun EvidenceQuote(
     }
 }
 
+/** A recording that a citation can play from. */
+data class CitationAudio(val recordingId: String, val title: String, val filePath: String)
+
 /**
- * Opens from any citation. Shows the quote and lets the student play the moment or jump to it in
- * the transcript, so a claim can always be checked against what was said.
+ * Opens from any citation. Shows the quote and plays the moment right here, so a claim can always
+ * be checked against what was said without leaving the screen.
+ *
+ * [resolveAudio] finds the recording for a meeting id (null when the audio isn't on this phone).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -161,9 +183,14 @@ fun CitationSheet(
     evidence: LearningEvidence,
     sourceTitle: String,
     onDismiss: () -> Unit,
-    onPlay: (() -> Unit)?,
-    onShowInTranscript: (() -> Unit)?
+    resolveAudio: (suspend (meetingId: String) -> CitationAudio?)?,
+    onShowInTranscript: (() -> Unit)?,
+    fallbackMeetingId: String? = null
 ) {
+    val meetingId = evidence.meetingId ?: fallbackMeetingId
+    val audio by produceState<CitationAudio?>(null, meetingId, resolveAudio) {
+        value = if (meetingId != null && resolveAudio != null) runCatching { resolveAudio(meetingId) }.getOrNull() else null
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MM.colors.surfaceRaised,
@@ -174,7 +201,8 @@ fun CitationSheet(
                 .fillMaxWidth()
                 .padding(horizontal = LearningTheme.readingGutter)
                 .padding(bottom = MM.space.xl)
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .testTag("citation_sheet"),
             verticalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
             Text("FROM THE LECTURE", style = MM.type.overline, color = MM.colors.inkMuted)
@@ -188,7 +216,7 @@ fun CitationSheet(
                     Box(Modifier.width(3.dp).fillMaxHeight().clip(MM.radius.pill).background(MM.colors.accent))
                     Spacer(Modifier.width(MM.space.m))
                     Text(
-                        "“${evidence.quote.trim()}”",
+                        "\u201C${evidence.quote.trim()}\u201D",
                         style = LearningTheme.type.reading.copy(fontStyle = FontStyle.Italic),
                         color = MM.colors.ink
                     )
@@ -200,14 +228,12 @@ fun CitationSheet(
                     color = MM.colors.inkSecondary
                 )
             }
-            val stamp = evidence.timestamp
-            if (onPlay != null && stamp != null) {
-                PrimaryButton(
-                    text = "Play from $stamp",
-                    onClick = onPlay,
-                    leadingIcon = Icons.Rounded.PlayArrow,
-                    modifier = Modifier.fillMaxWidth()
-                )
+            val start = evidence.startMs
+            val source = audio
+            when {
+                start != null && source != null -> MomentPlayer(source, start, evidence.endMs)
+                start != null && meetingId != null && resolveAudio != null ->
+                    Text("The recording for this moment isn't on this phone.", style = MM.type.caption, color = MM.colors.inkSecondary)
             }
             if (onShowInTranscript != null) {
                 SecondaryButton(
@@ -215,6 +241,83 @@ fun CitationSheet(
                     onClick = onShowInTranscript,
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Plays one lecture moment through the app's single player and stops at the end of it: this plays
+ * the quote, not the rest of the lecture. Closing the sheet pauses it.
+ */
+@Composable
+fun MomentPlayer(source: CitationAudio, startMs: Long, endMs: Long?) {
+    val context = LocalContext.current
+    val state by PlaybackController.state.collectAsState()
+    var started by remember(source.recordingId, startMs) { mutableStateOf(false) }
+    val stopAt = (endMs?.takeIf { it > startMs } ?: (startMs + 20_000L)) + 1_500L
+    val mine = state.recordingId == source.recordingId
+    val playing = started && mine && state.phase == PlaybackPhase.PLAYING
+    val inMoment = mine && state.positionMs in startMs until stopAt
+
+    LaunchedEffect(playing, state.positionMs) {
+        if (playing && state.positionMs >= stopAt) PlaybackController.pause()
+    }
+    DisposableEffect(source.recordingId, startMs) {
+        onDispose {
+            val now = PlaybackController.state.value
+            if (started && now.recordingId == source.recordingId && now.phase == PlaybackPhase.PLAYING) PlaybackController.pause()
+        }
+    }
+
+    val fraction = if (started && mine) ((state.positionMs - startMs).toFloat() / (stopAt - startMs)).coerceIn(0f, 1f) else 0f
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(MM.radius.card)
+            .background(MM.colors.accentWash)
+            .padding(MM.space.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MM.space.m)
+    ) {
+        IconButton(
+            onClick = {
+                when {
+                    playing -> PlaybackController.pause()
+                    started && inMoment -> PlaybackController.togglePlayPause()
+                    else -> {
+                        started = true
+                        PlaybackController.playAt(context, source.recordingId, source.title, File(source.filePath), startMs)
+                    }
+                }
+            },
+            modifier = Modifier
+                .size(MMSize.minTouch)
+                .clip(MM.radius.pill)
+                .background(MM.colors.accent)
+                .testTag("moment_play")
+        ) {
+            Icon(
+                if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = if (playing) "Pause" else "Play this moment",
+                tint = MM.colors.onAccent
+            )
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+            val stamp = formatLectureTimestamp(startMs)
+            Text(
+                when {
+                    started && mine && state.phase == PlaybackPhase.ERROR -> state.errorMessage ?: "This moment couldn't be played."
+                    playing -> "Playing from $stamp"
+                    started && mine && state.positionMs >= stopAt -> "Played. Tap to hear it again."
+                    else -> "Play this moment · $stamp"
+                },
+                style = MM.type.bodyStrong,
+                color = MM.colors.ink,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+            )
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(MM.radius.pill).background(MM.colors.track)) {
+                Box(Modifier.fillMaxWidth(fraction).height(4.dp).clip(MM.radius.pill).background(MM.colors.accent))
             }
         }
     }
