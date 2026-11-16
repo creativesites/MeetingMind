@@ -30,9 +30,14 @@ object MarkdownImport {
 
     /** A note's blocks with every Markdown block opened out into the blocks it shows. */
     fun expand(blocks: List<NoteBlock>): List<NoteBlock> = blocks.flatMap { b ->
-        if (b.type != NoteBlockType.MARKDOWN) listOf(b)
-        // Ids come from the pasted block's own, so a citation can be traced back to it (and stays the same between reads).
-        else parse(b.content.text, b.noteId, b.source).mapIndexed { i, it -> it.copy(id = "${b.id}$EXPANDED_SEP$i", sectionKey = b.sectionKey) }
+        when {
+            // Ids come from the pasted block's own, so a citation can be traced back to it (and stays the same between reads).
+            b.type == NoteBlockType.MARKDOWN ->
+                parse(b.content.text, b.noteId, b.source).mapIndexed { i, it -> it.copy(id = "${b.id}$EXPANDED_SEP$i", sectionKey = b.sectionKey) }
+            // An AI paragraph saved with the model's JSON wrapper in it reads as the Markdown inside.
+            AiMarkdown.needsRepair(b) -> AiMarkdown.repairBlocks(listOf(b)) { src, i -> "${src.id}$EXPANDED_SEP$i" }
+            else -> listOf(b)
+        }
     }
 
     const val EXPANDED_SEP = "#"
@@ -41,7 +46,9 @@ object MarkdownImport {
     fun sourceBlockId(id: String): String = id.substringBefore(EXPANDED_SEP)
 
     fun parse(markdown: String, noteId: String, source: BlockSource = BlockSource.USER): List<NoteBlock> {
-        val lines = markdown.replace("\r\n", "\n").replace('\r', '\n').replace("\t", "    ").split('\n')
+        // What a model wrote may come wrapped in JSON; a person's text is taken as it is.
+        val text = if (AiMarkdown.isAiSource(source)) AiMarkdown.clean(markdown) else markdown
+        val lines = text.replace("\r\n", "\n").replace('\r', '\n').replace("\t", "    ").split('\n')
         val out = mutableListOf<NoteBlock>()
         val paragraph = mutableListOf<String>()
 
@@ -69,6 +76,16 @@ object MarkdownImport {
                     i++
                     while (i < lines.size && !lines[i].trim().startsWith(fence)) { code += lines[i]; i++ }
                     block(NoteBlockType.CODE, RichText.plain(code.joinToString("\n").trimEnd('\n')), if (language.isNotEmpty()) mapOf(NoteBlock.PAYLOAD_LANGUAGE to language) else emptyMap())
+                }
+                DISPLAY_MATH_OPEN.matches(line) && displayMathEnd(lines, i) != null -> {
+                    // $$ … $$ or \[ … \] on lines of their own: an equation block.
+                    flush()
+                    val end = displayMathEnd(lines, i)!!
+                    val close = if (trimmed.startsWith("$$")) "$$" else "\\]"
+                    val open = if (trimmed.startsWith("$$")) "$$" else "\\["
+                    val body = (i..end).joinToString("\n") { lines[it] }.trim().removePrefix(open).removeSuffix(close).trim()
+                    if (body.isNotEmpty()) block(NoteBlockType.MATH, RichText.plain(body))
+                    i = end
                 }
                 HEADING.matches(line) -> {
                     flush()
@@ -153,6 +170,28 @@ object MarkdownImport {
         }
         flush()
         return out
+    }
+
+    /**
+     * The line that closes display maths opened at [start], or null when it never closes (then the
+     * dollars are ordinary text). A one-line `$$ x $$` closes on its own line.
+     */
+    private fun displayMathEnd(lines: List<String>, start: Int): Int? {
+        val first = lines[start].trim()
+        val dollars = first.startsWith("$$")
+        val close = if (dollars) "$$" else "\\]"
+        val rest = first.drop(2)
+        if (rest.endsWith(close)) {
+            // One line: something between the delimiters, and no second formula on the line.
+            val inner = rest.removeSuffix(close)
+            return start.takeIf { inner.isNotBlank() && !inner.contains(if (dollars) "$$" else "\\[") }
+        }
+        for (j in start + 1 until minOf(lines.size, start + MAX_DISPLAY_MATH_LINES)) {
+            val t = lines[j].trim()
+            if (t.isEmpty()) return null
+            if (t.endsWith(close)) return j
+        }
+        return null
     }
 
     /** A line that is only a URL (or a link to one): the URL and the link text, if any. */
@@ -298,6 +337,8 @@ object MarkdownImport {
     private fun Regex.matchAt(s: String, index: Int): MatchResult? = find(s, index)?.takeIf { it.range.first == index }
 
     const val MAX_INDENT = 4
+    private const val MAX_DISPLAY_MATH_LINES = 40
+    private val DISPLAY_MATH_OPEN = Regex("^\\s{0,3}(\\$\\$|\\\\\\[).*$")
     private val ESCAPABLE = setOf('\\', '`', '*', '_', '{', '}', '[', ']', '(', ')', '#', '+', '-', '.', '!', '|', '~', '=', '<', '>')
     private val HEADING = Regex("^\\s{0,3}(#{1,6})\\s+(.*)$")
     private val HR = Regex("^\\s{0,3}([-*_])(\\s*\\1){2,}\\s*$")

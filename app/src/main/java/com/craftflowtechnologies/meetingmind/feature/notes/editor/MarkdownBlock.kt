@@ -37,6 +37,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -88,7 +90,8 @@ internal fun MarkdownBlock(
     // line in it can't shuffle what is being edited.
     var editingPiece by remember { mutableStateOf<Int?>(null) }
     var frozen by remember { mutableStateOf<List<String>?>(null) }
-    val current = remember(block.content.text) { MarkdownChunks.split(block.content.text) }
+    // An AI reply saved wrapped in JSON shows (and edits) as the Markdown inside it.
+    val current = remember(block.content.text, block.source) { MarkdownChunks.split(com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairMarkdown(block)) }
     val pieces = frozen ?: current
     if (pieces.isEmpty()) {
         Text("Empty Markdown — tap to write", color = InkMuted, fontSize = 15.sp,
@@ -118,7 +121,8 @@ internal fun MarkdownBlock(
                         }) { editingPiece = null; frozen = null }
                     } else {
                         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { frozen = pieces; editingPiece = i }) {
-                            parsed[i].forEachIndexed { k, item -> MarkdownItem(item, parsed[i], k, serif, onTap = { frozen = pieces; editingPiece = i }) }
+                            val ai = block.source != com.craftflowtechnologies.meetingmind.core.model.BlockSource.USER
+                            parsed[i].forEachIndexed { k, item -> MarkdownItem(item, parsed[i], k, serif, onTap = { frozen = pieces; editingPiece = i }, hideMarkers = ai) }
                         }
                     }
                 }
@@ -159,10 +163,19 @@ fun MarkdownTextPreview(markdown: String, modifier: Modifier = Modifier, serif: 
 
 /** One heading, paragraph, list item, table or picture inside a Markdown block, read-only. */
 @Composable
-private fun MarkdownItem(item: NoteBlock, all: List<NoteBlock>, index: Int, serif: Boolean, onTap: () -> Unit) {
+private fun MarkdownItem(item: NoteBlock, all: List<NoteBlock>, index: Int, serif: Boolean, onTap: () -> Unit, hideMarkers: Boolean = false) {
     val colors = LocalMMColors.current
     when (item.type) {
         NoteBlockType.DIVIDER -> HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Line)
+        // $$ … $$ in the Markdown: the equation, drawn in 2D like an equation block.
+        NoteBlockType.MATH -> {
+            val node = remember(item.content.text) { runCatching { LatexMathParser.parse(item.content.text) }.getOrNull() }
+            val spoken = remember(item.content.text) { InlineMath.spoken("$$" + item.content.text + "$$") }
+            Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).semantics { contentDescription = spoken }, contentAlignment = Alignment.Center) {
+                if (node != null) MathExpressionView(node = node, fontSize = 18.sp, inkColor = Ink)
+                else Text(InlineMath.readable(item.content.text), style = blockTextStyle(NoteBlockType.PARAGRAPH, serif))
+            }
+        }
         NoteBlockType.CODE -> CodeBlock(item, onTap = onTap) {}
         NoteBlockType.TABLE -> TableBlock(item)
         NoteBlockType.EMBED -> EmbedBlock(item)
@@ -185,7 +198,13 @@ private fun MarkdownItem(item: NoteBlock, all: List<NoteBlock>, index: Int, seri
                 NoteBlockType.QUOTE -> Box(Modifier.padding(end = 12.dp).width(3.dp).height(25.dp).background(Accent, RoundedCornerShape(2.dp)))
                 else -> Unit
             }
-            Text(styled(item.content, colors), style = blockTextStyle(item.type, serif), modifier = Modifier.weight(1f))
+            val shown = remember(item.content, colors, hideMarkers) {
+                val base = styled(item.content, colors)
+                if (InlineMath.hasMath(base.text) || hideMarkers) InlineMath.transform(base, maths = true, hideMarkers = hideMarkers).text else base
+            }
+            val spoken = remember(item.content.text) { if (InlineMath.hasMath(item.content.text)) InlineMath.spoken(item.content.text) else null }
+            Text(shown, style = blockTextStyle(item.type, serif),
+                modifier = Modifier.weight(1f).then(if (spoken != null) Modifier.semantics { contentDescription = spoken } else Modifier))
         }
     }
 }

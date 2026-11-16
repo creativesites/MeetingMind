@@ -76,6 +76,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -472,7 +474,9 @@ internal fun BlockMenu(
     onEditMarkdown: (() -> Unit)? = null,
     onSplitMarkdown: (() -> Unit)? = null,
     onAiTools: (() -> Unit)? = null,
-    onMakeTask: (() -> Unit)? = null
+    onMakeTask: (() -> Unit)? = null,
+    /** Reports an AI-written block (Play's AI-generated content policy). Null for the person's own words. */
+    onReportAi: (() -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -499,19 +503,21 @@ internal fun BlockMenu(
                 MenuRow("Move down") { onMoveDown() }
                 MenuRow("Duplicate") { onDuplicate() }
                 MenuRow("Delete", destructive = true) { onDelete() }
+                onReportAi?.let { MenuRow("Report this", contentDescription = "Report this AI content") { it() } }
             }
         }
     )
 }
 
 @Composable
-private fun MenuRow(label: String, selected: Boolean = false, destructive: Boolean = false, onClick: () -> Unit) {
+private fun MenuRow(label: String, selected: Boolean = false, destructive: Boolean = false, contentDescription: String? = null, onClick: () -> Unit) {
     Text(
         label,
         fontSize = 15.sp,
         color = when { destructive -> Danger; selected -> Accent; else -> Ink },
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp)
+            .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
     )
 }
 

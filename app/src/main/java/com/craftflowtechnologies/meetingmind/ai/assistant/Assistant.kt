@@ -302,13 +302,15 @@ class AssistantEngine(
                 "- Chain independent read calls together in one turn to answer quickly.\n" +
                 "- When a note outline isn't enough to answer accurately, read the note or transcript first.\n" +
                 "- Never mention internal block ids or raw JSON in your answer; format replies in clean Markdown.\n" +
+                "- ${com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.MATH_AND_CHEMISTRY_RULE}\n" +
                 "- Cite timestamps like [mm:ss] when referencing recordings."
         } else {
             "Tools:\n" + AssistantTool.describe(tools) +
                 "\n\nExecution rules:\n" +
                 "- Chain independent read calls together in one turn to answer quickly.\n" +
                 "- When a note outline isn't enough to answer accurately, read the note or transcript first.\n" +
-                "- Never mention internal block ids or raw JSON in \"say\"; format \"say\" in clean Markdown.\n\n" +
+                "- Never mention internal block ids or raw JSON in \"say\"; format \"say\" in clean Markdown.\n" +
+                "- In Markdown you write: ${com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.MATH_AND_CHEMISTRY_RULE}\n\n" +
                 "Reply with one JSON object only: {\"say\": string, \"calls\": [{\"tool\": string, \"args\": object}]}. " +
                 "Use \"calls\": [] when you are done. Results of read tools come back to you; write tools are applied by the app."
         }

@@ -2,6 +2,30 @@
 
 Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
+## Notes rendering: no raw JSON, inline maths and chemistry, citations, YouTube source (2026-11-16)
+- Plan: `design/notes-blocks-and-math-plan.md` parts A, B and C, plus the founder's YouTube items (play on YouTube, source line at the bottom) and the note-editor hooks for "Report this" (part E).
+- **A. No raw JSON:**
+  - `core/notes/AiMarkdown` unwraps a model reply wrapped in a JSON object (any key, cut-off replies too, LaTeX backslashes kept). `MarkdownImport.parse` runs it on all AI text.
+  - Saved notes are repaired when shown (editor load, `expand`, Markdown blocks, the list preview). There is no migration. A person's JSON and a ```json code block are never touched.
+- **B. Inline maths and chemistry:** `feature/notes/editor/InlineMath` renders `$…$`, `\(…\)`, `$$…$$`, `\[…\]` and `\ce{…}` in text, lists, callouts and Markdown blocks.
+  - It uses the native `LatexMathParser`; KaTeX was rejected (the reasons are in the KDoc).
+  - While a block is being edited, it shows the raw LaTeX.
+  - `$$` lines become equation blocks. A formula that won't parse shows as plain text, and screen readers get a spoken form.
+  - Note prompts (polish, assistant, study drill) now ask for `$…$` and `\ce{}`.
+- **C. Citations:** the polish prompt numbers transcript lines. `[n]` becomes a ▶ chip that plays the moment (CitationSheet). Markers with no source and `[Speaker n]` tags are hidden.
+- **YouTube notes:**
+  - "Play on YouTube" on the recording card, through a plain ACTION_VIEW, with no logo.
+  - Moments open at `&t=<s>s`.
+  - A "Source: …" line stays as the last block, and older notes get it when opened. It needs no schema change: two metadata keys hold the video title and import date.
+- **AI caption and Report this:**
+  - "Written by AI" shows once per AI section, with the report flag.
+  - Each AI block has "Report this" in its block menu. Hide collapses the reported run to one line.
+- **Verified:** on the S20+ `.dev` build of 13:04, both broken notes ("Joyce Meyer…", "Factoring Trinomials…") read cleanly, including the list previews; inline maths renders; Play on YouTube and the source line show. Unit tests (13:27 run): AiMarkdownTest, NoteCitationsTest, InlineMathTest, NotePolishJsonReplyTest, YouTubeSourceTest, YouTubeIngestionTest and MarkdownImportTest pass. The fix to PostTranscriptionNoteFormattingTest (an expectation that could never match) is in the 14:15 re-run.
+- **Open:**
+  - Phone recheck of the caption and `[Speaker n]` fixes.
+  - The two sermon quotes showing the same ▶ 11:04 (`SermonNoteBuilder` quote timestamps; not this work).
+  - Plan screenshot tests for a maths and chemistry note are not written yet.
+
 ## Report AI content, Play AI-Generated Content policy (2026-11-16)
 - **Founder-approved design:** `design/ai-content-reporting.md` (part E of `design/notes-blocks-and-math-plan.md`). A "Report this" flag on every AI surface opens one sheet: a reason, an optional comment, an optional Hide, then Send.
   - **What is sent:** only the flagged passage, the reason, the comment, the feature, the model and the app version.

@@ -197,6 +197,25 @@ fun NoteEditorScreen(
     val backlinks by viewModel.backlinks.collectAsState()
     val recordings by viewModel.recordings.collectAsState()
     val recordingsLoaded by viewModel.recordingsLoaded.collectAsState()
+    // Reporting AI-written blocks (Play's AI-generated content policy): one sheet for the screen.
+    val aiReport = com.craftflowtechnologies.meetingmind.core.aireport.rememberAiReportState()
+    // Reports [run]: one block, or the whole AI section under a section's flag. Hide hides all of it.
+    val reportAi: (List<NoteBlock>) -> Unit = report@{ run ->
+        val b = run.firstOrNull() ?: return@report
+        val feature = when {
+            recordings.values.any { it.youtube != null } -> com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.YOUTUBE_IMPORT
+            note?.workflow == com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON -> com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.SERMON
+            else -> com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.NOTE_BLOCK
+        }
+        val text = run.joinToString("\n") { r ->
+            when (r.type) {
+                NoteBlockType.MARKDOWN -> com.craftflowtechnologies.meetingmind.core.notes.NoteText.plain(listOf(r))
+                NoteBlockType.CALLOUT -> listOfNotNull(r.payload[NoteBlock.PAYLOAD_CALLOUT_TITLE]?.takeIf { it.isNotBlank() }, r.content.text).joinToString(": ")
+                else -> r.content.text
+            }
+        }.trim()
+        aiReport.open(com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(feature = feature, text = text, noteId = b.noteId), onHide = { viewModel.setHiddenAfterReport(run.map { it.id }, true) })
+    }
     val linkedTitles by viewModel.linkedTitles.collectAsState()
     val message by viewModel.message.collectAsState()
     val aiEdit by viewModel.aiEdit.collectAsState()
@@ -858,7 +877,8 @@ fun NoteEditorScreen(
                                 onOpenRecording = onOpenRecording,
                                 onOpenNote = onOpenNote,
                                 onPlay = { card -> card.audioPath?.let { PlaybackController.play(context, card.meetingId, card.title, File(it)) } },
-                                onOpenScripture = { verseSheetFor = it }
+                                onOpenScripture = { verseSheetFor = it },
+                                onReportAi = reportAi
                             )
                         }
                         pendingDiffByBlock[block.id]?.let { diff ->
@@ -1156,10 +1176,15 @@ fun NoteEditorScreen(
         if (ref == null) verseSheetFor = null else {
             val meetingId = b.payload[NoteBlock.PAYLOAD_MEETING_ID]
             val at = b.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()
+            val verseContext = androidx.compose.ui.platform.LocalContext.current
             com.craftflowtechnologies.meetingmind.feature.scripture.VerseSheet(
                 reference = ref,
                 heardAtMs = at,
-                onPlay = if (meetingId != null && at != null) ({ onOpenRecording(meetingId, at) }) else null,
+                onPlay = if (meetingId != null && at != null) ({
+                    // Heard in a YouTube import: play that moment on YouTube.
+                    val video = recordings[meetingId]?.youtube
+                    if (video == null || !com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource.open(verseContext, video, at)) onOpenRecording(meetingId, at)
+                }) else null,
                 onDismiss = { verseSheetFor = null }
             )
         }
@@ -1180,7 +1205,8 @@ fun NoteEditorScreen(
             onMakeTask = if (b.type.isText && b.type != NoteBlockType.MARKDOWN && b.content.text.isNotBlank()) ({
                 blockMenuFor = null
                 scope.launch { taskDraft = viewModel.taskFor(b.id) }
-            }) else null
+            }) else null,
+            onReportAi = if (com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.isAiSource(b.source)) ({ blockMenuFor = null; reportAi(listOf(b)) }) else null
         )
     }
     if (showAssistant) com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(
@@ -1193,6 +1219,21 @@ fun NoteEditorScreen(
             onSave = { task, newPerson -> viewModel.saveTask(task, newPerson); taskDraft = null },
             onDelete = null, onOpenSource = null,
             onDismiss = { taskDraft = null }
+        )
+    }
+    com.craftflowtechnologies.meetingmind.core.aireport.AiReportSheetHost(aiReport)
+    val citation by viewModel.citation.collectAsState()
+    citation?.let { (block, cite) ->
+        val meetingId = block.payload[NoteBlock.PAYLOAD_MEETING_ID]
+        com.craftflowtechnologies.meetingmind.feature.learning.components.CitationSheet(
+            evidence = com.craftflowtechnologies.meetingmind.core.model.LearningEvidence(
+                noteId = block.noteId, blockId = block.id, meetingId = meetingId,
+                segmentIds = listOfNotNull(cite.segmentId), startMs = cite.startMs, endMs = cite.endMs, quote = cite.quote
+            ),
+            sourceTitle = note?.title?.ifBlank { null } ?: "This recording",
+            onDismiss = { viewModel.closeCitation() },
+            resolveAudio = { viewModel.citationAudioFor(it) },
+            onShowInTranscript = meetingId?.let { m -> { viewModel.closeCitation(); onOpenRecording(m, cite.startMs) } }
         )
     }
     if (showVersions) {
@@ -1304,9 +1345,31 @@ private fun BlockContent(
     onOpenRecording: (String, Long?) -> Unit,
     onOpenNote: (String) -> Unit,
     onPlay: (RecordingCard) -> Unit,
-    onOpenScripture: (NoteBlock) -> Unit
+    onOpenScripture: (NoteBlock) -> Unit,
+    onReportAi: (List<NoteBlock>) -> Unit = {}
 ) {
+    val hiddenKey = com.craftflowtechnologies.meetingmind.core.aireport.AiReport.PAYLOAD_HIDDEN_AFTER_REPORT
+    // Blocks that belong together: the same source and section (an AI section, say).
+    fun together(a: NoteBlock, b: NoteBlock) = a.source == b.source && a.sectionKey == b.sectionKey
+    // Reported and hidden by the person: one quiet line for the hidden run, until they show it again.
+    if (block.payload[hiddenKey] == "true") {
+        val prev = blocks.getOrNull(index - 1)
+        if (prev != null && prev.payload[hiddenKey] == "true" && together(prev, block)) return
+        val hiddenRun = blocks.drop(index).takeWhile { it.payload[hiddenKey] == "true" && together(it, block) }
+        com.craftflowtechnologies.meetingmind.core.aireport.HiddenAfterReportLine(onShow = { viewModel.setHiddenAfterReport(hiddenRun.map { it.id }, false) })
+        return
+    }
     val attachment = block.payload[NoteBlock.PAYLOAD_ATTACHMENT_ID]?.let { attachments[it] }
+    // "Written by AI" once per run of AI blocks from one section, not under every line.
+    val showSourceLabel = blocks.getOrNull(index - 1)?.let { prev -> !together(prev, block) || prev.payload[hiddenKey] == "true" } ?: true
+    // The section flag reports the whole run it captions, so a report about its sixth line carries that line.
+    val sectionRun = if (showSourceLabel) blocks.drop(index).takeWhile { together(it, block) && it.payload[hiddenKey] != "true" } else listOf(block)
+    // A moment in a YouTube import opens the video at that time; any other recording opens in the app.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val openMoment: (String, Long?) -> Unit = { meetingId, ms ->
+        val video = recordings[meetingId]?.youtube
+        if (video == null || !com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource.open(context, video, ms)) onOpenRecording(meetingId, ms)
+    }
     val headingLevel = BlockEditing.headingLevel(block.type)
     // A heading with something under it can fold that section away.
     val section = if (headingLevel == null) 0 else remember(blocks, index) {
@@ -1329,7 +1392,9 @@ private fun BlockContent(
                     onSelection = { s, e -> viewModel.onSelectionChanged(block.id, s, e) },
                     onBackspaceAtStart = { viewModel.onBackspaceAtStart(block.id) },
                     onFocusLost = { viewModel.onBlockFocusLost(block.id) },
-                    onToggleChecked = {}
+                    onToggleChecked = {},
+                    onReportAi = { onReportAi(sectionRun) },
+                    showSourceLabel = showSourceLabel
                 )
             }
             Box(Modifier.padding(top = blockTopPadding(block.type) + 2.dp)) {
@@ -1355,6 +1420,11 @@ private fun BlockContent(
                         onStepBack = { viewModel.stepBack(block.id) }
                     )
                 }
+                if (editingId != block.id && com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.isAiSource(block.source)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        com.craftflowtechnologies.meetingmind.core.aireport.ReportAiButton(onClick = { onReportAi(listOf(block)) })
+                    }
+                }
             }
         }
         block.type.isText -> TextBlock(
@@ -1368,7 +1438,14 @@ private fun BlockContent(
             onBackspaceAtStart = { viewModel.onBackspaceAtStart(block.id) },
             onFocusLost = { viewModel.onBlockFocusLost(block.id) },
             onToggleChecked = { viewModel.toggleChecked(block.id) },
-            onCite = { meetingId, ms -> onOpenRecording(meetingId, ms) }
+            onCite = { meetingId, ms -> openMoment(meetingId, ms) },
+            onCitation = { b, cite ->
+                // A cited moment in a YouTube import plays on YouTube; a recording plays in the sheet.
+                val m = b.payload[NoteBlock.PAYLOAD_MEETING_ID]
+                if (m != null && recordings[m]?.youtube != null) openMoment(m, cite.startMs) else viewModel.openCitation(b, cite)
+            },
+            onReportAi = { onReportAi(sectionRun) },
+            showSourceLabel = showSourceLabel
         )
         block.type == NoteBlockType.DIVIDER -> DividerBlock()
         block.type == NoteBlockType.CODE -> CodeBlock(block) { viewModel.setCaption(block.id, it) }
@@ -1382,10 +1459,10 @@ private fun BlockContent(
             onPlay = onPlay,
             onOpen = { onOpenRecording(it.meetingId, null) },
             loadTranscript = { viewModel.transcriptOf(it) },
-            onPlayAt = { meetingId, ms -> onOpenRecording(meetingId, ms) }
+            onPlayAt = { meetingId, ms -> openMoment(meetingId, ms) }
         )
         block.type == NoteBlockType.TRANSCRIPT_EXCERPT -> ExcerptBlock(block) {
-            block.payload[NoteBlock.PAYLOAD_MEETING_ID]?.let { onOpenRecording(it, block.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()) }
+            block.payload[NoteBlock.PAYLOAD_MEETING_ID]?.let { openMoment(it, block.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()) }
         }
         block.type == NoteBlockType.NOTE_LINK -> NoteLinkBlock(linkedTitle ?: "Linked note") {
             block.payload[NoteBlock.PAYLOAD_NOTE_ID]?.let(onOpenNote)
@@ -1403,7 +1480,7 @@ private fun BlockContent(
                     userText = block.payload[NoteBlock.PAYLOAD_USER_TEXT],
                     userLabel = block.payload[NoteBlock.PAYLOAD_USER_LABEL],
                     onOpen = { onOpenScripture(block) },
-                    onPlay = if (meetingId != null && at != null) ({ onOpenRecording(meetingId, at) }) else null,
+                    onPlay = if (meetingId != null && at != null) ({ openMoment(meetingId, at) }) else null,
                     modifier = Modifier.padding(vertical = 5.dp)
                 )
             }
@@ -1411,7 +1488,8 @@ private fun BlockContent(
         block.type == NoteBlockType.MATH -> MathBlock(
             block = block,
             onEdit = { text -> viewModel.updateMathBlock(block.id, text) },
-            onCite = { meetingId, ms -> onOpenRecording(meetingId, ms) }
+            onCite = { meetingId, ms -> openMoment(meetingId, ms) },
+            onReportAi = { onReportAi(listOf(block)) }
         )
         block.type == NoteBlockType.CALLOUT -> CalloutBlock(
             block = block,
@@ -1425,7 +1503,8 @@ private fun BlockContent(
                 val title = payload[NoteBlock.PAYLOAD_CALLOUT_TITLE]
                 viewModel.updateCalloutBlock(block.id, kind, title, block.content.text)
             },
-            onCite = { meetingId, ms -> onOpenRecording(meetingId, ms) }
+            onCite = { meetingId, ms -> openMoment(meetingId, ms) },
+            onReportAi = { onReportAi(listOf(block)) }
         )
         block.type == NoteBlockType.DIAGRAM -> DiagramBlock(
             block = block,

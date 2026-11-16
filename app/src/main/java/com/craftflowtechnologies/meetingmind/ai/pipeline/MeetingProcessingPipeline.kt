@@ -977,10 +977,16 @@ class MeetingProcessingPipeline(
                 existingMeeting.noteId?.let { nid ->
                     noteRepo.getNote(nid)?.let { existingNote ->
                         val extraMeta = if (youtubeExtraction != null) {
+                            val yt = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource
                             mapOf(
-                                "youtubeUrl" to youtubeExtraction.parsedUrl.canonicalWatchUrl,
-                                "youtubeVideoId" to youtubeExtraction.parsedUrl.videoId
-                            ) + listOfNotNull(youtubeExtraction.channelOrSpeaker?.let { "youtubeChannel" to it }).toMap()
+                                yt.META_URL to youtubeExtraction.parsedUrl.canonicalWatchUrl,
+                                yt.META_VIDEO_ID to youtubeExtraction.parsedUrl.videoId,
+                                // When it was first imported; a re-run keeps the original date.
+                                yt.META_IMPORTED_AT to (existingNote.metadata[yt.META_IMPORTED_AT] ?: existingMeeting.createdAt.toString())
+                            ) + listOfNotNull(
+                                youtubeExtraction.channelOrSpeaker?.takeIf { it.isNotBlank() }?.let { yt.META_CHANNEL to it },
+                                youtubeExtraction.videoTitle.takeIf { it.isNotBlank() }?.let { yt.META_TITLE to it }
+                            ).toMap()
                         } else emptyMap()
                         if (existingNote.workflow != recordingType || extraMeta.isNotEmpty()) {
                             val targetNotebookId = if (existingNote.workflow != recordingType) {
@@ -997,6 +1003,8 @@ class MeetingProcessingPipeline(
                     }
                 }
                 noteRepo.syncFromRecording(meetingId)
+                // A YouTube note says where it came from, at the bottom.
+                if (youtubeExtraction != null) existingMeeting.noteId?.let { noteRepo.ensureYouTubeSource(it) }
             }
             runCatching {
                 val inboxDao = database.inboxDao()

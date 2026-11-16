@@ -128,7 +128,9 @@ object NotePreview {
     /** [raw] with Markdown symbols removed and whitespace collapsed to single spaces. */
     fun plain(raw: String): String {
         if (raw.isBlank()) return ""
-        var text = fence.replace(raw) { it.value.removeSurrounding("```").trim() }
+        // A line holding an AI reply still wrapped in JSON (saved before the fix) previews as its Markdown.
+        val unwrapped = if ('{' in raw) raw.lineSequence().joinToString("\n") { AiMarkdown.unwrapJson(it) ?: it } else raw
+        var text = fence.replace(unwrapped) { it.value.removeSurrounding("```").trim() }
         text = image.replace(text, "$1")
         text = link.replace(text, "$1")
         text = text.lineSequence().map { lineMarker.replace(it, "") }.joinToString(" ")

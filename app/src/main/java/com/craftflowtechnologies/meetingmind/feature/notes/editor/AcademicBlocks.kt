@@ -72,7 +72,11 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -1161,7 +1165,9 @@ internal fun MathBlock(
     block: NoteBlock,
     onEdit: (String) -> Unit,
     onUpdatePayload: ((Map<String, String>) -> Unit)? = null,
-    onCite: ((meetingId: String, startMs: Long) -> Unit)? = null
+    onCite: ((meetingId: String, startMs: Long) -> Unit)? = null,
+    /** Reports this AI-written equation (Play's AI-generated content policy). */
+    onReportAi: (() -> Unit)? = null
 ) {
     val clipboard = LocalClipboardManager.current
     var showComposer by remember { mutableStateOf(false) }
@@ -1190,6 +1196,9 @@ internal fun MathBlock(
                     color = accent
                 )
                 Spacer(Modifier.weight(1f))
+                if (onReportAi != null && com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.isAiSource(block.source)) {
+                    com.craftflowtechnologies.meetingmind.core.aireport.ReportAiButton(onClick = onReportAi)
+                }
                 if (meetingId != null && startMs != null && onCite != null) {
                     CitationJumpChip(startMs = startMs) { onCite(meetingId, startMs) }
                     Spacer(Modifier.width(6.dp))
@@ -1402,7 +1411,9 @@ internal fun CalloutBlock(
     block: NoteBlock,
     onText: (String) -> Unit,
     onUpdatePayload: (Map<String, String>) -> Unit,
-    onCite: ((meetingId: String, startMs: Long) -> Unit)? = null
+    onCite: ((meetingId: String, startMs: Long) -> Unit)? = null,
+    /** Reports this AI-written callout (Play's AI-generated content policy). */
+    onReportAi: (() -> Unit)? = null
 ) {
     val kind = CalloutKind.fromKey(block.payload[NoteBlock.PAYLOAD_CALLOUT_KIND])
     val accent = kind.accentColor()
@@ -1465,6 +1476,9 @@ internal fun CalloutBlock(
                     }
                 }
                 Spacer(Modifier.weight(1f))
+                if (onReportAi != null && com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.isAiSource(block.source)) {
+                    com.craftflowtechnologies.meetingmind.core.aireport.ReportAiButton(onClick = onReportAi)
+                }
                 if (meetingId != null && startMs != null && onCite != null) {
                     CitationJumpChip(startMs = startMs) { onCite(meetingId, startMs) }
                 }
@@ -1493,7 +1507,8 @@ internal fun CalloutBlock(
                 val lines = bodyValue.lines()
                 val promptLine = lines.firstOrNull()?.takeIf { lines.size > 1 }
                 if (!promptLine.isNullOrBlank()) {
-                    Text(promptLine, fontSize = 14.5.sp, lineHeight = 21.sp, color = Ink, modifier = Modifier.padding(bottom = 8.dp))
+                    val shownPrompt = remember(promptLine) { InlineMath.transform(AnnotatedString(promptLine)).text }
+                    Text(shownPrompt, fontSize = 14.5.sp, lineHeight = 21.sp, color = Ink, modifier = Modifier.padding(bottom = 8.dp))
                 }
                 Surface(
                     onClick = { solutionRevealed = true },
@@ -1526,6 +1541,11 @@ internal fun CalloutBlock(
                             color = InkFaint
                         )
                     }
+                    // Maths in the body shows as maths until the body is being edited, then as its LaTeX.
+                    var bodyFocused by remember(block.id) { mutableStateOf(false) }
+                    val bodyHasMath = remember(bodyValue) { InlineMath.hasMath(bodyValue) }
+                    val bodyAi = block.source != BlockSource.USER
+                    val bodySpoken = if (bodyHasMath && !bodyFocused) remember(bodyValue) { InlineMath.spoken(bodyValue) } else null
                     BasicTextField(
                         value = bodyValue,
                         onValueChange = { next ->
@@ -1534,7 +1554,12 @@ internal fun CalloutBlock(
                         },
                         textStyle = TextStyle(fontSize = 14.5.sp, lineHeight = 22.sp, color = Ink),
                         cursorBrush = SolidColor(accent),
-                        modifier = Modifier.fillMaxWidth()
+                        visualTransformation = if (bodyFocused || (!bodyHasMath && !bodyAi)) VisualTransformation.None
+                        else VisualTransformation { InlineMath.transform(it, maths = bodyHasMath, hideMarkers = bodyAi) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { bodyFocused = it.isFocused }
+                            .then(if (bodySpoken != null) Modifier.semantics { contentDescription = bodySpoken } else Modifier)
                     )
                 }
                 if (kind == CalloutKind.WORKED_EXAMPLE && bodyValue.isNotBlank()) {

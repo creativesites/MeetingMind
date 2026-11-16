@@ -261,7 +261,7 @@ class PostSessionAutopilotEngine(
                 - key_outcomes: up to 5 core definitions, mechanisms, formulas, or likely exam traps mentioned
                 - action_items: concrete study drills or weak-area reviews to complete next
                 - deliverable_title: Active Recall Drill Sheet title
-                - deliverable_markdown: 4 concise Q&A active-recall prompts with worked answers in clean Markdown
+                - deliverable_markdown: 4 concise Q&A active-recall prompts with worked answers in clean Markdown (${com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.MATH_AND_CHEMISTRY_RULE})
                 - note_title: concise Study Drill Pack note title
             """.trimIndent()
 

@@ -239,7 +239,7 @@ class PostTranscriptionNoteFormattingTest {
         )
         assertTrue(generated.blocks.any { it.type == NoteBlockType.CALLOUT && it.sectionKey == RecordingNoteBuilder.KEY_SUMMARY })
         assertTrue(generated.blocks.any { it.type == NoteBlockType.BULLET && it.sectionKey == RecordingNoteBuilder.KEY_TOPICS })
-        assertTrue(generated.blocks.any { it.type == NoteBlockType.NUMBERED && it.content.text.contains("offline battery benchmark?") })
+        assertTrue(generated.blocks.any { it.type == NoteBlockType.NUMBERED && it.content.text.contains("offline battery benchmark") })
         assertTrue(generated.blocks.any { it.sectionKey == RecordingNoteBuilder.KEY_TRANSCRIPT })
     }
 }

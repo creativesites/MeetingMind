@@ -40,6 +40,8 @@ object NoteText {
                 (listOf(row(t.header), "| " + List(width) { "---" }.joinToString(" | ") + " |") + t.rows.map(::row)).joinToString("\n")
             }
             NoteBlockType.MARKDOWN -> b.content.text.trim().takeIf { it.isNotEmpty() }
+            // An equation keeps its LaTeX, so it reads back as an equation block.
+            NoteBlockType.MATH -> b.content.text.trim().takeIf { it.isNotEmpty() }?.let { "$$\n$it\n$$" }
             NoteBlockType.EMBED -> {
                 val url = b.payload[NoteBlock.PAYLOAD_URL] ?: return null
                 val alt = b.payload[NoteBlock.PAYLOAD_ALT].orEmpty()

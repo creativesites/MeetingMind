@@ -49,7 +49,9 @@ data class RecordingCard(
     val durationMs: Long,
     val status: String,
     val summary: String?,
-    val audioPath: String?
+    val audioPath: String?,
+    /** Set when the recording is a YouTube video: it plays on YouTube, not from a file. */
+    val youtube: com.craftflowtechnologies.meetingmind.core.youtube.ParsedYouTubeUrl? = null
 )
 
 /** One transcript segment offered by the "Quote from a recording" picker. */
@@ -143,7 +145,8 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     private val recordingCards = database.noteDao().observeMeetingsForNote(noteId)
         .map { list ->
             list.associate {
-                it.id to RecordingCard(it.id, it.title, it.durationMs, it.status, it.summaryText, it.audioFilePath)
+                it.id to RecordingCard(it.id, it.title, it.durationMs, it.status, it.summaryText, it.audioFilePath,
+                    youtube = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.parse(it.audioFilePath))
             }
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -215,11 +218,14 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     init {
         viewModelScope.launch {
+            // A note made from a YouTube video carries its source line at the bottom (older ones get it now).
+            runCatching { notes.ensureYouTubeSource(noteId) }
             val doc = notes.getDocument(noteId)
             if (doc == null) { _gone.value = true; return@launch }
             _note.value = doc.note
             var lastObservedUpdatedAt = doc.note.updatedAt
-            _blocks.value = BlockEditing.ensureTrailingParagraph(doc.blocks.sortedBy { it.position }, noteId)
+            // AI paragraphs saved with the model's JSON wrapper read as the Markdown inside (no migration).
+            _blocks.value = BlockEditing.ensureTrailingParagraph(com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(doc.blocks.sortedBy { it.position }), noteId)
             opened = com.craftflowtechnologies.meetingmind.core.notes.NoteSnapshot(doc.note.title, doc.blocks.sortedBy { it.position })
             _loaded.value = true
             // Keep note-level fields (title from a recording, status) current, and reload
@@ -237,7 +243,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                     if (fresh.updatedAt > lastObservedUpdatedAt && _saved.value && (!sessionStarted || !hasGeneratedContent)) {
                         lastObservedUpdatedAt = fresh.updatedAt
                         notes.getDocument(noteId)?.let { refreshed ->
-                            val sorted = BlockEditing.ensureTrailingParagraph(refreshed.blocks.sortedBy { it.position }, noteId)
+                            val sorted = BlockEditing.ensureTrailingParagraph(com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(refreshed.blocks.sortedBy { it.position }), noteId)
                             _blocks.value = sorted
                             opened = com.craftflowtechnologies.meetingmind.core.notes.NoteSnapshot(refreshed.note.title, sorted)
                         }
@@ -408,6 +414,23 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     private val _aiEdit = MutableStateFlow<AiEdit?>(null)
     val aiEdit: StateFlow<AiEdit?> = _aiEdit.asStateFlow()
+
+    // ---------------------------------------------------------- [n] citations: play the moment in place
+
+    /** The cited moment open in the citation sheet, with the block that cites it. */
+    private val _citation = MutableStateFlow<Pair<NoteBlock, com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.Cite>?>(null)
+    val citation: StateFlow<Pair<NoteBlock, com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.Cite>?> = _citation.asStateFlow()
+
+    fun openCitation(block: NoteBlock, cite: com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.Cite) { _citation.value = block to cite }
+    fun closeCitation() { _citation.value = null }
+
+    /** The recording behind a meeting id, if its audio file is on this phone. */
+    suspend fun citationAudioFor(meetingId: String): com.craftflowtechnologies.meetingmind.feature.learning.components.CitationAudio? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val m = runCatching { database.meetingDao().getMeetingById(meetingId) }.getOrNull() ?: return@withContext null
+            val path = m.audioFilePath?.takeIf { java.io.File(it).exists() } ?: return@withContext null
+            com.craftflowtechnologies.meetingmind.feature.learning.components.CitationAudio(recordingId = m.id, title = m.title.ifBlank { "Recording" }, filePath = path)
+        }
     private val _pendingDiffs = MutableStateFlow<List<PendingBlockDiff>>(emptyList())
     val pendingDiffs: StateFlow<List<PendingBlockDiff>> = _pendingDiffs.asStateFlow()
     private var aiEditJob: kotlinx.coroutines.Job? = null
@@ -1008,6 +1031,17 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.MANUAL, "Before combining")
         update(combined)
         _message.value = "${blocks.size} blocks → ${combined.size} · Undo puts them back"
+    }
+
+    /** Hides AI blocks the person reported (a line, or a whole AI section), or shows them again. */
+    fun setHiddenAfterReport(blockIds: Collection<String>, hidden: Boolean) {
+        val ids = blockIds.toSet()
+        if (ids.isEmpty()) return
+        val key = com.craftflowtechnologies.meetingmind.core.aireport.AiReport.PAYLOAD_HIDDEN_AFTER_REPORT
+        val next = _blocks.value.map { b ->
+            if (b.id !in ids) b else b.copy(payload = if (hidden) b.payload + (key to "true") else b.payload - key)
+        }
+        update(next, recordUndo = false)
     }
 
     /** Folds a heading's section away, or a long block down to its first lines; again to unfold. */

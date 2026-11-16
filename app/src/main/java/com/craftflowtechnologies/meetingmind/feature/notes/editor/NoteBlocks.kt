@@ -75,6 +75,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
@@ -149,7 +151,11 @@ private class RichTransformation(
     private val content: RichText,
     private val struck: Boolean,
     /** Theme colours, read in composition and handed in: this runs outside it. */
-    private val colors: com.craftflowtechnologies.meetingmind.ui.theme.MMColors
+    private val colors: com.craftflowtechnologies.meetingmind.ui.theme.MMColors,
+    /** Draw `$…$` and `\ce{…}` as maths (while the block isn't being edited). */
+    private val maths: Boolean = false,
+    /** Hide `[n]` markers whose source isn't known (AI text, while not being edited). */
+    private val hideMarkers: Boolean = false
 ) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val builder = AnnotatedString.Builder(text.text)
@@ -173,6 +179,7 @@ private class RichTransformation(
             add(style, span.start, span.end)
         }
         if (struck) add(SpanStyle(textDecoration = TextDecoration.LineThrough, color = colors.inkMuted), 0, content.text.length)
+        if (maths || hideMarkers) return InlineMath.transform(builder.toAnnotatedString(), maths, hideMarkers)
         return TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
     }
 }
@@ -212,6 +219,12 @@ internal fun RichBlockField(
     }
 
     val style = blockTextStyle(block.type, serif)
+    // While the block isn't being edited, its maths shows as maths and AI markers with no source
+    // are hidden; editing shows the source (the LaTeX), which is also what copying gives back.
+    var focused by remember(block.id) { mutableStateOf(false) }
+    val hasMath = remember(block.content.text) { InlineMath.hasMath(block.content.text) }
+    val hideMarkers = block.source != BlockSource.USER && com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.hidden(block.content.text).isNotEmpty()
+    val spoken = if (hasMath && !focused) remember(block.content.text) { InlineMath.spoken(block.content.text) } else null
     Box(modifier = modifier) {
         if (block.content.isEmpty && placeholder != null) {
             Text(placeholder, style = style.copy(color = InkFaint, fontStyle = FontStyle.Normal))
@@ -243,15 +256,20 @@ internal fun RichBlockField(
             },
             textStyle = style,
             cursorBrush = SolidColor(Accent),
-            visualTransformation = RichTransformation(block.content, block.type == NoteBlockType.CHECKLIST && block.checked, com.craftflowtechnologies.meetingmind.ui.theme.LocalMMColors.current),
+            visualTransformation = RichTransformation(
+                block.content, block.type == NoteBlockType.CHECKLIST && block.checked, com.craftflowtechnologies.meetingmind.ui.theme.LocalMMColors.current,
+                maths = hasMath && !focused, hideMarkers = hideMarkers && !focused
+            ),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(requester)
                 .onFocusChanged { state ->
+                    focused = state.isFocused
                     if (state.isFocused) onSelection(value.selection.start - 1, value.selection.end - 1)
                     else onFocusLost()
                 }
+                .then(if (spoken != null) Modifier.semantics { contentDescription = spoken } else Modifier)
         )
     }
 }
@@ -278,7 +296,17 @@ internal fun TextBlock(
     onFocusLost: () -> Unit,
     onToggleChecked: () -> Unit,
     /** Opens the recording at the moment this line came from — its evidence. */
-    onCite: ((meetingId: String, startMs: Long) -> Unit)? = null
+    onCite: ((meetingId: String, startMs: Long) -> Unit)? = null,
+    /** Plays one of the moments this AI line cites (its `[n]` sources). */
+    onCitation: ((NoteBlock, com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.Cite) -> Unit)? = null,
+    /** Reports this AI-written line (Play's AI-generated content policy). */
+    onReportAi: (() -> Unit)? = null,
+    /**
+     * Whether this block starts a run of AI blocks from one section: only that one says "Written by
+     * AI" (with its report flag), so a long AI section isn't captioned under every line. The rest
+     * still show their cited moments, and each can be reported from its block menu.
+     */
+    showSourceLabel: Boolean = true
 ) {
     val topPad = blockTopPadding(block.type)
     Row(
@@ -317,14 +345,20 @@ internal fun TextBlock(
                 onBackspaceAtStart = onBackspaceAtStart,
                 onFocusLost = onFocusLost
             )
-            if (block.source != BlockSource.USER) SourceTag(block, onCite)
+            if (block.source != BlockSource.USER) SourceTag(block, onCite, onCitation, onReportAi, showSourceLabel)
         }
     }
 }
 
 /** A quiet line under words the user didn't write, so it's always clear whose they are. */
 @Composable
-private fun SourceTag(block: NoteBlock, onCite: ((String, Long) -> Unit)? = null) {
+private fun SourceTag(
+    block: NoteBlock,
+    onCite: ((String, Long) -> Unit)? = null,
+    onCitation: ((NoteBlock, com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.Cite) -> Unit)? = null,
+    onReportAi: (() -> Unit)? = null,
+    showLabel: Boolean = true
+) {
     val label = when (block.source) {
         BlockSource.AI -> if (block.isUserEdited) "AI · edited by you" else "Written by AI from the recording"
         BlockSource.ENRICHED -> if (block.isUserEdited) "Expanded study context · edited by you" else "Expanded study context"
@@ -335,15 +369,58 @@ private fun SourceTag(block: NoteBlock, onCite: ((String, Long) -> Unit)? = null
     }
     val meeting = block.payload[NoteBlock.PAYLOAD_MEETING_ID]
     val at = block.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()
-    Row(Modifier.padding(top = 1.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+    val cites = remember(block.payload[com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.PAYLOAD]) {
+        com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.of(block)
+    }
+    if (!showLabel) {
+        // Inside an AI section: no caption, only this line's own sources, if it cites any.
+        if (meeting != null && cites.isNotEmpty() && onCitation != null) {
+            Row(Modifier.padding(bottom = 2.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                cites.forEach { cite -> CiteChip(cite) { onCitation(block, cite) } }
+            }
+        }
+        return
+    }
+    Row(Modifier.padding(top = 1.dp, bottom = 2.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 11.sp, color = InkMuted)
-        // The evidence: where in the recording this came from, one tap to hear it.
-        if (meeting != null && at != null && onCite != null) {
+        if (meeting != null && cites.isNotEmpty() && onCitation != null) {
+            // The [n] sources the AI cited, each a chip that plays that moment.
+            cites.forEach { cite -> CiteChip(cite) { onCitation(block, cite) } }
+        } else if (meeting != null && at != null && onCite != null) {
+            // The evidence: where in the recording this came from, one tap to hear it.
             Text(
                 "  [${com.craftflowtechnologies.meetingmind.core.common.Formatters.formatDurationHms(at)}]",
                 fontSize = 11.sp, color = Accent, fontWeight = FontWeight.SemiBold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                 modifier = Modifier.clickable { onCite(meeting, at) }.padding(horizontal = 2.dp)
             )
+        }
+        // AI-written words can be reported (Play's AI-generated content policy).
+        if (onReportAi != null && com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.isAiSource(block.source)) {
+            com.craftflowtechnologies.meetingmind.core.aireport.ReportAiButton(onClick = onReportAi)
+        }
+    }
+}
+
+/** One cited moment under an AI line: "▶ 12:04". The touch target is taller than the chip. */
+@Composable
+private fun CiteChip(cite: com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.Cite, onClick: () -> Unit) {
+    val stamp = Formatters.formatDurationHms(cite.startMs)
+    Box(
+        Modifier
+            .padding(start = 6.dp)
+            .heightIn(min = 32.dp)
+            .clip(RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "Source at $stamp. Plays that moment" },
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).background(AccentWash).padding(horizontal = 7.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Accent, modifier = Modifier.size(11.dp))
+            Spacer(Modifier.width(2.dp))
+            Text(stamp, fontSize = 11.sp, color = Accent, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
         }
     }
 }
@@ -541,19 +618,23 @@ internal fun RecordingBlock(
             Text("This recording has been deleted.", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(16.dp))
             return@Surface
         }
+        val context = androidx.compose.ui.platform.LocalContext.current
+        // A YouTube import has no audio file: it plays on YouTube, in its app or the browser.
+        val video = card.youtube
+        val playable = video != null || card.audioPath != null
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    onClick = { onPlay(card) },
-                    enabled = card.audioPath != null,
+                    onClick = { if (video != null) com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource.open(context, video) else onPlay(card) },
+                    enabled = playable,
                     shape = CircleShape,
-                    color = if (card.audioPath != null) Accent else SurfaceSunk,
+                    color = if (playable) Accent else SurfaceSunk,
                     modifier = Modifier.size(44.dp)
                 ) {
                     Icon(
                         Icons.Filled.PlayArrow,
-                        contentDescription = "Play recording",
-                        tint = if (card.audioPath != null) OnInk else InkMuted,
+                        contentDescription = if (video != null) "Play on YouTube" else "Play recording",
+                        tint = if (playable) OnInk else InkMuted,
                         modifier = Modifier.padding(10.dp)
                     )
                 }
@@ -596,6 +677,22 @@ internal fun RecordingBlock(
                     }
                 }
                 IconButtonSmall(Icons.AutoMirrored.Filled.OpenInNew, "Open full recording") { onOpen(card) }
+            }
+            if (video != null) {
+                Surface(
+                    onClick = { com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource.open(context, video) },
+                    shape = RoundedCornerShape(50),
+                    color = AccentWash,
+                    modifier = Modifier.padding(top = 10.dp).heightIn(min = 36.dp)
+                ) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Play on YouTube", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Accent, modifier = Modifier.size(13.dp))
+                    }
+                }
             }
 
             card.summary?.takeIf { it.isNotBlank() }?.let { summary ->

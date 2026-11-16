@@ -405,7 +405,9 @@ class NoteRepository(
         val fresh = generated.filter { it.sectionKey !in editedKeys }
         val insertAt = kept.indexOfLast { it.type == NoteBlockType.RECORDING }.let { if (it < 0) 0 else it + 1 }
         val (freshAtEnd, freshAfterRecording) = fresh.partition { it.sectionKey in endKeys }
-        val merged = kept.toMutableList().apply { addAll(insertAt, freshAfterRecording); addAll(freshAtEnd) }
+        val assembled = kept.toMutableList().apply { addAll(insertAt, freshAfterRecording); addAll(freshAtEnd) }
+        // A YouTube note's source line stays the last block, below the transcript, after every run.
+        val merged = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource.ensure(assembled, noteId, youTubeSourceInfo(noteId)) { newId("block") }
         val keptRefIds = kept.mapNotNull { it.payload[NoteBlock.PAYLOAD_SCRIPTURE_REF_ID] }.toSet()
         val freshBlockIds = fresh.map { it.id }.toSet()
         database.withTransaction {
@@ -418,6 +420,25 @@ class NoteRepository(
             noteDao.replaceBlocks(noteId, merged.mapIndexed { i, b -> b.copy(position = i).toEntity(now) })
             noteDao.touch(noteId, now, plainTextWithRecordings(noteId, merged))
         }
+    }
+
+    /**
+     * Puts the "Source: …" line at the bottom of a note made from a YouTube video (adding it to a
+     * note made before there was one). Does nothing for other notes, or when it is already there.
+     */
+    suspend fun ensureYouTubeSource(noteId: String) = withContext(Dispatchers.IO) {
+        val info = youTubeSourceInfo(noteId) ?: return@withContext
+        val blocks = noteDao.getBlocks(noteId).map { it.toDomain() }.sortedBy { it.position }
+        val ensured = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource.ensure(blocks, noteId, info) { newId("block") }
+        if (ensured !== blocks) saveBlocks(noteId, ensured)
+    }
+
+    /** What a YouTube note's source line says, or null for a note not made from a video. */
+    private suspend fun youTubeSourceInfo(noteId: String): com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource.Info? {
+        val note = noteDao.getById(noteId)?.toDomain() ?: return null
+        val video = noteDao.getMeetingsForNote(noteId)
+            .firstOrNull { com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.parse(it.audioFilePath) != null }
+        return com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource.infoFor(note.metadata, video?.audioFilePath, video?.title, video?.createdAt ?: note.createdAt)
     }
 
     private suspend fun plainTextWithRecordings(noteId: String, blocks: List<NoteBlock>): String {

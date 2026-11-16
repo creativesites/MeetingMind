@@ -12,6 +12,7 @@ import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
 import com.craftflowtechnologies.meetingmind.core.model.Workflows
 import com.craftflowtechnologies.meetingmind.core.notes.MarkdownImport
+import com.craftflowtechnologies.meetingmind.core.notes.NoteCitations
 import com.craftflowtechnologies.meetingmind.core.work.Mark
 import java.util.Locale
 
@@ -43,26 +44,33 @@ class NotePolishEngine(
             is AiResult.Success -> res.value
             else -> return AiResult.Failed("Note polish could not run.")
         }
+        // A reply wrapped in a JSON object (any key) is unwrapped by MarkdownImport.parse for AI text.
         val cleaned = stripOuterFence(raw).trim()
         if (cleaned.isBlank()) return AiResult.Failed("Note polish returned empty output.")
 
+        val numbered = numberedTranscript(segments)
         val parsed = MarkdownImport.parse(cleaned, noteId, BlockSource.AI)
             .filterNot { it.type == NoteBlockType.PARAGRAPH && it.content.text.isBlank() }
         if (parsed.isEmpty()) return AiResult.Failed("Note polish produced no usable blocks.")
 
-        val withMeta = parsed.map { block ->
-            val matchedSeg = if (block.type != NoteBlockType.DIVIDER && block.type != NoteBlockType.HEADING_1 && block.type != NoteBlockType.HEADING_2) {
+        val withMeta = parsed.map { piece ->
+            // [n] markers come out of the words and become the block's cited moments.
+            val (content, cites) = if (piece.type.isText) NoteCitations.resolve(piece.content, numbered) else piece.content to emptyList<NoteCitations.Cite>()
+            val block = piece.copy(content = content)
+            val cited = cites.firstOrNull()?.segmentId?.let { id -> segments.firstOrNull { it.id == id } }
+            val matchedSeg = cited ?: if (block.type != NoteBlockType.DIVIDER && block.type != NoteBlockType.HEADING_1 && block.type != NoteBlockType.HEADING_2) {
                 findBestSegment(block.content.text, segments)
             } else null
             val payload = buildMap {
                 putAll(block.payload)
                 put(NoteBlock.PAYLOAD_MEETING_ID, meetingId)
                 matchedSeg?.let { put(NoteBlock.PAYLOAD_START_MS, it.startMs.toString()) }
+                if (cites.isNotEmpty()) put(NoteCitations.PAYLOAD, NoteCitations.encode(cites))
             }
             block.copy(
                 sectionKey = KEY_POLISHED,
                 payload = payload,
-                sourceSegmentIds = listOfNotNull(matchedSeg?.id)
+                sourceSegmentIds = (cites.mapNotNull { it.segmentId } + listOfNotNull(matchedSeg?.id)).distinct()
             )
         }
         return AiResult.Success(withMeta)
@@ -106,9 +114,12 @@ class NotePolishEngine(
         appendLine()
         appendLine("Task: Transform this ${recordingType.displayName.lowercase()} transcript into a clean, well-structured, polished note.")
         appendLine("Formatting rules:")
-        appendLine("- Output clean Markdown only (no intro or outro commentary).")
+        appendLine("- Output clean Markdown only (no intro or outro commentary). Write the Markdown itself: never wrap it in JSON, quotes or a code fence.")
         appendLine("- Use `##` for major sections and `###` for sub-topics.")
         appendLine("- Use `**bold**` for key terms, names, or emphasis; `- ` for bullet lists; `1. ` for ordered steps/points; `> ` for memorable verbatim quotes or key takeaways.")
+        appendLine("- ${com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.MATH_AND_CHEMISTRY_RULE}")
+        appendLine("- Do not tag sentences with speaker names or labels such as [Speaker 2]; name a speaker only where who said it matters.")
+        appendLine("- Cite your sources: after a point taken from the transcript, add the number of the transcript line it came from in square brackets, for example [3] or [3, 4]. Use only line numbers shown below.")
         appendLine(workflowGuidance(recordingType))
         val authored = userNotes.filter {
             it.source == BlockSource.USER &&
@@ -160,16 +171,34 @@ class NotePolishEngine(
             "- Organize into `## Key Bytes (Quick Read)`, a brief Overview, Key Points (`- `), and Next Steps (`- [ ]`) if any were mentioned."
     }
 
+    /** The transcript as the model sees it: numbered lines, as many as fit, so `[n]` cites a real moment. */
     private fun renderBoundedTranscript(segments: List<TranscriptSegment>): String {
+        val named = manySpeakers(segments)
+        return numberedTranscript(segments).entries.joinToString("") { (n, seg) -> lineFor(n, seg, named) }
+    }
+
+    /** Speaker names only help when more than one person speaks; one preacher's name on every line invites tags. */
+    private fun manySpeakers(segments: List<TranscriptSegment>): Boolean =
+        segments.mapNotNull { it.speakerName?.takeIf { n -> n.isNotBlank() } }.distinct().size > 1
+
+    /** Line number (from 1) → segment, for the lines that fit in the model's context. */
+    internal fun numberedTranscript(segments: List<TranscriptSegment>): Map<Int, TranscriptSegment> {
         val budgetChars = ((contextTokens - MAX_OUTPUT_TOKENS - PROMPT_OVERHEAD_TOKENS).coerceAtLeast(800)) * CHARS_PER_TOKEN
-        val sb = StringBuilder()
-        for (seg in segments) {
-            val speaker = seg.speakerName?.takeIf { it.isNotBlank() }?.let { "$it: " }.orEmpty()
-            val line = "$speaker${seg.cleanedText ?: seg.text}\n"
-            if (sb.length + line.length > budgetChars) break
-            sb.append(line)
+        val out = LinkedHashMap<Int, TranscriptSegment>()
+        var used = 0
+        val named = manySpeakers(segments)
+        for ((i, seg) in segments.withIndex()) {
+            val line = lineFor(i + 1, seg, named)
+            if (used + line.length > budgetChars) break
+            used += line.length
+            out[i + 1] = seg
         }
-        return sb.toString()
+        return out
+    }
+
+    private fun lineFor(n: Int, seg: TranscriptSegment, named: Boolean): String {
+        val speaker = if (!named) "" else seg.speakerName?.takeIf { it.isNotBlank() }?.let { "$it: " }.orEmpty()
+        return "[$n] $speaker${seg.cleanedText ?: seg.text}\n"
     }
 
     private fun stripOuterFence(raw: String): String {
