@@ -786,17 +786,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 )
             }
 
-            // Faith keeps the app bar, so the other spaces, Notes and New are one tap away inside it.
-            androidx.compose.material3.Scaffold(
-                contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-                bottomBar = {
-                    com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
-                        current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH,
-                        onNavigate = { if (it != com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH) navigateToPrimary(it) }
-                    )
-                }
-            ) { faithBar ->
-            Box(Modifier.padding(bottom = faithBar.calculateBottomPadding())) {
             if (assistantOpen) {
                 com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(
                     session = lib.forLearningNote(noteId),
@@ -810,6 +799,17 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         // FAITH — one view model shared by the space and its two sub-pages, all behind the optional lock.
         composable(Routes.FAITH) {
             val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            // Faith keeps the app bar, so the other spaces, Notes and New are one tap away inside it.
+            androidx.compose.material3.Scaffold(
+                contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+                bottomBar = {
+                    com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
+                        current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH,
+                        onNavigate = { if (it != com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH) navigateToPrimary(it) }
+                    )
+                }
+            ) { faithBar ->
+            Box(Modifier.padding(bottom = faithBar.calculateBottomPadding())) {
             com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
                 com.craftflowtechnologies.meetingmind.feature.faith.FaithScreen(
                     viewModel = vm,
@@ -818,8 +818,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onRecordSermon = { navController.navigate(Routes.recordTypeRoute(RecordingType.SERMON)) },
                     onOpenJourney = { navController.navigate(Routes.FAITH_JOURNEY) },
                     onOpenScripture = { navController.navigate(Routes.FAITH_SCRIPTURE) },
-            }
-            }
                     onOpenBible = { navController.navigate(Routes.BIBLE_HOME) },
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
                     onGuideToday = { r -> navController.navigate(Routes.bibleSessionRoute(r.passageId(), "today")) },
@@ -832,6 +830,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onOpenFellowship = { navController.navigate(Routes.FELLOWSHIP) },
                     onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) }
                 )
+            }
+            }
             }
         }
         composable(Routes.TESTIMONIES) {
@@ -1221,17 +1221,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             if (path != null) {
                 com.craftflowtechnologies.meetingmind.feature.work.DocumentViewerScreen(
                     itemId = itemId,
-            val presetType = entry.arguments?.getString("type")?.let { t ->
-                runCatching { com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(t) }.getOrNull()
-            }
                     title = item?.title ?: "Document",
                     filePath = path,
                     onBack = { navController.popBackStack() },
-                    // Loading the link resets the kind, so the sheet's choice is applied once it has loaded.
-                    if (presetType != null) {
-                        vm.importState.first { it.youtubeUrl != null || it.error != null }
-                        vm.selectRecordingType(presetType)
-                    }
                     initialPage = entry.arguments?.getInt("page") ?: 1
                 )
             }
@@ -1242,9 +1234,17 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         )) { entry ->
             val vm: ImportViewModel = viewModel()
             val path = URLDecoder.decode(entry.arguments?.getString("path").orEmpty(), "UTF-8")
+            val presetType = entry.arguments?.getString("type")?.let { t ->
+                runCatching { com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(t) }.getOrNull()
+            }
             LaunchedEffect(path) {
                 if (com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(path)) {
                     vm.handleYouTubeUrl(path)
+                    // Loading the link resets the kind, so the sheet's choice is applied once it has loaded.
+                    if (presetType != null) {
+                        vm.importState.first { it.youtubeUrl != null || it.error != null }
+                        vm.selectRecordingType(presetType)
+                    }
                 } else {
                     vm.handleSelectedUri(android.net.Uri.fromFile(java.io.File(path)))
                 }
@@ -1639,13 +1639,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     if (showCreateSheet) {
         com.craftflowtechnologies.meetingmind.core.ui.CreateSheet(
             onPick = { action ->
-                    com.craftflowtechnologies.meetingmind.core.ui.CreateAction.YOUTUBE -> youTubeSheet.controller.open()
                 showCreateSheet = false
                 when (action) {
                     com.craftflowtechnologies.meetingmind.core.ui.CreateAction.RECORD -> navController.navigate(Routes.RECORDING)
                     com.craftflowtechnologies.meetingmind.core.ui.CreateAction.NOTE -> openNewNote(false)
                     com.craftflowtechnologies.meetingmind.core.ui.CreateAction.MEDIA -> openNewNote(true)
                     com.craftflowtechnologies.meetingmind.core.ui.CreateAction.IMPORT -> navController.navigate(Routes.IMPORT)
+                    com.craftflowtechnologies.meetingmind.core.ui.CreateAction.YOUTUBE -> youTubeSheet.controller.open()
                 }
             },
             onDismiss = { showCreateSheet = false }
@@ -1704,6 +1704,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         onOpen = { id ->
             recoveryScope.launch {
                 navController.navigate(resolveProcessedTargetRoute(id))
+            }
+        },
+        onShowAll = { navController.navigate(Routes.NOTES) { popUpTo(Routes.HOME) { saveState = true }; launchSingleTop = true; restoreState = true } },
+        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (currentRoute in routesWithNav) 72.dp else 0.dp)
+    )
+
     com.craftflowtechnologies.meetingmind.core.navigation.AppMenuHost(
         state = appMenu,
         navigate = { route -> navController.navigate(route) { launchSingleTop = true } },
@@ -1713,12 +1719,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     com.craftflowtechnologies.meetingmind.feature.importing.YouTubeSheetHost(
         state = youTubeSheet,
         navigate = { route -> navController.navigate(route) { launchSingleTop = true } }
-    )
-
-            }
-        },
-        onShowAll = { navController.navigate(Routes.NOTES) { popUpTo(Routes.HOME) { saveState = true }; launchSingleTop = true; restoreState = true } },
-        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (currentRoute in routesWithNav) 72.dp else 0.dp)
     )
 
     recoveryEntry?.let { entry ->
