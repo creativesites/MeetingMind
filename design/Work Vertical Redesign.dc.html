@@ -11,7 +11,7 @@
      Every phone frame is live: tap through it. "Reset" under a frame restores its first screen. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&display=swap" rel="stylesheet">
 <style>
 /* ───────────── Canvas chrome (matches the other design canvases) ───────────── */
 *{box-sizing:border-box}
@@ -330,6 +330,150 @@ a{color:#5B5BD6}
 .dark .mark{background:var(--raised);box-shadow:none}
 .spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--wash2);border-top-color:var(--accent);animation:rot .9s linear infinite;flex:none}
 @keyframes rot{to{transform:rotate(360deg)}}
+
+/* ═════════ v2 premium layer ═════════ */
+.mm{--p-acme:#5B5BD6;--p-kal:#0E7490;--p-zen:#52525B;--p-adm:#B7791F;--p-home:#15803D;--p-learn:#BE185D;
+  --heroGrad:linear-gradient(160deg,#EEF0FF 0%,#F6F4FF 46%,#FAFAF9 100%);--inkHero:#1E1B4B;--glow:0 1px 0 rgba(255,255,255,.7) inset,0 10px 30px -12px rgba(67,56,202,.28)}
+.mm.dark{--p-acme:#9B9CF6;--p-kal:#5CC8DD;--p-zen:#9CA3AF;--p-adm:#E0B25A;--p-home:#5FD08A;--p-learn:#F27AAE;
+  --heroGrad:linear-gradient(160deg,#1B1F45 0%,#141B33 48%,#0C111B 100%);--inkHero:#EEF0FF;--glow:0 1px 0 rgba(255,255,255,.05) inset,0 16px 40px -16px rgba(0,0,0,.7)}
+.serif{font-family:Literata,Georgia,serif}
+.numx{font:600 44px/44px Outfit,Inter,sans-serif;letter-spacing:-1.5px;font-variant-numeric:tabular-nums}
+.heroX{background:var(--heroGrad);border-radius:22px;box-shadow:var(--glow);position:relative;overflow:hidden}
+.heroX:after{content:"";position:absolute;right:-60px;top:-70px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,var(--wash2) 0%,transparent 70%);pointer-events:none}
+.mastX{background:var(--heroGrad);padding:6px 0 18px;border-radius:0 0 26px 26px}
+.glass{background:color-mix(in srgb,var(--surface) 78%,transparent);backdrop-filter:blur(14px)}
+.pbar{width:3px;border-radius:2px;align-self:stretch;flex:none}
+/* Day ribbon */
+.ribbon{position:relative;height:74px;margin:0 16px}
+.ribbon .axis{position:absolute;left:0;right:0;top:30px;height:2px;border-radius:1px;background:var(--track)}
+.ribbon .blk{position:absolute;top:14px;height:34px;border-radius:9px;padding:4px 7px;font:600 10.5px/13px Inter,sans-serif;color:#fff;overflow:hidden;white-space:nowrap;cursor:pointer;box-shadow:0 4px 10px -4px rgba(0,0,0,.25)}
+.ribbon .blk small{display:block;font-weight:500;opacity:.85}
+.ribbon .blk.past{opacity:.45}
+.ribbon .tk{position:absolute;top:26px;width:10px;height:10px;border-radius:50%;border:2px solid var(--bg);cursor:pointer}
+.ribbon .hr2{position:absolute;top:56px;font:500 10px/1 Inter,sans-serif;color:var(--muted);transform:translateX(-50%)}
+.ribbon .now{position:absolute;top:6px;bottom:20px;width:2px;background:var(--rec);border-radius:1px}
+.ribbon .now:before{content:"";position:absolute;top:-3px;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--rec)}
+/* rings */
+.ringP{--v:40;width:46px;height:46px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--v)*1%),var(--track) 0);display:flex;align-items:center;justify-content:center;flex:none}
+.ringP i{width:36px;height:36px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font:600 11.5px/1 Inter,sans-serif;font-style:normal;color:var(--ink)}
+.heroX .ringP i{background:color-mix(in srgb,var(--bg) 92%,transparent)}
+.ringP.lg{width:64px;height:64px}.ringP.lg i{width:52px;height:52px;font-size:15px}
+.seg5 .s{font-size:12.5px}
+/* change card */
+.chg{display:flex;align-items:center;gap:8px;font:500 13px/18px Inter,sans-serif;flex-wrap:wrap}
+.chg .old{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--faint)}
+.chg .new{color:var(--ink);font-weight:600;background:var(--wash);padding:1px 7px;border-radius:6px}
+/* stat strip (narrative, not KPI) */
+.strip{display:flex;gap:0;margin:0 16px;border-radius:16px;background:var(--surface);border:var(--cardBorder);overflow:hidden}
+.strip>div{flex:1;padding:12px 12px;cursor:pointer}
+.strip>div+div{border-left:1px solid var(--lineSoft)}
+.strip b{display:block;font:600 22px/26px Outfit,Inter,sans-serif;letter-spacing:-.5px}
+.strip span{font:500 11.5px/15px Inter,sans-serif;color:var(--muted)}
+/* tasks */
+.trow{position:relative;overflow:hidden;touch-action:pan-y}
+.trow .under{position:absolute;inset:0;display:flex;justify-content:space-between;align-items:center;padding:0 22px;font:600 12.5px Inter,sans-serif;color:#fff}
+.trow .under .l{display:flex;gap:6px;align-items:center}.trow .under svg{width:18px;height:18px}
+.trow .face{position:relative;background:var(--bg);display:flex;gap:12px;align-items:flex-start;padding:11px 16px 11px 16px;cursor:pointer;transition:transform .25s cubic-bezier(.2,0,0,1)}
+.trow .face.drag{transition:none}
+.trow+.trow .face:before{content:"";position:absolute;top:0;left:50px;right:16px;height:1px;background:var(--lineSoft)}
+.tcb{width:22px;height:22px;flex:none;border-radius:50%;box-shadow:inset 0 0 0 1.8px var(--pc,var(--faint));display:flex;align-items:center;justify-content:center;cursor:pointer;margin-top:0;color:transparent;transition:background .15s}
+.tcb svg{width:14px;height:14px}
+.tcb.on{background:var(--pc,var(--accent));box-shadow:none;color:#fff;animation:pop .28s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pop{0%{transform:scale(.7)}100%{transform:scale(1)}}
+.tdone .tt{text-decoration:line-through;color:var(--muted)}
+.tmeta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px;font:500 11.5px/14px Inter,sans-serif;color:var(--muted)}
+.tmeta span{display:inline-flex;gap:3px;align-items:center}
+.tmeta svg{width:13px;height:13px}
+.tmeta .due-t{color:var(--success)}.tmeta .due-p{color:var(--warning)}.tmeta .due-s{color:var(--accent)}
+.flag1{color:#E5484D}.flag2{color:#D97706}.flag3{color:#5B5BD6}
+.dark .flag3{color:#9B9CF6}
+.lists .li{display:flex;gap:12px;align-items:center;padding:11px 16px;cursor:pointer}
+.lists .li:hover{background:var(--lineFaint)}
+.lists .li .d{width:10px;height:10px;border-radius:3px;flex:none}
+.lists .li .n{margin-left:auto;font:500 12.5px Inter,sans-serif;color:var(--muted)}
+.vtile{border-radius:16px;padding:12px 12px 10px;cursor:pointer;background:var(--surface);border:var(--cardBorder);display:flex;flex-direction:column;gap:10px;min-height:76px}
+.vtile .top{display:flex;justify-content:space-between;align-items:center}
+.vtile .ic{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff}
+.vtile .ic svg{width:17px;height:17px}
+.vtile b{font:600 22px/1 Outfit,Inter,sans-serif}
+.vtile span{font:600 12.5px/1 Inter,sans-serif;color:var(--ink2)}
+.week{display:flex;gap:4px;padding:0 12px}
+.week .d{flex:1;text-align:center;padding:8px 0 9px;border-radius:14px;cursor:pointer}
+.week .d small{display:block;font:500 10.5px/14px Inter,sans-serif;color:var(--muted)}
+.week .d b{display:block;font:600 16px/22px Inter,sans-serif;margin-top:2px}
+.week .d i{display:block;width:4px;height:4px;border-radius:50%;background:var(--accent);margin:3px auto 0;opacity:0}
+.week .d.has i{opacity:1}
+.week .d.on{background:var(--ink);color:var(--bg)}.week .d.on small{color:var(--bg);opacity:.7}.week .d.on i{background:var(--bg)}
+.board{display:flex;gap:10px;overflow-x:auto;padding:0 16px 8px;scrollbar-width:none}
+.board .col{flex:none;width:250px;background:var(--sunk);border-radius:16px;padding:10px}
+.board .col h4{margin:2px 4px 10px;font:600 12.5px Inter,sans-serif;display:flex;gap:6px;align-items:center}
+.board .card2{background:var(--surface);border-radius:12px;padding:10px 11px;margin-bottom:8px;box-shadow:0 1px 2px rgba(0,0,0,.06);font:500 13px/18px Inter,sans-serif;cursor:pointer}
+.dark .board .card2{background:var(--raised)}
+.nl{display:inline;border-radius:5px;padding:0 3px;font-weight:600}
+.nl.d{background:rgba(22,163,74,.14);color:var(--success)}.nl.p{background:var(--wash);color:var(--accent)}.nl.f{background:rgba(229,72,77,.12);color:#E5484D}.nl.l{background:var(--warnWash);color:var(--warning)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font:500 12.5px/34px Inter,sans-serif}
+.cal .h{font:600 10.5px/24px Inter,sans-serif;color:var(--muted)}
+.cal .c{border-radius:50%;cursor:pointer}.cal .c.mut{color:var(--faint)}.cal .c.on{background:var(--accent);color:var(--onaccent)}.cal .c.td{color:var(--accent);font-weight:700}
+.qa{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.qa .chip{height:30px}
+.kbd{height:236px;background:#E9EBEE;flex:none;display:flex;flex-direction:column;gap:9px;padding:10px 6px}
+.dark .kbd{background:#1D2230}
+.kbd .r{display:flex;gap:5px;justify-content:center}.kbd .r i{flex:1;max-width:34px;height:40px;border-radius:6px;background:#fff;box-shadow:0 1px 0 rgba(0,0,0,.15)}
+.dark .kbd .r i{background:#3A4153}
+.docx{background:#FFFEFB;color:#1C1917;border-radius:6px;box-shadow:0 1px 0 rgba(0,0,0,.04),0 14px 34px -14px rgba(28,25,23,.28);padding:26px 22px 22px}
+.dark .docx{background:#F7F5EF}
+.docx h2{font:600 24px/30px Literata,Georgia,serif;letter-spacing:-.3px;margin:0}
+.docx h3{font:600 10.5px/14px Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:#78716C;margin:20px 0 6px;padding-top:12px;border-top:1px solid #E7E5E4}
+.docx p,.docx li{font:400 14px/22px Literata,Georgia,serif;color:#1C1917;margin:0 0 6px}
+.docx ul{margin:0;padding-left:18px}
+.docx .cite{background:#EEF0FF;color:#4338CA}
+.docx .edit{outline:1.5px dashed #5B5BD6;outline-offset:3px;border-radius:3px}
+.pdfpg{background:#fff;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.18);padding:16px 14px;color:#222;font:400 9.5px/14px Georgia,serif}
+.pdfpg .hl{background:rgba(250,204,21,.45);border-radius:2px}
+.scanline{position:absolute;left:0;right:0;height:26px;background:linear-gradient(180deg,transparent,rgba(91,91,214,.22),transparent);animation:scan 1.8s ease-in-out infinite}
+@keyframes scan{0%{top:0}100%{top:calc(100% - 26px)}}
+.bnav .b .pl{transition:background .2s}
+.avg{background:linear-gradient(135deg,var(--a1),var(--a2))}
+
+
+/* real MeetingMind pill bar (core/ui/BottomNavigation.kt) */
+.pnav{flex:none;padding:4px 16px 8px;background:transparent;position:absolute;left:0;right:0;bottom:0;z-index:30}
+.pnav .pill{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:6px 8px;border-radius:999px;background:var(--surface);border:1px solid var(--line);box-shadow:0 8px 22px -6px rgba(0,0,0,.18)}
+.dark .pnav .pill{background:var(--raised)}
+.pnav .it{width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;color:var(--ink2);cursor:pointer}
+.pnav .it svg{width:20px;height:20px}
+.pnav .it.on{width:auto;padding:0 13px;gap:6px;background:var(--wash);color:var(--accent);font:600 13px/1 Inter,sans-serif}
+.pnav .it.on span{color:var(--ink)}
+.pnav .it.on svg{width:18px;height:18px}
+.pnav .new{height:44px;padding:0 14px;border-radius:22px;background:var(--accent);color:var(--onaccent);display:flex;gap:5px;align-items:center;font:600 13px/1 Inter,sans-serif;cursor:pointer}
+.pnav .new svg{width:19px;height:19px}
+.navpad{height:76px}
+/* sky hero (core/timeline/TodayIntelligence.kt keyframes) */
+.sky{position:relative;border-radius:30px;overflow:hidden;color:#fff;box-shadow:0 22px 40px -22px rgba(30,40,90,.65);border:1px solid rgba(255,255,255,.35)}
+.sky .sun{position:absolute;border-radius:50%}
+.sky .stars i{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;opacity:.7}
+.sky .hills{position:absolute;left:0;right:0;bottom:0;height:70px}
+.brief{background:linear-gradient(150deg,#0B1024 0%,#1B2250 100%);color:#fff;border-radius:26px;position:relative;overflow:hidden}
+.brief .lav{color:#A5B4FC}.brief .rose{color:#FCA5A5}
+.brief .sep{height:1px;background:rgba(255,255,255,.1);margin:12px 0}
+.brief .bchip{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:14px;background:rgba(255,255,255,.12);font:500 12px/1 Inter,sans-serif;color:#fff;cursor:pointer}
+.brief .bbtn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 16px;border-radius:19px;background:#fff;color:#0B1024;font:600 13.5px/1 Inter,sans-serif;cursor:pointer}
+.brief .bbtn.g{background:rgba(255,255,255,.12);color:#fff}
+.brief .ribbon .axis{background:rgba(255,255,255,.14)}.brief .ribbon .hr2{color:rgba(255,255,255,.5)}.brief .ribbon .tk{border-color:#151a3a}
+.brief:after{content:"";position:absolute;right:-70px;top:-90px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(165,180,252,.28),transparent 70%)}
+.qacc{display:flex;gap:14px;overflow-x:auto;padding:2px 20px;scrollbar-width:none}
+.qacc .q{width:60px;flex:none;text-align:center;cursor:pointer}
+.qacc .q div{width:48px;height:48px;border-radius:50%;background:var(--wash);color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto}
+.qacc .q svg{width:22px;height:22px}.qacc .q span{display:block;margin-top:6px;font:500 11.5px/1.2 Inter,sans-serif;color:var(--muted)}
+.lcard{background:var(--raised);border:1px solid var(--lineSoft);border-radius:24px;padding:14px 0}
+.lcard .lh{display:flex;align-items:baseline;padding:0 16px 6px}.lcard .lh b{font:600 16px/22px Outfit,Inter,sans-serif;flex:1}.lcard .lh span{font:600 12px Inter;color:var(--accent);cursor:pointer}
+.pcar{display:flex;gap:10px;overflow-x:auto;padding:0 16px;scrollbar-width:none}
+.pcar .pc{flex:none;width:200px;border-radius:22px;padding:14px;background:var(--surface);border:var(--cardBorder);cursor:pointer;position:relative;overflow:hidden}
+.pcar .pc:before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:var(--c)}
+.lcard .trow .face{background:var(--raised)}
+.modesw{display:inline-flex;background:var(--sunk);border-radius:20px;padding:3px;margin:0 20px}
+.modesw span{padding:7px 16px;border-radius:17px;font:600 12.5px/1 Inter;color:var(--ink2);cursor:pointer}.modesw span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.dark .modesw span.on{background:var(--raised)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -344,8 +488,9 @@ a{color:#5B5BD6}
 </div>
 
 <div class="dv-intro">
-  <div class="dv-gate"><i></i>Phase A — design for founder approval. No Android code has changed.</div>
+  <div class="dv-gate"><i></i>Phase A · Revision 2 (16 Nov) — design for founder approval. No Android code has changed.</div>
   <h1>Work: remember the work, see what changed, know what to do next.</h1>
+  <p><b>What changed in revision 2:</b> your decisions are applied. The <b>Work home stays</b> and now uses the app's own sky hero and Briefing language (turn 0). The bar puts <b>Work and Learn</b> where Search and Settings were. <b>Tasks</b> becomes a full task manager (turn T). The <b>Notes</b> segment is kept. Every <b>Brief control</b> is in. <b>PDFs and scans are read on the phone</b> (turn 8). Autopilot tasks go to review. Start at <a href="#t0">turn 0</a> or the <a href="#walk">walkthrough</a>, which now has an eighth journey: running the day with Tasks.</p>
   <p>An interactive redesign of the Work vertical on <code>release/1.0-paid-launch</code>, built on the current code, the approved decisions D1–D7 and Direction v2. Every phone below is live: tap rows, chips, sources (<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(91,91,214,.1);color:#5B5BD6;border-radius:9px;padding:1px 6px;font:600 10.5px Inter,sans-serif">▶ 18:40</span>), sheets and buttons. One scenario runs through all of them: <b>Ana Mwansa</b>, an independent consultant, on <b>Tuesday 17 November 2026</b>. Her client is <b>Acme Corporation</b> (project <b>Acme Integration</b>, with Sarah Chen and James Obi). There is also a new prospect, Kalahari Logistics, and a confidential board role at Zenith Capital.</p>
   <p>The full rationale, the audit and the implementation mapping are in <code>design/work-vertical-design-spec.md</code>. The tags on each frame say how real it is: <span class="dv-tag built">built</span> exists today and is restyled · <span class="dv-tag improve">improve</span> exists, and the behaviour or layout changes · <span class="dv-tag new">new UI</span> uses data the app already has in a new surface · <span class="dv-tag later">later</span> is shown as unavailable, not as live.</p>
 
@@ -359,21 +504,23 @@ a{color:#5B5BD6}
   <h2 style="font:600 18px 'Helvetica Neue',sans-serif;margin:34px 0 8px">Navigation model</h2>
   <div class="dv-grid" style="grid-template-columns:1.3fr 1fr">
     <div class="dv-card">
-      <p class="big">One Work destination, four segments, one job each</p>
-      <pre style="font:12px/1.55 ui-monospace,Menlo,monospace;margin:8px 0 0;color:#333;white-space:pre-wrap">Bottom bar   Today · Notes · ＋ New · <b>Work</b> (or Search) · Settings
-Work header  Work · context line              🔍 Work search · 📥 Inbox(4) · ＋ · ⋯
-Segments     <b>Pulse</b>     what needs me now (default)
-             <b>Tasks</b>     Mine · Waiting on  (promises included)
-             <b>Decisions</b> Decisions · Open questions · Risks · Requirements
-             <b>Projects</b>  Projects · People · Organisations
-Pushed       Prepare · Wrap-up · Brief · Ask · Project · Person · Organisation
-             Inbox item · Weekly review · Follow-up · Autopilot · Work settings
+      <p class="big">Two homes, one Work destination, one task manager</p>
+      <pre style="font:12px/1.55 ui-monospace,Menlo,monospace;margin:8px 0 0;color:#333;white-space:pre-wrap">Bottom bar   Today · Notes · <b>New</b> · [slot] · [slot]       (same pill design)
+             Work + Learn → <b>Work · Learn</b>   Work → Work · Tasks
+             Learn → Learn · Tasks   neither → Tasks · Search
+             Settings → avatar menu · Search → every home's dock
+Homes        <b>Work home</b> (sky hero, Up next, Your day briefing, tasks, projects, people)
+             <b>Today home</b> (sky hero, bento: Work briefing · Tasks · Learn)
+Work         header: Work · context     🔍 Work search · 📥 Inbox(4) · ＋ · ⋯
+Segments     <b>Pulse</b> · <b>Tasks</b> · <b>Notes</b> · <b>Projects</b> · <b>Decisions</b>
+Tasks app    Today · Upcoming · Inbox · Waiting on · Priority · Completed
+             lists (Work / Personal / Learning) · sections · board · labels
 Everywhere   ▶ source chip → the exact moment · Ask pre-scoped to the page</pre>
     </div>
     <div class="dv-card"><p class="big">Why this is easier than today</p><ul>
-      <li><b>One Work home.</b> The dark Pulse card and the 15-block Professional home go. The Today home gets one short Work card (D1, D7).</li>
+      <li><b>Homes vs Pulse.</b> The Work home is your <i>day</i> (sky, Up next, Your day, tasks, projects, people). Work › Pulse is <i>follow-through</i> (needs you, changes, waiting, decisions). The Briefing card is shared, not duplicated.</li>
       <li><b>Inbox appears once</b>, in the header with a badge, and in Pulse only when it needs you. Today it appears in 4–5 places.</li>
-      <li><b>No second notes list.</b> Notes keeps the library; Work search and project pages find work notes (F-2).</li>
+      <li><b>One Notes component, one Tasks component.</b> The Work segments are the same components scoped to Work, never a second implementation.</li>
       <li><b>WorkAll is absorbed.</b> Its six tabs were a copy of Tasks plus Decisions; they now live in two segments.</li>
       <li><b>One project page</b> instead of ProjectScreen and ContextScreen side by side.</li>
       <li><b>Header search covers Work</b> (D2); Ask is in Pulse, ⋯ and every context page (D3).</li>
@@ -385,14 +532,16 @@ Everywhere   ▶ source chip → the exact moment · Ask pre-scoped to the page<
     <span>● <b style="color:#16A34A">Confirmed</b>: you reviewed it</span><span>◌ <b style="color:#5B5BD6">Suggested · not reviewed</b>: AI found it</span><span>● <b style="color:#52525B">Edited / typed by you</b></span><span>● <b style="color:#B45309">Uncertain match</b>: a person or project guess</span><span><b style="color:#5B5BD6">▶ 18:40</b> opens the source moment</span><span><b>On this phone / MeetingMind cloud</b>: where the AI ran</span>
   </div>
 
-  <h2 id="decide" style="font:600 18px 'Helvetica Neue',sans-serif;margin:34px 0 8px;scroll-margin-top:70px">Decisions for the founder</h2>
+  <h2 id="decide" style="font:600 18px 'Helvetica Neue',sans-serif;margin:34px 0 8px;scroll-margin-top:70px">Your decisions, applied</h2>
   <div class="dv-grid">
-    <div class="dv-card"><p class="big">F-1 · Work in the fourth bar slot for work profiles?</p><p>D6 keeps Search as the default slot; Direction v2 §D9 gives Work the slot for work identities. <b>Recommendation:</b> keep D6 for everyone else, and put Work in the slot by default when someone picks a work profile in onboarding. Search stays one tap away from every header.</p></div>
-    <div class="dv-card"><p class="big">F-2 · Retire the Work "Notes" segment?</p><p>WORK_UX (9 Oct) made notes the founder's priority on the Work page. Direction v2 §D9 says "Notes stays as it is" and Work holds the records. <b>Recommendation:</b> retire the segment, and keep work notes one tap away through the Notes tab's remembered Work filter, project pages and Work search. <b>Alternative:</b> keep it as a fifth segment that is the same Notes component, scoped to Work.</p></div>
-    <div class="dv-card"><p class="big">F-3 · Autopilot: tasks go to review by default?</p><p>Today, auto-run creates tasks directly when it is on, which skips the confirmation the Wrap-up enforces everywhere else. <b>Recommendation:</b> by default, put them in the Wrap-up as unreviewed findings, with "Create directly" as an opt-in.</p></div>
-    <div class="dv-card"><p class="big">F-4 · Brief controls</p><p>The engine has five brief kinds; the screen exposes none of them, and there are no tone, length or copy controls. <b>Recommendation:</b> ship the kind picker and Copy in the first increment, then audience, tone and length in the second. They only change the two AI paragraphs, never the sections.</p></div>
-    <div class="dv-card"><p class="big">F-5 · Reading PDF and web text</p><p>The Inbox can't read text inside PDFs, scans or links today, so it files those by name only. The design labels this honestly. <b>Question:</b> should on-device PDF text extraction be added to the Inbox roadmap? It is not in this redesign's scope.</p></div>
-    <div class="dv-card"><p class="big">F-6 · Retire the Work home style?</p><p>D1 approved a short entry. <b>Recommendation:</b> keep <code>HomeStyle.PROFESSIONAL</code> as a choice. It becomes the Today home with the Work card pinned first and the Work slot on, so nobody loses their setting.</p></div>
+    <div class="dv-card"><p class="big">F-1 · Bar ✓</p><p>Work and Learn replace Search and Settings when selected. Tasks fills a free slot. Settings moves to the avatar menu. <a href="#0a">0a</a> <a href="#0f">0f–0h</a></p></div>
+    <div class="dv-card"><p class="big">F-2 · Notes segment ✓ kept</p><p>A fifth Work segment, the same Notes component scoped to Work. <a href="#2a">2a</a></p></div>
+    <div class="dv-card"><p class="big">F-3 · Autopilot ✓</p><p>Tasks go to the Wrap-up for review by default; Create directly is opt-in. <a href="#10b">10b</a></p></div>
+    <div class="dv-card"><p class="big">F-4 · Brief ✓ full</p><p>Kind, audience, tone, length, sections, language, footer, Copy, Export, Share. <a href="#5f">5f</a> <a href="#5g">5g</a></p></div>
+    <div class="dv-card"><p class="big">F-5 · PDF reading ✓ full</p><p>On the phone: PDF text layer plus text recognition for scans, page-cited suggestions, searchable, a viewer opened at the passage. <a href="#8c">8c–8c4</a>. Implementation plan in spec §R4.</p></div>
+    <div class="dv-card"><p class="big">F-6 · Work home ✓ kept</p><p>It stays one of the two flagship homes, elevated in its own language. <a href="#0a">0a–0c</a></p></div>
+    <div class="dv-card"><p class="big">New · Tasks as a first-class app</p><p>A normal task manager, plus MeetingMind's promises and sources. <a href="#tT">turn T</a> · data model in spec §R3.</p></div>
+    <div class="dv-card"><p class="big">Still open · R-1</p><p>Faith users: should Faith claim a bar slot like Work and Learn? Recommendation: yes, under the same rule (first two selected spaces, then Tasks).</p></div>
   </div>
 
   <h2 id="index" style="font:600 18px 'Helvetica Neue',sans-serif;margin:34px 0 8px;scroll-margin-top:70px">Screen index</h2>
@@ -657,7 +806,7 @@ function draw(id, keepScroll){
   let sheet = '';
   if (P.st.sheet){ const [sn, ...sa] = String(P.st.sheet).split('|'); const sh = SH[sn]; if (sh) sheet = `<div class="sheetwrap"><div class="scrim" data-close></div><div class="sheet"><div class="grab"></div>${sh(P, sa.join('|'))}</div></div>`; }
   const toast = P.st.toast ? `<div class="toast"><span>${P.st.toast}</span>${P.st.toastAct?`<b data-fn="${P.st.toastFn||'clearToast'}">${P.st.toastAct}</b>`:''}</div>` : '';
-  P.el.innerHTML = `<div class="dev mm ${dark?'dark':''}">${statusBar().replace('9:30', clockFor(P))}<div class="stage">${out.fixedTop||''}<div class="scr">${out.body}</div>${out.foot||''}${out.nav?bnav(out.nav):''}${sheet}${toast}</div><div class="gp"><i></i></div></div>`;
+  P.el.innerHTML = `<div class="dev mm ${dark?'dark':''}">${statusBar().replace('9:30', clockFor(P))}<div class="stage">${out.fixedTop||''}<div class="scr">${out.body}</div>${out.foot||''}${out.floating||''}${out.nav?bnav(out.nav,P):''}${sheet}${toast}</div><div class="gp"><i></i></div></div>`;
   if (keepScroll){ const s = P.el.querySelector('.scr'); if (s) s.scrollTop = top; }
   if (P.onDraw) P.onDraw(P);
 }
@@ -717,7 +866,7 @@ function empty(icon, title, body, actions){
 /* ═════════════════════════ Screens A — Today home, Work hub, Pulse, Tasks, Decisions, Projects ═════════════════════════ */
 Object.assign(NAMES, { home:'Today home (Work card)', work:'Work', wsearch:'Work search', notes:'Notes (Work filter)', settings:'Settings' });
 
-const seg = (P, on) => {
+let seg = (P, on) => {
   const segs = [['pulse','Pulse'],['tasks','Tasks'],['decisions','Decisions'],['projects','Projects']];
   return `<div class="seg">${segs.map(([k,l]) => `<div class="s ${on===k?'on':''}" data-rep="work/${k}">${l}</div>`).join('')}</div>`;
 };
@@ -1393,10 +1542,433 @@ SH.briefmore = P => `<div class="rows"><div class="row" data-set="bstate:gen" da
 ['wrapmore','projmore','personmore','inboxmore'].forEach(n => SH[n] = P => `<div class="rows">${({wrapmore:[['people','Share to a Work circle'],['auto','Run Autopilot'],['refresh','Process again']],projmore:[['edit','Rename'],['flag','Mark status'],['lock','Confidential'],['people','Members']],personmore:[['edit','Rename'],['mail','Email or phone'],['people','Same person as…'],['lock','Confidential'],['trash','Remove (asks first)']],inboxmore:[['copy','Copy transcript'],['dl','Open file'],['trash','Dismiss']]})[n].map(r=>`<div class="row" data-close><div class="lead">${ic(r[0])}</div><div class="m"><div class="tt">${r[1]}</div></div></div>`).join('')}</div><div class="gap-l"></div>`);
 SH.ctxpeek = (P, id) => `<div class="pad"><div class="over">Recording into</div><div class="strong" style="margin-top:6px">Acme Integration · with Sarah and James</div><div class="cap">Everything decided and promised will be linked here after you review it.</div><div class="gap-l"></div><div class="over">From your prep · open items</div>${['Credentials — confirm Thursday','API docs — hand over','Production window — who decides'].map(t=>`<div class="row" style="padding:10px 0" data-close data-toast="Marked as a key moment: ${t.split(' —')[0]}"><div class="m"><div class="tt" style="font-size:14px">${t}</div></div><div class="tr"><span class="btn s sm">${ic('star')}Mark</span></div></div>`).join('')}</div><div class="gap-l"></div>`;
 S.missing = (P, a) => ({ body: hdr('Not in this prototype') + `<div class="pad sec">This destination exists in the app but isn't drawn here.</div>` });
+/* ═════════════════════════ Screens C — Tasks: a first-class task manager (app-wide; Work's segment is a scoped view) ═════════════════════════ */
+Object.assign(NAMES, { tasksapp:'Tasks', tview:'Tasks view', tlist:'Task list', task:'Task', tplan:'Plan my day' });
+
+const LISTS = {
+  acme:{ name:'Acme Integration', space:'Work', color:'var(--p-acme)', sections:['Build','UAT','Launch'] },
+  kalahari:{ name:'Kalahari Discovery', space:'Work', color:'var(--p-kal)', sections:['Discovery'] },
+  zenith:{ name:'Board advisory', space:'Work', color:'var(--p-zen)', sections:['Board'], confidential:true },
+  admin:{ name:'Practice admin', space:'Work', color:'var(--p-adm)', sections:['Admin'] },
+  home:{ name:'Home & family', space:'Personal', color:'var(--p-home)', sections:['Home'] },
+  errands:{ name:'Errands', space:'Personal', color:'#0F9D76', sections:['Errands'] },
+  study:{ name:'Cloud architect cert', space:'Learning', color:'var(--p-learn)', sections:['Modules'] },
+};
+const LABELS = { email:'email', calls:'calls', deep:'deep-work', quick:'15-min' };
+/* day keys: past · today · tom (Wed 18) · thu · fri · mon · later · none */
+const TK = [
+  { id:'k1', t:'Send final API documentation to James', list:'acme', sec:'Build', day:'today', time:'12:00', prio:1, labels:['email'], promisedTo:'james', ev:'e5', from:'kickoff',
+    subs:[['Auth flow section',1],['Error codes table',1],['Rate limits — ask James',0],['Export as PDF',0]], notes:'IT security wants this before releasing production credentials (Sarah\'s voice note, 07:42).', remind:'11:30' },
+  { id:'k2', t:'Prepare pricing options for the SSO change', list:'acme', sec:'Launch', day:'today', time:'15:00', prio:2, labels:['deep'], notes:'Before the 15:30 Commercial Follow-up.' },
+  { id:'k3', t:'Update the Acme risk register', list:'acme', sec:'UAT', day:'past', dueLabel:'Fri 13 Nov', prio:3 },
+  { id:'k9', t:'Pick up dry cleaning', list:'errands', sec:'Errands', day:'today', prio:4, labels:['quick'] },
+  { id:'k10', t:'Call Mum', list:'home', sec:'Home', day:'today', time:'18:30', prio:4, labels:['calls'], repeat:'Every Tuesday' },
+  { id:'k4', t:'Prepare discovery questions for Kalahari', list:'kalahari', sec:'Discovery', day:'tom', prio:2, subs:[['Read the RFP',1],['Fleet tracking questions',0],['Decision makers & timeline',0]] },
+  { id:'k12', t:'Finish module 3 — resilient architectures', list:'study', sec:'Modules', day:'thu', prio:3, labels:['deep'] },
+  { id:'k5', t:'Book the UAT walkthrough with James', list:'acme', sec:'UAT', day:'fri', prio:3, labels:['calls'], ev:'e7', from:'sync' },
+  { id:'k11', t:'Weekly review', list:'admin', sec:'Admin', day:'fri', time:'16:00', prio:3, repeat:'Every Friday' },
+  { id:'k8', t:'Send November timesheet to the accountant', list:'admin', sec:'Admin', day:'mon', prio:3, labels:['email'], repeat:'Monthly · last working day' },
+  { id:'k6', t:'Board pack comments', list:'zenith', sec:'Board', day:'later', dueLabel:'Mon 30 Nov', prio:2 },
+  { id:'k13', t:'Draft go-live checklist', list:'acme', sec:'Launch', day:'later', dueLabel:'Thu 3 Dec', prio:2 },
+  { id:'k14', t:'Write the integration handover note', list:'acme', sec:'Launch', day:'none', prio:4 },
+  { id:'k7', t:'Renew professional indemnity cover', list:'admin', sec:'Admin', day:'none', prio:3, repeat:'Every year · 1 Dec' },
+  { id:'k15', t:'Ask James about API rate limits', list:'inbox', day:'none', prio:4, fromInbox:true },
+  { id:'k16', t:'Look into a standing desk', list:'inbox', day:'none', prio:4 },
+];
+const DONE_RECENT = [ ['Send revised timeline to Sarah','acme','Yesterday'], ['Sandbox access for James','acme','Mon'], ['RFP read-through','kalahari','Mon'] ];
+const DAYLABEL = { past:'Past due', today:'Today', tom:'Tomorrow · Wed 18', thu:'Thu 19 Nov', fri:'Fri 20 Nov', mon:'Mon 23 Nov', later:'Later', none:'No date' };
+const isDone = (P, k) => !!P.st['td_'+k.id];
+const dueChip = k => k.day==='past' ? `<span class="due-p">${ic('cal')}${k.dueLabel}</span>` : k.day==='today' ? `<span class="due-t">${ic('cal')}${k.time?'Today '+k.time:'Today'}</span>` : k.day==='tom' ? `<span class="due-s">${ic('cal')}Tomorrow</span>` : (k.day==='none' ? '' : `<span>${ic('cal')}${k.dueLabel || DAYLABEL[k.day].replace(' Nov','')}</span>`);
+
+function taskRow2(P, k, opts={}){
+  const L = LISTS[k.list]; const done = isDone(P,k); const sel = P.st.selMode;
+  const pc = k.prio===1?'#E5484D':k.prio===2?'#D97706':k.prio===3?'var(--accent)':'var(--faint)';
+  const subsDone = k.subs ? k.subs.filter((s,i)=>P.st['ts_'+k.id+'_'+i]!==undefined?P.st['ts_'+k.id+'_'+i]:s[1]).length : 0;
+  return `<div class="trow ${done?'tdone':''}" data-swipe="${k.id}"><div class="under" style="background:${P.st['sw_'+k.id]==='l'?'var(--accent)':'var(--success)'}"><span class="l">${ic('check')}Complete</span><span class="l">Schedule${ic('cal')}</span></div>
+   <div class="face" data-go="task/${k.id}">
+    ${sel?`<div class="cb ${P.st['sel_'+k.id]?'on':''}" data-tog="sel_${k.id}" style="margin-top:0">${ic('check')}</div>`:`<div class="tcb ${done?'on':''}" style="--pc:${pc}" data-fn="tdone:${k.id}" aria-label="Complete">${ic('check')}</div>`}
+    <div class="m" style="flex:1;min-width:0"><div class="tt" style="font:500 14.5px/20px Inter,sans-serif">${k.t}</div>
+     <div class="tmeta">${opts.noDue?'':dueChip(k)}${k.repeat?`<span>${ic('refresh')}</span>`:''}${k.subs?`<span>${ic('list')}${subsDone}/${k.subs.length}</span>`:''}${k.promisedTo?`<span style="color:var(--accent)">${ic('person')}for ${PEOPLE[k.promisedTo].name.split(' ')[0]}</span>`:''}${k.ev?`<span>${ic('play')}${EVIDENCE[k.ev].ts}</span>`:''}${(k.labels||[]).map(l=>`<span>@${LABELS[l]}</span>`).join('')}${opts.noList||k.list==='inbox'?'':`<span style="margin-left:auto;color:var(--ink2)"><i style="width:7px;height:7px;border-radius:2px;background:${L.color};display:inline-block"></i>${L.name}${L.confidential?' '+ic('lock'):''}</span>`}</div></div>
+   </div></div>`;
+}
+FN.tdone = (P, id) => { const was = P.st['td_'+id]; P.st['td_'+id] = !was; const k = TK.find(x=>x.id===id); if (!was) toast(P, k.promisedTo?`Done · your promise to ${PEOPLE[k.promisedTo].name.split(' ')[0]} is closed too`:(k.repeat?`Done · next one ${k.repeat.toLowerCase().replace('every ','')}`:'Done'), 'Undo', 'tundo:'+id); };
+FN.tundo = (P, id) => { P.st['td_'+id] = false; P.st.toast = null; };
+
+/* Swipe: right = complete, left = schedule (pointer drag on .face) */
+(function(){ let s=null;
+  document.addEventListener('pointerdown', e => { const f = e.target.closest('.trow .face'); if (!f || e.target.closest('[data-fn],[data-tog]')) return; s = { f, x:e.clientX, y:e.clientY, row:f.parentElement, dx:0, moved:false }; });
+  document.addEventListener('pointermove', e => { if (!s) return; const dx = e.clientX - s.x; if (!s.moved && Math.abs(dx) < 8) return; if (!s.moved && Math.abs(e.clientY-s.y) > Math.abs(dx)) { s=null; return; } s.moved = true; s.dx = Math.max(-140, Math.min(140, dx)); s.f.classList.add('drag'); s.f.style.transform = `translateX(${s.dx}px)`; s.row.querySelector('.under').style.background = s.dx<0 ? 'var(--accent)' : 'var(--success)'; });
+  document.addEventListener('pointerup', e => { if (!s) return; const { f, dx, moved, row } = s; s = null; f.classList.remove('drag'); f.style.transform = ''; if (!moved) return;
+    const host = row.closest('[data-phone]'); const P = PH[host.dataset.phone]; const id = row.dataset.swipe;
+    const kill = ev => { ev.stopPropagation(); ev.preventDefault(); document.removeEventListener('click', kill, true); }; document.addEventListener('click', kill, true); setTimeout(()=>document.removeEventListener('click', kill, true), 50);
+    if (dx > 80) { FN.tdone(P, id); draw(P.id, true); } else if (dx < -80) { P.st.sheet = 'tdate|'+id; draw(P.id, true); } });
+})();
+
+const tHdr = (P, title, sub, color, extra) => hdr(`${color?`<i style="width:10px;height:10px;border-radius:3px;background:${color};display:inline-block;margin-right:8px;vertical-align:1px"></i>`:''}${title}`, { back: P.stack.length>1 ? undefined : false, sub, actions: extra || [act('search','data-toast="Search tasks · by text, list, label or person"'), act('more','data-sheet="tmore"')] });
+const fab = `<div style="position:absolute;right:18px;bottom:${84}px;z-index:20"><div data-sheet="tquick" style="width:56px;height:56px;border-radius:18px;background:var(--accent);color:var(--onaccent);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px -8px rgba(67,56,202,.6);cursor:pointer">${ic('plus','style="width:26px;height:26px"')}</div></div>`;
+const fabLow = fab.replace('bottom:84px','bottom:20px');
+const todayList = () => TK.filter(k => k.day==='today' || k.day==='past');
+
+/* ── Tasks app home ── */
+S.tasksapp = P => {
+  const tdy = todayList(); const doneN = tdy.filter(k=>isDone(P,k)).length;
+  const tile = (key, label, n, color, icon) => `<div class="vtile" data-go="tview/${key}"><div class="top"><span class="ic" style="background:${color}">${ic(icon)}</span><b>${n}</b></div><span>${label}</span></div>`;
+  const groups = ['Work','Personal','Learning'].map(sp => `<div class="sh" style="margin:20px 0 4px"><span class="over">${sp}</span></div><div class="lists">${Object.entries(LISTS).filter(([,l])=>l.space===sp).map(([id,l])=>{ const n = TK.filter(k=>k.list===id && !isDone(P,k)).length; return `<div class="li" data-go="tlist/${id}"><span class="d" style="background:${l.color}"></span><span class="strong">${l.name}</span>${l.confidential?`<span class="lock">${ic('lock')}</span>`:''}<span class="n">${n}</span></div>`; }).join('')}</div>`).join('');
+  return { body: tHdr(P,'Tasks','Tue 17 Nov') + `
+   <div class="pad"><div class="heroX" style="padding:16px;display:flex;gap:14px;align-items:center"><div class="ringP lg" style="--v:${Math.round(doneN/tdy.length*100)}"><i>${doneN}/${tdy.length}</i></div><div style="flex:1"><div class="heading" style="color:var(--inkHero)">${doneN===tdy.length?'Today is done':'Plan your day'}</div><div class="sec" style="margin-top:2px">${tdy.length} for today, 1 past due, 2 meetings in between.</div><div style="margin-top:10px;display:flex;gap:8px"><span class="btn p sm" data-go="tplan">Plan my day</span><span class="btn s sm" data-go="tview/today">Open Today</span></div></div></div></div>
+   <div class="gap-l"></div>
+   <div class="pad" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    ${tile('today','Today',tdy.filter(k=>!isDone(P,k)).length,'var(--accent)','sun')}${tile('upcoming','Upcoming',TK.filter(k=>['tom','thu','fri','mon','later'].includes(k.day)).length,'#E5484D','cal')}
+    ${tile('inbox','Inbox',TK.filter(k=>k.list==='inbox').length,'#71717A','inbox')}${tile('waiting','Waiting on',WAITING.length,'#D97706','clock')}
+    ${tile('priority','Priority 1',TK.filter(k=>k.prio===1).length,'#BE185D','flag')}${tile('done','Completed',3,'#16A34A','check')}
+   </div>
+   ${groups}
+   <div class="sh" style="margin:20px 0 4px"><span class="over">Labels</span></div><div class="chips" style="flex-wrap:wrap">${Object.values(LABELS).map(l=>`<span class="chip" data-go="tview/label">@${l}</span>`).join('')}</div>
+   <div class="gap-l"></div><div class="pad"><span class="btn t" style="padding:0" data-toast="New list · name, colour, space (Work, Personal, Learning) and optional sections">${ic('plus')}New list</span></div><div class="gap-xxl"></div><div class="gap-xxl"></div>`,
+   nav: P.stack.length>1 ? null : 'tasks', floating: P.stack.length>1 ? fabLow : fab };
+};
+
+/* ── Views: today · upcoming · inbox · waiting · priority · done · label ── */
+S.tview = (P, a) => {
+  const v = a[0] || 'today'; const scope = P.st.scope2; // 'work' when inside Work
+  const inScope = k => !scope || LISTS[k.list] && LISTS[k.list].space==='Work';
+  let title = '', sub = '', body = '';
+  if (v === 'today') {
+    const L = todayList().filter(inScope); const doneN = L.filter(k=>isDone(P,k)).length;
+    const past = L.filter(k=>k.day==='past'); const timed = L.filter(k=>k.day==='today'&&k.time).sort((x,y)=>x.time.localeCompare(y.time)); const any = L.filter(k=>k.day==='today'&&!k.time);
+    title='Today'; sub='Tuesday 17 November';
+    const ev = (t, name, sub2, go) => `<div style="display:flex;gap:12px;align-items:center;padding:8px 16px;cursor:pointer" data-go="${go}"><span class="tnum cap" style="width:36px;text-align:right">${t}</span><div style="flex:1;border-radius:10px;padding:8px 10px;background:var(--wash);border-left:3px solid var(--p-acme)"><div class="strong" style="font-size:13px">${name}</div><div class="cap">${sub2}</div></div></div>`;
+    body = `<div class="pad" style="display:flex;gap:14px;align-items:center"><div class="ringP" style="--v:${Math.round(doneN/L.length*100)}"><i>${doneN}/${L.length}</i></div><div class="sec">${doneN===L.length?'All done. Enjoy the rest of the day.':`${L.length-doneN} left · about ${(L.length-doneN)*25} min of work`}</div></div><div class="gap-m"></div>
+     ${past.length && !P.st.rolled?`<div class="banner w">${ic('history')}<div style="flex:1"><b>1 from last week</b> is still open.<div style="margin-top:8px;display:flex;gap:6px"><span class="btn s sm" data-set="rolled:true" data-toast="Moved to today">Do today</span><span class="btn t sm" data-sheet="tdate|k3">Reschedule</span></div></div></div><div class="gap-m"></div>`:''}
+     ${past.length && P.st.rolled ? `<div class="rows">${past.map(k=>taskRow2(P,k)).join('')}</div>`:''}
+     <div class="sh" style="margin:10px 0 2px"><span class="h" style="font-size:13px">Scheduled</span><span class="n">with your calendar</span></div>
+     ${timed.length? `${ev('10:00','Project Review','Acme · meeting','prep/review')}${timed.filter(k=>k.time<'15:30').map(k=>`<div style="display:flex"><span class="tnum cap" style="width:52px;text-align:right;padding-top:13px;flex:none">${k.time}</span><div style="flex:1;min-width:0">${taskRow2(P,k)}</div></div>`).join('')}${ev('15:30','Commercial Follow-up','Acme · meeting','prep/commercial')}${timed.filter(k=>k.time>='15:30').map(k=>`<div style="display:flex"><span class="tnum cap" style="width:52px;text-align:right;padding-top:13px;flex:none">${k.time}</span><div style="flex:1;min-width:0">${taskRow2(P,k)}</div></div>`).join('')}`:''}
+     ${any.length?`<div class="sh" style="margin:16px 0 2px"><span class="h" style="font-size:13px">Anytime today</span><span class="n">${any.length}</span></div><div class="rows">${any.map(k=>taskRow2(P,k)).join('')}</div>`:''}
+     <div class="gap-l"></div><div class="pad cap" style="text-align:center">Swipe right to complete · left to reschedule</div>`;
+  } else if (v === 'upcoming') {
+    title='Upcoming'; sub='November';
+    const days=[['tue','Tue','17','today',1],['wed','Wed','18','tom',1],['thu','Thu','19','thu',1],['fri','Fri','20','fri',1],['sat','Sat','21','',0],['sun','Sun','22','',0],['mon','Mon','23','mon',1]];
+    const on = P.st.wd || 'tue';
+    body = `<div class="week">${days.map(d=>`<div class="d ${on===d[0]?'on':''} ${d[4]?'has':''}" data-set="wd:${d[0]}"><small>${d[1]}</small><b>${d[2]}</b><i></i></div>`).join('')}</div><div class="gap-m"></div>
+     ${['today','tom','thu','fri','mon','later'].map(key=>{ const L = TK.filter(k=>k.day===key).filter(inScope); const evs = key==='thu'?[['11:00','Kalahari intro call','prep/kalahari']]:key==='today'?[['10:00','Project Review','prep/review'],['15:30','Commercial Follow-up','prep/commercial']]:[]; if(!L.length&&!evs.length) return ''; return `<div class="sh" style="margin:16px 0 4px"><span class="h" style="font-size:13px">${DAYLABEL[key]}</span><span class="n">${L.length}</span><span class="sp"></span><span class="a" data-sheet="tquick">${ic('plus','style="width:16px;height:16px;vertical-align:-3px"')}</span></div>${evs.map(e=>`<div class="pad" style="margin-bottom:4px"><div style="border-radius:10px;padding:7px 10px;background:var(--sunk);display:flex;gap:10px;align-items:center;cursor:pointer" data-go="${e[2]}"><span class="cap tnum">${e[0]}</span><span class="sec" style="color:var(--ink)">${e[1]}</span><span class="cap" style="margin-left:auto">meeting</span></div></div>`).join('')}<div class="rows">${L.map(k=>taskRow2(P,k,{noDue:key!=='later'})).join('')}</div>`; }).join('')}`;
+  } else if (v === 'inbox') {
+    title='Inbox'; sub='Captured, not yet sorted';
+    body = `<div class="pad sec">Quick adds without a list land here. Give each one a list and a date, or do it now.</div><div class="gap-m"></div><div class="rows">${TK.filter(k=>k.list==='inbox').map(k=>taskRow2(P,k)).join('')}</div><div class="gap-m"></div><div class="pad"><span class="btn s full" data-fn="selAll">${ic('task')}Sort several at once</span></div>`;
+  } else if (v === 'waiting') {
+    title='Waiting on'; sub='Promises other people made to you';
+    body = `<div class="rows">${WAITING.map(w => `<div class="row" data-go="person/${w.who}">${av(w.who,'md')}<div class="m"><div class="tt">${w.text}</div><div class="st">${PEOPLE[w.who].name} · ${w.due}${w.late?` · <span class="warn">${w.late}</span>`:''}</div><div style="margin-top:6px;display:flex;gap:6px">${w.ev?ev(EVIDENCE[w.ev].ts,`data-sheet="evidence|${w.ev}"`):''}<span class="pill n">${PROJECTS[w.project].name}</span></div></div><div class="tr"><span class="btn s sm" data-sheet="nudge|${w.id}">Nudge</span></div></div>`).join('')}</div><div class="gap-m"></div><div class="pad cap">To hand a task to someone, open it and choose "Someone else is doing this". It moves here and keeps its source.</div>`;
+  } else if (v === 'priority') {
+    title='Priority 1'; sub='Flagged red';
+    body = `<div class="rows">${TK.filter(k=>k.prio===1).map(k=>taskRow2(P,k)).join('')}</div>`;
+  } else if (v === 'done') {
+    title='Completed'; sub='Your log';
+    body = `<div class="sh" style="margin:6px 0 4px"><span class="h" style="font-size:13px">This week</span><span class="n">3</span></div><div class="rows">${DONE_RECENT.map(d=>`<div class="row"><div class="tcb on" style="--pc:var(--success)">${ic('check')}</div><div class="m"><div class="tt" style="color:var(--muted);text-decoration:line-through">${d[0]}</div><div class="st">${LISTS[d[1]].name} · ${d[2]}</div></div></div>`).join('')}</div><div class="gap-m"></div><div class="pad cap">Completed tasks are kept and searchable. The weekly review reads from here.</div>`;
+  } else {
+    title='@email'; sub='Label';
+    body = `<div class="rows">${TK.filter(k=>(k.labels||[]).includes('email')).map(k=>taskRow2(P,k)).join('')}</div>`;
+  }
+  return { body: tHdr(P, title, sub, null, [act('sort','data-sheet="tsort"'), act('more','data-sheet="tmore"')]) + body + `<div class="gap-xxl"></div><div class="gap-xxl"></div>`, foot: fabLow };
+};
+
+/* ── List / project page: sections, list & board, progress, bulk ── */
+S.tlist = (P, a) => {
+  const id = a[0] || 'acme'; const L = LISTS[id]; const items = TK.filter(k=>k.list===id); const done = items.filter(k=>isDone(P,k)).length + (id==='acme'?2:0); const total = items.length + (id==='acme'?2:0);
+  const board = P.st.board; const sel = P.st.selMode;
+  const sections = L.sections.map(sn => { const S2 = items.filter(k=>k.sec===sn); return board
+    ? `<div class="col"><h4><i style="width:8px;height:8px;border-radius:2px;background:${L.color};display:inline-block"></i>${sn}<span class="cap" style="margin-left:auto">${S2.length}</span></h4>${S2.map(k=>`<div class="card2" data-go="task/${k.id}" style="${isDone(P,k)?'opacity:.5;text-decoration:line-through':''}">${k.t}<div class="tmeta" style="margin-top:6px">${dueChip(k)}${k.prio<3?`<span class="flag${k.prio}">${ic('flag')}</span>`:''}${k.subs?`<span>${ic('list')}${k.subs.length}</span>`:''}</div></div>`).join('')}<div class="cap" style="padding:6px 4px;cursor:pointer" data-sheet="tquick">+ Add task</div></div>`
+    : `<div class="sh" style="margin:18px 0 2px"><span class="h" style="font-size:13px">${sn}</span><span class="n">${S2.length}</span><span class="sp"></span><span class="a" data-sheet="tquick">${ic('plus','style="width:16px;height:16px;vertical-align:-3px"')}</span></div><div class="rows">${S2.map(k=>taskRow2(P,k,{noList:true})).join('')}</div>`; }).join('');
+  return { body: hdr(`<i style="width:10px;height:10px;border-radius:3px;background:${L.color};display:inline-block;margin-right:8px;vertical-align:1px"></i>${L.name}`, { sub:`${L.space}${L.confidential?' · Confidential':''}`, actions:[act(board?'list':'filter', `data-tog="board" aria-label="${board?'List':'Board'} view"`), act('more','data-sheet="tlistmore"')] }) + `
+   <div class="pad"><div style="display:flex;gap:10px;align-items:center"><div class="bar2" style="flex:1"><i style="width:${Math.round(done/total*100)}%;background:${L.color}"></i></div><span class="cap tnum">${done} of ${total} done</span></div>
+   ${id==='acme'?`<div class="gap-s"></div><div class="chips" style="padding:0"><span class="chip" data-go="project/acme">${ic('folder')}Project page</span><span class="chip" data-tog="selMode">${ic('task')}${sel?'Done selecting':'Select'}</span><span class="chip">${ic('person')}Anyone</span><span class="chip">${ic('flag')}Any priority</span></div>`:''}</div>
+   ${board?`<div class="gap-m"></div><div class="board">${sections}</div>`:sections}
+   <div class="gap-m"></div><div class="pad"><span class="btn t" style="padding:0" data-toast="New section">${ic('plus')}Add section</span></div><div class="gap-xxl"></div><div class="gap-xxl"></div>`,
+   foot: sel ? `<div style="flex:none;display:flex;justify-content:space-around;padding:10px 8px 14px;background:var(--ink);color:var(--bg)">${[['cal','Date'],['flag','Priority'],['folder','Move'],['person','Assign'],['check','Complete']].map(x=>`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;font:600 11px Inter;cursor:pointer" data-toast="${x[1]} · applied to selected tasks" data-set="selMode:false">${ic(x[0],'style="width:20px;height:20px"')}${x[1]}</div>`).join('')}</div>` : fabLow };
+};
+FN.selAll = P => { P.stack.push('tlist/acme'); P.st.selMode = true; };
+
+/* ── Task page ── */
+S.task = (P, a) => {
+  const k = TK.find(x=>x.id===(a[0]||'k1')); const L = LISTS[k.list] || { name:'Inbox', color:'#71717A' }; const done = isDone(P,k);
+  const pc = k.prio===1?'#E5484D':k.prio===2?'#D97706':k.prio===3?'var(--accent)':'var(--faint)';
+  const row = (icon, label, val, attrs, color) => `<div class="row" ${attrs||''} style="padding:12px 16px;align-items:center"><div style="color:${color||'var(--muted)'};width:22px;display:flex">${ic(icon,'style="width:20px;height:20px"')}</div><div class="m"><div class="tt" style="font:400 14.5px/20px Inter;${val?'':'color:var(--muted)'}">${val||label}</div></div></div>`;
+  const subs = (k.subs||[]).map((s,i)=>{ const v = P.st['ts_'+k.id+'_'+i]!==undefined?P.st['ts_'+k.id+'_'+i]:!!s[1]; return `<div style="display:flex;gap:12px;align-items:center;padding:7px 16px 7px 50px"><div class="tcb ${v?'on':''}" style="width:18px;height:18px;--pc:var(--ink2)" data-set="ts_${k.id}_${i}:${!v}">${ic('check')}</div><span class="sec" style="color:${v?'var(--muted)':'var(--ink)'};${v?'text-decoration:line-through':''}">${s[0]}</span></div>`; }).join('');
+  return { body: hdr('',{ actions:[act('share','data-toast="Share task as text"'), act('more','data-sheet="tmoremenu"')] }) + `
+   <div class="pad" style="display:flex;gap:14px;align-items:flex-start"><div class="tcb ${done?'on':''}" style="--pc:${pc};width:26px;height:26px;margin-top:4px" data-fn="tdone:${k.id}">${ic('check')}</div><div style="flex:1"><div class="title" style="font-size:21px;line-height:28px;${done?'text-decoration:line-through;color:var(--muted)':''}">${k.t}</div>
+    <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="chip" style="height:28px" data-sheet="tmove|${k.id}"><i style="width:8px;height:8px;border-radius:2px;background:${L.color};display:inline-block"></i>${L.name}${k.sec?' · '+k.sec:''}</span>${L.confidential?`<span class="lock">${ic('lock')}Confidential</span>`:''}</div></div></div>
+   <div class="gap-m"></div>
+   ${k.promisedTo?`<div class="pad"><div class="hero" style="padding:12px 14px;display:flex;gap:10px;align-items:center">${av(k.promisedTo,'md')}<div style="flex:1"><div class="strong">Promised to ${PEOPLE[k.promisedTo].name}</div><div class="cap">${MEETINGS[k.from].title} · ${MEETINGS[k.from].when} · completing this closes the promise</div></div>${ev(EVIDENCE[k.ev].ts,`data-sheet="evidence|${k.ev}"`)}</div></div><div class="gap-s"></div>`:''}
+   <div class="rows">
+    ${row('cal','Date', k.day==='none'?'':(k.day==='today'?'Today':k.dueLabel||DAYLABEL[k.day])+(k.time?' · '+k.time:''), `data-sheet="tdate|${k.id}"`, k.day==='today'?'var(--success)':k.day==='past'?'var(--warning)':null)}
+    ${row('bell','Reminder', k.remind?`Reminder at ${k.remind}`:'', `data-sheet="tdate|${k.id}"`)}
+    ${row('refresh','Repeat', k.repeat||'', `data-sheet="tdate|${k.id}"`)}
+    ${row('flag','Priority', `Priority ${k.prio}`, `data-sheet="tprio|${k.id}"`, pc)}
+    ${row('pin','Labels', (k.labels||[]).map(l=>'@'+LABELS[l]).join('  '), 'data-toast="Pick labels"')}
+    ${row('person','Someone else is doing this', '', 'data-toast="Moved to Waiting on · pick who and by when"')}
+   </div>
+   <div class="gap-m"></div><div class="sh"><span class="h" style="font-size:13px">Subtasks</span>${k.subs?`<span class="n">${k.subs.filter((s,i)=>P.st['ts_'+k.id+'_'+i]!==undefined?P.st['ts_'+k.id+'_'+i]:s[1]).length}/${k.subs.length}</span>`:''}</div>${subs}<div style="padding:8px 16px 4px 50px" class="sec mut click" data-toast="New subtask">+ Add subtask</div>
+   <div class="gap-l"></div><div class="sh"><span class="h" style="font-size:13px">Notes</span></div><div class="pad"><div class="ta" style="min-height:64px">${k.notes||'<span class="mut">Add notes, links or context…</span>'}</div></div>
+   ${k.id==='k1'?`<div class="gap-l"></div><div class="sh"><span class="h" style="font-size:13px">Attached</span></div><div class="rows"><div class="row" data-go="inboxitem/voice"><div class="lead sq">${ic('wave')}</div><div class="m"><div class="tt">Voice note from Sarah</div><div class="st">Today 07:42 · why this matters now</div></div></div><div class="row" data-go="meeting/kickoff"><div class="lead sq">${ic('note')}</div><div class="m"><div class="tt">Technical Kickoff</div><div class="st">Where you promised it · 22:10</div></div></div></div>`:''}
+   <div class="gap-l"></div><div class="pad cap">Created 2 Nov from Technical Kickoff · edited today 08:20</div><div class="gap-xl"></div>`,
+   foot: sticky(`<span class="btn s lg" data-sheet="tdate|${k.id}">${ic('cal')}Reschedule</span><span class="btn p lg" style="flex:1" data-fn="tdone:${k.id}">${ic('check')}${done?'Mark not done':'Complete'}</span>`) };
+};
+
+/* ── Plan my day ── */
+S.tplan = P => {
+  const cands = [TK[2], TK[0], TK[1], TK[5], TK[3]]; const i = P.st.pi || 0; const k = cands[i];
+  if (!k) { const n = Object.keys(P.st).filter(x=>x.startsWith('pk_')&&P.st[x]==='t').length; return { body: hdr('Plan my day') + `<div style="padding:40px 24px;text-align:center"><div class="ringP lg" style="--v:100;margin:0 auto"><i>${ic('check','style="width:24px;height:24px;color:var(--accent)"')}</i></div><div class="title" style="margin-top:18px">Your day is set</div><div class="sec" style="margin-top:6px">${n+2} tasks today around 2 meetings. About ${(n+2)*25} minutes of focused work.</div><div class="gap-xl"></div><span class="btn p lg" data-rep="tview/today">See Today</span></div>` }; }
+  const L = LISTS[k.list];
+  return { body: hdr('Plan my day',{sub:`${i+1} of ${cands.length} · from overdue, due soon and your promises`}) + `
+   <div class="gap-l"></div><div class="pad"><div class="bar2"><i style="width:${i/cands.length*100}%"></i></div></div><div class="gap-xl"></div>
+   <div class="pad"><div class="heroX" style="padding:22px 20px;min-height:280px;display:flex;flex-direction:column">
+    <span class="over" style="color:var(--accent)">${k.day==='past'?'Past due since '+k.dueLabel:k.day==='today'?'Due today':k.day==='tom'?'Due tomorrow':'Coming up'}</span>
+    <div class="title" style="margin-top:10px;color:var(--inkHero)">${k.t}</div>
+    <div class="sec" style="margin-top:8px"><i style="width:8px;height:8px;border-radius:2px;background:${L.color};display:inline-block"></i> ${L.name}${k.promisedTo?` · promised to ${PEOPLE[k.promisedTo].name.split(' ')[0]}`:''}</div>
+    ${k.notes?`<div class="sec" style="margin-top:12px;color:var(--ink)">${k.notes}</div>`:''}
+    <span style="flex:1"></span><div class="cap">Your calendar today: 10:00–10:45 and 15:30–16:00. Free: 2 h 30 before lunch.</div></div></div>
+   <div class="gap-xl"></div><div class="pad" style="display:flex;gap:10px"><span class="btn s lg" style="flex:1" data-set="pk_${k.id}:l;pi:${i+1}">Not today</span><span class="btn p lg" style="flex:1" data-set="pk_${k.id}:t;pi:${i+1}">${ic('sun')}Today</span></div>
+   <div class="gap-m"></div><div class="pad" style="text-align:center"><span class="link sec" style="color:var(--accent)" data-set="pk_${k.id}:t;pi:${i+1}" data-sheet="tdate|${k.id}">Pick a time</span></div>` };
+};
+
+/* ── Work › Tasks segment = the same component, scoped to Work ── */
+S.tasks = P => {
+  const v = P.st.wtv || 'today';
+  P.st.scope2 = 'work';
+  const inner = v==='waiting' ? S.tview(P,['waiting']).body : v==='upcoming' ? S.tview(P,['upcoming']).body : v==='lists' ? `<div class="lists">${Object.entries(LISTS).filter(([,l])=>l.space==='Work').map(([id,l])=>`<div class="li" data-go="tlist/${id}"><span class="d" style="background:${l.color}"></span><span class="strong">${l.name}</span><span class="n">${TK.filter(k=>k.list===id).length}</span></div>`).join('')}</div><div class="gap-l"></div><div class="pad"><span class="btn s full" data-go="tasksapp">Open all Tasks · Personal & Learning too</span></div>` : S.tview(P,['today']).body;
+  // strip the inner header (first .hdr) from tview bodies
+  const cleaned = inner.replace(/^<div class="hdr[\s\S]*?<\/div><\/div>/, '');
+  P.st.scope2 = null;
+  const body = `<div class="gap-m"></div><div class="chips">${[['today','Today'],['upcoming','Upcoming'],['waiting','Waiting on'],['lists','By project']].map(([k,l])=>`<span class="chip ${v===k?'on':''}" data-set="wtv:${k}">${l}</span>`).join('')}</div><div class="gap-m"></div>${cleaned}`;
+  const r = workShell(P, 'tasks', body, 'Work tasks · same as the Tasks app');
+  r.floating = P.stack.length>1 ? fabLow : fab; return r;
+};
+
+/* ── Sheets ── */
+SH.tquick = P => {
+  const t = P.st.qtext || 'Send API docs to James tomorrow 3pm #Acme !1 @email';
+  return `<div class="pad"><div style="font:500 16px/24px Inter;color:var(--ink)">Send API docs to James <span class="nl d">tomorrow 3pm</span> <span class="nl p">#Acme</span> <span class="nl f">!1</span> <span class="nl l">@email</span><span style="border-left:2px solid var(--accent);margin-left:1px"></span></div>
+   <div class="gap-s"></div><div class="sec mut">Description</div><div class="gap-m"></div>
+   <div class="qa"><span class="chip on" style="background:rgba(22,163,74,.14);color:var(--success)">${ic('cal')}Wed 18 · 15:00</span><span class="chip acc"><i style="width:8px;height:8px;border-radius:2px;background:var(--p-acme);display:inline-block"></i>Acme Integration</span><span class="chip" style="color:#E5484D">${ic('flag')}P1</span><span class="chip">@email</span><span class="chip">${ic('bell')}</span><span class="chip">${ic('person')}James</span></div>
+   <div class="gap-m"></div><div style="display:flex;gap:8px;align-items:center"><span class="cap" style="flex:1">Type naturally: dates, #list, !priority, @label</span><span class="btn p" style="width:44px;height:44px;padding:0;border-radius:50%" data-close data-toast="Added to Acme Integration · Wed 15:00">${ic('arrow')}</span></div></div><div class="gap-s"></div><div class="kbd"><div class="r">${'<i></i>'.repeat(10)}</div><div class="r" style="padding:0 16px">${'<i></i>'.repeat(9)}</div><div class="r" style="padding:0 30px">${'<i></i>'.repeat(7)}</div><div class="r"><i style="max-width:60px"></i><i style="max-width:200px"></i><i style="max-width:60px"></i></div></div>`;
+};
+SH.tdate = (P, id) => { const k = TK.find(x=>x.id===id) || TK[0];
+  const days = []; for (let d=26; d<=30; d++) days.push(`<div class="c mut">${d}</div>`); for (let d=1; d<=30; d++) days.push(`<div class="c ${d===17?'td':''} ${d===(P.st.pickD||18)?'on':''}" data-set="pickD:${d}">${d}</div>`);
+  return `<div class="pad"><div class="heading">${k.t}</div><div class="gap-m"></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${[['sun','Today','Tue'],['arrow','Tomorrow','Wed'],['cal','This weekend','Sat'],['history','Next week','Mon 23'],['close','No date','']].map(x=>`<div class="inset click" style="padding:10px 12px;display:flex;gap:8px;align-items:center" data-close data-toast="Scheduled · ${x[1]}"><span style="color:var(--accent);display:flex">${ic(x[0],'style="width:18px;height:18px"')}</span><span class="strong" style="font-size:13.5px">${x[1]}</span><span class="cap" style="margin-left:auto">${x[2]}</span></div>`).join('')}</div>
+   <div class="gap-l"></div><div style="display:flex;justify-content:space-between;align-items:center"><span class="strong">November 2026</span><span class="cap">‹ ›</span></div><div class="gap-s"></div>
+   <div class="cal">${['M','T','W','T','F','S','S'].map(d=>`<div class="h">${d}</div>`).join('')}${days.join('')}</div>
+   <div class="gap-m"></div><div class="rows" style="margin:0 -16px">${[['clock','Time','15:00'],['bell','Reminder','30 min before'],['refresh','Repeat',k.repeat||'Never']].map(r=>`<div class="row" style="padding:10px 16px;align-items:center"><div style="color:var(--muted);display:flex">${ic(r[0],'style="width:19px;height:19px"')}</div><div class="m"><div class="tt" style="font-weight:400">${r[1]}</div></div><span class="cap">${r[2]}</span></div>`).join('')}</div>
+   <div class="gap-m"></div><span class="btn p full" data-close data-toast="Rescheduled">Done</span></div><div class="gap-l"></div>`; };
+SH.tprio = (P, id) => `<div class="pad"><div class="heading">Priority</div></div><div class="rows">${[[1,'#E5484D','Priority 1','Must happen today'],[2,'#D97706','Priority 2','Important'],[3,'var(--accent)','Priority 3','Normal'],[4,'var(--faint)','Priority 4','Whenever']].map(p=>`<div class="row" data-close data-toast="Set to ${p[2]}"><div style="color:${p[1]};display:flex">${ic('flag','style="width:20px;height:20px"')}</div><div class="m"><div class="tt">${p[2]}</div><div class="st">${p[3]}</div></div></div>`).join('')}</div><div class="gap-l"></div>`;
+SH.tmove = (P, id) => `<div class="pad"><div class="heading">Move to</div></div><div class="lists">${Object.entries(LISTS).map(([lid,l])=>`<div class="li" data-close data-toast="Moved to ${l.name}"><span class="d" style="background:${l.color}"></span><span class="strong">${l.name}</span><span class="n">${l.space}</span></div>`).join('')}</div><div class="gap-l"></div>`;
+SH.tsort = P => `<div class="pad"><div class="heading">View options</div><div class="gap-m"></div><div class="over">Group by</div><div class="gap-s"></div><div class="qa">${['Date','List','Priority','Label','None'].map((x,i)=>`<span class="chip ${i===0?'on':''}">${x}</span>`).join('')}</div><div class="gap-m"></div><div class="over">Sort by</div><div class="gap-s"></div><div class="qa">${['Smart','Due date','Priority','A–Z','Manual'].map((x,i)=>`<span class="chip ${i===0?'on':''}">${x}</span>`).join('')}</div><div class="gap-m"></div><div class="over">Show</div><div class="gap-s"></div><div class="qa"><span class="chip on">Meetings in the day</span><span class="chip">Completed</span><span class="chip">Subtasks</span></div><div class="gap-l"></div><span class="btn p full" data-close>Apply</span></div><div class="gap-l"></div>`;
+['tmore','tlistmore','tmoremenu'].forEach(n => SH[n] = P => `<div class="rows">${({tmore:[['task','Select tasks'],['sort','View options'],['filter','Filters'],['check','Show completed']],tlistmore:[['edit','Rename list'],['plus','Add section'],['task','Select tasks'],['people','Share list (later)'],['trash','Delete list (asks first)']],tmoremenu:[['copy','Duplicate'],['folder','Convert to note'],['dl','Send to Todoist / Linear (connected)'],['trash','Delete (with Undo)']]})[n].map(r=>`<div class="row" data-close><div class="lead">${ic(r[0])}</div><div class="m"><div class="tt">${r[1]}</div></div></div>`).join('')}</div><div class="gap-l"></div>`);
+/* ═════════════════════════ v2 layer — homes in the app's own hero language, adaptive bar, Notes segment, Brief controls, PDF reading ═════════════════════════ */
+Object.assign(NAMES, { thome:'Today home', whome:'Work home', learn:'Learn', pdfview:'Document viewer', search:'Search' });
+
+/* ── Adaptive bar, same pill design as core/ui/BottomNavigation.kt ── */
+const BAR = {
+  both:  ['home','notes','NEW','work','learn'],
+  work:  ['home','notes','NEW','work','tasks'],
+  learn: ['home','notes','NEW','learn','tasks'],
+  none:  ['home','notes','NEW','tasks','search'],
+};
+const TABDEF = { home:['home','Today','home'], notes:['note','Notes','notes'], work:['work','Work','work/pulse'], learn:['star','Learn','learn'], tasks:['task','Tasks','tasksapp'], search:['search','Search','search'] };
+function bnav(on, P){
+  const cfg = BAR[(P && P.st.bar) || 'both'];
+  return `<div class="pnav"><div class="pill">${cfg.map(k => k==='NEW' ? `<div class="new" data-sheet="newsheet">${ic('plus')}New</div>` :
+    on===k ? `<div class="it on" data-root="${TABDEF[k][2]}">${ic(TABDEF[k][0])}<span>${TABDEF[k][1]}</span></div>` : `<div class="it" data-root="${TABDEF[k][2]}" aria-label="${TABDEF[k][1]}">${ic(TABDEF[k][0])}</div>`).join('')}</div></div>`;
+}
+/* make every root screen leave room for the floating bar */
+
+/* ── Sky hero: TodayIntelligence keyframes ── */
+const SKY = { morning:['#78B8F0','#3E6FD8','day'], quiet:['#6FAEF0','#3566D2','day'], first:['#86BEF0','#4677DA','day'], offline:['#78B8F0','#3E6FD8','day'], friday:['#E9B072','#9A5E8C','gold'], evening:['#C7787A','#5C3F84','dusk'] };
+function sky(P, inner, h){
+  const m = P.st.mode || GLOBAL_MODE; const [t,b,kind] = SKY[m] || SKY.morning;
+  const sun = kind==='day' ? `<div class="sun" style="width:46px;height:46px;right:34px;top:34px;background:radial-gradient(circle,#FFFDF2 0%,#F9D56E 60%,#F6C04A 100%);box-shadow:0 0 60px 26px rgba(253,230,138,.38)"></div>`
+    : kind==='gold' ? `<div class="sun" style="width:50px;height:50px;right:40px;top:96px;background:radial-gradient(circle,#FFE6A8,#F5A623 70%);box-shadow:0 0 70px 30px rgba(245,166,35,.35)"></div>`
+    : `<div class="sun" style="width:40px;height:40px;right:44px;top:30px;background:radial-gradient(circle,#F3F4FA,#C6CCE0);box-shadow:0 0 50px 20px rgba(203,213,245,.25)"></div><div class="stars">${[[30,40],[80,22],[150,58],[210,30],[260,70],[120,92],[300,40],[60,110]].map(([x,y])=>`<i style="left:${x}px;top:${y}px"></i>`).join('')}</div>`;
+  return `<div class="sky" style="height:${h||290}px;background:linear-gradient(180deg,${t} 0%,${b} 100%)"><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.16),transparent 45%)"></div>${sun}
+    <svg class="hills" viewBox="0 0 380 70" preserveAspectRatio="none"><path d="M0 46 C60 22 120 30 190 44 C250 56 310 30 380 38 L380 70 L0 70Z" fill="rgba(255,255,255,.14)"/><path d="M0 58 C80 40 150 50 230 58 C300 64 340 50 380 54 L380 70 L0 70Z" fill="rgba(255,255,255,.12)"/></svg>${inner}</div>`;
+}
+function homeHeader(P){
+  return `<div style="display:flex;align-items:center;gap:12px;padding:8px 16px 12px"><span class="av" data-sheet="profile" style="width:50px;height:50px;font-size:16px;background:linear-gradient(135deg,#3F3F46,#18181B);box-shadow:0 0 0 1px var(--line),0 0 0 4px var(--bg)">AM</span>
+   <div style="flex:1;font:600 15px/20px Outfit,Inter,sans-serif">${({evening:'Tuesday, 17 Nov',friday:'Friday, 20 Nov',quiet:'Wednesday, 18 Nov'})[P.st.mode||GLOBAL_MODE]||'Tuesday, 17 Nov'}</div>
+   <div style="display:flex;gap:2px;padding:4px;border-radius:24px;background:color-mix(in srgb,var(--surface) 78%,transparent);box-shadow:0 0 0 1px var(--line),0 10px 20px -12px rgba(0,0,0,.25)">
+    <div class="ib" style="width:38px;height:38px" data-go="search">${ic('search','style="width:19px;height:19px"')}</div><div class="ib" style="width:38px;height:38px" data-go="inbox">${ic('inbox','style="width:19px;height:19px"')}<span class="badge" style="top:3px;right:2px">4</span></div></div></div>`;
+}
+function ribbon(onDark, evening){
+  const x = h => ((h-8)/(18-8)*100).toFixed(1)+'%';
+  const now = evening ? 17.7 : 8.97;
+  return `<div class="ribbon" style="${onDark?'margin:0':''}"><div class="axis"></div>
+   <div class="blk ${evening?'past':''}" data-go="prep/review" style="left:${x(10)};width:9.5%;background:linear-gradient(135deg,#6E6EF0,#4F46E5)">10:00<small>Review</small></div>
+   <div class="blk ${evening?'past':''}" data-go="prep/commercial" style="left:${x(15.5)};width:8%;background:linear-gradient(135deg,#6E6EF0,#4F46E5)">15:30<small>Pricing</small></div>
+   <div class="tk" data-go="task/k1" style="left:calc(${x(12)} - 5px);background:#E5484D" title="API docs 12:00"></div>
+   <div class="tk" data-go="task/k2" style="left:calc(${x(15)} - 5px);background:#D97706" title="Pricing options 15:00"></div>
+   <div class="tk" style="left:calc(${x(16.5)} - 5px);background:#0F9D76"></div>
+   ${[8,10,12,14,16,18].map(hh=>`<div class="hr2" style="left:${x(hh)}">${hh}</div>`).join('')}
+   <div class="now" style="left:${x(now)}"></div></div>`;
+}
+
+/* ── Today home (default) ── */
+S.thome = P => {
+  const m = P.st.mode || GLOBAL_MODE; const ev = m==='evening';
+  return { nav:'home', body: homeHeader(P) + `<div class="modesw" style="margin-bottom:14px"><span class="on">All</span><span data-root="whome">Work</span><span data-root="learn">Learn</span></div>
+   <div style="padding:0 16px">${sky(P, `<div style="position:absolute;left:24px;top:30px;width:62%"><div style="font:500 27px/32px Outfit,Inter,sans-serif;letter-spacing:-.6px">${ev?'Good evening':'Good morning'}, Ana</div><div style="margin-top:8px;font:400 13px/18px Inter;color:rgba(255,255,255,.82)">${ev?'Two meetings done. One review and a call to Mum left.':'Two meetings, five tasks, and a quiet evening.'}</div></div>
+    <div style="position:absolute;left:20px;right:20px;bottom:48px;border-radius:18px;padding:12px 14px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);font:500 14px/19px Inter">"Simplicity is the ultimate sophistication."<div style="font:600 10.5px/14px Inter;letter-spacing:.7px;margin-top:4px;opacity:.85">— LEONARDO DA VINCI</div></div>`, 300)}</div>
+   <div class="gap-l"></div>
+   <div class="qacc">${[['mic','Record','record/review'],['edit','Note',''],['task','Task','tasksapp'],['work','Work','whome'],['star','Learn','learn'],['people','Circles','']].map(q=>`<div class="q" ${q[2]?`data-go="${q[2]}"`:''}><div>${ic(q[0])}</div><span>${q[1]}</span></div>`).join('')}</div>
+   <div class="gap-l"></div>
+   <div class="pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="brief" style="grid-column:1 / span 2;padding:16px 16px 14px;cursor:pointer" data-root="work/pulse"><div style="display:flex;align-items:center;gap:8px;position:relative;z-index:1"><span class="lav" style="font:600 10.5px/1 Inter;letter-spacing:1.3px">WORK · YOUR DAY</span><span style="flex:1"></span><span style="font:600 12px Inter;opacity:.8">${ev?'3 to close':'4 need you'} ›</span></div>
+     <div style="position:relative;z-index:1;margin-top:8px;font:600 18px/23px Outfit,Inter">${ev?'Wrap up Project Review — 9 findings':'Project Review at 10:00 · prep ready'}</div><div style="position:relative;z-index:1;margin-top:10px">${ribbon(true, ev)}</div></div>
+    <div class="vtile" style="min-height:150px;border-radius:24px" data-go="tview/today"><div class="top"><span class="over">Tasks</span><div class="ringP" style="--v:20;width:40px;height:40px"><i style="width:31px;height:31px;font-size:10.5px">1/5</i></div></div><div class="strong" style="font-size:13.5px;line-height:18px">API docs to James<br><span class="cap">12:00 · and 4 more today</span></div></div>
+    <div class="vtile" style="min-height:150px;border-radius:24px;background:linear-gradient(160deg,#FDF2F8,#FCE7F3);border:0;color:#831843" data-root="learn"><span class="over" style="color:#BE185D">Learn</span><div style="font:600 17px/22px Outfit,Inter;color:#831843">14 minutes of useful learning</div><span class="cap" style="color:#9D174D">Module 3 · 6 cards due</span></div>
+   </div>
+   <div class="gap-xl"></div><div class="pad"><div class="lcard"><div class="lh"><b>Recent notes</b><span data-root="notes">All</span></div>${[['Status Sync — Acme','10 Nov · 31 min'],['Sunday reading notes','15 Nov · Personal'],['Technical Kickoff — Acme','2 Nov · 48 min']].map(r=>`<div class="row" style="padding:10px 16px"><div class="lead sq" style="width:32px;height:32px">${ic('note')}</div><div class="m"><div class="tt" style="font-size:14px">${r[0]}</div><div class="st">${r[1]}</div></div></div>`).join('')}</div></div>
+   <div class="navpad"></div><div class="gap-l"></div>` };
+};
+
+/* ── Work home (HomeStyle.PROFESSIONAL) — kept and elevated ── */
+S.whome = P => {
+  const m = P.st.mode || GLOBAL_MODE; const ev = m==='evening';
+  const att = ev ? [['DIDN\'T PROCESS','Commercial Follow-up · audio is safe','Try again','failed'],['YOU PROMISED','SSO estimate to Sarah · today','Done',''],['INBOX','3 items to file','Review','inbox']]
+                 : [['YOU PROMISED','API docs to James · due 12:00','Open','task/k1'],['WAITING ON','Sarah · credentials · 4 days past','Nudge','person/sarah'],['INBOX','Voice note from Sarah + 3','Review','inboxitem/voice'],['GONE QUIET','Zenith · 15 days · 1 open','Open','project/zenith']];
+  return { nav:'home', body: homeHeader(P) + `<div class="modesw" style="margin-bottom:14px"><span data-root="thome">All</span><span class="on">Work</span></div>
+   <div style="padding:0 16px;position:relative">${sky(P, `<div style="position:absolute;left:24px;top:28px;width:64%"><div style="font:600 10.5px/1 Inter;letter-spacing:1.3px;opacity:.85">${ev?'EVENING · 17:42':'MORNING · 08:58'}</div><div style="margin-top:10px;font:500 27px/32px Outfit,Inter,sans-serif;letter-spacing:-.6px">${ev?'Good evening':'Good morning'}, Ana</div><div style="margin-top:8px;font:400 13px/18px Inter;color:rgba(255,255,255,.85)">${ev?'Both meetings done. Review, then you\'re clear.':'Your first meeting is in an hour. Sarah\'s credentials are the one thing slipping.'}</div></div>`, 268)}
+    <div style="position:absolute;left:32px;right:32px;bottom:-38px;height:76px;border-radius:26px;background:var(--surface);border:1px solid var(--line);box-shadow:0 16px 30px -16px rgba(0,0,0,.35);display:flex;align-items:center;gap:12px;padding:0 14px;cursor:pointer" data-go="${ev?'wrap/review':'prep/review'}">
+     <div style="width:46px;height:46px;border-radius:16px;background:linear-gradient(135deg,var(--accent),#1E1B4B);color:#fff;display:flex;align-items:center;justify-content:center">${ic(ev?'check':'cal','style="width:22px;height:22px"')}</div>
+     <div style="flex:1;min-width:0"><div class="cap" style="font-size:11.5px">${ev?'TO REVIEW · 9 FINDINGS':'UP NEXT · IN 1 H 2 MIN'}</div><div style="font:600 16px/20px Outfit,Inter">${ev?'Project Review':'Project Review · 10:00'}</div><div class="cap" style="font-size:12px">${ev?'About a minute, then the follow-up':'Acme · 3 open from last time'}</div></div>
+     <div style="width:34px;height:34px;border-radius:50%;background:var(--ink);color:var(--bg);display:flex;align-items:center;justify-content:center">${ic('chev','style="width:16px;height:16px"')}</div></div></div>
+   <div style="height:54px"></div>
+   <div class="qacc">${[['mic','Record','record/review'],['task','Task','tasksapp'],['inbox','Inbox','inbox'],['ai','Ask','ask/all'],['doc','Brief','brief/acme'],['history','Review','weekly']].map(q=>`<div class="q" data-go="${q[2]}"><div>${ic(q[0])}</div><span>${q[1]}</span></div>`).join('')}</div>
+   <div class="gap-l"></div>
+   <div class="pad"><div class="brief" style="padding:20px">
+    <div style="position:relative;z-index:1"><div style="display:flex;align-items:center"><span class="lav" style="font:600 10.5px/1 Inter;letter-spacing:1.4px">YOUR DAY</span><span style="flex:1"></span><span class="bchip" data-root="work/pulse">Open Pulse ›</span></div>
+     <div style="margin-top:10px;font:400 14px/20px Inter;color:rgba(255,255,255,.78)">${ev?'Two meetings recorded. One needs review; one needs another try.':'2 meetings · 5 tasks · first call at 10:00. Nothing urgent before then.'}</div>
+     <div style="margin-top:14px">${ribbon(true, ev)}</div><div class="sep"></div>
+     ${att.map(a=>`<div style="display:flex;gap:12px;align-items:center;padding:7px 0;cursor:pointer" ${a[3]?`data-go="${a[3]}"`:''}><div style="flex:1;min-width:0"><div class="lav" style="font:600 10px/14px Inter;letter-spacing:1.2px">${a[0]}</div><div style="font:600 15px/20px Inter">${a[1]}</div></div><span class="bchip">${a[2]}</span></div>`).join('')}
+     <div class="sep"></div><div class="lav" style="font:600 10px/14px Inter;letter-spacing:1.2px">SINCE YESTERDAY</div>
+     <div style="margin-top:8px;font:400 14px/20px Inter">Credentials: <span style="text-decoration:line-through;opacity:.55">Fri 13 Nov</span> → <b class="rose">Thu 19 Nov</b></div>
+     <div style="margin-top:4px;font:400 14px/20px Inter">New project: <b>Kalahari Discovery</b></div>
+     <div style="margin-top:16px;display:flex;gap:8px"><span class="bbtn" data-go="${ev?'wrap/review':'prep/review'}">${ev?'Review findings':'Prepare'}</span><span class="bbtn g" data-go="ask/all">${ic('ai','style="width:16px;height:16px"')}Ask</span></div></div></div></div>
+   <div class="gap-l"></div>
+   <div class="pad"><div class="lcard"><div class="lh"><b>Today's tasks</b><span data-go="tview/today">All</span></div>${todayList().filter(k=>k.day==='today').slice(0,4).map(k=>taskRow2(P,k)).join('')}</div></div>
+   <div class="gap-l"></div><div class="sh"><span class="h" style="font:600 16px Outfit,Inter">Projects</span><span class="sp"></span><span class="a" data-root="work/projects">All</span></div>
+   <div class="pcar">${[['acme','var(--p-acme)','Needs attention','w',[3,2,1]],['kalahari','var(--p-kal)','First call Thu','a',[1,0,0]],['zenith','var(--p-zen)','Quiet 15 days','n',[1,1,0]]].map(([id,c,st,pl,cnt])=>`<div class="pc" style="--c:${c}" data-go="project/${id}"><div style="display:flex;gap:8px;align-items:center">${orgMark(PROJECTS[id].org,'sm')}<span class="cap ell">${ORGS[PROJECTS[id].org].name}</span>${PROJECTS[id].confidential?`<span class="lock">${ic('lock')}</span>`:''}</div><div style="font:600 16px/21px Outfit,Inter;margin-top:8px">${PROJECTS[id].name}</div><div style="margin-top:6px"><span class="pill ${pl}">${st}</span></div><div class="tmeta" style="margin-top:10px"><span>${ic('task')}${cnt[0]}</span><span>${ic('clock')}${cnt[1]}</span><span>${ic('decision')}${cnt[2]}</span></div></div>`).join('')}</div>
+   <div class="gap-l"></div><div class="sh"><span class="h" style="font:600 16px Outfit,Inter">People</span><span class="sp"></span><span class="a" data-root="work/projects" data-set="ctxTab:people">All</span></div>
+   <div class="pcar">${['sarah','james','thandiwe','mutale'].map(id=>`<div style="flex:none;width:78px;text-align:center;cursor:pointer" data-go="person/${id}"><div style="position:relative;width:56px;margin:0 auto">${av(id,'lg')}${id==='sarah'?`<span style="position:absolute;right:-4px;bottom:-2px;background:var(--warnDot);color:#fff;border:2px solid var(--bg);border-radius:9px;font:700 9.5px/14px Inter;padding:0 5px">owes</span>`:id==='james'?`<span style="position:absolute;right:-4px;bottom:-2px;background:var(--accent);color:#fff;border:2px solid var(--bg);border-radius:9px;font:700 9.5px/14px Inter;padding:0 5px">you owe</span>`:''}</div><div class="cap" style="margin-top:6px;color:var(--ink)">${PEOPLE[id].name.split(' ')[0]}</div></div>`).join('')}</div>
+   <div class="navpad"></div><div class="gap-l"></div>` };
+};
+S.home = P => (P.st.hs === 'today' ? S.thome(P) : S.whome(P));
+SH.profile = P => `<div class="pad" style="display:flex;gap:12px;align-items:center"><span class="av md" style="background:#18181B">AM</span><div><div class="strong">Ana Mwansa</div><div class="cap">Consulting & client work · Pro</div></div></div><div class="gap-m"></div><div class="rows">${[['settings','Settings','settings'],['work','Work settings','wsettings'],['auto','Autopilot','autopilot'],['people','Circles',''],['sun','Home style · Work',''],['cloud','Plan & AI allowance','']].map(r=>`<div class="row" ${r[2]?`data-go="${r[2]}"`:'data-close'}><div class="lead">${ic(r[0])}</div><div class="m"><div class="tt">${r[1]}</div></div></div>`).join('')}</div><div class="gap-s"></div><div class="pad cap">Settings moved here from the bar: it's opened a few times a month, so it gives its slot to Work and Learn.</div><div class="gap-l"></div>`;
+S.learn = P => ({ nav:'learn', body: hdr('Learn',{back:false, actions:[act('search')]}) + `<div class="pad"><div class="heroX" style="padding:18px"><span class="over" style="color:var(--accent)">Today's plan</span><div class="title" style="margin-top:6px;color:var(--inkHero)">About 14 minutes of useful learning</div><div class="sec" style="margin-top:6px">Module 3 recall · 6 cards · one weak concept.</div><div class="gap-m"></div><span class="btn ink">Start Daily Recall</span></div></div><div class="gap-l"></div><div class="pad cap">The Learn tab is the Learning vertical (see "Learning Vertical Redesign"). It appears in the bar because Ana chose both Work and Learning.</div><div class="navpad"></div>` });
+S.search = P => ({ nav:'search', body: hdr('Search',{back:false}) + `<div class="pad"><div class="field">${ic('search')}Search or ask across everything</div></div><div class="gap-l"></div><div class="pad cap">Global search is unchanged. With no spaces selected it keeps a bar slot; otherwise it lives in every home's dock and in each space's header.</div><div class="navpad"></div>` });
+S.settings = (orig => P => { const r = orig(P); r.nav = null; r.body = r.body.replace('<div class="hdr sticky" style="">','<div class="hdr sticky" style="">'); return { body: hdr('Settings') + r.body.replace(/^<div class="hdr[\s\S]*?<\/div><\/div>/,'') }; })(S.settings);
+S.notes = (orig => P => { const r = orig(P); r.body += '<div class="navpad"></div>'; return r; })(S.notes);
+S.tasksapp = (orig => P => { const r = orig(P); if (r.nav) r.body += '<div class="navpad"></div>'; return r; })(S.tasksapp);
+
+/* ── Work hub: five segments (Notes kept, same component scoped to Work) ── */
+seg = (P, on) => `<div class="seg seg5">${[['pulse','Pulse'],['tasks','Tasks'],['notes','Notes'],['projects','Projects'],['decisions','Decisions']].map(([k,l]) => `<div class="s ${on===k?'on':''}" data-rep="work/${k}">${l}</div>`).join('')}</div>`;
+workShell = (P, segKey, body, sub) => { const pushed = P.stack.length > 1; return { body: workHeader(P, sub) + seg(P, segKey) + body + (pushed?'':'<div class="navpad"></div>'), nav: pushed ? null : 'work' }; };
+S.work = (P, a) => { const k = a[0] || 'pulse'; return k==='tasks' ? S.tasks(P) : k==='decisions' ? S.decisions(P) : k==='projects' ? S.projects(P) : k==='notes' ? S.wnotes(P) : S.pulse(P); };
+S.wnotes = P => {
+  const f = P.st.nf || {};
+  const notes = [['Today','Project Review — Acme','Acme confirmed the 8 Dec launch depends on credentials…','acme',['wave','task'],'review'],['Today','Voice note from Sarah','IT security wants the API docs before…','acme',['wave'],''],['Yesterday','Kalahari RFP notes','Fleet tracking modernisation, 14 depots, tender closes…','kalahari',['task'],''],['This week','Status Sync — Acme','Launch moved to 8 Dec; credentials by Friday…','acme',['wave','task'],'sync'],['Earlier','Technical Kickoff — Acme','OAuth2 chosen; 1 Dec target; SSO deferred…','acme',['wave','task'],'kickoff'],['Earlier','Board prep call','Confidential','zenith',['wave','lock'],'board']];
+  let last=''; const rows = notes.map(n=>{ const hd = n[0]!==last ? `<div class="sh" style="margin:14px 0 2px"><span class="h" style="font-size:12.5px;color:var(--muted)">${n[0]}</span></div>` : ''; last=n[0]; return hd + `<div class="row" ${n[5]?`data-go="meeting/${n[5]}"`:''}><span class="pbar" style="background:${LISTS[n[3]].color}"></span><div class="m"><div class="tt">${n[1]}</div><div class="st" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${n[2]}</div><div class="tmeta">${n[4].map(i=>`<span>${ic(i)}</span>`).join('')}<span>${PROJECTS[n[3]].name}</span></div></div></div>`; }).join('');
+  return workShell(P,'notes',`<div class="gap-m"></div><div class="pad"><div class="field">${ic('search')}Search work notes</div></div><div class="gap-m"></div><div class="chips">${['Meetings','My notes','Has tasks','Has recording','This week','Project ▾'].map(c=>`<span class="chip ${f[c]?'on':''}" data-fn="nf:${c}">${c}</span>`).join('')}</div>${rows}<div class="gap-l"></div><div class="pad cap" style="text-align:center">Same Notes component as the Notes tab, scoped to Work · paged 30 at a time</div>`, '42 work notes');
+};
+FN.nf = (P, c) => { P.st.nf = { ...(P.st.nf||{}), [c]: !(P.st.nf||{})[c] }; };
+
+/* ── Pulse morning/evening: Briefing hero with the day ribbon ── */
+const _pm = PULSE.morning, _pe = PULSE.evening;
+PULSE.morning = P => { const b = _pm(P); const i = b.indexOf('<div class="pad"><div class="hero"'); const j = b.indexOf('<div class="gap-xl"></div>', i);
+  const hero = `<div class="pad"><div class="brief" style="padding:18px 18px 16px"><div style="position:relative;z-index:1">
+   <div style="display:flex;align-items:center;gap:8px"><span class="lav" style="font:600 10.5px/1 Inter;letter-spacing:1.4px">NEXT · IN 1 H 2 MIN</span><span style="flex:1"></span>${avs(['sarah','james'],'sm')}</div>
+   <div style="margin-top:8px;font:600 22px/27px Outfit,Inter;letter-spacing:-.3px">Project Review</div><div style="margin-top:2px;font:400 13px Inter;color:rgba(255,255,255,.72)">10:00–10:45 · Acme Integration</div>
+   <div style="margin-top:14px">${ribbon(true,false)}</div><div class="sep"></div>
+   ${[['YOU OWE','API docs to James · due 12:00'],['THEY OWE','Sarah · production credentials'],['STILL OPEN','Which production window?']].map(r=>`<div style="display:flex;gap:10px;padding:4px 0"><span class="lav" style="width:82px;flex:none;font:600 10px/20px Inter;letter-spacing:1.1px">${r[0]}</span><span style="font:500 14px/20px Inter">${r[1]}</span></div>`).join('')}
+   <div style="margin-top:14px;display:flex;gap:8px"><span class="bbtn" data-go="prep/review">Prepare</span><span class="bbtn g" data-go="record/review"><i style="width:8px;height:8px;border-radius:50%;background:#FF6369;display:inline-block"></i>Record</span></div></div></div></div>`;
+  let out = b.slice(0,i) + hero + b.slice(j);
+  out = out.replace(/<div class="sh"><span class="h">Today<\/span>[\s\S]*?<div class="gap-xl"><\/div>/,''); return out; };
+PULSE.evening = P => { const b = _pe(P); const i = b.indexOf('<div class="pad"><div class="hero"'); const j = b.indexOf('<div class="gap-xl"></div>', i);
+  const hero = `<div class="pad"><div class="brief" style="padding:18px"><div style="position:relative;z-index:1"><span class="lav" style="font:600 10.5px/1 Inter;letter-spacing:1.4px">TO REVIEW · PROJECT REVIEW · 10:00</span><div style="margin-top:8px;font:600 22px/27px Outfit,Inter">9 findings, about a minute</div><div style="margin-top:6px;font:400 13.5px/19px Inter;color:rgba(255,255,255,.75)">2 decisions · 2 your tasks · 2 waiting on · 1 question · 1 risk. Then the follow-up is ready.</div><div style="margin-top:14px">${ribbon(true,true)}</div><div style="margin-top:14px;display:flex;gap:8px"><span class="bbtn" data-go="wrap/review">Review findings</span><span class="bbtn g" data-go="meeting/review">Open note</span></div></div></div></div>`;
+  return b.slice(0,i) + hero + b.slice(j); };
+
+/* ── Brief: full controls (kind, audience, tone, length, sections) + document typography ── */
+const BOPT = { aud:['Client sponsor','Internal team','Executive','Just me'], tone:['Plain','Formal','Warm','Direct'], len:['Headline','One page','Detailed'] };
+const _brief = S.brief;
+S.brief = (P, a) => { const r = _brief(P, a);
+  const aud = P.st.baud || 'Client sponsor', tone = P.st.btone || 'Plain', len = P.st.blen || 'One page';
+  r.body = r.body.replace(/class="docp"/g, 'class="docx"')
+    .replace(/<div class="gap-s"><\/div><div class="chips"><span class="chip">[\s\S]*?Length: One page[\s\S]*?<\/span><\/div>/, `<div class="gap-s"></div><div class="chips"><span class="chip" data-sheet="bctl">${ic('person')}For: ${aud}</span><span class="chip" data-sheet="bctl">Tone: ${tone}</span><span class="chip" data-sheet="bctl">Length: ${len}</span><span class="chip" data-sheet="bctl">${ic('list')}Sections · 9</span></div>`);
+  const prose = { Plain:null,
+    Formal:'Acme Integration remains on schedule for an <b>8 December</b> go-live, contingent on receipt of production credentials, now expected on Thursday',
+    Warm:'Good news first: we\'re still aiming for <b>8 December</b>. The one thing we need is the production credentials, which Sarah expects on Thursday',
+    Direct:'Launch: <b>8 December</b>. Blocker: production credentials, now due Thursday' };
+  if (prose[tone]) r.body = r.body.replace(/Acme Integration is on track for an <b>8 December<\/b> launch, but the date now rests on production credentials arriving Thursday/, prose[tone]);
+  if (len === 'Headline') r.body = r.body.replace(/<h3>What changed<\/h3>[\s\S]*?<h3>Recommended next conversation<\/h3>/, '<h3>Recommended next conversation</h3>');
+  if (P.st.bregen) r.body = r.body.replace('<h3>Executive picture</h3>', '<h3>Executive picture</h3><div class="cap" style="color:#4338CA;margin-bottom:6px">Rewritten for: '+aud+' · '+tone+' · '+len+'</div>');
+  return r; };
+SH.bctl = P => { const pick = (k, key) => `<div class="over">${k}</div><div class="gap-s"></div><div class="qa" style="flex-wrap:wrap">${BOPT[key].map(v=>`<span class="chip ${(P.st['b'+key]||BOPT[key][key==='len'?1:0])===v?'on':''}" data-set="b${key}:${v}">${v}</span>`).join('')}</div><div class="gap-m"></div>`;
+  return `<div class="pad"><div class="heading">Shape this brief</div><div class="cap" style="margin-top:2px">Changes the AI paragraphs and which sections print. Facts never change.</div><div class="gap-l"></div>${pick('Audience','aud')}${pick('Tone','tone')}${pick('Length','len')}
+   <div class="over">Sections</div><div class="gap-s"></div>${['Executive picture','What changed','Decisions','Commitments','Risks','Open questions','Next 7 days','Recommended next conversation','Evidence appendix'].map((s,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:6px 0"><div class="cb ${P.st['bs'+i]===false?'':'on'}" data-set="bs${i}:${P.st['bs'+i]===false}">${ic('check')}</div><span class="sec" style="color:var(--ink)">${s}</span>${i===0||i===7?'<span class="tm ai" style="margin-left:auto"><i></i>AI</span>':''}</div>`).join('')}
+   <div class="gap-m"></div><div class="over">Also</div><div class="gap-s"></div><div class="qa"><span class="chip on">English</span><span class="chip">Include confidential: never</span><span class="chip on">Footer</span></div>
+   <div class="gap-l"></div><span class="btn p full" data-set="bregen:true" data-close data-toast="Rewritten · sections unchanged">Apply</span></div><div class="gap-l"></div>`; };
+
+/* ── On-device document reading (PDF text layer + text recognition for scans) ── */
+(function(){ const sow = INBOX.find(i=>i.id==='sow'); sow.noText = false; sow.summary = 'Statement of work, version 3, 12 pages. Adds staff SSO through Acme\'s Azure AD (§4.2, p. 4) and 12-month audit retention (§7.1, p. 7). Payment terms unchanged from v2.';
+  sow.meta = '12 pages · 2.1 MB · read on this phone'; sow.proposal = { dest:'acme', as:'Document in Acme Integration', why:'The text names Acme Corporation and Acme Integration (p. 1)', items:[ {k:'req', t:'Requirement: staff SSO via Azure AD', g:'p. 4, §4.2', ev:'d1'}, {k:'req', t:'Requirement: keep audit events 12 months', g:'p. 7, §7.1', ev:'d2'} ] };
+  INBOX.splice(2, 0, { id:'scan', kind:'PDF', icon:'scan', title:'Scan — Kalahari site visit notes', src:'Scanned in MeetingMind', file:'Scan 2026-11-17 08.05.pdf', when:'Today 08:05', meta:'3 pages · handwritten + print', status:'ready', summary:'Site visit notes: 14 depots, GPS units on 60% of fleet, wants live ETA for customers.', ocr:true, proposal:{ dest:'kalahari', as:'Note in Kalahari Discovery', why:'Mentions Kalahari Logistics (p. 1)', items:[] } });
+})();
+const _ii = S.inboxitem;
+S.inboxitem = (P, a) => { const id = a[0] || 'voice'; if (id !== 'sow' && id !== 'scan') return _ii(P, a);
+  const i = INBOX.find(x=>x.id===id); const state = P.st.pdf || 'ready';
+  const pages = n => `<div style="display:flex;gap:8px;overflow:hidden;padding:0 16px">${Array.from({length:n},(_,k)=>`<div style="flex:none;width:96px;height:128px;position:relative;border-radius:6px;overflow:hidden" class="pdfpg"><div style="font:700 7px Georgia;margin-bottom:6px">${k===0?'STATEMENT OF WORK':'§ '+(k+3)}</div>${'<div style="height:3px;background:#E5E5E5;margin:4px 0;border-radius:2px"></div>'.repeat(12)}${state==='reading'&&k===1?'<div class="scanline"></div>':''}${state==='reading'&&k>1?'<div style="position:absolute;inset:0;background:rgba(255,255,255,.6)"></div>':''}</div>`).join('')}</div>`;
+  if (state === 'reading') return { body: hdr(i.title,{sub:'Document'}) + `<div class="gap-s"></div>${pages(3)}<div class="gap-l"></div>
+    <div class="pad"><div class="card" style="padding:16px"><div style="display:flex;gap:10px;align-items:center"><span class="spin"></span><span class="strong">Reading on this phone · page 5 of 12</span></div><div class="bar2" style="margin-top:12px"><i style="width:42%"></i></div>
+    <div class="sec" style="margin-top:10px">11 pages have a text layer. Page 9 is a scanned signature page, so it's read with on-device text recognition. Nothing leaves the phone to do this.</div></div></div>
+    <div class="gap-l"></div><div class="pad cap">You can leave. When it finishes, MeetingMind suggests where it belongs from what the document says, and every claim cites its page.</div>` };
+  const base = _ii(P, a);
+  const viewer = `<div class="gap-l"></div><div class="pad"><div class="card click" style="padding:12px 14px;display:flex;gap:12px;align-items:center" data-go="pdfview/${id}"><div class="pdfpg" style="width:44px;height:58px;padding:4px">${'<div style="height:2px;background:#E5E5E5;margin:3px 0"></div>'.repeat(8)}</div><div style="flex:1"><div class="strong">${i.ocr?'Open scan · 3 pages':'Open document · 12 pages'}</div><div class="cap">${i.ocr?'Text recognised on this phone · searchable':'Searchable · find "Azure" → p. 4'}</div></div>${ic('chev','style="width:18px;height:18px;color:var(--muted)"')}</div></div>`;
+  let body = base.body.replace(/<div class="gap-l"><\/div><div class="banner">[\s\S]*?Reading text: later<\/span><\/div><\/div>/, '');
+  body = body.replace('<span class="tm ai"><i></i>AI summary of the transcript</span>', `<span class="tm ai"><i></i>AI summary of the document</span>`).replace(where(false), `${where(false)} <span class="pill n">${ic('device')}Text read on this phone</span>`);
+  body = body.replace(/Task: (Requirement: [^<]*)/g, '$1');
+  body = body.replace(/Grounded in (p\. \d+, §[\d.]+)/g, (m, g) => `Found on ${g} ${evDoc(g.split(',')[0], `data-sheet="evidence|${g.includes('4')?'d1':'d2'}"`)}`);
+  body = body.replace('<div class="gap-l"></div><div class="pad"><div class="card" style="padding:4px 14px">', viewer + '<div class="gap-l"></div><div class="pad"><div class="card" style="padding:4px 14px">');
+  return { ...base, body };
+};
+S.pdfview = (P, a) => ({ body: hdr('SOW_Acme_v3.pdf',{sub:'Page 4 of 12', actions:[act('search','data-toast="Search inside · 12 pages indexed"'), act('share')]}) + `<div style="background:var(--sunk);padding:16px 18px 30px;min-height:100%">
+   <div class="pdfpg" style="padding:22px 20px;font-size:10.5px;line-height:16px"><div style="font:700 11px Georgia;margin-bottom:10px">4. SERVICES IN SCOPE</div><p style="margin:0 0 8px">4.1 The Supplier shall integrate the Client's order management platform with the logistics API described in Schedule B.</p><p style="margin:0 0 8px"><span class="hl">4.2 Staff authentication shall use the Client's Azure AD tenant (single sign-on). Local accounts shall not be provisioned for staff users.</span></p><p style="margin:0 0 8px">4.3 Customer-facing authentication shall use OAuth 2.0 as agreed in the Technical Kickoff of 2 November 2026.</p><p style="margin:0 0 8px">4.4 The Supplier shall provide API documentation sufficient for the Client's IT Security review prior to the release of production credentials.</p>${'<div style="height:5px;background:#EEE;margin:7px 0;border-radius:2px"></div>'.repeat(10)}</div>
+   <div class="gap-m"></div><div class="banner a" style="margin:0">${ic('decision')}<div>Highlighted because it's the source of the <b>SSO requirement</b>. It also supports today's decision to put SSO in phase 1.</div></div></div>` });
 /* ═════════════════════════ Canvas: turns, frames, journeys ═════════════════════════ */
 const TURNS = [
+ { id:'0', name:'Bottom bar and the two homes', desc:'The bar keeps the existing pill design (Today · Notes · <b>New</b> · two adaptive slots) but its contents now match the app: <b>Search makes way for Work, and Learn joins when it is selected</b>. Settings moves to the avatar menu, and Search stays in every home\'s dock. The <b>Work home stays</b> one of the two flagship screens. It keeps the time-of-day sky, the floating Up next tile, quick access and the Briefing palette, now with a day ribbon, today\'s tasks, project cards and a people strip. The Today home gains a Work briefing tile, a Tasks tile and a Learn tile.', frames:[
+   ['0a','<b>Work home · morning.</b> The sky follows the clock (TodayIntelligence keyframes). Up next floats on the hero; <b>Your day</b> is the Briefing card, with the day ribbon (meetings as blocks, tasks as dots) and the four things that need you. Tap anything.','improve','home',{followMode:true}],
+   ['0b','<b>Work home · evening.</b> The dusk sky; review leads; the failed recording is in Your day.','improve','home',{mode:'evening'}],
+   ['0c','Work home in <b>Midnight Graphite</b>.','improve','home',{mode:'morning'},'dark'],
+   ['0d','<b>Today home</b> (default style). The same sky, quick access, and bento: a Work briefing tile with the ribbon, a Tasks ring and a Learn plan.','improve','home',{hs:'today',followMode:true}],
+   ['0e','<b>Avatar menu</b>: Settings, Work settings, Autopilot, Circles, Home style and Plan live here now.','new','home',{sheet:'profile'}],
+   ['0f','Bar when <b>only Work</b> is selected: Today · Notes · New · Work · <b>Tasks</b>.','new','work/pulse',{bar:'work'}],
+   ['0g','Bar when <b>only Learning</b> is selected: Today · Notes · New · Learn · Tasks.','new','learn',{bar:'learn'}],
+   ['0h','Bar with <b>neither</b>: Today · Notes · New · Tasks · Search.','new','search',{bar:'none'}],
+ ]},
+ { id:'T', name:'Tasks — a first-class task manager', desc:'A real task manager, app-wide, for work, personal and learning tasks, without losing what makes MeetingMind different: tasks keep their <b>promise</b> and their <b>source moment</b>. Pages: Tasks home (smart views + lists), Today (merged with your calendar), Upcoming (week strip), Inbox, Waiting on, Priority, Completed, labels, lists with <b>sections</b> and a <b>board</b> view, a full <b>task page</b> (subtasks, reminder, repeat, priority, labels, notes, attachments), <b>natural-language quick add</b>, a date and repeat picker, <b>Plan my day</b>, and bulk edit. <b>Swipe a row right to complete it, or left to reschedule</b> (drag with the mouse). Work\'s Tasks segment is the same component, scoped to work.', frames:[
+   ['Ta','<b>Tasks home.</b> Plan your day (progress ring), six smart views, lists grouped by space, labels.','new','tasksapp',{bar:'work'}],
+   ['Tb','<b>Today</b>, merged with the calendar: timed tasks sit between the 10:00 and 15:30 meetings. A past-due item asks before it moves. Swipe rows.','new','tasksapp>tview/today',{}],
+   ['Tc','<b>Upcoming</b>: a week strip with dots, then each day\'s tasks and meetings.','new','tasksapp>tview/upcoming',{}],
+   ['Td','<b>A list with sections</b> (Acme Integration: Build · UAT · Launch), progress, filters and Select.','new','tasksapp>tlist/acme',{}],
+   ['Te','The same list as a <b>board</b>.','new','tlist/acme',{board:true}],
+   ['Tf','<b>Task page</b>: promise and source, date, reminder, repeat, priority, labels, "someone else is doing this", subtasks, notes, attachments.','new','tview/today>task/k1',{}],
+   ['Tg','<b>Quick add</b> with natural language: dates, times, #list, !priority and @label become chips as you type.','new','tview/today',{sheet:'tquick'}],
+   ['Th','<b>Date, time, reminder, repeat</b> in one sheet.','new','task/k1',{sheet:'tdate|k1'}],
+   ['Ti','<b>Plan my day</b>: one card at a time from past-due, due-soon and your promises. Today or Not today.','new','tasksapp>tplan',{}],
+   ['Tj','<b>Bulk edit</b>: select, then date, priority, move, assign or complete.','new','tlist/acme',{selMode:true}],
+   ['Tk','<b>Inbox</b> for unsorted quick adds, including ones filed from the Work Inbox.','new','tasksapp>tview/inbox',{}],
+   ['Tl','<b>Work › Tasks</b>: the same component, scoped to work lists, with Today · Upcoming · Waiting on · By project.','improve','work/tasks',{}],
+   ['Tm','Today in <b>dark</b>.','new','tasksapp>tview/today',{},'dark'],
+   ['Tn','<b>Completed</b> log, which the weekly review reads.','new','tasksapp>tview/done',{}],
+ ]},
  { id:'1', name:'Work Pulse — the daily habit', desc:'The Work segment you land on. It changes with the time of day: <b>before</b> meetings it leads with prep, <b>after</b> them with review and follow-ups, on <b>Friday</b> with the weekly review. A quiet day shows only what is true, and day one uses the phone calendar instead of an empty state. Needs you is capped at four rows, each with one verb. Replaces the dark Pulse card, the glance bento, the Inbox spotlight, the rhythm row and the quick-action row (W-02, W-12, D7).', frames:[
-   ['1a','Today home with the <b>short Work entry</b> (D1). One thing, one verb, one count. Never a second Pulse.','improve','home',{followMode:true}],
    ['1b','<b>Morning.</b> The next meeting is the hero, with what was promised last time. Then Needs you, the agenda with a now-line, Since yesterday, and Ask. Follows the Pulse moment switch.','improve','work/pulse',{followMode:true}],
    ['1c','<b>Evening.</b> Review leads. A failed recording sits in Needs you with Try again (D4). The agenda collapses into what happened.','improve','work/pulse',{mode:'evening'}],
    ['1d','<b>Friday 16:00.</b> The weekly review becomes the hero; Monday snoozes it.','new','work/pulse',{mode:'friday'}],
@@ -1405,14 +1977,13 @@ const TURNS = [
    ['1g','<b>Offline.</b> Pulse is built from the database, so it is complete offline.','built','work/pulse',{mode:'offline'}],
    ['1h','Morning Pulse in <b>Midnight Graphite</b> (the app\'s default theme).','improve','work/pulse',{mode:'morning'},'dark'],
  ]},
- { id:'2', name:'Tasks · Decisions · Projects — the rest of the Work hub', desc:'Tasks is <b>Mine · Waiting on</b> (the approved vocabulary, W-11). A promise appears once, as a task that says who it was promised to; ticking it closes the promise too (Direction v2 D10). Decisions absorbs the Decision log, Open questions, Risks and the WorkAll tabs. Projects holds People and Organisations so the context directory is in one place.', frames:[
-   ['2a','<b>Mine</b>, grouped Past due / Today / This week / Later / No date. Past due is calm amber with Reschedule and Drop, never red. Every AI task shows its source.','improve','work/tasks',{}],
-   ['2b','<b>Waiting on.</b> Promises others made you, with the date, how late, and its source. Nudge drafts a message; you send it.','improve','work/tasks',{tasksTab:'wait'}],
+ { id:'2', name:'Notes · Decisions · Projects — the rest of the Work hub', desc:'Five segments: <b>Pulse · Tasks · Notes · Projects · Decisions</b>. Tasks is the Tasks app scoped to work (turn T). A promise appears once, as a task that says who it was promised to; ticking it closes the promise too (Direction v2 D10). Decisions absorbs the Decision log, Open questions, Risks and the WorkAll tabs. Projects holds People and Organisations so the context directory is in one place.', frames:[
+   ['2a','<b>Notes</b> segment, kept (F-2): the same Notes component scoped to Work, with search, filters, date groups and project colour.','improve','work/notes',{}],
+   ['2b','<b>Waiting on.</b> Promises others made you, with the date, how late, and its source. Nudge drafts a message; you send it.','improve','work/tasks',{wtv:'waiting'}],
    ['2c','<b>Decisions.</b> Today\'s suggestions to confirm, then what\'s in force. Tap History for the supersede chain (1 Dec → 8 Dec).','new','work/decisions',{}],
    ['2d','<b>Projects</b> grouped by client. Status comes from counts (past-due promises, risks, pending decisions), never from AI.','improve','work/projects',{}],
    ['2e','<b>People</b> learned from conversations. An uncertain match ("Peter from procurement") asks to be confirmed.','improve','work/projects',{ctxTab:'people'}],
    ['2f','<b>Work search</b> (D2): promises, moments, people, then "Ask" and "Search everything".','new','work/pulse>wsearch',{}],
-   ['2g','Loading: skeleton rows, never a spinner on a blank page. ＋ opens New with the task field ready (W-03).','built','work/tasks',{loading:true}],
    ['2h','<b>⋯ menu</b>, reduced to six: Ask, Weekly review, Autopilot, Team circles, Settings, What Work does.','improve','work/pulse',{sheet:'wmore'}],
  ]},
  { id:'3', name:'Prepare & capture', desc:'Prepare is a full screen, not a sheet. Every line is a database row with its source: last time (a quote that plays), You owe, They owe, Decided, Still open, and an agenda ordered from those items only. Capture reuses the existing recorder and adds a single context strip showing which project, people and open items the recording will feed.', frames:[
@@ -1434,6 +2005,8 @@ const TURNS = [
    ['5b','The same content formatted for <b>WhatsApp</b>.','improve','compose/review',{ch:'wa'},'dark'],
    ['5c','<b>Intelligence Brief</b> — project status for Acme. Tap any number to see its source. Edit marks the AI prose.','improve','project/acme>brief/acme',{}],
    ['5d','Brief <b>without a model</b> (offline): every section still renders, with a clear note in place of the prose.','built','brief/acme',{bstate:'noprose'}],
+   ['5f','<b>Brief controls</b> (all of them, F-4): audience, tone, length, sections, language and footer. Apply rewrites the AI paragraphs only.','new','brief/acme',{sheet:'bctl'}],
+   ['5g','The same brief for an <b>Executive</b>, <b>Direct</b> tone, <b>Headline</b> length.','new','brief/acme',{baud:'Executive',btone:'Direct',blen:'Headline',bregen:true},'dark'],
    ['5e','<b>Nudge</b> from Waiting on: a short draft that opens in Sarah\'s usual channel. You send it.','built','work/tasks',{tasksTab:'wait',sheet:'nudge|w1'}],
  ]},
  { id:'6', name:'Memory — Ask, scoped and cited', desc:'Ask opens already scoped to where you are. Suggested questions answer instantly from records. Prose answers cite every sentence and list their sources. With no source, MeetingMind says so and points to where the answer will come from.', frames:[
@@ -1451,10 +2024,13 @@ const TURNS = [
    ['7e','<b>Confidential</b> project (Zenith): on this phone only, no Circle sharing, Confidential on exports.','built','work/projects>project/zenith',{},'dark'],
    ['7f','An <b>uncertain person</b> asks to be confirmed, merged or removed. Remove asks first.','improve','org/acme>person/peter',{}],
  ]},
- { id:'8', name:'Work Inbox — the front door', desc:'Shared voice notes, files, scans, links and pasted notes arrive here. Each card shows its source, when it arrived, its state and a suggested place. File it takes one tap, and Undo works. Without AI, Change… is a plain place picker. Dismiss now has Undo. PDFs and links are filed by name only, and the screen says so.', frames:[
+ { id:'8', name:'Work Inbox — the front door', desc:'Shared voice notes, files, scans, links and pasted notes arrive here. Each card shows its source, when it arrived, its state and a suggested place. File it takes one tap, and Undo works. Without AI, Change… is a plain place picker. Dismiss now has Undo. PDFs and scans are now <b>read on the phone</b> (text layer + on-device text recognition); links are still filed by name only, and say so.', frames:[
    ['8a','<b>Inbox</b>: capture tiles, filters, and cards with provenance and suggestions. Try File and Dismiss.','improve','work/pulse>inbox',{}],
    ['8b','<b>WhatsApp voice note</b>: playback, source, AI summary, highlighted transcript, a suggestion with a reason and a grounded task.','improve','inbox>inboxitem/voice',{}],
-   ['8c','<b>PDF</b>: filed by name, with an honest note that reading PDF text is not available yet.','improve','inbox>inboxitem/sow',{}],
+   ['8c','<b>PDF, reading on this phone</b>: page thumbnails, progress, a text layer where it exists and text recognition for scanned pages.','new','inbox>inboxitem/sow',{pdf:'reading'}],
+   ['8c2','<b>PDF read</b>: a summary with page references, a suggestion based on the text, and two requirements found on p. 4 and p. 7, each opening its page.','new','inbox>inboxitem/sow',{}],
+   ['8c3','<b>Document viewer</b>, opened at the source page with the passage highlighted.','new','inboxitem/sow>pdfview/sow',{}],
+   ['8c4','<b>Scanned pages</b> (the existing scanner) are recognised on-device, so handwriting and print become searchable.','new','inbox>inboxitem/scan',{}],
    ['8d','<b>Change…</b>: a manual place picker that works with no AI.','built','inboxitem/voice',{sheet:'file|voice'}],
    ['8e','<b>Processing</b> on this phone, with progress; you can leave.','built','inbox>inboxitem/board',{}],
    ['8f','<b>Failed import</b>: an empty WhatsApp file, why it happens, and how to recover.','improve','inbox>inboxitem/bad',{}],
@@ -1467,7 +2043,7 @@ const TURNS = [
  ]},
  { id:'10', name:'Autopilot & Work settings', desc:'Autopilot (BYOK, Pro and Church plans; no new gate) shows only the Work recipes inside Work. It prepares a draft; you choose Save, Review tasks, Copy or Share. Settings group profile, words, rhythm, follow-ups, privacy and connections, and say plainly what is live and what comes later.', frames:[
    ['10a','<b>Autopilot</b>: the two Work recipes and the auto-run switch (off by default).','improve','wsettings>autopilot',{}],
-   ['10b','Auto-run on: the recommended <b>Add to Wrap-up</b> for tasks, versus today\'s Create directly (F-3).','improve','autopilot',{auto:true}],
+   ['10b','Auto-run on: tasks go to the <b>Wrap-up for review by default</b> (approved F-3); Create directly is an opt-in.','improve','autopilot',{auto:true}],
    ['10c','An Autopilot result: cited draft, not saved until you choose.','built','autopilot>autorun',{}],
    ['10d','<b>Work settings</b>: Phone calendar is live, task sync exists (BYOK/Pro), and Gmail/Outlook are marked Later.','improve','settings>wsettings',{}],
  ]},
@@ -1475,7 +2051,7 @@ const TURNS = [
 
 const JOURNEYS = [
  { name:'Starting the workday', taps:'3 taps to a cited prep, 4 to recording', steps:[
-   ['Open MeetingMind: Today shows the short Work card', ['home'], {}],
+   ['Open MeetingMind: the Work home, with Up next and Your day', ['home'], {}],
    ['Open Work → Pulse leads with the 10:00 prep', ['home','work/pulse'], {}],
    ['Prepare: last time, owe/owed, decided, open, agenda', ['home','work/pulse','prep/review'], {}],
    ['Check a source: Sarah\'s own words, playable', ['home','work/pulse','prep/review'], {sheet:'evidence|e3'}],
@@ -1492,6 +2068,7 @@ const JOURNEYS = [
  ], eval:'<b>Target:</b> under 60 s for the review itself. 9 findings means about 9 glances, 2 confirms and 1 tap on Done. <b>Trust:</b> changes never overwrite memory until confirmed, and Done asks if any are pending. <b>Risk:</b> a long meeting with 25+ findings. The fix: low-confidence items stay folded, and Done saves the rest as unreviewed (faint dot) instead of blocking. <b>Outcome is obvious:</b> the completion screen says where everything went.' },
  { name:'Receiving new information', taps:'2 taps to file from Pulse', steps:[
    ['Pulse: "Voice note from Sarah, and 3 more"', ['work/pulse'], {}],
+   ['The SOW PDF has been read on the phone', ['work/pulse','inbox','inboxitem/sow'], {}],
    ['Open the Inbox: source, time and suggestion on each card', ['work/pulse','inbox'], {}],
    ['Open the voice note: play, summary, transcript', ['work/pulse','inbox','inboxitem/voice'], {}],
    ['Check the grounding of the suggested task', ['work/pulse','inbox','inboxitem/voice'], {sheet:'evidence|v1'}],
@@ -1525,6 +2102,14 @@ const JOURNEYS = [
    ['Carry, move or drop each slipped item', ['work/pulse','weekly'], {mode:'friday', plan:{a:'Mon',b:'Carry',c:'Carry',d:'Drop'}}],
    ['Weekly brief to send or keep', ['work/pulse','weekly','brief/week'], {bkind:'WEEKLY'}],
  ], eval:'<b>Tone:</b> "slipped" items are listed without blame, and dropping is a normal option. <b>Closure:</b> Set next week places everything in one pass. <b>Risk:</b> skipping weeks. The card snoozes to Monday and never stacks up.' },
+ { name:'Running the day with Tasks', taps:'1 tap to plan, swipe to complete', steps:[
+   ['Tasks home: ring, smart views, lists', ['tasksapp'], {bar:'work'}],
+   ['Plan my day: Today or Not today, one card at a time', ['tasksapp','tplan'], {}],
+   ['Today, merged with the calendar', ['tasksapp','tview/today'], {}],
+   ['Quick add in plain words', ['tasksapp','tview/today'], {sheet:'tquick'}],
+   ['Open a task: promise, subtasks, source', ['tasksapp','tview/today','task/k1'], {}],
+   ['Finish the project list on a board', ['tasksapp','tlist/acme'], {board:true}],
+ ], eval:'<b>Familiar:</b> Today / Upcoming / Inbox / lists / labels / priorities / swipe behave like a normal task manager. <b>Different:</b> a task can carry a promise and a playable source, and completing it closes the promise. <b>Load:</b> Plan my day replaces triage of a long list with one decision per card. <b>Risk:</b> two task lists (Work and app-wide) drifting apart. They are one component with a scope, never two implementations.' },
 ];
 
 let WJ = 0, WS = 0;
@@ -1548,7 +2133,7 @@ function buildTurns(){
 buildTurns();
 document.querySelectorAll('[data-phone]').forEach(mount);
 buildWalk(); syncWalk(PH.wt);
-if (location.hash) { const el = document.querySelector(location.hash); if (el) setTimeout(()=>el.scrollIntoView(), 50); }
+if (location.hash) { const el = document.getElementById(decodeURIComponent(location.hash.slice(1))); if (el) setTimeout(()=>el.scrollIntoView(), 50); }
 </script>
 </body>
 </html>

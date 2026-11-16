@@ -1,9 +1,9 @@
 # Work vertical: premium UX redesign, design specification
 
-Status: **Phase A. Design for founder approval. No Android code has changed.**
-Branch: `release/1.0-paid-launch`. Date: 2026-11-15.
+Status: **Phase A, revision 2. Design for founder approval. No Android code has changed.**
+Branch: `release/1.0-paid-launch`. Dates: 2026-11-15 (r1), 2026-11-16 (r2).
 Interactive artifact: `design/Work Vertical Redesign.dc.html`. Open it in any browser; it needs no build step. It has
-56 live Android frames in 10 turns, plus a walkthrough phone for the seven journeys, light and dark themes, and a Pulse time-of-day switch.
+81 live Android frames in 12 turns, plus a walkthrough phone for eight journeys, light and dark themes, and a Pulse time-of-day switch.
 Frame ids (`#1b`, `#4a` …) are cited throughout this document. Append one to the URL to jump to it.
 
 Read with: `docs/PLAN_PROFESSIONAL.md` (Direction v2 wins over its older sections), `docs/mvp/WORK_UX_AUDIT.md`
@@ -14,6 +14,201 @@ Where this spec and the artifact disagree, **the artifact wins** (same rule as `
 6 Core screens · 7 Journeys · 8 Tokens & components · 9 Interaction states · 10 Privacy & trust · 11 Accessibility ·
 12 Mapping to the code · 13 Retained / improved / consolidated / later · 14 Implementation plan · 15 UX review ·
 16 Founder decisions
+
+**Revision 2 (§R, directly below) records the founder's decisions of 2026-11-16 and supersedes §1–§16 wherever they conflict.**
+
+---
+
+## R. Revision 2: founder decisions applied (2026-11-16)
+
+### R1. Decisions
+
+| # | Founder decision | Effect on the design |
+|---|---|---|
+| F-1 | Replace Search with Work, and add Learn when one or both are selected; keep the same bar design and update its contents for the current app | Adaptive bar (R2) · artifact `#0a`, `#0f`–`#0h` |
+| F-2 | Keep Notes as a fifth Work segment, the same Notes component scoped to Work | Segments: **Pulse · Tasks · Notes · Projects · Decisions** · `#2a` |
+| F-3 | Autopilot tasks go to review by default | Tasks land in the Wrap-up as unreviewed; "Create directly" is opt-in · `#10b` |
+| F-4 | Full Brief controls | Kind, audience, tone, length, sections, language, footer, Copy (R5) · `#5c`, `#5f`, `#5g` |
+| F-5 | Plan and implement full on-device PDF text extraction | Text layer + on-device text recognition, page citations, search, viewer (R4) · `#8c`–`#8c4` |
+| F-6 | Keep the Work home; the Today and Work homes remain the two nicest screens | The Work home stays and is elevated in its own visual language (R2, R6) · `#0a`–`#0c` |
+| new | Tasks must be first-class: a normal, premium, multi-page task manager | App-wide Tasks (R3) · turn T |
+| new | v1 felt underwhelming | Visual language rebuilt on the homes' own hero, Briefing and bento language (R6) |
+
+**Superseded from r1:** retiring the Notes segment (§4.1, §13), the short-card-only Work home and "retire `PulseCard`" (§4.2, §8.2; D7 is re-read as *restyle and share it*, not delete), "Settings stays in the bar", and the PDF "later" labels (§9, §13).
+
+### R2. Bottom bar and the two homes
+
+**The bar keeps the existing pill component** (`core/ui/BottomNavigation.kt:120-242`): floating pill, AccentWash active chip with label, icon-only inactive items, and an Accent **New** button. Only its contents change.
+
+| Spaces selected (`identity_spaces`) | Bar |
+|---|---|
+| Work **and** Learning | Today · Notes · **New** · Work · Learn |
+| Work only | Today · Notes · **New** · Work · Tasks |
+| Learning only | Today · Notes · **New** · Learn · Tasks |
+| Neither | Today · Notes · **New** · Tasks · Search |
+
+- **Settings moves to the avatar menu** on every home (`#0e`). It is opened a few times a month and was in the bar only because it was placed there at the start of development.
+- **Search** stays in every home's dock (it already is, `HomeHeroHeader.kt:291`), in Notes, and as the Work-scoped search in Work.
+- **Circles, Inbox, Faith** keep their current doors: the home bento/quick access, the dock bell, and the home mode switch.
+- **Implementation:** replace `TabSlot` (`WorkSettings.kt:83`) with a derived `BarConfig(spaces)`. Add `BottomNavDestination.LEARN` and `TASKS`; `LEARN` hosts `LearnHomeHost` (today only reachable from Home, `MainActivity.kt:660`). Keep a manual override in Settings › Appearance for people who want Search back.
+- **Open question R-1:** Faith-only users. Recommendation: Faith claims a slot under the same rule (the first two selected spaces, then Tasks).
+- **Bug to fix on the way:** `AppIdentity.parseSpaces` defaults an empty set to all four spaces (`AppIdentity.kt:45-46`), but writes default to PERSONAL (`UserPreferences.kt:375`). The bar must use the same default as onboarding.
+
+**Work home (HomeStyle.PROFESSIONAL), kept and elevated** (`#0a`–`#0c`). Order, top to bottom:
+
+1. Header: avatar → menu, date, dock (search, Inbox bell with badge).
+2. Mode switch: All · Work (existing `ModeHome.WORK`).
+3. Sky hero (`TodayIntelligence` keyframes) with a time label, Outfit 27 sp greeting, and one human sentence.
+4. Floating **Up next** tile: in the morning the meeting and Prepare; in the evening "To review · N findings".
+5. Quick access: Record · Task · Inbox · Ask · Brief · Review.
+6. **Your day**: the Briefing card (`Briefing.Top/Bottom` gradient, Lavender labels), kept from `PulseCard` and restyled. It holds the day ribbon, up to four attention rows each with one verb, Since yesterday as before → after sentences, and Prepare / Ask.
+7. **Today's tasks**: the Tasks component, today only, swipeable.
+8. Projects carousel (project colour bar, status pill from counts, open counts).
+9. People strip with "owes / you owe" badges.
+
+The capture row, glance tiles, the "Customize home" link and the Circles card from today's `ProfessionalHome` either move into quick access or stay under Customize home. None are lost.
+
+**Work home vs Work › Pulse.** The home is *your day*: time, calendar, tasks and people, at a glance. **Pulse** is *follow-through*: all of Needs you, Since yesterday, waiting, and decisions to confirm, with full lists. Both render the same `BriefingCard` composable with different inputs, so there is one implementation and no divergence (this resolves W-02's actual risk).
+
+**Today home** (`#0d`) keeps its sky and bento, and gains three tiles: **Work · your day** (Briefing tile with the ribbon), **Tasks** (progress ring, next task), **Learn** (today's plan).
+
+### R3. Tasks: a first-class task manager
+
+**Scope:** app-wide, covering work, personal and learning tasks. One `TasksComponent` is used three ways: the Tasks destination (bar slot or Home tile), Work › Tasks (scoped to work lists), and Today's tasks on the homes. The current `feature/tasks/TasksScreen.kt` is replaced; its People tab moves to Work › Projects › People.
+
+**Pages:**
+
+| Page | Content | Frame |
+|---|---|---|
+| Tasks home | Plan your day (ring) · smart views Today, Upcoming, Inbox, Waiting on, Priority 1, Completed · lists grouped Work / Personal / Learning · labels · New list | `#Ta` |
+| Today | Progress ring and time estimate · past-due banner (Do today / Reschedule) · **Scheduled** interleaved with calendar meetings · Anytime today | `#Tb` `#Tm` |
+| Upcoming | Week strip with dots · per-day tasks and meetings · Later | `#Tc` |
+| List | Colour, space, progress · sections · filters · Select · **list ↔ board** | `#Td` `#Te` |
+| Task page | Complete · title · list/section · **promise + source** · date · reminder · repeat · priority · labels · "Someone else is doing this" (→ Waiting on) · subtasks · notes · attachments (meeting, Inbox file) · history | `#Tf` |
+| Quick add | Natural language: `tomorrow 3pm` `#Acme` `!1` `@email` become chips live | `#Tg` |
+| Date sheet | Today / Tomorrow / Weekend / Next week / No date · month grid · time · reminder · repeat | `#Th` |
+| Plan my day | One card at a time from past-due, due-soon and promises · Today / Not today / Pick a time | `#Ti` |
+| Bulk edit | Select → Date · Priority · Move · Assign · Complete | `#Tj` |
+| Inbox, Completed, labels | Unsorted quick adds (including Inbox → Task filings) · a log the weekly review reads · label views | `#Tk` `#Tn` |
+
+**Interactions:** swipe right to complete and left to reschedule (with Undo) · drag to reorder within a section · long-press to select · a completion pop animation (150 ms) · repeating tasks roll forward on completion with a toast naming the next date · completing a promised task closes its commitment (existing write-through, `core/work/Items.kt:131`).
+
+**What exists today** (`TaskEntity`, `PeopleTasks.kt:68-100`): title, notes, kind, dueAt, remindAt, repeat (NONE/DAILY/WEEKLY/MONTHLY), doneAt, personId, noteId, blockId, meetingId, startMs, deletedAt, waitingOn, ownerSpeakerId, sourceItemId, space. Reminders use AlarmManager with a cap of 40 (`TaskReminders.kt`). `DueDates.parse` handles dates but not times.
+
+**Data changes (one additive migration, 30 → 31, following the `MIGRATION_N_M_SQL` pattern):**
+
+| Change | Kind |
+|---|---|
+| `tasks`: `priority INT DEFAULT 4`, `parentId TEXT` (subtasks), `listId TEXT` (notebook), `sectionId TEXT`, `position REAL`, `hasTime INT DEFAULT 0`, `repeatRule TEXT` (RRULE; the enum stays for compatibility), `completedFromRepeat INT` | columns |
+| `task_sections(id, listId, name, position)` | table |
+| `task_labels(id, name, color)` and `task_label_links(taskId, labelId)` | tables |
+| `tasks_fts` (FTS4 on title and notes), added to `SearchDao` | table |
+| Lists are notebooks: existing projects (`kind = PROJECT`) plus a new `kind = TASK_LIST` with `space` PERSONAL, LEARNING or WORK | data |
+| Backfill: `listId` from the note's notebook for tasks with `noteId`, else Inbox; `space` for tasks created in the Tasks screen (today null) | data |
+
+**Fix first (found in this audit):** `Task.toEntity()` (`core/tasks/Tasks.kt:177`) rebuilds the entity positionally and drops `waitingOn`, `ownerSpeakerId`, `sourceItemId` and `space`. It is used by `TaskRepository.save` and `toggleDone`, so editing or ticking a Work task in the Tasks screen likely erases its Waiting-on flag and source link. This is a paid-launch data-integrity bug, independent of the redesign. **Recommend fixing it now, with a unit test**, even before Phase B.
+
+**Natural-language parser:** extend `DueDates.parse` with times (`3pm`, `15:00`, `at noon`), `#list` (fuzzy match against list names), `!1`–`!4`, `@label`, and `every …` → `repeatRule`. Ambiguous tokens stay plain text, never guessed.
+
+**Sync:** `TaskSyncProvider.pushTask` has no call site. Wire "Send to Todoist / Linear / GitHub" in the task menu. It uses the existing `CONNECTED_INTEGRATIONS` gate; no new gate.
+
+### R4. On-device document reading (PDF and scans): implementation plan
+
+**Goal:** every PDF, scan or image that enters the Work Inbox is read on the phone, summarised, filed with a page-cited suggestion, searchable, and opens at the cited passage.
+
+**Today:** only `play-services-mlkit-document-scanner` is present; the scanner produces a PDF with no text (`InboxScreen.kt:189-208`). `InboxItemEntity.text` exists but is never filled for files. `InboxProposer` runs only on non-blank text, truncated to 6,000 chars (`Inbox.kt:214-249`).
+
+**Libraries:**
+
+| Need | Choice | Why |
+|---|---|---|
+| PDF text layer | **PdfBox-Android** (`com.tom-roush:pdfbox-android`, Apache-2.0) | Pure Java, offline, gives text with positions (for highlights). Shrinks well under R8; add keep rules for its font resources |
+| Scanned pages and images | **ML Kit Text Recognition v2**, unbundled via Google Play services (`play-services-mlkit-text-recognition`) | On-device; the model is delivered by Play services, so no APK growth. Latin script first; add other scripts later if needed |
+| Rasterising pages for recognition and the viewer | **`android.graphics.pdf.PdfRenderer`** (platform) | No dependency; render at most 1600 px on the long edge |
+
+**Pipeline:**
+
+1. `ShareIn` / scanner / Files import → `InboxItemEntity` (kind PDF or IMAGE) with `readStatus = PENDING`.
+2. `DocumentReadWorker` (a `CoroutineWorker`, unique work per item, modelled on `NoteAiWorker`). Each page tries the PdfBox text layer first; if it yields fewer than about 40 characters, the page is rendered and recognised instead. It writes a `document_pages` row per page, updates `readPages` for the progress UI, and runs as a foreground notification for documents over 20 pages.
+3. On completion: fill `InboxItemEntity.text` (head, for compatibility), set `readStatus = DONE`, then run `InboxProposer` with **page-aware chunk selection** instead of plain truncation. The selection is the first two pages, plus pages that mention known people, organisations or projects, plus pages with requirement and decision cues, all within the existing 6,000-char budget.
+4. Grounding: proposals keep the ≥60% grounding rule; evidence carries the **page** and, when available, the text bounding box.
+
+**Schema (in the same 30 → 31 migration):**
+- `inbox_items`: `readStatus TEXT` (NONE/PENDING/READING/DONE/NO_TEXT/LOCKED/FAILED), `pageCount INT`, `readPages INT`.
+- `document_pages(itemId, page, text, source TEXT_LAYER|OCR, confidence REAL, boxesJson TEXT)`, plus FTS4 `document_pages_fts`, added to `SearchDao`.
+- `item_evidence`: `page INT`, `boxJson TEXT` (nullable), so items found in documents cite "p. 4".
+
+**States in the UI:**
+- Reading, with page progress: `#8c`.
+- Read, with summary and page-cited suggestions: `#8c2`.
+- Viewer opened at the passage: `#8c3`.
+- Recognised scan: `#8c4`.
+- Password-protected: "Can't read a locked PDF. Open it in another app, or file it as is."
+- No text found: "No readable text. Filed by name."
+- Too large: over 300 pages or 50 MB. The first 300 pages are read, and the screen says so.
+
+**Privacy:** reading text is **always on-device**. Summarising and proposing follow `WorkPrivacy` and `ProcessingProfile` exactly as for transcripts. Confidential destinations use the local model, and the UI shows where it ran.
+
+**Tests:**
+- Unit tests for chunk selection and the NO_TEXT and LOCKED states.
+- Fixture PDFs: text, scanned, mixed, rotated, encrypted, 300+ pages.
+- Worker state transitions, including cancellation and re-entry after process death.
+- Device checks: memory on a 2 GB phone, and the time for a 12-page text PDF (target under 5 s) and a 3-page scan (target under 6 s).
+
+**Not in this plan:** web-page reading for shared links. They are still filed by name and say so.
+
+### R5. Intelligence Brief: full controls
+
+- **Controls:**
+  - Kind: the existing `BriefKind` (MEETING, CLIENT, PROJECT, RELATIONSHIP, WEEKLY).
+  - Audience: Client sponsor, Internal team, Executive, Just me.
+  - Tone: Plain, Formal, Warm, Direct.
+  - Length: Headline, One page, Detailed.
+  - Sections: nine toggles.
+  - Language.
+  - Footer on or off.
+  - Confidential material is never included.
+- **What the controls change:** audience, tone and language change **only the two AI paragraphs** (the prompt gets a style block; the `FIDELITY_CONTRACT` and the citation rule are unchanged). Length and section toggles change **which deterministic sections print**, never their contents.
+- **Caching:** results are cached per entity, kind and options hash, so switching back is instant.
+- **Actions:** Copy (formatted and plain), Export (PDF, Word, Markdown, through `NoteExporter`) and Share. There is no send button.
+- **Typography:** a document style, with Literata for the body and headings, an evidence appendix, and "Confidential" on the PDF where it applies.
+
+### R6. Visual language (why r1 felt underwhelming, and what changed)
+
+r1 used the design-system minimum: white cards on Paper. The two screens the founder rates highest use a richer language, so r2 adopts it.
+
+- **Sky hero:** the `TodayIntelligence` keyframes, with sun, moon and stars, radius 28–36 dp, a floating tile, and Outfit greetings.
+- **Briefing palette** (`Briefing.kt`) for "Your day" and Pulse heroes: Lavender overlines, white primary and glass secondary buttons. Retained, not retired.
+- **Day ribbon:** 08–18 h, with meetings as accent blocks, tasks as priority-coloured dots and a red now-line. It is the signature element of Work.
+- **Project colour identity:** a colour bar on cards, rows and boards, from the org mark or notebook colour.
+- **Progress rings** for Today and Plan my day; **before → after** change sentences; Outfit for numbers and titles.
+- **Document typography** (Literata) for the Brief and Autopilot results; the PDF viewer has a highlight.
+- **Motion:** completion pop, sheet spring, swipe reveal, bento reveal and press scale (existing `Reveal`). There is still no idle animation.
+- **Dark (Graphite)** is designed first-class, because it is the default theme.
+
+### R7. Build order (replaces §14)
+
+| Inc | Content |
+|---|---|
+| B-0 | Navigation and Tasks tests. **Fix `Task.toEntity()` data loss** and the `space`/`identity_spaces` defaults |
+| B-1 | Shared components: SourceChip, SourceSheet, TrustMark, BriefingCard, DayRibbon, ProgressRing, PulseHeader, project colours |
+| B-2 | Adaptive bar (`BarConfig`), avatar menu, Learn and Tasks destinations |
+| B-3 | Work home and Today home tiles (Briefing card, ribbon, tasks, projects, people) |
+| B-4 | Work hub: five segments, Pulse, Decisions, Work search, ⋯ reduced |
+| B-5 | Tasks data migration 30 → 31 and the extended `DueDates` parser |
+| B-6 | Tasks app pages, swipe, bulk, Plan my day, board, task page, sync wiring |
+| B-7 | Wrap-up (type change, Done check, completion) and follow-up composer |
+| B-8 | Context pages merged, and the Prepare screen |
+| B-9 | Document reading (worker, libraries, schema, viewer) and the Inbox redesign |
+| B-10 | Brief full controls; the Ask screen with suggestions |
+| B-11 | Weekly review, Autopilot review default and copy fix, settings |
+
+Each increment: screenshot tests in Paper and Graphite, empty and populated, at text scale 1.3; the F-4 guards green; tests on remote agents per `agents/TESTING.md`.
+
+### R8. Other things found in this pass
+
+- The `BottomNavigation.kt` doc comment says "four primary destinations plus New"; there are five (lines 58-63).
+- The working tree currently holds another session's uncommitted edits. One of them (`core/work/Inbox.kt:127-129`) places a `val` inside a constructor call, which won't compile. That work is not part of this design and was left untouched.
 
 ---
 
