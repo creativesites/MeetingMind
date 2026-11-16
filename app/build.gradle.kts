@@ -269,6 +269,10 @@ dependencies {
   // implementation(libs.play.services.location)
   // Document scanner for the Work Inbox: runs on the device, and hands back a PDF or pictures (docs/PLAN_PROFESSIONAL.md D7).
   implementation(libs.mlkit.document.scanner)
+  // R4 document reading (core/documents): PdfBox-Android reads the PDF text layer with positions; ML Kit
+  // text recognition is unbundled, so Play services delivers its model and the APK does not grow.
+  implementation(libs.pdfbox.android)
+  implementation(libs.play.services.mlkit.text.recognition)
   // sherpa-onnx: on-device speech recognition (VAD + Parakeet TDT ASR). Prebuilt AAR from
   // GitHub Releases — see settings.gradle.kts ivy repository and docs/AI_ARCHITECTURE.md.
   // Declared with an explicit "@aar" artifact type since the ivy repo pattern resolves a

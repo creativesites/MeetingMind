@@ -50,3 +50,12 @@
     java.lang.Object writeReplace();
     java.lang.Object readResolve();
 }
+
+# R4 document reading: PdfBox-Android loads its fonts and CMaps reflectively; keep its packages whole.
+-keep class com.tom_roush.pdfbox.** { *; }
+-keep class com.tom_roush.fontbox.** { *; }
+-keep class com.tom_roush.harmony.awt.** { *; }
+-dontwarn com.tom_roush.**
+# Unbundled ML Kit text recognition is called through Play services; keep the client API it binds to.
+-keep class com.google.mlkit.vision.text.** { *; }
+-dontwarn com.google.mlkit.**

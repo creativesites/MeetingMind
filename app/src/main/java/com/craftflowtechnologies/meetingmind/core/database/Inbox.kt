@@ -96,6 +96,14 @@ interface InboxDao {
     @Query("SELECT * FROM inbox_items WHERE id = :id")
     suspend fun get(id: String): InboxItemEntity?
 
+    /** Schema 31: the item as it changes, for document reading progress. */
+    @Query("SELECT * FROM inbox_items WHERE id = :id")
+    fun observeById(id: String): Flow<InboxItemEntity?>
+
+    /** Schema 31: one targeted update so a read never overwrites columns other code changes meanwhile. A null [text] keeps the current text. */
+    @Query("UPDATE inbox_items SET readStatus = :status, pageCount = :pageCount, readPages = :readPages, text = COALESCE(:text, text) WHERE id = :id")
+    suspend fun updateReadState(id: String, status: String, pageCount: Int?, readPages: Int, text: String?)
+
     @Query("SELECT * FROM inbox_items WHERE status IN ('NEW', 'PROPOSED') ORDER BY createdAt DESC")
     fun observeOpen(): Flow<List<InboxItemEntity>>
 
