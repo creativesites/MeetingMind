@@ -84,7 +84,11 @@ data class ItemEvidenceEntity(
     val segmentIdsJson: String = "[]",
     val startMs: Long? = null,
     val endMs: Long? = null,
-    val quote: String = ""
+    val quote: String = "",
+    /** Schema 31 (R4): the 1-based page of a document the item was found on. */
+    val page: Int? = null,
+    /** Schema 31 (R4): the highlighted box on that page, as JSON; null when not known. */
+    val boxJson: String? = null
 )
 
 /** What an item is about: a person, organisation, project, note, meeting or another item. */

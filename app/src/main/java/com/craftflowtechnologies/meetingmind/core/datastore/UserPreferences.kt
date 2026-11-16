@@ -372,7 +372,7 @@ class UserPreferencesManager(private val context: Context) {
     }
 
     suspend fun setSpaces(spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) {
-        context.dataStore.edit { it[SPACES] = spaces.ifEmpty { setOf(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL) }.map { s -> s.name }.toSet() }
+        context.dataStore.edit { it[SPACES] = spaces.ifEmpty { com.craftflowtechnologies.meetingmind.core.identity.AppIdentity.DEFAULT_SPACES }.map { s -> s.name }.toSet() }
     }
 
     suspend fun setLook(look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) {

@@ -1,13 +1,17 @@
 package com.craftflowtechnologies.meetingmind.core.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
+import androidx.room.Fts4
+import androidx.room.FtsOptions
 import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -36,8 +40,53 @@ data class InboxItemEntity(
     val mediaDurationMs: Long? = null,
     val mediaThumbnailUri: String? = null,
     val transcriptionStatus: String = "NONE",
-    val meetingId: String? = null
+    val meetingId: String? = null,
+    /** Schema 31 (R4): NONE, PENDING, READING, DONE, NO_TEXT, LOCKED or FAILED. */
+    @ColumnInfo(defaultValue = "NONE") val readStatus: String = "NONE",
+    /** Schema 31: how many pages a PDF or scan has, once known. */
+    val pageCount: Int? = null,
+    /** Schema 31: how many pages have been read so far, for progress. */
+    @ColumnInfo(defaultValue = "0") val readPages: Int = 0
 )
+
+/**
+ * One page of a read document (schema 31, R4). [source] is TEXT_LAYER or OCR. [boxesJson] holds
+ * word boxes when the source gives them, so a finding can be highlighted on the page.
+ */
+@Entity(tableName = "document_pages", primaryKeys = ["itemId", "page"])
+data class DocumentPageEntity(
+    val itemId: String,
+    val page: Int,
+    val text: String,
+    val source: String,
+    val confidence: Double? = null,
+    val boxesJson: String? = null
+)
+
+/** Full-text index over document pages; kept in step with [DocumentPageEntity] by triggers. */
+@Fts4(contentEntity = DocumentPageEntity::class, tokenizer = FtsOptions.TOKENIZER_UNICODE61)
+@Entity(tableName = "document_pages_fts")
+data class DocumentPageFtsEntity(
+    @PrimaryKey @ColumnInfo(name = "rowid") val rowId: Int,
+    val text: String
+)
+
+@Dao
+interface DocumentPageDao {
+    @Upsert suspend fun upsertPages(pages: List<DocumentPageEntity>)
+
+    @Query("SELECT * FROM document_pages WHERE itemId = :itemId ORDER BY page")
+    fun observeForItem(itemId: String): Flow<List<DocumentPageEntity>>
+
+    @Query("SELECT * FROM document_pages WHERE itemId = :itemId ORDER BY page")
+    suspend fun forItem(itemId: String): List<DocumentPageEntity>
+
+    @Query("SELECT * FROM document_pages WHERE itemId = :itemId AND page = :page LIMIT 1")
+    suspend fun page(itemId: String, page: Int): DocumentPageEntity?
+
+    @Query("DELETE FROM document_pages WHERE itemId = :itemId")
+    suspend fun deleteForItem(itemId: String)
+}
 
 @Dao
 interface InboxDao {

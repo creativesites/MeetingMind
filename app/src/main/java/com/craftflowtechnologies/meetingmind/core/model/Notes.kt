@@ -40,6 +40,15 @@ enum class NotebookSpace(val displayName: String) {
     PERSONAL("Personal")
 }
 
+/** The `kind` of a notebook, stored as text in `notebooks.kind`. */
+object NotebookKind {
+    const val NOTEBOOK = "NOTEBOOK"
+    /** A work context: a client, a matter, a case. Also a task list. */
+    const val PROJECT = "PROJECT"
+    /** A list in the Tasks manager (schema 31). Its space is PERSONAL, LEARNING or WORK. */
+    const val TASK_LIST = "TASK_LIST"
+}
+
 /**
  * Spaces the UI offers across filters, pickers, and onboarding — including first-class [NotebookSpace.LEARNING].
  */
