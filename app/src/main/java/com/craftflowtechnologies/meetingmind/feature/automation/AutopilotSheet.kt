@@ -53,6 +53,7 @@ import com.craftflowtechnologies.meetingmind.ai.automation.AutopilotContext
 import com.craftflowtechnologies.meetingmind.ai.automation.AutopilotPreferences
 import com.craftflowtechnologies.meetingmind.ai.automation.AutopilotRecipe
 import com.craftflowtechnologies.meetingmind.ai.automation.AutopilotRunResult
+import com.craftflowtechnologies.meetingmind.ai.automation.AutopilotTasksMode
 import com.craftflowtechnologies.meetingmind.ai.automation.AutopilotWorkspace
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
@@ -90,9 +91,12 @@ fun AutopilotSheet(
     target: AutopilotTarget,
     onDismiss: () -> Unit,
     onOpenPaywall: (PaywallTrigger) -> Unit,
-    onOpenNote: (String) -> Unit = {}
+    onOpenNote: (String) -> Unit = {},
+    /** Opened from Work: only the Work recipes (Executive Debrief, Client & Deal Sync) are offered. */
+    workOnly: Boolean = false
 ) {
     val context = LocalContext.current
+    val recipes = if (workOnly) AutopilotRecipe.WORK_RECIPES else AutopilotRecipe.entries
     val scope = rememberCoroutineScope()
     val c = MM.colors
 
@@ -100,7 +104,7 @@ fun AutopilotSheet(
     var selectedRecipe by remember { mutableStateOf(AutopilotRecipe.EXECUTIVE_DEBRIEF) }
     var autoRunEnabled by remember { mutableStateOf(AutopilotPreferences.isAutoRunEnabled(context)) }
     var autoSaveNote by remember { mutableStateOf(AutopilotPreferences.shouldAutoSaveNote(context)) }
-    var autoCreateTasks by remember { mutableStateOf(AutopilotPreferences.shouldAutoCreateTasks(context)) }
+    var tasksMode by remember { mutableStateOf(AutopilotPreferences.tasksMode(context)) }
     var tasksCommitted by remember { mutableStateOf<Int?>(null) }
     var savingNote by remember { mutableStateOf(false) }
 
@@ -117,7 +121,7 @@ fun AutopilotSheet(
             )
             return@LaunchedEffect
         }
-        selectedRecipe = gathered.preview.recommendedRecipe
+        selectedRecipe = gathered.preview.recommendedRecipe.takeIf { it in recipes } ?: recipes.first()
         uiState = AutopilotUiState.ReadyToConfigure(gathered)
     }
 
@@ -206,6 +210,7 @@ fun AutopilotSheet(
                     )
 
                     RecipeSelectorRow(
+                        recipes = recipes,
                         recommended = preview.recommendedRecipe,
                         selected = selectedRecipe,
                         onSelect = { selectedRecipe = it }
@@ -223,7 +228,7 @@ fun AutopilotSheet(
                             ) {
                                 Icon(Icons.Filled.Lock, contentDescription = null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
                                 Text(
-                                    "Included with Pro & Church plans (online or offline local LLM)",
+                                    "Included with BYOK, Pro and Church plans (online or offline local LLM)",
                                     style = MM.type.caption,
                                     color = c.accent
                                 )
@@ -243,10 +248,10 @@ fun AutopilotSheet(
                                 autoSaveNote = it
                                 AutopilotPreferences.setAutoSaveNote(context, it)
                             },
-                            autoCreateTasks = autoCreateTasks,
-                            onAutoCreateTasksChange = {
-                                autoCreateTasks = it
-                                AutopilotPreferences.setAutoCreateTasks(context, it)
+                            tasksMode = tasksMode,
+                            onTasksModeChange = {
+                                tasksMode = it
+                                AutopilotPreferences.setTasksMode(context, it)
                             }
                         )
                         PrimaryButton(
@@ -369,25 +374,37 @@ fun AutopilotSheet(
                                 }
                             }
                             Spacer(Modifier.height(MM.space.s))
+                            // REVIEW (the default) sends them to the recording's Wrap-up; a recording-less note has no
+                            // Wrap-up, so its tasks are added on the person's own tap, as before.
+                            val toWrapUp = tasksMode == AutopilotTasksMode.REVIEW && preview.meetingId != null
                             SecondaryButton(
                                 text = when (val added = tasksCommitted) {
-                                    null -> "Add ${res.actions.size} tasks to My Tasks"
-                                    0 -> "Tasks already in My Tasks"
-                                    else -> "Added $added tasks"
+                                    null -> if (toWrapUp) "Review ${res.actions.size} tasks in the Wrap-up" else "Add ${res.actions.size} tasks to My Tasks"
+                                    0 -> if (toWrapUp) "Already in the Wrap-up" else "Tasks already in My Tasks"
+                                    else -> if (toWrapUp) "$added sent to the Wrap-up" else "Added $added tasks"
                                 },
                                 enabled = tasksCommitted == null,
                                 onClick = {
                                     scope.launch {
-                                        val count = AutopilotWorkspace.commitTasks(
-                                            context = context,
-                                            result = res,
-                                            noteId = preview.noteId,
-                                            meetingId = preview.meetingId
-                                        )
+                                        val count = if (toWrapUp) {
+                                            AutopilotWorkspace.proposeForReview(context, res, preview.meetingId!!)
+                                        } else {
+                                            AutopilotWorkspace.commitTasks(
+                                                context = context,
+                                                result = res,
+                                                noteId = preview.noteId,
+                                                meetingId = preview.meetingId
+                                            )
+                                        }
                                         tasksCommitted = count
                                         Toast.makeText(
                                             context,
-                                            if (count > 0) "Added $count tasks" else "All tasks were already tracked",
+                                            when {
+                                                toWrapUp && count > 0 -> "$count tasks are waiting in the Wrap-up"
+                                                toWrapUp -> "All tasks are already in the Wrap-up"
+                                                count > 0 -> "Added $count tasks"
+                                                else -> "All tasks were already tracked"
+                                            },
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     }
@@ -484,6 +501,7 @@ private fun SessionPreviewBanner(
 
 @Composable
 private fun RecipeSelectorRow(
+    recipes: List<AutopilotRecipe>,
     recommended: AutopilotRecipe,
     selected: AutopilotRecipe,
     onSelect: (AutopilotRecipe) -> Unit
@@ -492,7 +510,7 @@ private fun RecipeSelectorRow(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
     ) {
-        AutopilotRecipe.entries.forEach { recipe ->
+        recipes.forEach { recipe ->
             val label = if (recipe == recommended) "${recipe.label} ★" else recipe.label
             MMChip(
                 label = label,
@@ -509,8 +527,8 @@ private fun AutomationTriggersCard(
     onAutoRunChange: (Boolean) -> Unit,
     autoSaveNote: Boolean,
     onAutoSaveNoteChange: (Boolean) -> Unit,
-    autoCreateTasks: Boolean,
-    onAutoCreateTasksChange: (Boolean) -> Unit
+    tasksMode: AutopilotTasksMode,
+    onTasksModeChange: (AutopilotTasksMode) -> Unit
 ) {
     val c = MM.colors
     MMCard {
@@ -526,7 +544,30 @@ private fun AutomationTriggersCard(
         if (autoRun) {
             HorizontalDivider(color = c.lineSoft, modifier = Modifier.padding(vertical = MM.space.xs))
             TriggerToggleRow("Auto-save recap note", autoSaveNote, onAutoSaveNoteChange)
-            TriggerToggleRow("Auto-create follow-up tasks", autoCreateTasks, onAutoCreateTasksChange)
+            HorizontalDivider(color = c.lineSoft, modifier = Modifier.padding(vertical = MM.space.xs))
+            Text("Tasks it finds", style = MM.type.bodyStrong, color = c.ink)
+            Row(horizontalArrangement = Arrangement.spacedBy(MM.space.xs), modifier = Modifier.padding(top = MM.space.xs)) {
+                MMChip(
+                    label = "Add to Wrap-up (recommended)",
+                    selected = tasksMode == AutopilotTasksMode.REVIEW,
+                    onClick = { onTasksModeChange(AutopilotTasksMode.REVIEW) }
+                )
+                MMChip(
+                    label = "Create directly",
+                    selected = tasksMode == AutopilotTasksMode.CREATE,
+                    onClick = { onTasksModeChange(AutopilotTasksMode.CREATE) }
+                )
+            }
+            Text(
+                if (tasksMode == AutopilotTasksMode.REVIEW) {
+                    "Tasks wait in the recording's Wrap-up, unreviewed, like every other finding."
+                } else {
+                    "Tasks are created as soon as a recording finishes, without review."
+                },
+                style = MM.type.caption,
+                color = c.inkSecondary,
+                modifier = Modifier.padding(top = MM.space.xs)
+            )
         }
     }
 }

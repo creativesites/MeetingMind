@@ -12,6 +12,7 @@ import com.craftflowtechnologies.meetingmind.core.billing.Capability
 import com.craftflowtechnologies.meetingmind.core.billing.FeatureGate
 import com.craftflowtechnologies.meetingmind.core.billing.TieringMode
 import com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore
+import com.craftflowtechnologies.meetingmind.core.database.ActionItemEntity
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.BlockSource
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 enum class AutopilotRecipe(
     val id: String,
@@ -75,6 +77,9 @@ enum class AutopilotRecipe(
     );
 
     companion object {
+        /** The recipes offered inside Work (spec §10 Autopilot): the others stay in their own spaces. */
+        val WORK_RECIPES: List<AutopilotRecipe> = listOf(EXECUTIVE_DEBRIEF, CLIENT_CRM_LOG)
+
         fun recommendedFor(workflow: RecordingType): AutopilotRecipe = when (workflow) {
             RecordingType.SERMON,
             RecordingType.BIBLE_STUDY,
@@ -138,11 +143,18 @@ data class AutopilotExecutionReport(
     val result: AutopilotRunResult
 )
 
+/**
+ * What Autopilot does with the tasks it finds (spec F-3). REVIEW (the default) puts them in the
+ * recording's Wrap-up as unreviewed findings; nothing becomes a task until the person confirms it.
+ * CREATE makes them tasks straight away, as it did before.
+ */
+enum class AutopilotTasksMode { REVIEW, CREATE }
+
 /** Persistent trigger toggles for post-recording AI automation workflows. */
 object AutopilotPreferences {
     private const val PREFS_NAME = "mm_autopilot_prefs"
     private const val KEY_AUTO_RUN = "auto_run_enabled"
-    private const val KEY_AUTO_TASKS = "auto_create_tasks"
+    private const val KEY_TASKS_MODE = "tasks_mode"
     private const val KEY_AUTO_NOTE = "auto_create_note"
 
     private fun prefs(context: Context) =
@@ -153,9 +165,20 @@ object AutopilotPreferences {
         prefs(context).edit().putBoolean(KEY_AUTO_RUN, enabled).apply()
     }
 
-    fun shouldAutoCreateTasks(context: Context): Boolean = prefs(context).getBoolean(KEY_AUTO_TASKS, true)
+    /** Defaults to REVIEW for everyone, including people who never opened the setting. */
+    fun tasksMode(context: Context): AutopilotTasksMode =
+        prefs(context).getString(KEY_TASKS_MODE, null)
+            ?.let { runCatching { AutopilotTasksMode.valueOf(it) }.getOrNull() }
+            ?: AutopilotTasksMode.REVIEW
+
+    fun setTasksMode(context: Context, mode: AutopilotTasksMode) {
+        prefs(context).edit().putString(KEY_TASKS_MODE, mode.name).apply()
+    }
+
+    /** True only when the person opted into CREATE. */
+    fun shouldAutoCreateTasks(context: Context): Boolean = tasksMode(context) == AutopilotTasksMode.CREATE
     fun setAutoCreateTasks(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_AUTO_TASKS, enabled).apply()
+        setTasksMode(context, if (enabled) AutopilotTasksMode.CREATE else AutopilotTasksMode.REVIEW)
     }
 
     fun shouldAutoSaveNote(context: Context): Boolean = prefs(context).getBoolean(KEY_AUTO_NOTE, true)
@@ -455,7 +478,7 @@ object AutopilotWorkspace {
         if (!isUnlocked(context)) {
             return AiResult.ModelUnavailable(
                 "pro_required",
-                "Autopilot workflows are part of Pro and Church plans."
+                "Autopilot is included with BYOK, Pro and Church plans."
             )
         }
 
@@ -589,8 +612,42 @@ object AutopilotWorkspace {
     }
 
     /**
+     * REVIEW mode (F-3): files the tasks as action items of the recording. The Wrap-up lists them as
+     * findings nobody has confirmed, and only its Done turns the confirmed ones into tasks. Nothing
+     * here touches the task list. Returns how many were added; duplicates of the recording's items are skipped.
+     */
+    suspend fun proposeForReview(
+        context: Context,
+        result: AutopilotRunResult,
+        meetingId: String
+    ): Int = withContext(Dispatchers.IO) {
+        val db = MeetMindDatabase.getInstance(context)
+        val dao = db.actionItemDao()
+        val existingLower = dao.getActionItemsForMeetingDirect(meetingId).map { it.task.trim().lowercase() }.toSet()
+        var added = 0
+        for (item in result.actions) {
+            val clean = item.title.trim()
+            if (clean.isBlank() || clean.lowercase() in existingLower) continue
+            dao.insertActionItem(
+                ActionItemEntity(
+                    id = "ap_${UUID.randomUUID()}",
+                    meetingId = meetingId,
+                    task = clean,
+                    assigneeName = item.owner?.takeIf { it.isNotBlank() },
+                    deadline = item.dueHint?.takeIf { it.isNotBlank() },
+                    confidence = null,
+                    isCompleted = false
+                )
+            )
+            added++
+        }
+        added
+    }
+
+    /**
      * Best-effort automatic post-recording trigger: runs ONLY when the user holds
      * [Capability.AUTOMATION_RECIPES] and has opted into background Autopilot execution.
+     * In REVIEW mode (the default) the tasks go to the Wrap-up; [commitTasks] runs only in CREATE mode.
      */
     suspend fun maybeAutoRunForReadyMeeting(context: Context, meetingId: String): AutopilotExecutionReport? {
         if (!isUnlocked(context) || !AutopilotPreferences.isAutoRunEnabled(context)) return null
@@ -603,11 +660,24 @@ object AutopilotWorkspace {
                 saveRecapAsNote(context, runResult, gathered.preview.workflow, gathered.preview.notebookId)
             }.getOrNull()
         } else null
-        val tasksAdded = if (AutopilotPreferences.shouldAutoCreateTasks(context)) {
-            runCatching {
+        val tasksAdded = when (AutopilotPreferences.tasksMode(context)) {
+            AutopilotTasksMode.CREATE -> runCatching {
                 commitTasks(context, runResult, noteId ?: gathered.preview.noteId, meetingId)
             }.getOrDefault(0)
-        } else 0
+            // Review mode only parks tasks where a Wrap-up will show them. Other recordings (a lecture, a
+            // sermon) have no Wrap-up, so nothing is added automatically; the result sheet still offers it.
+            AutopilotTasksMode.REVIEW -> if (hasWrapUp(context, meetingId)) runCatching {
+                proposeForReview(context, runResult, meetingId)
+            }.getOrDefault(0) else 0
+        }
         return AutopilotExecutionReport(noteId, tasksAdded, runResult)
+    }
+
+    /** Mirrors WorkRepository.wantsWrapUp's type rule: Work recordings, plus General and Custom. */
+    private suspend fun hasWrapUp(context: Context, meetingId: String): Boolean = withContext(Dispatchers.IO) {
+        val type = MeetMindDatabase.getInstance(context).meetingDao().getMeetingById(meetingId)?.recordingType
+            ?: return@withContext false
+        type == "GENERAL" || type == "CUSTOM" ||
+            runCatching { com.craftflowtechnologies.meetingmind.core.model.Workflows.space(RecordingType.valueOf(type)) == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK }.getOrDefault(false)
     }
 }

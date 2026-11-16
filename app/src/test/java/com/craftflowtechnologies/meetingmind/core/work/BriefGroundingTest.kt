@@ -25,7 +25,7 @@ class BriefGroundingTest {
     private fun id(name: String) = w.getValue(name).id
     private fun quoteId(name: String) = runBlocking { f.db.itemDao().evidenceFor(id(name)).first().id }
     private fun build(models: WorkModels?, target: BriefTarget = BriefTarget.forProject("nb"), refresh: Boolean = false, privacy: PackPrivacy = PackPrivacy { _, _ -> false }) =
-        runBlocking { BriefBuilder(f.db, models, privacy) { f.now }.build(target, refresh) }
+        runBlocking { BriefBuilder(f.db, models, privacy) { f.now }.build(target, refresh = refresh) }
 
     private fun reply(vararg parts: Pair<String, List<String>>, recommended: List<Pair<String, List<String>>> = emptyList()): String {
         fun arr(l: List<Pair<String, List<String>>>) = l.joinToString(",") { (t, c) -> "{\"text\":\"$t\",\"cites\":[${c.joinToString(",") { "\"$it\"" }}]}" }
