@@ -259,10 +259,43 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     val nextMonday: Long get() = weeklyReviews.nextMonday()
 
-    private val inbox = com.craftflowtechnologies.meetingmind.core.work.InboxRepository(database)
+    private val inbox = com.craftflowtechnologies.meetingmind.core.work.InboxRepository(
+        database,
+        enqueueRead = { com.craftflowtechnologies.meetingmind.core.documents.DocumentReading.enqueue(application, it) }
+    )
     val inboxItems: StateFlow<List<com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity>> = inbox.observeOpen().state(emptyList())
     val inboxFiledItems: StateFlow<List<com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity>> = inbox.observeFiled().state(emptyList())
     val inboxCount: StateFlow<Int> = inbox.observeOpenCount().state(0)
+
+    /** Documents already given their one proposal this session, so a proposal that finds nothing is not retried in a loop. */
+    private val documentsProposed = mutableSetOf<String>()
+
+    /** When a document's on-device read reaches DONE, its one proposal is made, with page-aware chunk selection (spec §R4). */
+    private val documentProposals = viewModelScope.launch {
+        inboxItems.collect { items ->
+            for (item in items) {
+                if (item.status != com.craftflowtechnologies.meetingmind.core.work.InboxStatus.NEW.name) continue
+                if (com.craftflowtechnologies.meetingmind.core.documents.DocumentKind.fromItemKind(item.kind) == null) continue
+                val read = com.craftflowtechnologies.meetingmind.core.documents.ReadStatus.parse(item.readStatus)
+                if (read != com.craftflowtechnologies.meetingmind.core.documents.ReadStatus.DONE) continue
+                if (!documentsProposed.add(item.id)) continue
+                runCatching { proposeInbox(item) }
+            }
+        }
+    }
+
+    /** Puts a dismissed item back (the Undo after Dismiss). */
+    fun restoreInbox(itemId: String) = viewModelScope.launch { inbox.restore(itemId) }
+    /** Puts a filed item back in the Inbox (the Undo after filing). Notes the filing made are removed. */
+    fun unfileInbox(itemId: String) = viewModelScope.launch {
+        com.craftflowtechnologies.meetingmind.core.work.InboxFiler(getApplication(), database).unfile(itemId)
+    }
+    /** One inbox row, for a screen that was opened from its id. */
+    suspend fun inboxItem(itemId: String) = inbox.get(itemId)
+    /** The pages of a document, live, as its read finishes. */
+    fun observeInboxPages(itemId: String) = database.documentPageDao().observeForItem(itemId)
+    /** Whether Inbox reading and summaries stay on this phone (the Keep work on this phone setting). */
+    fun inboxRunsOnDevice(): Boolean = settings.value.keepOnDevice
     private fun proposer() = com.craftflowtechnologies.meetingmind.core.work.InboxProposer(database, workModels, settings.value.keepOnDevice)
     suspend fun inboxCandidates() = proposer().candidates()
     /** Proposes one filing for an item. Nothing is filed until [fileInbox]. */

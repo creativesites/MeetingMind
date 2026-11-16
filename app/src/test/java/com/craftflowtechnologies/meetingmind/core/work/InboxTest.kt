@@ -2,6 +2,8 @@ package com.craftflowtechnologies.meetingmind.core.work
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.craftflowtechnologies.meetingmind.core.database.DocumentPageEntity
+import com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -83,6 +85,12 @@ class InboxProcessTest {
     private fun share(text: String, title: String? = null) = runBlocking { repo.add(listOf(SharedPart(InboxKind.TEXT, text = text, title = title ?: text.lineSequence().first()))).single() }
     private fun proposer(models: WorkModels? = null, keep: Boolean = false) = InboxProposer(f.db, models, keep) { f.now }
     private fun notes() = runBlocking { f.db.noteDao().getAll() }.filter { it.metadataJson.contains("fromInbox") }
+
+    /** Stands in for the on-device reader: the document is read, with these pages, and marked DONE. */
+    private fun readDone(itemId: String, vararg pages: String) = runBlocking {
+        f.db.documentPageDao().upsertPages(pages.mapIndexed { i, t -> DocumentPageEntity(itemId, i + 1, t, "TEXT_LAYER") })
+        f.db.inboxDao().updateReadState(itemId, "DONE", pages.size, pages.size, pages.joinToString("\n\n"))
+    }
 
     @Test fun aShareLandsNewAndFilesNothing() {
         val before = runBlocking { f.db.noteDao().getAll().size + f.db.taskDao().exportAll().size + f.db.itemDao().allLive().size }
@@ -193,6 +201,7 @@ class InboxProcessTest {
     @Test fun aFileIsFiledAsANoteThatNamesIt() = runBlocking {
         val tmp = java.io.File(context.filesDir, "inbox").apply { mkdirs() }.resolve("abc_Contract.pdf").apply { writeText("%PDF") }
         val item = repo.add(listOf(SharedPart(InboxKind.PDF, uri = "content://x", title = "Acme contract", mime = "application/pdf"))) { CopiedFile(tmp.absolutePath, "Contract.pdf") }.single()
+        readDone(item.id, "The scope of the Acme contract.") // a document is proposed only once it has been read
         val filing = proposer().propose(item)!! // the title names Acme
         InboxFiler(context, f.db).file(item.id, filing)
         val note = notes().single()
@@ -212,7 +221,8 @@ class InboxProcessTest {
         // Tap one: "File to…" and choose the project. Tap two: it is filed.
         val tmp = java.io.File(context.filesDir, "inbox").apply { mkdirs() }.resolve("x_brief.pdf").apply { writeText("%PDF") }
         val item = repo.add(listOf(SharedPart(InboxKind.PDF, uri = "content://x", mime = "application/pdf"))) { CopiedFile(tmp.absolutePath, "brief.pdf") }.single()
-        assertNull(proposer().propose(item)) // nothing to go on
+        readDone(item.id, "A short brief with nothing to match.")
+        assertNull(proposer().propose(item)) // read, and nothing to go on
         val candidate = proposer().candidates().first { it.target == FilingTarget.PROJECT }
         assertTrue(InboxFiler(context, f.db).file(item.id, Filing(FilingAction.NOTE, candidate.target, candidate.id, candidate.name, title = item.title)))
         assertEquals("nb", notes().single().notebookId)

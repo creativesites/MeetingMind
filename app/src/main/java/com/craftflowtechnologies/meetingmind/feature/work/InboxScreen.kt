@@ -130,22 +130,40 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import com.craftflowtechnologies.meetingmind.core.documents.DocumentReading
+import com.craftflowtechnologies.meetingmind.feature.work.inbox.InboxCaptureTiles
+import com.craftflowtechnologies.meetingmind.feature.work.inbox.InboxEmptyState
+import com.craftflowtechnologies.meetingmind.feature.work.inbox.InboxFiledRow
+import com.craftflowtechnologies.meetingmind.feature.work.inbox.InboxItemCard
+import com.craftflowtechnologies.meetingmind.feature.work.inbox.InboxItemScreen
+import com.craftflowtechnologies.meetingmind.feature.work.inbox.InboxRules
+import com.craftflowtechnologies.meetingmind.feature.work.inbox.InboxUndo
+import com.craftflowtechnologies.meetingmind.feature.work.inbox.InboxUndoKind
 
 /**
- * Filter categories for Work Inbox triage.
+ * Filter categories for Work Inbox triage (#8a): All · Needs you · Voice & media · Docs & links · Filed.
  */
 enum class InboxFilter(val label: String) {
     ALL("All"),
-    NEEDS_ACTION("Action needed"),
-    MEDIA("Voice & Media"),
+    NEEDS_ACTION("Needs you"),
+    MEDIA("Voice & media"),
     DOCS("Docs & links"),
     FILED("Filed")
 }
 
 /**
- * The Work Inbox (docs/PLAN_PROFESSIONAL.md D7): the front door for WhatsApp voice notes, recordings,
- * videos, documents, links, and shared notes. Every item displays its exact origin, import date and time,
- * inline audio playback, automatic transcription status, AI summary, and direct links to its Note and Transcript.
+ * The Work Inbox (spec "Inbox", #8a–#8g). Capture (Voice note · Scan · Paste note · File), filters, then a card
+ * per item. Opening an item shows its item screen in the same route; back returns to the list. Documents are
+ * read on this phone as they arrive, and a suggestion appears when the read is done. Nothing is filed without
+ * a tap on File, and every filing or dismissal can be undone from the snackbar.
+ *
+ * @param onOpenDocument opens the document viewer for an item at a page (null: the first page).
+ * @param onOpenProject opens a project from a filed item.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -155,21 +173,25 @@ fun InboxScreen(
     onOpenNote: (String) -> Unit,
     onImportAudio: (String) -> Unit,
     onOpenMeeting: (String, Long?) -> Unit = { _, _ -> },
-    onOpenProcessing: (String) -> Unit = {}
+    onOpenProcessing: (String) -> Unit = {},
+    onOpenDocument: ((String, Int?) -> Unit)? = null,
+    onOpenProject: ((String) -> Unit)? = null
 ) {
     val openItems by viewModel.inboxItems.collectAsState()
     val filedItems by viewModel.inboxFiledItems.collectAsState()
     val linkedMeetings by viewModel.inboxLinkedMeetings.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
     var picking by remember { mutableStateOf<InboxItemEntity?>(null) }
-    var inspecting by remember { mutableStateOf<InboxItemEntity?>(null) }
+    var inspectingId by remember { mutableStateOf<String?>(null) }
     var activeFilter by remember { mutableStateOf(InboxFilter.ALL) }
     var showCaptureTextSheet by remember { mutableStateOf(false) }
+    var undo by remember { mutableStateOf<InboxUndo?>(null) }
     val companionShown = rememberCompanionVisible(CompanionPage.HOME)
 
-    // File picker for importing WhatsApp voice notes, audio, video, or PDFs directly into the Work Inbox.
-    val inboxFilePicker = rememberLauncherForActivityResult(
+    // Files picked from the device. Voice notes and video are transcribed; PDFs and images are read on the phone.
+    val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
@@ -210,299 +232,225 @@ fun InboxScreen(
             .addOnFailureListener { Toast.makeText(context, "The document scanner isn't available on this phone", Toast.LENGTH_SHORT).show() }
     }
 
+    fun dismiss(item: InboxItemEntity) {
+        viewModel.dismissInbox(item)
+        undo = InboxUndo(item.id, InboxUndoKind.DISMISS, "Dismissed")
+    }
+
+    fun fileWith(item: InboxItemEntity, filing: Filing) {
+        scope.launch {
+            if (viewModel.fileInbox(item, filing)) {
+                undo = InboxUndo(item.id, InboxUndoKind.FILE, "Filed to ${filing.targetLabel ?: filing.action.label}")
+            } else {
+                Toast.makeText(context, "Couldn't file it", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // Anything new gets its one proposal, so a share is a confirm away from filed.
     LaunchedEffect(openItems.map { it.id to it.status }) {
         openItems.filter { it.status == InboxStatus.NEW.name }.forEach { viewModel.proposeInbox(it) }
     }
 
-    val filteredItems = remember(openItems, filedItems, activeFilter) {
-        when (activeFilter) {
-            InboxFilter.ALL -> openItems
-            InboxFilter.NEEDS_ACTION -> openItems.filter { it.status == InboxStatus.PROPOSED.name || it.transcriptionStatus == "PENDING" }
-            InboxFilter.MEDIA -> openItems.filter { it.kind == InboxKind.AUDIO.name || it.kind == InboxKind.VIDEO.name }
-            InboxFilter.DOCS -> openItems.filter { it.kind == InboxKind.PDF.name || it.kind == InboxKind.URL.name || it.kind == InboxKind.FILE.name || it.kind == InboxKind.TEXT.name }
-            InboxFilter.FILED -> filedItems
+    // The Undo snackbar. A new action replaces the old one; Undo puts the item back where it was.
+    LaunchedEffect(undo) {
+        val current = undo ?: return@LaunchedEffect
+        val result = snackbar.showSnackbar(current.message, actionLabel = "Undo", duration = SnackbarDuration.Long)
+        if (result == SnackbarResult.ActionPerformed) {
+            when (current.kind) {
+                InboxUndoKind.DISMISS -> viewModel.restoreInbox(current.itemId)
+                InboxUndoKind.FILE -> viewModel.unfileInbox(current.itemId)
+            }
+        }
+        if (undo == current) undo = null
+    }
+
+    val visibleOpen = remember(openItems, activeFilter) {
+        if (activeFilter == InboxFilter.FILED) emptyList() else openItems.filter { InboxRules.matches(activeFilter, it) }
+    }
+    fun countFor(filter: InboxFilter): Int =
+        if (filter == InboxFilter.FILED) filedItems.size else openItems.count { InboxRules.matches(filter, it) }
+
+    fun noteIdOf(item: InboxItemEntity): String? =
+        linkedMeetings[item.id]?.noteId ?: runCatching {
+            item.resultRefJson?.let { org.json.JSONObject(it).optString("noteId").ifBlank { null } }
+        }.getOrNull()
+
+    fun openTranscriptOf(item: InboxItemEntity): (() -> Unit)? {
+        val linked = linkedMeetings[item.id]
+        val mid = linked?.meetingId ?: item.meetingId ?: return null
+        return {
+            if (linked?.status == "PROCESSING" || item.transcriptionStatus == "TRANSCRIBING") onOpenProcessing(mid)
+            else onOpenMeeting(mid, null)
         }
     }
 
-    val pendingTranscriptions = remember(openItems) { openItems.count { it.transcriptionStatus == "PENDING" } }
-    val completedTranscriptions = remember(openItems) { openItems.count { it.transcriptionStatus == "COMPLETED" } }
-    val readyProposals = remember(openItems) { openItems.count { it.status == InboxStatus.PROPOSED.name } }
+    fun retryTranscription(item: InboxItemEntity) {
+        viewModel.transcribeInboxItem(item) { ok, msg ->
+            Toast.makeText(
+                context,
+                if (ok) "Transcribing in background…" else (msg ?: "Couldn't start transcription"),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
 
-    Scaffold(containerColor = Background) { padding ->
-        LazyColumn(
-            Modifier.fillMaxSize().padding(padding).testTag("work_inbox"),
-            contentPadding = PaddingValues(bottom = 48.dp)
-        ) {
-            item(key = "header") {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
+    fun retryRead(item: InboxItemEntity) {
+        scope.launch { DocumentReading.reread(context, item.id) }
+    }
+
+    // One-tap transcription for a recording or YouTube link that has not started (the YouTube path is unchanged).
+    fun transcribeActionFor(row: InboxItemEntity): (() -> Unit)? {
+        val mediaOrYouTube = InboxRules.isMedia(row) || InboxRules.isYouTube(row)
+        if (!mediaOrYouTube || row.transcriptionStatus != "PENDING") return null
+        return { retryTranscription(row) }
+    }
+
+    // Transcription settings: the file for a recording, the URL for a YouTube link.
+    fun configureTranscriptionFor(row: InboxItemEntity): (() -> Unit)? {
+        val path = (row.uri?.takeIf { InboxRules.isMedia(row) } ?: row.text?.takeIf { InboxRules.isYouTube(row) }) ?: return null
+        return { onImportAudio(path) }
+    }
+
+    // The item screen takes over the route while an item is open; back returns to the list.
+    val inspected: InboxItemEntity? = inspectingId?.let { id ->
+        openItems.firstOrNull { it.id == id } ?: filedItems.firstOrNull { it.id == id }
+    }
+
+    // The root box holds the Undo snackbar, so it shows over the item screen as well as the list.
+    Box(Modifier.fillMaxSize()) {
+    if (inspected != null) {
+        BackHandler { inspectingId = null }
+        InboxItemScreen(
+            item = inspected,
+            linked = linkedMeetings[inspected.id],
+            viewModel = viewModel,
+            onBack = { inspectingId = null },
+            onChange = { picking = inspected },
+            onDismiss = {
+                inspectingId = null
+                dismiss(inspected)
+            },
+            onOpenDocument = onOpenDocument?.let { open -> { page: Int? -> open(inspected.id, page) } },
+            onOpenProject = onOpenProject,
+            onOpenNote = noteIdOf(inspected)?.let { nid -> { inspectingId = null; onOpenNote(nid) } },
+            onOpenTranscript = openTranscriptOf(inspected)?.let { open -> { inspectingId = null; open() } },
+            onRetryTranscription = { retryTranscription(inspected) },
+            onRetryRead = { retryRead(inspected) },
+            onConfigureTranscribe = configureTranscriptionFor(inspected),
+            onFailed = { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+        )
+    } else {
+        Scaffold(containerColor = Background) { padding ->
+            LazyColumn(
+                Modifier.fillMaxSize().padding(padding).testTag("work_inbox"),
+                contentPadding = PaddingValues(bottom = 48.dp)
+            ) {
+                item(key = "header") {
                     Row(
-                        Modifier.fillMaxWidth(),
+                        Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Ink)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.ink)
                         }
                         if (companionShown) {
                             ZuriSlot(CompanionPage.HOME, 36.dp)
                             Spacer(Modifier.width(8.dp))
                         }
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    "Work Inbox",
-                                    fontFamily = OutfitFamily,
-                                    fontSize = 26.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Ink
-                                )
+                                Text("Work Inbox", style = MM.type.title, color = MM.colors.ink)
                                 if (openItems.isNotEmpty()) {
-                                    Surface(shape = CircleShape, color = AccentWash) {
+                                    Surface(shape = CircleShape, color = MM.colors.accentWash) {
                                         Text(
                                             "${openItems.size}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Accent,
+                                            style = MM.type.caption,
+                                            color = MM.colors.accent,
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
                             }
                             Text(
-                                "Voice notes, WhatsApp shares, recordings, docs & links — with full source, date, time, AI summary and note links.",
-                                fontFamily = InterFamily,
-                                fontSize = 12.5.sp,
-                                lineHeight = 17.sp,
-                                color = InkSecondary,
+                                "Things to file. Nothing is filed without you.",
+                                style = MM.type.secondary,
+                                color = MM.colors.inkSecondary,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
                     }
-
-                    // Quick Capture / Import Bar
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        InboxQuickCaptureTile(
-                            icon = Icons.Filled.GraphicEq,
-                            label = "Voice Note / File",
-                            subtitle = "WhatsApp, audio, video",
-                            tint = Speaker3,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                inboxFilePicker.launch(arrayOf("audio/*", "video/*", "application/ogg", "application/pdf", "*/*"))
-                            }
-                        )
-                        InboxQuickCaptureTile(
-                            icon = Icons.Filled.DocumentScanner,
-                            label = "Scan Doc",
-                            subtitle = "Camera to PDF",
-                            tint = Accent,
-                            modifier = Modifier.weight(1f),
-                            onClick = { scan() }
-                        )
-                        InboxQuickCaptureTile(
-                            icon = Icons.Filled.ContentPaste,
-                            label = "Paste Note",
-                            subtitle = "Text or URL",
-                            tint = Speaker2,
-                            modifier = Modifier.weight(1f),
-                            onClick = { showCaptureTextSheet = true }
-                        )
-                    }
-
-                    // Live Triage Status Strip
-                    if (openItems.isNotEmpty()) {
-                        InboxTriageSummaryStrip(
-                            totalOpen = openItems.size,
-                            readyProposals = readyProposals,
-                            pendingMedia = pendingTranscriptions,
-                            transcribedMedia = completedTranscriptions,
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
-                    }
-
-                    // Filter tabs
-                    if (openItems.isNotEmpty() || filedItems.isNotEmpty()) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(top = 12.dp, bottom = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            InboxFilter.entries.forEach { f ->
-                                val count = when (f) {
-                                    InboxFilter.ALL -> openItems.size
-                                    InboxFilter.NEEDS_ACTION -> openItems.count { it.status == InboxStatus.PROPOSED.name || it.transcriptionStatus == "PENDING" }
-                                    InboxFilter.MEDIA -> openItems.count { it.kind == InboxKind.AUDIO.name || it.kind == InboxKind.VIDEO.name }
-                                    InboxFilter.DOCS -> openItems.count { it.kind == InboxKind.PDF.name || it.kind == InboxKind.URL.name || it.kind == InboxKind.FILE.name || it.kind == InboxKind.TEXT.name }
-                                    InboxFilter.FILED -> filedItems.size
-                                }
-                                FilterChip(
-                                    label = "${f.label} ($count)",
-                                    selected = activeFilter == f,
-                                    onClick = { activeFilter = f }
-                                )
-                            }
-                        }
-                    }
                 }
-            }
 
-            if (openItems.isEmpty() && activeFilter != InboxFilter.FILED) {
-                item(key = "empty") {
-                    InboxEmptyCard(
-                        onImportFile = {
-                            inboxFilePicker.launch(arrayOf("audio/*", "video/*", "application/ogg", "application/pdf", "*/*"))
-                        },
+                item(key = "capture") {
+                    InboxCaptureTiles(
+                        onVoice = { filePicker.launch(arrayOf("audio/*", "video/*")) },
                         onScan = { scan() },
-                        onPaste = { showCaptureTextSheet = true }
+                        onPaste = { showCaptureTextSheet = true },
+                        onFile = { filePicker.launch(arrayOf("*/*")) }
                     )
                 }
-            } else if (filteredItems.isEmpty()) {
-                item(key = "empty-filter") {
-                    EmptyLine("No items in '${activeFilter.label}'.")
-                }
-            }
 
-            items(filteredItems, key = { it.id }) { item ->
-                val linked = linkedMeetings[item.id]
-                val resolvedNoteId = linked?.noteId ?: remember(item.resultRefJson) {
-                    runCatching { item.resultRefJson?.let { org.json.JSONObject(it).optString("noteId").ifBlank { null } } }.getOrNull()
+                item(key = "filters") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        InboxFilter.entries.forEach { f ->
+                            FilterChip(
+                                label = "${f.label} (${countFor(f)})",
+                                selected = activeFilter == f,
+                                onClick = { activeFilter = f }
+                            )
+                        }
+                    }
                 }
-                val resolvedMeetingId = linked?.meetingId ?: item.meetingId
 
-                val isYouTubeItem = remember(item.kind, item.text, item.uri) {
-                    item.kind == InboxKind.URL.name &&
-                        com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(item.text ?: item.uri)
+                if (activeFilter == InboxFilter.FILED) {
+                    if (filedItems.isEmpty()) {
+                        item(key = "filed-empty") { EmptyLine("Nothing filed yet.") }
+                    }
+                    items(filedItems, key = { "filed-${it.id}" }) { filed ->
+                        InboxFiledRow(item = filed, onOpen = { inspectingId = filed.id })
+                    }
+                } else if (openItems.isEmpty()) {
+                    item(key = "empty") {
+                        InboxEmptyState(onSeeFiled = { activeFilter = InboxFilter.FILED })
+                    }
+                } else if (visibleOpen.isEmpty()) {
+                    item(key = "empty-filter") { EmptyLine("Nothing in '${activeFilter.label}'.") }
+                } else {
+                    items(visibleOpen, key = { it.id }) { row ->
+                        InboxItemCard(
+                            item = row,
+                            linked = linkedMeetings[row.id],
+                            suggestion = InboxRules.suggestion(row),
+                            onOpen = { inspectingId = row.id },
+                            onFile = { filing -> fileWith(row, filing) },
+                            onChange = { picking = row },
+                            onDismiss = { dismiss(row) },
+                            onTranscribe = transcribeActionFor(row)
+                        )
+                    }
                 }
-                val isMediaOrYouTube = item.kind == InboxKind.AUDIO.name || item.kind == InboxKind.VIDEO.name || isYouTubeItem
-
-                InboxCard(
-                    item = item,
-                    linked = linked,
-                    onConfirm = { filing ->
-                        scope.launch {
-                            val ok = viewModel.fileInbox(item, filing)
-                            Toast.makeText(context, if (ok) "Filed to ${filing.targetLabel ?: filing.action.label}" else "Couldn't file it", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onChoose = { picking = item },
-                    onDismiss = { viewModel.dismissInbox(item) },
-                    onQuickTranscribe = if (isMediaOrYouTube) {
-                        {
-                            viewModel.transcribeInboxItem(item) { ok, msg ->
-                                Toast.makeText(
-                                    context,
-                                    if (ok) (if (isYouTubeItem) "Extracting YouTube transcript & bytes…" else "Transcribing voice note in background…")
-                                    else (msg ?: "Couldn't start transcription"),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    } else null,
-                    onConfigureTranscribe = (item.uri?.takeIf { item.kind == InboxKind.AUDIO.name || item.kind == InboxKind.VIDEO.name }
-                        ?: item.text?.takeIf { isYouTubeItem })?.let { path ->
-                        { onImportAudio(path) }
-                    },
-                    onOpenNote = resolvedNoteId?.let { nid -> { onOpenNote(nid) } },
-                    onOpenTranscript = resolvedMeetingId?.let { mid ->
-                        {
-                            if (linked?.status == "PROCESSING" || item.transcriptionStatus == "TRANSCRIBING") {
-                                onOpenProcessing(mid)
-                            } else {
-                                onOpenMeeting(mid, null)
-                            }
-                        }
-                    },
-                    onInspect = { inspecting = item }
-                )
             }
         }
     }
 
-    picking?.let { item ->
-        FileToSheet(item, viewModel, onDismiss = { picking = null }) { filing ->
+    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
+    }
+
+    picking?.let { row ->
+        FileToSheet(row, viewModel, onDismiss = { picking = null }) { filing ->
             picking = null
-            scope.launch {
-                val ok = viewModel.fileInbox(item, filing)
-                Toast.makeText(context, if (ok) "Filed to ${filing.targetLabel ?: filing.action.label}" else "Couldn't file it", Toast.LENGTH_SHORT).show()
-            }
+            fileWith(row, filing)
         }
-    }
-
-    inspecting?.let { item ->
-        val currentItem = openItems.firstOrNull { it.id == item.id }
-            ?: filedItems.firstOrNull { it.id == item.id }
-            ?: item
-        val linked = linkedMeetings[currentItem.id]
-        val resolvedNoteId = linked?.noteId ?: runCatching {
-            currentItem.resultRefJson?.let { org.json.JSONObject(it).optString("noteId").ifBlank { null } }
-        }.getOrNull()
-        val resolvedMeetingId = linked?.meetingId ?: currentItem.meetingId
-
-        val isCurrentYouTube = currentItem.kind == InboxKind.URL.name &&
-            com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(currentItem.text ?: currentItem.uri)
-        val isCurrentMediaOrYouTube = currentItem.kind == InboxKind.AUDIO.name || currentItem.kind == InboxKind.VIDEO.name || isCurrentYouTube
-
-        InboxDetailSheet(
-            item = currentItem,
-            linked = linked,
-            onDismiss = { inspecting = null },
-            onConfirm = { filing ->
-                inspecting = null
-                scope.launch {
-                    val ok = viewModel.fileInbox(currentItem, filing)
-                    Toast.makeText(context, if (ok) "Filed to ${filing.targetLabel ?: filing.action.label}" else "Couldn't file it", Toast.LENGTH_SHORT).show()
-                }
-            },
-            onFileTo = {
-                val itm = currentItem
-                inspecting = null
-                picking = itm
-            },
-            onQuickTranscribe = if (isCurrentMediaOrYouTube) {
-                {
-                    viewModel.transcribeInboxItem(currentItem) { ok, msg ->
-                        Toast.makeText(
-                            context,
-                            if (ok) "Transcribing in background…" else (msg ?: "Couldn't start transcription"),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            } else null,
-            onConfigureTranscribe = (currentItem.uri?.takeIf { currentItem.kind == InboxKind.AUDIO.name || currentItem.kind == InboxKind.VIDEO.name }
-                ?: currentItem.text?.takeIf { isCurrentYouTube })?.let { path ->
-                {
-                    inspecting = null
-                    onImportAudio(path)
-                }
-            },
-            onOpenNote = resolvedNoteId?.let { nid ->
-                {
-                    inspecting = null
-                    onOpenNote(nid)
-                }
-            },
-            onOpenTranscript = resolvedMeetingId?.let { mid ->
-                {
-                    inspecting = null
-                    if (linked?.status == "PROCESSING" || currentItem.transcriptionStatus == "TRANSCRIBING") {
-                        onOpenProcessing(mid)
-                    } else {
-                        onOpenMeeting(mid, null)
-                    }
-                }
-            }
-        )
     }
 
     if (showCaptureTextSheet) {
@@ -517,591 +465,11 @@ fun InboxScreen(
     }
 }
 
-@Composable
-private fun InboxQuickCaptureTile(
-    icon: ImageVector,
-    label: String,
-    subtitle: String,
-    tint: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(SurfaceBase)
-            .border(1.dp, LineSoft, RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp)
-    ) {
-        Box(
-            Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(tint.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            label,
-            fontFamily = OutfitFamily,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 13.5.sp,
-            color = Ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            subtitle,
-            fontFamily = InterFamily,
-            fontSize = 11.sp,
-            color = InkMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun InboxTriageSummaryStrip(
-    totalOpen: Int,
-    readyProposals: Int,
-    pendingMedia: Int,
-    transcribedMedia: Int,
-    modifier: Modifier = Modifier
-) {
-    val parts = buildList {
-        add("$totalOpen in inbox")
-        if (readyProposals > 0) add("$readyProposals ready to confirm")
-        if (pendingMedia > 0) add("$pendingMedia awaiting transcription")
-        if (transcribedMedia > 0) add("$transcribedMedia transcribed")
-    }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(AccentWash)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(16.dp))
-        Text(
-            parts.joinToString(" · "),
-            fontFamily = InterFamily,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = Ink,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun InboxEmptyCard(
-    onImportFile: () -> Unit,
-    onScan: () -> Unit,
-    onPaste: () -> Unit
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 16.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(SurfaceBase)
-            .border(1.dp, LineSoft, RoundedCornerShape(24.dp))
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        ZuriSlot(CompanionPage.EMPTY, 84.dp)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Your Work Inbox is clear",
-            fontFamily = OutfitFamily,
-            fontSize = 19.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Ink
-        )
-        Text(
-            "Share a WhatsApp voice note, video, PDF, or link from any app to MeetingMind — or import one right here. We'll track where it came from, when it arrived, transcribe it, and link its AI summary to your notes.",
-            fontFamily = InterFamily,
-            fontSize = 13.sp,
-            lineHeight = 19.sp,
-            color = InkSecondary,
-            modifier = Modifier.padding(top = 6.dp)
-        )
-        Row(
-            Modifier.padding(top = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Chip("Import Voice Note / File", selected = true, color = Accent, onClick = onImportFile)
-            Chip("Scan Doc", selected = false, color = Ink, onClick = onScan)
-            Chip("Paste", selected = false, color = Ink, onClick = onPaste)
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun InboxCard(
-    item: InboxItemEntity,
-    linked: InboxLinkedMeeting?,
-    onConfirm: (Filing) -> Unit,
-    onChoose: () -> Unit,
-    onDismiss: () -> Unit,
-    onQuickTranscribe: (() -> Unit)?,
-    onConfigureTranscribe: (() -> Unit)?,
-    onOpenNote: (() -> Unit)?,
-    onOpenTranscript: (() -> Unit)?,
-    onInspect: () -> Unit
-) {
-    val filing = remember(item.proposedJson) { Filing.fromJson(item.proposedJson) }
-    val formattedSource = remember(item.source, item.uri, item.title) {
-        formatSource(item.source) ?: inferDisplaySourceFromItem(item)
-    }
-    val timeLabel = remember(item.createdAt) { relativeTimeLabel(item.createdAt) }
-    val exactDateTime = remember(item.createdAt) { formatImportDateTime(item.createdAt) }
-    val (importDatePart, importTimePart) = remember(item.createdAt) { formatImportDateAndTimeParts(item.createdAt) }
-    val effectiveDurationMs = linked?.durationMs?.takeIf { it > 0L } ?: item.mediaDurationMs
-    val durationLabel = remember(effectiveDurationMs) { formatMediaDuration(effectiveDurationMs) }
-    val displayTitle = remember(item.title, item.kind, formattedSource, linked?.title) {
-        formatInboxDisplayTitle(item.title, item.kind, formattedSource, linked?.title)
-    }
-    val originalFileDate = remember(item.title, item.uri) {
-        parseWhatsAppDateFromFileName(item.title ?: item.uri)
-    }
-    val isTranscribed = item.transcriptionStatus == "COMPLETED" || linked?.status == "READY"
-    val isTranscribing = item.transcriptionStatus == "TRANSCRIBING" || linked?.status == "PROCESSING"
-    val isFailed = item.transcriptionStatus == "FAILED" || linked?.status == "ERROR"
-    val playablePath = remember(linked?.audioFilePath, item.uri, item.kind) {
-        if (item.kind == InboxKind.AUDIO.name || item.kind == InboxKind.VIDEO.name) {
-            (linked?.audioFilePath ?: item.uri)?.takeIf { File(it).exists() }
-        } else null
-    }
-    val summaryText = linked?.summaryText
-    val transcriptText = remember(item.text, linked?.transcriptPreview, item.title) {
-        (item.text?.takeIf { it.isNotBlank() && it != item.title } ?: linked?.transcriptPreview)
-    }
-    val detectedTasks = remember(filing?.tasks, linked?.actionItems) {
-        (filing?.tasks.orEmpty() + linked?.actionItems.orEmpty()).distinct()
-    }
-    val detectedDecisions = remember(filing?.decision, linked?.decisions) {
-        (listOfNotNull(filing?.decision) + linked?.decisions.orEmpty()).distinct()
-    }
-
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = SurfaceBase,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 7.dp)
-            .border(1.dp, if (isTranscribed) Speaker3.copy(alpha = 0.35f) else LineSoft, RoundedCornerShape(22.dp))
-            .clip(RoundedCornerShape(22.dp))
-            .clickable(onClick = onInspect)
-            .testTag("inbox_item")
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            // Top Row: Kind badge, Source Attribution ("From WhatsApp"), and relative timestamp
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                KindBadge(item.kind, formattedSource)
-                if (formattedSource != null) {
-                    Spacer(Modifier.width(6.dp))
-                    SourcePill(formattedSource)
-                }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    timeLabel,
-                    fontFamily = InterFamily,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = InkMuted
-                )
-            }
-
-            // Title and Duration
-            Row(
-                Modifier.fillMaxWidth().padding(top = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    displayTitle,
-                    fontFamily = OutfitFamily,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Ink,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                if (durationLabel != null) {
-                    Spacer(Modifier.width(8.dp))
-                    DurationBadge(durationLabel)
-                }
-            }
-
-            // Explicit Provenance Strip: Imported From + Exact Date + Exact Time
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SurfaceSunk)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Filled.CalendarToday, null, tint = InkMuted, modifier = Modifier.size(12.dp))
-                    Text(
-                        importDatePart,
-                        fontFamily = InterFamily,
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = InkSecondary
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Filled.AccessTime, null, tint = InkMuted, modifier = Modifier.size(12.dp))
-                    Text(
-                        importTimePart,
-                        fontFamily = InterFamily,
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = InkSecondary
-                    )
-                }
-                if (originalFileDate != null && originalFileDate != importDatePart) {
-                    Text(
-                        "· Rec $originalFileDate",
-                        fontFamily = InterFamily,
-                        fontSize = 11.sp,
-                        color = InkMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                } else if (formattedSource != null) {
-                    Text(
-                        "· via $formattedSource",
-                        fontFamily = InterFamily,
-                        fontSize = 11.sp,
-                        color = InkMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            // Inline Audio Player for Voice Notes / Audio / Video
-            if (playablePath != null) {
-                InboxInlineAudioPlayer(
-                    filePath = playablePath,
-                    durationMs = effectiveDurationMs,
-                    modifier = Modifier.padding(top = 10.dp)
-                )
-            }
-
-            // Transcription & Summary Status
-            if (isTranscribed) {
-                Row(
-                    Modifier.padding(top = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Filled.CheckCircle, null, tint = Success, modifier = Modifier.size(14.dp))
-                    Text(
-                        if (summaryText != null) "Transcribed & Summarized" else "Transcribed",
-                        fontFamily = InterFamily,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Success
-                    )
-                    if (detectedTasks.isNotEmpty()) {
-                        MetaPill("⚡ ${detectedTasks.size} ${if (detectedTasks.size == 1) "task" else "tasks"}")
-                    }
-                    if (detectedDecisions.isNotEmpty()) {
-                        MetaPill("📌 ${detectedDecisions.size} ${if (detectedDecisions.size == 1) "decision" else "decisions"}")
-                    }
-                }
-
-                // AI Summary Box properly linked to the Note
-                if (!summaryText.isNullOrBlank()) {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(top = 10.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(AccentWash.copy(alpha = 0.55f))
-                            .border(1.dp, Accent.copy(alpha = 0.22f), RoundedCornerShape(14.dp))
-                            .padding(12.dp)
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(13.dp))
-                            Spacer(Modifier.width(5.dp))
-                            Text(
-                                "AI SUMMARY",
-                                fontFamily = InterFamily,
-                                fontSize = 10.5.sp,
-                                letterSpacing = 0.8.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Accent,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (onOpenNote != null) {
-                                Row(
-                                    Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable(onClick = onOpenNote)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Linked Note", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Accent)
-                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Accent, modifier = Modifier.size(12.dp).padding(start = 2.dp))
-                                }
-                            }
-                        }
-                        Text(
-                            summaryText,
-                            fontFamily = InterFamily,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            color = Ink,
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-
-                // Transcript excerpt linked to the Recording/Transcript
-                if (!transcriptText.isNullOrBlank()) {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(SurfaceSunk)
-                            .padding(12.dp)
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Notes, null, tint = InkMuted, modifier = Modifier.size(13.dp))
-                            Spacer(Modifier.width(5.dp))
-                            Text(
-                                "TRANSCRIPT",
-                                fontFamily = InterFamily,
-                                fontSize = 10.5.sp,
-                                letterSpacing = 0.8.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = InkMuted,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (onOpenTranscript != null) {
-                                Row(
-                                    Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable(onClick = onOpenTranscript)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Full transcript", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Accent)
-                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Accent, modifier = Modifier.size(12.dp).padding(start = 2.dp))
-                                }
-                            }
-                        }
-                        Text(
-                            transcriptText,
-                            fontFamily = InterFamily,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            color = InkSecondary,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            } else if (isTranscribing) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(AccentWash)
-                        .padding(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Transcribing & generating AI summary…",
-                            fontFamily = InterFamily,
-                            fontSize = 12.5.sp,
-                            color = Accent,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (onOpenTranscript != null) {
-                            Text(
-                                "Progress →",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Accent,
-                                modifier = Modifier.clickable(onClick = onOpenTranscript)
-                            )
-                        }
-                    }
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp).clip(CircleShape),
-                        color = Accent,
-                        trackColor = SurfaceBase
-                    )
-                }
-            } else if (isFailed) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DangerWash)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Transcription didn't finish. Tap Transcribe to retry.",
-                        fontSize = 12.sp,
-                        color = Danger,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            } else {
-                // Non-media text / link snippet
-                transcriptText?.let { snippet ->
-                    Text(
-                        snippet,
-                        fontFamily = InterFamily,
-                        fontSize = 13.5.sp,
-                        lineHeight = 19.sp,
-                        color = InkSecondary,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-            }
-
-            // Proposed Filing Card
-            if (item.status == InboxStatus.FILED.name) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceSunk)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Filled.Check, null, tint = Success, modifier = Modifier.size(14.dp))
-                    Text(
-                        filing?.let { "Filed: ${describe(it)}" } ?: "Filed in Work",
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = InkSecondary
-                    )
-                }
-            } else if (filing != null) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceSunk)
-                        .padding(12.dp)
-                ) {
-                    Text(
-                        "PROPOSED FILING",
-                        fontSize = 10.sp,
-                        letterSpacing = 0.9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = InkMuted
-                    )
-                    Text(
-                        describe(filing),
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Ink,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                    filing.reason?.let {
-                        Text(it, fontSize = 11.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
-                    }
-                }
-            } else {
-                val hint = if (item.kind in listOf("AUDIO", "VIDEO") && !isTranscribed) {
-                    "Tap Transcribe to generate an AI summary, full transcript, and linked note."
-                } else {
-                    "Choose a project, person, or organisation to file this item."
-                }
-                Text(
-                    hint,
-                    fontFamily = InterFamily,
-                    fontSize = 12.5.sp,
-                    color = InkMuted,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-
-            // Action Buttons Row
-            FlowRow(
-                Modifier.padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                if (item.status != InboxStatus.FILED.name) {
-                    if (filing != null) {
-                        Chip("Confirm", selected = true, color = Accent) { onConfirm(filing) }
-                    }
-                    if (onQuickTranscribe != null && !isTranscribed && !isTranscribing) {
-                        Chip(
-                            if (item.kind == InboxKind.VIDEO.name) "Transcribe video" else "Transcribe",
-                            selected = filing == null,
-                            color = Accent
-                        ) { onQuickTranscribe() }
-                        if (onConfigureTranscribe != null) {
-                            Chip("Options…", selected = false, color = Ink) { onConfigureTranscribe() }
-                        }
-                    }
-                    Chip(if (filing != null) "Change…" else "File to…", selected = filing == null && onQuickTranscribe == null, color = Ink) { onChoose() }
-                }
-                if (onOpenNote != null && (isTranscribed || item.status == InboxStatus.FILED.name)) {
-                    Chip("View note", selected = false, color = Accent) { onOpenNote() }
-                }
-                if (onOpenTranscript != null && isTranscribed) {
-                    Chip("Transcript", selected = false, color = Ink) { onOpenTranscript() }
-                }
-                if (item.status != InboxStatus.FILED.name) {
-                    Chip("Dismiss") { onDismiss() }
-                }
-            }
-        }
-    }
-}
-
 /**
  * Lightweight inline audio player for voice notes and imported audio inside the Work Inbox.
  */
 @Composable
-private fun InboxInlineAudioPlayer(
+internal fun InboxInlineAudioPlayer(
     filePath: String,
     durationMs: Long?,
     modifier: Modifier = Modifier
@@ -1219,69 +587,7 @@ private fun InboxInlineAudioPlayer(
 }
 
 @Composable
-private fun KindBadge(kind: String, source: String? = null) {
-    val isVoiceNote = kind.equals("AUDIO", ignoreCase = true) && source?.contains("WhatsApp", ignoreCase = true) == true
-    val meta = if (isVoiceNote) KindVisual(Icons.Filled.GraphicEq, "Voice Note") else kindMeta(kind)
-    val tint = when (kind.uppercase()) {
-        "AUDIO" -> if (isVoiceNote) Speaker3 else Accent
-        "VIDEO" -> Accent
-        "PDF" -> Speaker4
-        "URL" -> Speaker2
-        else -> InkSecondary
-    }
-    Surface(shape = RoundedCornerShape(8.dp), color = tint.copy(alpha = 0.12f)) {
-        Row(
-            Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Icon(meta.icon, null, tint = tint, modifier = Modifier.size(12.dp))
-            Text(meta.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
-        }
-    }
-}
-
-@Composable
-private fun SourcePill(source: String) {
-    val isWhatsApp = source.contains("WhatsApp", ignoreCase = true)
-    val bg = if (isWhatsApp) Speaker3.copy(alpha = 0.12f) else SurfaceSunk
-    val fg = if (isWhatsApp) Speaker3 else InkSecondary
-    Surface(shape = RoundedCornerShape(8.dp), color = bg) {
-        Text(
-            "From $source",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            color = fg,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-        )
-    }
-}
-
-@Composable
-private fun DurationBadge(duration: String) {
-    Surface(shape = RoundedCornerShape(8.dp), color = AccentWash) {
-        Row(
-            Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Icon(Icons.Filled.PlayArrow, null, tint = Accent, modifier = Modifier.size(11.dp))
-            Text(duration, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Accent)
-        }
-    }
-}
-
-@Composable
-private fun MetaPill(text: String) {
-    Surface(shape = RoundedCornerShape(8.dp), color = SurfaceSunk) {
-        Text(text, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = InkSecondary, modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
-    }
-}
-
-@Composable
-private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+internal fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
@@ -1295,289 +601,6 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
             color = if (selected) OnInk else InkSecondary,
             modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp)
         )
-    }
-}
-
-/**
- * Inspection sheet displaying full item provenance (imported from, date, time, file),
- * inline audio player, AI summary, scrollable transcript, and filing actions.
- */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-private fun InboxDetailSheet(
-    item: InboxItemEntity,
-    linked: InboxLinkedMeeting?,
-    onDismiss: () -> Unit,
-    onConfirm: (Filing) -> Unit,
-    onFileTo: () -> Unit,
-    onQuickTranscribe: (() -> Unit)?,
-    onConfigureTranscribe: (() -> Unit)?,
-    onOpenNote: (() -> Unit)?,
-    onOpenTranscript: (() -> Unit)?
-) {
-    val context = LocalContext.current
-    val filing = remember(item.proposedJson) { Filing.fromJson(item.proposedJson) }
-    val formattedSource = remember(item.source, item.uri, item.title) {
-        formatSource(item.source) ?: inferDisplaySourceFromItem(item)
-    }
-    val timeLabel = remember(item.createdAt) { relativeTimeLabel(item.createdAt) }
-    val (importDatePart, importTimePart) = remember(item.createdAt) { formatImportDateAndTimeParts(item.createdAt) }
-    val effectiveDurationMs = linked?.durationMs?.takeIf { it > 0L } ?: item.mediaDurationMs
-    val durationLabel = remember(effectiveDurationMs) { formatMediaDuration(effectiveDurationMs) }
-    val displayTitle = remember(item.title, item.kind, formattedSource, linked?.title) {
-        formatInboxDisplayTitle(item.title, item.kind, formattedSource, linked?.title)
-    }
-    val isTranscribed = item.transcriptionStatus == "COMPLETED" || linked?.status == "READY"
-    val isTranscribing = item.transcriptionStatus == "TRANSCRIBING" || linked?.status == "PROCESSING"
-    val playablePath = remember(linked?.audioFilePath, item.uri, item.kind) {
-        if (item.kind == InboxKind.AUDIO.name || item.kind == InboxKind.VIDEO.name) {
-            (linked?.audioFilePath ?: item.uri)?.takeIf { File(it).exists() }
-        } else null
-    }
-    val summaryText = linked?.summaryText
-    val transcriptText = item.text?.takeIf { it.isNotBlank() } ?: linked?.transcriptPreview
-    val detectedTasks = remember(filing?.tasks, linked?.actionItems) {
-        (filing?.tasks.orEmpty() + linked?.actionItems.orEmpty()).distinct()
-    }
-    val detectedDecisions = remember(filing?.decision, linked?.decisions) {
-        (listOfNotNull(filing?.decision) + linked?.decisions.orEmpty()).distinct()
-    }
-
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
-        Column(
-            Modifier
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                KindBadge(item.kind, formattedSource)
-                if (formattedSource != null) {
-                    Spacer(Modifier.width(6.dp))
-                    SourcePill(formattedSource)
-                }
-                Spacer(Modifier.weight(1f))
-                Text(timeLabel, fontSize = 12.sp, color = InkMuted)
-            }
-
-            Text(
-                displayTitle,
-                fontFamily = OutfitFamily,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Bold,
-                color = Ink,
-                modifier = Modifier.padding(top = 10.dp)
-            )
-
-            // Provenance Metadata Table (Imported from, Date, Time, Duration, Original File)
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(SurfaceSunk)
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                ProvenanceRow("Imported from", formattedSource ?: "Shared / Imported")
-                ProvenanceRow("Date imported", importDatePart)
-                ProvenanceRow("Time imported", importTimePart)
-                if (durationLabel != null) {
-                    ProvenanceRow("Duration", durationLabel)
-                }
-                item.uri?.let { path ->
-                    val rawName = File(path).name.substringAfter('_')
-                    if (rawName.isNotBlank()) {
-                        ProvenanceRow("Source file", rawName)
-                    }
-                }
-            }
-
-            if (playablePath != null) {
-                InboxInlineAudioPlayer(
-                    filePath = playablePath,
-                    durationMs = effectiveDurationMs,
-                    modifier = Modifier.padding(top = 12.dp)
-                )
-            }
-
-            // Linked Note & Transcript Quick Bar
-            if (onOpenNote != null || (onOpenTranscript != null && isTranscribed)) {
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (onOpenNote != null) {
-                        Surface(
-                            onClick = onOpenNote,
-                            shape = RoundedCornerShape(12.dp),
-                            color = AccentWash,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(
-                                Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.Notes, null, tint = Accent, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Open Linked Note", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
-                            }
-                        }
-                    }
-                    if (onOpenTranscript != null && isTranscribed) {
-                        Surface(
-                            onClick = onOpenTranscript,
-                            shape = RoundedCornerShape(12.dp),
-                            color = SurfaceSunk,
-                            modifier = Modifier.weight(1f).border(1.dp, LineSoft, RoundedCornerShape(12.dp))
-                        ) {
-                            Row(
-                                Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(Icons.Filled.GraphicEq, null, tint = Ink, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Open Transcript", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // AI Summary Section
-            if (!summaryText.isNullOrBlank()) {
-                HorizontalDivider(Modifier.padding(vertical = 14.dp), color = LineSoft)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "AI SUMMARY",
-                        fontSize = 11.sp,
-                        letterSpacing = 1.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Accent,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = {
-                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            cm.setPrimaryClip(ClipData.newPlainText("AI Summary", summaryText))
-                            Toast.makeText(context, "Summary copied", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(Icons.Filled.ContentCopy, "Copy summary", tint = InkMuted, modifier = Modifier.size(14.dp))
-                    }
-                }
-                Text(
-                    summaryText,
-                    fontSize = 14.sp,
-                    color = Ink,
-                    lineHeight = 20.sp,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-            }
-
-            // Full text / transcript
-            if (!transcriptText.isNullOrBlank()) {
-                HorizontalDivider(Modifier.padding(vertical = 14.dp), color = LineSoft)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (isTranscribed) "FULL TRANSCRIPT" else "CONTENT",
-                        fontSize = 11.sp,
-                        letterSpacing = 1.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = InkMuted,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = {
-                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            cm.setPrimaryClip(ClipData.newPlainText("Inbox Content", transcriptText))
-                            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(Icons.Filled.ContentCopy, "Copy text", tint = InkMuted, modifier = Modifier.size(14.dp))
-                    }
-                }
-                Text(
-                    transcriptText,
-                    fontSize = 14.sp,
-                    color = Ink,
-                    lineHeight = 20.sp,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-            }
-
-            // Detected Tasks & Decisions
-            if (detectedTasks.isNotEmpty() || detectedDecisions.isNotEmpty()) {
-                HorizontalDivider(Modifier.padding(vertical = 14.dp), color = LineSoft)
-                Text("DETECTED IN THIS ITEM", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted)
-                Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    detectedDecisions.forEach { d ->
-                        Row(verticalAlignment = Alignment.Top) {
-                            Text("📌", fontSize = 12.sp)
-                            Spacer(Modifier.width(8.dp))
-                            Text(d, fontSize = 13.5.sp, color = Ink, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                    detectedTasks.forEach { task ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Dot(color = Accent)
-                            Spacer(Modifier.width(8.dp))
-                            Text(task, fontSize = 13.5.sp, color = Ink)
-                        }
-                    }
-                }
-            }
-
-            // Proposed Filing Details
-            if (filing != null) {
-                HorizontalDivider(Modifier.padding(vertical = 14.dp), color = LineSoft)
-                Text("PROPOSED FILING", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted)
-                Text(describe(filing), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Ink, modifier = Modifier.padding(top = 4.dp))
-                filing.reason?.let { Text("Grounding: $it", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp)) }
-            }
-
-            // Actions in detail sheet
-            FlowRow(
-                Modifier.padding(top = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (item.status != InboxStatus.FILED.name) {
-                    if (filing != null) {
-                        Chip("Confirm Filing", selected = true, color = Accent) { onConfirm(filing) }
-                    }
-                    if (onQuickTranscribe != null && !isTranscribed && !isTranscribing) {
-                        Chip(
-                            if (item.kind == InboxKind.VIDEO.name) "Transcribe video" else "Transcribe",
-                            selected = filing == null,
-                            color = Accent
-                        ) { onQuickTranscribe() }
-                        if (onConfigureTranscribe != null) {
-                            Chip("Configure…", selected = false, color = Ink) { onConfigureTranscribe() }
-                        }
-                    }
-                    Chip(if (filing != null) "Change…" else "File to…", selected = filing == null && onQuickTranscribe == null, color = Ink) { onFileTo() }
-                }
-                if (onOpenNote != null && (isTranscribed || item.status == InboxStatus.FILED.name)) {
-                    Chip("View Note", selected = false, color = Ink) { onOpenNote() }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProvenanceRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 12.sp, color = InkMuted)
-        Text(value, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -1638,16 +661,9 @@ private fun CaptureTextToInboxSheet(
     }
 }
 
-private fun describe(f: Filing): String = when (f.action) {
-    FilingAction.NOTE -> "Keep as a note" + (f.targetLabel?.let { " in $it" } ?: "")
-    FilingAction.TASKS -> "Make ${f.tasks.size} ${if (f.tasks.size == 1) "task" else "tasks"}: " + f.tasks.joinToString("; ") + (f.targetLabel?.let { " ($it)" } ?: "")
-    FilingAction.DECISION -> "Record decision: ${f.decision}" + (f.targetLabel?.let { " ($it)" } ?: "")
-    FilingAction.CONTACT -> "Add ${f.contactName ?: f.contactEmail} to people"
-}
+internal data class KindVisual(val icon: ImageVector, val label: String)
 
-private data class KindVisual(val icon: ImageVector, val label: String)
-
-private fun kindMeta(kind: String): KindVisual = when (kind.uppercase()) {
+internal fun kindMeta(kind: String): KindVisual = when (kind.uppercase()) {
     "VIDEO" -> KindVisual(Icons.Filled.VideoFile, "Video")
     "AUDIO" -> KindVisual(Icons.Filled.AudioFile, "Audio")
     "PDF" -> KindVisual(Icons.AutoMirrored.Filled.InsertDriveFile, "PDF")

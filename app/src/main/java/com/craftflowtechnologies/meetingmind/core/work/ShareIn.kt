@@ -8,6 +8,7 @@ import android.provider.OpenableColumns
 import android.widget.Toast
 import com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import com.craftflowtechnologies.meetingmind.core.documents.DocumentReading
 import com.craftflowtechnologies.meetingmind.core.notify.DeepLink
 import com.craftflowtechnologies.meetingmind.core.notify.DeepLinks
 import kotlinx.coroutines.Dispatchers
@@ -57,7 +58,8 @@ object ShareIn {
             sourceApp = rawSource
         )
         if (parts.isEmpty()) return@withContext 0
-        val added = InboxRepository(MeetMindDatabase.getInstance(context)).add(parts) { copy(context, it) }
+        val added = InboxRepository(MeetMindDatabase.getInstance(context), enqueueRead = { DocumentReading.enqueue(context, it) })
+            .add(parts) { copy(context, it) }
         if (added.isNotEmpty()) DeepLinks.open(DeepLink.Inbox)
         added.size
     }
@@ -77,7 +79,8 @@ object ShareIn {
             mime = mime,
             source = sourceHint
         )
-        InboxRepository(MeetMindDatabase.getInstance(context)).add(listOf(part)) { copy(context, it, mime) }
+        InboxRepository(MeetMindDatabase.getInstance(context), enqueueRead = { DocumentReading.enqueue(context, it) })
+            .add(listOf(part)) { copy(context, it, mime) }
     }
 
     /** Fire and forget from an activity, with a confirmation toast. */
