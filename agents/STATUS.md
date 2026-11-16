@@ -46,40 +46,46 @@ Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
   - Explicit Gemini `safetySettings`, as a separate task.
   - Not yet checked on the phone.
 
-## Work premium redesign, Phase B (2026-11-16)
-- **Founder-approved design:** `design/work-vertical-design-spec.md` §R (revision 2) and `design/Work Vertical Redesign.dc.html`. Implemented on this branch in these commits:
-  - `47c39a4`: Task data-loss fix, schema 31 and Work UI kit (`core/ui/work`). The fix: `Task.toEntity` dropped `waitingOn`, `sourceItemId` and `space`.
+## Work premium redesign, Phase B: paused for the team release (2026-11-16)
+- **Founder-approved design:** `design/work-vertical-design-spec.md` §R (revision 2) and `design/Work Vertical Redesign.dc.html`. Commits on this branch (none pushed):
+  - `47c39a4`: Task data-loss fix, schema 31 and Work UI kit.
   - `a29045e`: Work home.
   - `1e9b329`: document reading engine.
   - `4a64665`: Brief, Autopilot and Wrap-up.
   - `e0a907e`: context pages, Prepare and Ask.
   - `27acb34`: Tasks app.
   - `ff91863`: Work hub and in-vertical bar.
-  - `130220f`: Tasks open routes.
+  - `130220f`: tasks open routes.
   - `dc0fb82`: Inbox and documents.
   - `5ec1740`: MainActivity wiring.
-  - `292bf47`: a one-line compile fix for the YouTube commit.
-- **What works now (in code):**
-  - **Work bar:** Work has its own bottom bar (Home · Pulse · Tasks · Notes · Projects · Decisions). Pulse changes by time of day.
+  - `2ee45f3`: compile fixes.
+  - `1d1ca35`: test imports.
+  - `c399061`: Work ⋯ opens the shared app menu.
+  - `9b2802a`: test-suite fixes.
+- **What's in the code:**
+  - **Work bar:** Work has its own bottom bar (Home · Pulse · Tasks · Notes · Projects · Decisions) and an app-menu ⋯ with Work first.
+  - **Pulse** changes by time of day.
   - **Work home:** kept and elevated with a Briefing card, day ribbon, Up next, tasks, projects and people.
   - **Tasks:** a first-class, app-wide manager (smart views, lists and board, task page, natural-language quick add, Plan my day, swipe).
-  - **PDFs and scans:** read on the phone (PdfBox-Android plus ML Kit text recognition, unbundled), with page-cited suggestions and a viewer.
-  - **Brief controls:** all of them.
-  - **Autopilot:** tasks go to review by default.
+  - **PDFs and scans:** read on-device (PdfBox-Android plus ML Kit text recognition, unbundled), with page-cited Inbox suggestions and a viewer.
+  - **Brief controls:** all of them, with decisions to make kept separate.
+  - **Autopilot:** tasks go to Wrap-up review by default.
   - **Wrap-up:** type change and a Done check.
   - **Follow-up:** Copy and channel preview.
   - **Context pages:** one layout for project, person and organisation.
-- **Schema:** version 31 (migration 30→31, additive). `schemas/31.json` is committed.
-- **Not verified:** nothing compiled or run by this session, per AGENTS.md. Priority remote checks:
-  - `compileDebugKotlin`
-  - `testDebugUnitTest`, especially `Migration30To31Test`, `QuickAddParserTest`, `TaskManagerRepositoryTest`, `TasksViewModelTest`, `PageChunkSelectorTest`, `DocumentInboxTest`, `InboxTest`, `PulseLogicTest`, `BriefOptionsTest`, `AutopilotTasksModeTest`, `ContextPageLogicTest` and `WorkPageViewModelTest`
-  - Work and Tasks screenshots in Paper and Graphite
-  - device: PDF reading memory on a 2 GB phone, and release APK size after PdfBox
-- **Open:**
-  - The Work header's app-menu button waits for `core/navigation/AppMenu.kt` (app-navigation session).
-  - Tasks has no Nudge from Waiting on, no drag reorder and no sort options yet.
-  - Brief headings stay English when the language changes.
-  - minSdk 24 uses `java.time` without desugaring (pre-existing; founder's call).
+  - **Schema:** version 31 (additive) and `schemas/31.json`.
+- **Verified:**
+  - **Compile:** `:app:compileDebugKotlin` passes, and `assembleDebug` passes in the team build.
+  - **Unit tests** (team build runner): every Work, Tasks and documents class passes. That includes Migration30To31 9/9, QuickAddParser 19/19, TaskManagerRepository 9/9, TasksViewModel 9/9, BriefOptions 11/11, BriefGrounding 9/9 and ProjectStatusLogic 5/5, plus the rest of the 29-class list in the 13:27 run.
+  - **Device:** an APK with the Work changes was installed on the S20+ (13:04). No guided walkthrough was done.
+- **Open for next time:**
+  - **Screenshots:** WorkPageScreenshotTest goldens need re-recording, because the Work page changed.
+  - **Device checks:** PDF reading memory on a 2 GB phone, and release APK size after PdfBox.
+  - **Tasks:** no Nudge from Waiting on, no drag reorder, no sort options, no task history.
+  - **Brief:** headings stay English when the language changes, and export ignores the footer option.
+  - **Wrap-up:** the "project guessed" mark isn't built (no stored flag).
+  - **Not mine:** `DesignSystemGuardTest` fails on `core/ui/mm/AiCraft.kt` (`fontSize = …sp`, from `8d97b49`); its owner needs to fix it.
+  - **Pre-existing:** minSdk 24 uses `java.time` without core-library desugaring, a crash risk on Android 7. It's the founder's call.
 
 ## App-wide navigation, spaces and home discoverability (2026-11-16)
 - **Spaces really switch off:** Settings › What it's for is now one row per space with a switch (theme tokens, readable in dark mode; the last space can't be turned off and says why). A space that is off is hidden from the bar, the app menu, the quick-access row (now self-gated, Work · Learn · Faith first), Today's devotional stories, the hero's scripture banner, Notes' work-meeting hero, the Bible search result, and the home picker. A vertical's home falls back to Today while its space is off (`HomeStyle.effectiveFor`). The devotional and faith reminders stop while Faith is off and come back with the person's settings when it is turned on (`core/navigation/SpaceSchedules.kt`).
