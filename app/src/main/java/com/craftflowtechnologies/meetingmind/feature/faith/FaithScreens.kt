@@ -447,7 +447,7 @@ fun FaithScriptureScreen(viewModel: FaithViewModel, onNavigateBack: () -> Unit, 
                         val merged = highlights.sortedWith(compareBy({ BibleBooks.all.indexOf(it.first.book) }, { it.first.chapter }, { it.first.verseStart })).fold(mutableListOf<Triple<ScriptureReference, String, Long>>()) { acc, h ->
                             val last = acc.lastOrNull()
                             val lr = last?.first
-                            if (lr != null && lr.book == h.first.book && lr.chapter == h.first.chapter && last.second == h.second && (lr.verseEnd ?: lr.verseStart!!) + 1 == h.first.verseStart)
+                            if (lr != null && lr.book == h.first.book && lr.chapter == h.first.chapter && last.second == h.second && lr.verseStart != null && h.first.verseStart != null && (lr.verseEnd ?: lr.verseStart) + 1 == h.first.verseStart)
                                 acc[acc.size - 1] = Triple(lr.copy(verseEnd = h.first.verseStart), last.second, last.third)
                             else acc += h
                             acc

@@ -12,6 +12,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import java.util.concurrent.CancellationException
 
@@ -60,8 +61,17 @@ class FirebaseCirclesAuth(private val context: Context) : CirclesAuth {
     override val currentUid: String? get() = auth?.currentUser?.uid
     override val isAnonymous: Boolean get() = auth?.currentUser?.isAnonymous ?: true
 
+    /** One anonymous sign-in at a time: two screens asking at once must not create two accounts. */
+    private val signInLock = kotlinx.coroutines.sync.Mutex()
+
     override suspend fun ensureSignedIn(): CirclesResult<String> {
         val a = auth ?: return CirclesFailure.notConnected.asResult()
+        a.currentUser?.uid?.let { return CirclesResult.Ok(it) }
+        return signInLock.withLock { signInAnonymouslyOnce(a) }
+    }
+
+    private suspend fun signInAnonymouslyOnce(a: FirebaseAuth): CirclesResult<String> {
+        // Another caller may have finished signing in while this one waited for the lock.
         a.currentUser?.uid?.let { return CirclesResult.Ok(it) }
         return try {
             val uid = a.signInAnonymously().await().user?.uid

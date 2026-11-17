@@ -353,8 +353,11 @@ private fun DeliveryHealth() {
     val exact = remember(tick) { com.craftflowtechnologies.meetingmind.core.notify.DailyAlarms.exactAllowed(context) }
     if (!notificationsOn) {
         HealthRow("Notifications are off for MeetingMind", "Turn on") {
-            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+            // Some phones have no screen for this action; a missing one must not crash the sheet.
+            runCatching {
+                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+            }
         }
     }
     if (!exact && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {

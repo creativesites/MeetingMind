@@ -52,6 +52,15 @@ class CirclesApiTest {
         assertEquals("https://circles.example.workers.dev/v1/createPost", c.request?.url.toString())
     }
 
+    @Test fun `an endpoint the deployed Worker doesn't have yet reads as unavailable, not as a missing code`() = runBlocking {
+        val missing = api(Canned(404, """{"ok":false,"error":{"code":"not_found","message":"Not found"}}""")).previewInvite("GRACE-7K2Q")
+        val f = (missing as CirclesResult.Err).failure
+        assertEquals("unavailable", f.code)
+        assertEquals("This isn't available yet. Please try again later.", f.message)
+        val realMiss = api(Canned(404, """{"ok":false,"error":{"code":"not_found","message":"That code wasn't found. Check it and try again."}}""")).previewInvite("GRACE-7K2Q")
+        assertEquals("not_found", (realMiss as CirclesResult.Err).failure.code)
+    }
+
     @Test fun `commentAsAuthor sends no uid or name, and token calls hit their endpoints`() = runBlocking {
         val c = Canned(body = """{"ok":true,"commentId":"x"}""")
         assertTrue(api(c).commentAsAuthor("c1", "p1", "Thanks", "cm1") is CirclesResult.Ok)

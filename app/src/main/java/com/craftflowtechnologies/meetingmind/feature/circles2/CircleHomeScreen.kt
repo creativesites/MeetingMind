@@ -282,8 +282,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
         myUid = state.myUid,
         isAdmin = state.canModerate,
         now = now,
-        onSend = { home.comment(thread!!.postId, it) },
-        onDeleteComment = { home.deleteComment(thread!!.postId, it.id) },
+        // Read the thread when the tap lands: it may have closed in between, and a null here must not crash.
+        onSend = { body -> thread?.postId?.let { home.comment(it, body) } },
+        onDeleteComment = { c -> thread?.postId?.let { home.deleteComment(it, c.id) } },
         onDismiss = home::closeThread,
         onMemberClick = { idOrName ->
             activeMemberInfo = state.members.firstOrNull { it.uid == idOrName || it.displayName.equals(idOrName, ignoreCase = true) }

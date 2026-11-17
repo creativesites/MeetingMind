@@ -48,7 +48,11 @@ class FirestoreCirclesData(private val context: Context) : CirclesData {
             trySend(DataState.Loading)
             val reg = ref.addSnapshotListener { snap, err ->
                 if (err != null) trySend(DataState.Failed(failure(err)))
-                else if (snap != null) trySend(DataState.Ready(map(snap.id, snap.data), snap.metadata.isFromCache))
+                // Listener callbacks run on the main thread: a document in a shape this version can't read must not crash the app.
+                else if (snap != null) trySend(
+                    try { DataState.Ready(map(snap.id, snap.data), snap.metadata.isFromCache) }
+                    catch (e: RuntimeException) { DataState.Failed(CirclesFailure.server()) }
+                )
             }
             awaitClose { reg.remove() }
         }
@@ -60,7 +64,10 @@ class FirestoreCirclesData(private val context: Context) : CirclesData {
             trySend(DataState.Loading)
             val reg = query.addSnapshotListener { snap, err ->
                 if (err != null) trySend(DataState.Failed(failure(err)))
-                else if (snap != null) trySend(DataState.Ready(map(snap), snap.metadata.isFromCache))
+                else if (snap != null) trySend(
+                    try { DataState.Ready(map(snap), snap.metadata.isFromCache) }
+                    catch (e: RuntimeException) { DataState.Failed(CirclesFailure.server()) }
+                )
             }
             awaitClose { reg.remove() }
         }

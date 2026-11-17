@@ -311,8 +311,13 @@ class HttpCirclesApi(
 
     private fun failureFrom(status: Int, obj: JSONObject?, requestId: String?): CirclesFailure {
         val err = obj?.optJSONObject("error")
-        val code = err?.optString("code")?.takeIf { it.isNotBlank() }
-        val message = err?.optString("message")?.takeIf { it.isNotBlank() }
+        val rawCode = err?.optString("code")?.takeIf { it.isNotBlank() }
+        val rawMessage = err?.optString("message")?.takeIf { it.isNotBlank() }
+        // The Worker's router answers an endpoint it doesn't have yet (an older deploy) with a bare "Not found".
+        // Say that plainly, and don't let it read as "that code or circle wasn't found".
+        val routeMissing = status == 404 && rawCode == "not_found" && rawMessage == "Not found"
+        val code = if (routeMissing) "unavailable" else rawCode
+        val message = if (routeMissing) "This isn't available yet. Please try again later." else rawMessage
         val kind = when {
             status == 401 -> FailureKind.SignedOut
             status == 404 -> FailureKind.NotFound

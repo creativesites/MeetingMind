@@ -280,11 +280,26 @@ private fun CenteredMessage(title: String, detail: String, action: (@Composable 
 
 @Composable
 private fun PdfPage(source: PdfPageSource, index: Int, widthPx: Int) {
+    var failed by remember(source, index, widthPx) { mutableStateOf(false) }
     val bitmap by produceState<ImageBitmap?>(null, source, index, widthPx) {
-        value = withContext(Dispatchers.IO) { source.renderPage(index, widthPx)?.asImageBitmap() }
+        // A damaged page, or a bitmap too big for the phone's memory, shows a line instead of crashing the app.
+        value = withContext(Dispatchers.IO) {
+            try {
+                source.renderPage(index, widthPx)?.asImageBitmap()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                null
+            }
+        }
+        if (value == null) failed = true
     }
     val loaded = bitmap
-    if (loaded != null) {
+    if (loaded == null && failed) {
+        Box(Modifier.fillMaxWidth().aspectRatio(0.7071f), contentAlignment = Alignment.Center) {
+            Text("Page ${index + 1} couldn't be shown", style = MM.type.caption, color = MM.colors.inkSecondary)
+        }
+    } else if (loaded != null) {
         Image(
             loaded,
             contentDescription = "Page ${index + 1}",
