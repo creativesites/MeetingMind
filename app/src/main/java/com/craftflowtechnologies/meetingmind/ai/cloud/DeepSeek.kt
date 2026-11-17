@@ -91,13 +91,19 @@ class DeepSeek(private val context: Context, private val baseUrl: String = BASE_
             .put("thinking", JSONObject().put("type", "disabled"))
         if (json) body.put("response_format", JSONObject().put("type", "json_object"))
 
-        val request = Request.Builder()
-            .url(if (proxy != null) "${proxy.trimEnd('/')}/chat/completions" else "$baseUrl/chat/completions")
-            .apply {
-                if (proxy != null) header("X-Install-Id", installId()) else header("Authorization", "Bearer $key")
-            }
-            .post(body.toString().toRequestBody("application/json".toMediaType()))
-            .build()
+        // A key with a stray newline or non-ASCII character makes OkHttp throw here: answer calmly instead of crashing.
+        val request = try {
+            Request.Builder()
+                .url(if (proxy != null) "${proxy.trimEnd('/')}/chat/completions" else "$baseUrl/chat/completions")
+                .apply {
+                    if (proxy != null) header("X-Install-Id", installId()) else header("Authorization", "Bearer $key")
+                }
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+        } catch (e: IllegalArgumentException) {
+            GeminiLog.add("DeepSeek → bad request: ${e.message}")
+            return@withContext AiResult.Failed(BAD_KEY_MESSAGE, retryable = false)
+        }
         val started = System.currentTimeMillis()
         val client = com.craftflowtechnologies.meetingmind.core.net.Net.base.newBuilder().callTimeout(timeoutMs, TimeUnit.MILLISECONDS).build()
         try {
@@ -117,7 +123,8 @@ class DeepSeek(private val context: Context, private val baseUrl: String = BASE_
                         retryable = r.code != 401 && r.code != 402
                     )
                 }
-                val o = JSONObject(text)
+                val o = runCatching { JSONObject(text) }.getOrNull()
+                    ?: return@withContext AiResult.Failed("DeepSeek sent an answer the app couldn't read. Try again.")
                 val content = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty().trim()
                 val tokens = o.optJSONObject("usage")?.optLong("total_tokens") ?: ((system.length + prompt.length + content.length) / 4L)
                 record(tokens)
@@ -168,14 +175,20 @@ class DeepSeek(private val context: Context, private val baseUrl: String = BASE_
         if (json && toolsJson == null) body.put("response_format", JSONObject().put("type", "json_object"))
         toolsJson?.let { runCatching { JSONArray(it) }.getOrNull() }?.let { body.put("tools", it) }
 
-        val request = Request.Builder()
-            .url(if (proxy != null) "${proxy.trimEnd('/')}/chat/completions" else "$baseUrl/chat/completions")
-            .header("Accept", "text/event-stream")
-            .apply {
-                if (proxy != null) header("X-Install-Id", installId()) else header("Authorization", "Bearer $key")
-            }
-            .post(body.toString().toRequestBody("application/json".toMediaType()))
-            .build()
+        val request = try {
+            Request.Builder()
+                .url(if (proxy != null) "${proxy.trimEnd('/')}/chat/completions" else "$baseUrl/chat/completions")
+                .header("Accept", "text/event-stream")
+                .apply {
+                    if (proxy != null) header("X-Install-Id", installId()) else header("Authorization", "Bearer $key")
+                }
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+        } catch (e: IllegalArgumentException) {
+            GeminiLog.add("DeepSeek stream → bad request: ${e.message}")
+            emit(AiStreamEvent.Failed(AiResult.Failed(BAD_KEY_MESSAGE, retryable = false)))
+            return@flow
+        }
 
         val started = System.currentTimeMillis()
         val client = com.craftflowtechnologies.meetingmind.core.net.Net.base.newBuilder().callTimeout(timeoutMs, TimeUnit.MILLISECONDS).build()
@@ -267,6 +280,7 @@ class DeepSeek(private val context: Context, private val baseUrl: String = BASE_
 
     companion object {
         const val MODEL = "deepseek-flash"
+        const val BAD_KEY_MESSAGE = "The DeepSeek key or address isn't valid. Check it in Settings."
         const val MODEL_PRO = "deepseek-v4-pro"
         const val BASE_URL = "https://api.deepseek.com"
         const val MONTHLY_TOKENS = 6_000_000L

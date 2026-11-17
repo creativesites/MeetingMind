@@ -84,4 +84,20 @@ class RecordingJournalStoreTest {
         assertEquals(5000L, readBack?.lastKnownDurationMs)
         assertEquals(RecordingState.PAUSED.name, readBack?.state)
     }
+
+    @Test
+    fun `a write that cannot reach the disk returns false and keeps the last journal`() {
+        val store = RecordingJournalStore(context)
+        val first = RecordingJournalEntry("m3", "Lecture", "LECTURE", "/data/meetings/m3/audio.m4a", 10L, 0, 0, 1L, RecordingState.RECORDING.name)
+        assertEquals(true, store.write(first))
+        // A directory where the temp file should go makes every write fail, as a full disk would.
+        val blocker = java.io.File(context.filesDir, "recovery.json.tmp").apply { deleteRecursively(); mkdirs() }
+        try {
+            assertEquals(false, store.write(first.copy(lastKnownDurationMs = 20L)))
+            assertEquals(first, store.read())
+        } finally {
+            blocker.deleteRecursively()
+            store.clear()
+        }
+    }
 }

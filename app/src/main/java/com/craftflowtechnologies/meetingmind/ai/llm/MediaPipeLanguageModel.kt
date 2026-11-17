@@ -40,14 +40,24 @@ class MediaPipeLanguageModel(
         // independently enforceable per-call limit on this runtime.
         val contextTokens = manifestEntry.contextLengthTokens ?: maxOutputTokens.coerceAtLeast(MIN_CONTEXT_TOKENS)
 
+        val totalRam = LocalModelFit.totalRamBytes(context)
+        if (!LocalModelFit.fits(modelFile.length(), totalRam)) {
+            return AiResult.InsufficientMemory(requiredMb = manifestEntry.recommendedRamMb, availableMb = (totalRam / (1024 * 1024)).toInt())
+        }
+
         return try {
             withContext(Dispatchers.Default) {
-                val engine = LlmEngineManager.getOrCreate(context.applicationContext, modelId, modelFile.absolutePath, contextTokens)
-                val response = engine.generateResponse(prompt)
+                // Held for the whole generation, so a release() elsewhere can't close it underneath.
+                val response = LlmEngineManager.withEngine(context.applicationContext, modelId, modelFile.absolutePath, contextTokens) { engine ->
+                    engine.generateResponse(prompt)
+                }
                 AiResult.Success(response)
             }
         } catch (e: OutOfMemoryError) {
             AiResult.InsufficientMemory(requiredMb = manifestEntry.recommendedRamMb, availableMb = 0)
+        } catch (e: LinkageError) {
+            // The engine's native library isn't there for this phone's processor (e.g. a 32-bit build).
+            AiResult.ModelUnavailable(modelId, "This phone can't run the on-device model.")
         } catch (e: Exception) {
             AiResult.Failed(e.message ?: "Local language model inference failed.", e)
         }

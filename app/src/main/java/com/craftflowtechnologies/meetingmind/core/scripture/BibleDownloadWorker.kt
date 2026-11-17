@@ -43,7 +43,8 @@ class BibleDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             return Result.failure(workDataOf(KEY_ERROR to "${info.abbreviation} can be read online, but its licence doesn't allow keeping a copy on the phone."))
         }
         AppNotifications.ensureChannels(applicationContext)
-        setForeground(foregroundInfo(0, 1, null))
+        // Android 12+ refuses a foreground start from the background; the download still runs.
+        runCatching { setForeground(foregroundInfo(0, 1, null)) }
 
         // Open translations from the Free Use Bible API arrive in one file, streamed book by book.
         if (HelloAo.isHelloAo(bibleId)) {
@@ -83,7 +84,7 @@ class BibleDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
                         if (now - lastUpdate > 800) {
                             lastUpdate = now
                             setProgress(workDataOf(KEY_DONE to done.get(), KEY_TOTAL to work.size))
-                            setForeground(foregroundInfo(done.get(), work.size, book.name))
+                            runCatching { setForeground(foregroundInfo(done.get(), work.size, book.name)) }
                         }
                     }
                 }

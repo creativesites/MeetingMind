@@ -531,13 +531,22 @@ class GeminiLiveVoice(
         val inMin = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val rec = runCatching { AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(inMin, IN_RATE / 5 * 2)) }.getOrNull()
         val outMin = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        player = AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-            .setAudioFormat(AudioFormat.Builder().setSampleRate(OUT_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-            .setBufferSizeInBytes(maxOf(outMin, OUT_RATE))
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .apply { if (rec != null && rec.state == AudioRecord.STATE_INITIALIZED) setSessionId(rec.audioSessionId) }
-            .build().also { it.play() }
+        // This runs on the socket's thread: a speaker the system can't open (audio resources taken,
+        // a call in progress) must end the session calmly, not throw and take the app down.
+        player = runCatching {
+            AudioTrack.Builder()
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .setAudioFormat(AudioFormat.Builder().setSampleRate(OUT_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
+                .setBufferSizeInBytes(maxOf(outMin, OUT_RATE))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .apply { if (rec != null && rec.state == AudioRecord.STATE_INITIALIZED) setSessionId(rec.audioSessionId) }
+                .build().also { it.play() }
+        }.getOrNull()
+        if (player == null) {
+            runCatching { rec?.release() }
+            _events.tryEmit(LiveVoiceEvent.Failed("The phone's speaker isn't available right now. Try again in a moment."))
+            return
+        }
         framesWritten = 0
 
         playJob = scope.launch {
@@ -581,14 +590,18 @@ class GeminiLiveVoice(
         runCatching { if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId)?.enabled = true }
         runCatching { if (android.media.audiofx.AutomaticGainControl.isAvailable()) android.media.audiofx.AutomaticGainControl.create(rec.audioSessionId)?.enabled = true }
         recorder = rec
-        rec.startRecording()
+        if (runCatching { rec.startRecording() }.isFailure || rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+            _events.tryEmit(LiveVoiceEvent.Failed("The microphone is busy, maybe with a call. Try again, or type instead."))
+            return
+        }
         micJob = scope.launch {
             val buffer = ByteArray(IN_RATE / 10 * 2) // 100 ms
             val silence = ByteArray(buffer.size)
             val gate = BargeIn()
             while (isActive) {
                 val n = rec.read(buffer, 0, buffer.size)
-                if (n <= 0) continue
+                // A negative code (mic taken over or revoked) repeats forever: wait instead of spinning.
+                if (n <= 0) { kotlinx.coroutines.delay(50); continue }
                 val level = rms(buffer, n)
                 _userLevel.value = level
                 if (_state.value != LiveVoiceState.SPEAKING) _level.value = level

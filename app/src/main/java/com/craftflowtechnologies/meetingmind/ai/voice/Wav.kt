@@ -7,14 +7,25 @@ import java.nio.ByteOrder
 
 /** 16-bit mono PCM and its sample rate. */
 class Pcm(val samples: ShortArray, val sampleRate: Int) {
-    val durationMs: Long get() = samples.size * 1000L / sampleRate
+    val durationMs: Long get() = if (sampleRate <= 0) 0L else samples.size * 1000L / sampleRate
 }
 
 /** Reading, joining and writing 16-bit PCM WAV — what both speech engines produce. */
 object Wav {
 
-    /** Reads a PCM WAV (any channel count is mixed down to mono). Null when it isn't one. */
-    fun read(bytes: ByteArray): Pcm? {
+    /**
+     * Reads a PCM WAV (any channel count is mixed down to mono). Null when it isn't one, including
+     * a truncated or corrupt file from the network: it never throws.
+     */
+    fun read(bytes: ByteArray): Pcm? = try {
+        parse(bytes)
+    } catch (e: IndexOutOfBoundsException) {
+        null
+    } catch (e: java.nio.BufferUnderflowException) {
+        null
+    }
+
+    private fun parse(bytes: ByteArray): Pcm? {
         if (bytes.size < 44 || String(bytes, 0, 4, Charsets.US_ASCII) != "RIFF" || String(bytes, 8, 4, Charsets.US_ASCII) != "WAVE") return null
         val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         var pos = 12
@@ -25,6 +36,8 @@ object Wav {
             val id = String(bytes, pos, 4, Charsets.US_ASCII)
             var size = buf.getInt(pos + 4)
             val body = pos + 8
+            // A negative size in any chunk but "data" would walk backwards forever.
+            if (size < 0 && id != "data") return null
             if (id == "fmt ") {
                 channels = buf.getShort(body + 2).toInt().coerceAtLeast(1)
                 rate = buf.getInt(body + 4)

@@ -67,7 +67,14 @@ class MeetingRecordingService : Service() {
     private val binder = LocalBinder()
     override fun onBind(intent: Intent?): IBinder = binder
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // The handler is the last line of defence: an unexpected throw in a service coroutine (a full
+    // disk, a storage check) is logged instead of killing the app mid-recording. The audio keeps
+    // being written by the recorder either way.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+            com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs.log("recording", "service coroutine failed: ${e.javaClass.simpleName}: ${e.message}")
+        }
+    )
     private lateinit var audioRecorder: AudioRecorder
     private lateinit var meetingRepository: MeetingRepository
 
@@ -179,6 +186,13 @@ class MeetingRecordingService : Service() {
      * recorder itself cannot start — e.g. the microphone is unavailable — rather than silently
      * doing nothing, so a caller can surface a real error instead of a dead Record button. */
     fun startRecording(newMeetingId: String, title: String, context: RecordingContext): File {
+        // Already capturing (e.g. the permission grant and the screen both asked to start): keep
+        // the recording that is running. Starting again would replace a live MediaRecorder.
+        val current = outputFile
+        if (current != null && (_state.value == RecordingState.RECORDING || _state.value == RecordingState.PAUSED || _state.value == RecordingState.PREPARING)) {
+            Log.w(TAG, "startRecording ignored: already ${_state.value}")
+            return current
+        }
         _state.value = RecordingState.PREPARING
         meetingId = newMeetingId
         meetingTitle = title

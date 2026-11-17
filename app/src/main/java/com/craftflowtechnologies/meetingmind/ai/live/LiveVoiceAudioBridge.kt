@@ -288,7 +288,8 @@ class LiveVoiceAudioBridge(
             val buffer = ByteArray(IN_RATE / 10 * 2) // 100ms @ 16kHz PCM16 mono
             while (isActive) {
                 val read = rec.read(buffer, 0, buffer.size)
-                if (read <= 0) continue
+                // A negative code (mic taken over or revoked) repeats forever: wait instead of spinning.
+                if (read <= 0) { kotlinx.coroutines.delay(50); continue }
                 val lvl = rms(buffer, read)
                 if (_state.value != LiveSessionState.MODEL_SPEAKING) {
                     _audioLevel.value = lvl

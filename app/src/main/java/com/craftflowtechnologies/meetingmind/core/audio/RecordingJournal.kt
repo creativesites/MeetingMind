@@ -36,7 +36,12 @@ data class RecordingJournalEntry(
 class RecordingJournalStore(context: Context) {
     private val journalFile = File(context.filesDir, "recovery.json")
 
-    fun write(entry: RecordingJournalEntry) {
+    /**
+     * Best effort: returns false instead of throwing when the disk is full or the file can't be
+     * written. A missed heartbeat must never take down a recording in progress; the previous
+     * journal stays in place.
+     */
+    fun write(entry: RecordingJournalEntry): Boolean = try {
         val json = JSONObject().apply {
             put("meetingId", entry.meetingId)
             put("title", entry.title)
@@ -51,6 +56,11 @@ class RecordingJournalStore(context: Context) {
         val tempFile = File(journalFile.parentFile, "${journalFile.name}.tmp")
         tempFile.writeText(json.toString())
         tempFile.renameTo(journalFile)
+    } catch (e: java.io.IOException) {
+        com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs.log("recording", "journal write failed: ${e.javaClass.simpleName}")
+        false
+    } catch (e: SecurityException) {
+        false
     }
 
     fun read(): RecordingJournalEntry? {
