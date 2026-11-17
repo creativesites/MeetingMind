@@ -1514,7 +1514,14 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         if (deleted || !_loaded.value) return
         // A draft with nothing of the person's in it isn't written (PLAN_V2 F0).
         if (!promoteDraftIfNeeded()) { _saved.value = true; return }
-        notes.saveBlocks(noteId, _blocks.value)
+        try {
+            notes.saveBlocks(noteId, _blocks.value)
+        } catch (e: android.database.sqlite.SQLiteConstraintException) {
+            // The note was deleted under the editor (elsewhere, or by an empty-note cleanup): nothing to save into.
+            if (notes.getNote(noteId) != null) throw e
+            deleted = true
+            return
+        }
         _saved.value = titleJob?.isActive != true
         runCatching { sessionSnapshot() }
     }
@@ -1806,6 +1813,10 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                 "passage, in Markdown where formatting helps (**bold**, '- ' bullets, '1.' numbers). " +
                 "No preamble, no explanation, no quotation marks around it. Keep the user's language."
         const val SESSION_SNAPSHOT_MS = 10 * 60 * 1000L
-        private val closingScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        /** Saves that outlive the screen. One that fails (the note deleted meanwhile, a full disk) is logged, never a crash. */
+        private val closingScope = CoroutineScope(
+            SupervisorJob() + Dispatchers.IO +
+                kotlinx.coroutines.CoroutineExceptionHandler { _, t -> android.util.Log.w("NoteEditor", "Closing save failed", t) }
+        )
     }
 }
