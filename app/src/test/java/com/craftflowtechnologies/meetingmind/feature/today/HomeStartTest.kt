@@ -1,9 +1,11 @@
 package com.craftflowtechnologies.meetingmind.feature.today
 
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
@@ -58,6 +60,8 @@ class HomeStartTest {
         settle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/home_new_user.png")
         compose.onNodeWithTag("home_record").performClick()
+        // YouTube notes and the spaces row sit above the setup card, so it starts below the fold.
+        compose.onNodeWithTag("today_list").performScrollToNode(hasTestTag("setup_one_tap"))
         compose.onNodeWithTag("setup_one_tap").performClick()
         assertEquals(1, recorded); assertEquals(1, setUp)
         assertTrue(vm.gettingStarted.value?.isNew == true)
