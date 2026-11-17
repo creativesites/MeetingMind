@@ -130,9 +130,10 @@ class Migration29To30Test {
 
     @Test
     fun learningGoalsTableExistsAndOpensAtSchemaThirty() {
-        assertEquals(30, MeetMindDatabase.VERSION)
+        // Later schemas build on 30; the migrated database opens at whatever is current.
+        assertTrue(MeetMindDatabase.VERSION >= 30)
         val db = openMigrated()
-        assertEquals(30, db.openHelper.readableDatabase.version)
+        assertEquals(MeetMindDatabase.VERSION, db.openHelper.readableDatabase.version)
 
         val columns = mutableSetOf<String>()
         db.openHelper.readableDatabase.query("PRAGMA table_info(learning_goals)").use { c ->

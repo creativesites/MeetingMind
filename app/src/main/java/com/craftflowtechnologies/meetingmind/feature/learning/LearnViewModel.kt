@@ -44,6 +44,7 @@ import com.craftflowtechnologies.meetingmind.feature.learning.space.diagnosticSe
 import com.craftflowtechnologies.meetingmind.feature.learning.space.isRelease1Practice
 import com.craftflowtechnologies.meetingmind.feature.learning.space.practiceItems
 import com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -120,6 +122,15 @@ class LearnViewModel @JvmOverloads constructor(
     private val readingCoordinator: ReadingCoordinator = ReadToMe.coordinator(application)
 ) : AndroidViewModel(application) {
 
+    /**
+     * Every Learning task runs under this guard. A failed database write or AI call is logged and
+     * the screen keeps its last state, instead of the exception ending the app.
+     */
+    private val crashGuard = CoroutineExceptionHandler { _, e -> Log.e("LearnViewModel", "Learning task failed", e) }
+
+    /** The explanation being written; a newer wrong answer cancels the older one. */
+    private var explainJob: Job? = null
+
     private val _isLoadingSession = MutableStateFlow(false)
     val isLoadingSession: StateFlow<Boolean> = _isLoadingSession.asStateFlow()
 
@@ -130,18 +141,23 @@ class LearnViewModel @JvmOverloads constructor(
     val activeTab: StateFlow<LearnTab> = _activeTab.asStateFlow()
 
     val courses: StateFlow<List<LearningRepository.LearningCourse>> = learningRepo.observeCourses()
+        .catch { e -> Log.e("LearnViewModel", "Learning data could not be read", e) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val sessions: StateFlow<List<LearningSession>> = learningRepo.observeSessions()
+        .catch { e -> Log.e("LearnViewModel", "Learning data could not be read", e) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val lectureNotes: StateFlow<List<LearningRepository.LectureNoteSummary>> = learningRepo.observeLectureNotes()
+        .catch { e -> Log.e("LearnViewModel", "Learning data could not be read", e) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val dailyBrief: StateFlow<LearningRepository.DailyCompanionBrief?> = learningRepo.observeLiveDailyBrief()
+        .catch { e -> Log.e("LearnViewModel", "Learning data could not be read", e) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val goals: StateFlow<List<LearningGoal>> = learningRepo.observeGoals()
+        .catch { e -> Log.e("LearnViewModel", "Learning data could not be read", e) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _examPriorities = MutableStateFlow<List<ExamPriorityItem>>(emptyList())
@@ -265,7 +281,7 @@ class LearnViewModel @JvmOverloads constructor(
     private var studyTimerJob: Job? = null
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             runCatching { learningRepo.syncLectureNotesToSessions() }
             refreshExamPriorities()
         }
@@ -276,7 +292,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun syncLectures() {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             runCatching { learningRepo.syncLectureNotesToSessions() }
             refreshExamPriorities(_selectedExamFilterId.value)
         }
@@ -284,14 +300,14 @@ class LearnViewModel @JvmOverloads constructor(
 
     fun refreshExamPriorities(goalOrCourseId: String? = null) {
         _selectedExamFilterId.value = goalOrCourseId
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val ranked = learningRepo.computeExamPriorityMatrix(goalOrCourseId)
             _examPriorities.value = ranked
         }
     }
 
     fun loadSessionDetail(sessionIdOrNoteId: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isLoadingSession.value = true
             _sessionLoadError.value = null
             try {
@@ -353,7 +369,7 @@ class LearnViewModel @JvmOverloads constructor(
                     // next step update as soon as practice is recorded.
                     detailObserveJob?.cancel()
                     val liveSessionId = detail.session.id
-                    detailObserveJob = viewModelScope.launch {
+                    detailObserveJob = viewModelScope.launch(crashGuard) {
                         learningRepo.observeSessionDetail(liveSessionId).collect { live ->
                             if (live != null && _activeSessionDetail.value?.session?.id == liveSessionId) {
                                 _activeSessionDetail.value = live
@@ -364,7 +380,7 @@ class LearnViewModel @JvmOverloads constructor(
                     // Observe live changes to the note document while Session Studio is open
                     documentObserveJob?.cancel()
                     val targetNoteId = detail.session.noteId
-                    documentObserveJob = viewModelScope.launch {
+                    documentObserveJob = viewModelScope.launch(crashGuard) {
                         noteRepo.observeDocument(targetNoteId).collect { doc ->
                             _activeSessionDocument.value = doc
                         }
@@ -384,7 +400,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun regenerateSessionMaterials(sessionId: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isSynthesizingSession.value = true
             try {
                 val detail = learningRepo.getSessionDetail(sessionId) ?: return@launch
@@ -424,7 +440,7 @@ class LearnViewModel @JvmOverloads constructor(
         importance: ExamImportance = ExamImportance.HIGH_YIELD
     ) {
         if (name.isBlank()) return
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val now = System.currentTimeMillis()
             val concept = LearningConcept(
                 id = "concept_${UUID.randomUUID()}",
@@ -460,7 +476,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun toggleConceptImportance(concept: LearningConcept) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val nextImportance = when (concept.examImportance) {
                 ExamImportance.NORMAL -> ExamImportance.HIGH_YIELD
                 ExamImportance.HIGH_YIELD -> ExamImportance.LECTURER_FLAGGED
@@ -489,7 +505,7 @@ class LearnViewModel @JvmOverloads constructor(
         icon: String? = null,
         noteIdsToAssign: List<String> = emptyList()
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val props = CourseProperties(
                 courseCode = courseCode.trim(),
                 lecturer = instructor.trim(),
@@ -519,7 +535,7 @@ class LearnViewModel @JvmOverloads constructor(
         targetGrade: String = "",
         onCreated: ((LearningRepository.LearningCourse) -> Unit)? = null
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val course = learningRepo.createCourseFromNotes(
                 noteIds = noteIds,
                 courseName = courseName,
@@ -538,7 +554,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun assignNoteToCourse(noteId: String, courseNotebookId: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             learningRepo.assignNotesToCourse(courseNotebookId, listOf(noteId))
             refreshActiveSessionIfMatched(listOf(noteId))
             refreshExamPriorities(_selectedExamFilterId.value)
@@ -553,7 +569,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun deleteCourse(courseId: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             noteRepo.deleteNotebook(courseId)
         }
     }
@@ -567,7 +583,7 @@ class LearnViewModel @JvmOverloads constructor(
         dailyMinutesTarget: Int = 30,
         sessionIds: List<String> = emptyList()
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val now = System.currentTimeMillis()
             val goal = LearningGoal(
                 id = id.ifBlank { java.util.UUID.randomUUID().toString() },
@@ -586,7 +602,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun deleteGoal(goalId: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             learningRepo.deleteGoal(goalId)
             refreshExamPriorities()
         }
@@ -598,11 +614,11 @@ class LearnViewModel @JvmOverloads constructor(
         courseNotebookId: String? = null,
         onCreated: (noteId: String) -> Unit
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val note = noteRepo.createNote(
                 workflow = RecordingType.LECTURE,
                 title = title.ifBlank { "Study Note" },
-                notebookId = courseNotebookId
+                notebookId = courseNotebookId?.takeIf { noteRepo.getNotebook(it) != null }
             )
             val session = learningRepo.ensureSessionForNote(
                 noteId = note.id,
@@ -616,7 +632,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun toggleSessionPause(sessionId: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             learningRepo.toggleSessionPause(sessionId)
             val updated = learningRepo.getSessionDetail(sessionId)
             if (updated != null) {
@@ -641,7 +657,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun loadWeakConceptsPractice(concepts: List<LearningConcept>, onReady: (() -> Unit)? = null) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isLoadingPractice.value = true
             try {
                 val conceptIds = concepts.map { it.id }.toSet()
@@ -676,7 +692,7 @@ class LearnViewModel @JvmOverloads constructor(
         _practiceFilter.value = filter
         _practiceSessionId.value = sessionId
         _practiceCourseId.value = courseId
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isLoadingPractice.value = true
             try {
                 val deck = learningRepo.getPracticeDeck(
@@ -719,7 +735,7 @@ class LearnViewModel @JvmOverloads constructor(
         onReady: (() -> Unit)? = null
     ) {
         val cleanTopic = topic.trim().ifBlank { "${domain.displayName} Essentials" }
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isLoadingPractice.value = true
             try {
                 val resolvedDomain = if (domain == SubjectDomain.GENERAL) {
@@ -730,7 +746,7 @@ class LearnViewModel @JvmOverloads constructor(
                 val note = noteRepo.createNote(
                     workflow = RecordingType.LECTURE,
                     title = cleanTopic,
-                    notebookId = courseNotebookId
+                    notebookId = courseNotebookId?.takeIf { noteRepo.getNotebook(it) != null }
                 )
                 val session = learningRepo.ensureSessionForNote(
                     noteId = note.id,
@@ -788,7 +804,7 @@ class LearnViewModel @JvmOverloads constructor(
         if (currentIndex !in activities.indices) return
 
         val activity = activities[currentIndex]
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val outcome = try {
                 learningRepo.recordAttempt(
                     activityId = activity.id,
@@ -893,7 +909,8 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun explainMistake(activity: LearningActivity, studentAnswer: String = "") {
-        viewModelScope.launch {
+        explainJob?.cancel()
+        explainJob = viewModelScope.launch(crashGuard) {
             _isEvaluating.value = true
             val answer = studentAnswer.ifBlank { activity.expectedAnswer.ifBlank { "Incorrect attempt" } }
             val explanation = aiEngine.explainMistake(activity, answer)
@@ -911,7 +928,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun evaluateTeachBack(activity: LearningActivity, spokenTranscript: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isEvaluating.value = true
             val eval = aiEngine.evaluateTeachBack(
                 rubric = activity.rubric,
@@ -939,7 +956,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun generateCramSheet(sessionIds: List<String>, title: String, onGenerated: ((String) -> Unit)? = null) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isGeneratingCramSheet.value = true
             val resolvedIds = sessionIds.ifEmpty {
                 sessions.value.map { it.id }
@@ -957,11 +974,11 @@ class LearnViewModel @JvmOverloads constructor(
         markdown: String,
         onSaved: (noteId: String) -> Unit
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val note = noteRepo.createNote(
                 workflow = RecordingType.LECTURE,
                 title = title.ifBlank { "Exam Cram Sheet" },
-                notebookId = courseNotebookId
+                notebookId = courseNotebookId?.takeIf { noteRepo.getNotebook(it) != null }
             )
             val parsedBlocks = com.craftflowtechnologies.meetingmind.core.notes.MarkdownImport.parse(
                 markdown = markdown,
@@ -996,7 +1013,7 @@ class LearnViewModel @JvmOverloads constructor(
         domain: SubjectDomain,
         preferredKind: LearningVisualKind = LearningVisualKind.AUTO
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _generatingVisualConceptId.value = concept.id
             _visualError.value = null
             try {
@@ -1044,7 +1061,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun explainConceptSimply(concept: LearningConcept, domain: SubjectDomain) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _explainingSimpleConceptId.value = concept.id
             try {
                 val explanation = aiEngine.explainSimply(
@@ -1063,7 +1080,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun saveSimpleExplanationToNote(concept: LearningConcept, explanation: SimpleExplanation) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             try {
                 val sessionDetail = _activeSessionDetail.value
                     ?: learningRepo.getSessionDetail(concept.sessionId)
@@ -1104,7 +1121,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun requestNextHint(activity: LearningActivity, domain: SubjectDomain = SubjectDomain.GENERAL) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             if (_hintLadder.value.isEmpty()) {
                 _isLoadingHints.value = true
                 try {
@@ -1139,7 +1156,7 @@ class LearnViewModel @JvmOverloads constructor(
                 _studyTimerSecondsLeft.value = _studyTimerTotalSeconds.value
             }
             _isStudyTimerRunning.value = true
-            studyTimerJob = viewModelScope.launch {
+            studyTimerJob = viewModelScope.launch(crashGuard) {
                 while (_studyTimerSecondsLeft.value > 0) {
                     delay(1000)
                     _studyTimerSecondsLeft.value -= 1
@@ -1167,6 +1184,7 @@ class LearnViewModel @JvmOverloads constructor(
 
     /** Every visible concept, for Progress. */
     val allConcepts: StateFlow<List<LearningConcept>> = learningRepo.observeAllConcepts()
+        .catch { e -> Log.e("LearnViewModel", "Learning data could not be read", e) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _practiceKind = MutableStateFlow(PracticeKind.SET)
@@ -1217,7 +1235,7 @@ class LearnViewModel @JvmOverloads constructor(
             onReady()
             return
         }
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isLoadingPractice.value = true
             try {
                 val deck = learningRepo.getPracticeDeck(activityTypes = Release1PracticeTypes, onlyDue = true)
@@ -1270,7 +1288,7 @@ class LearnViewModel @JvmOverloads constructor(
         sessionIdOrNoteId: String,
         block: (LearningRepository.LearningSessionDetail) -> Unit
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isLoadingPractice.value = true
             _practiceError.value = null
             try {
@@ -1351,7 +1369,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     private fun updateConcept(updated: LearningConcept) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             runCatching {
                 learningRepo.saveConceptsAndActivities(updated.sessionId, listOf(updated), emptyList(), createInitialSchedules = false)
             }.onFailure { Log.e("LearnViewModel", "Failed to update concept", it) }
@@ -1411,7 +1429,7 @@ class LearnViewModel @JvmOverloads constructor(
         val label = askScopeLabel(scope)
         val turn = AskTurn(id = "ask_${UUID.randomUUID()}", question = q, scope = scope, scopeLabel = label, pending = true)
         _askTurns.value = _askTurns.value + turn
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val answer = try {
                 val passages = gatherPassages(scope)
                 val ranked = LearningAsk.rank(q, passages)
@@ -1434,7 +1452,7 @@ class LearnViewModel @JvmOverloads constructor(
     fun askGenerally(turnId: String) {
         val turn = _askTurns.value.firstOrNull { it.id == turnId } ?: return
         updateTurn(turnId) { it.copy(generalPending = true) }
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val general = runCatching { aiEngine.answerGenerally(turn.question) }.getOrNull()
             updateTurn(turnId) {
                 it.copy(
@@ -1485,7 +1503,7 @@ class LearnViewModel @JvmOverloads constructor(
      * the student's own questions. Nothing new is invented.
      */
     fun quizFromAnswer(turn: AskTurn, onReady: () -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             _isLoadingPractice.value = true
             _practiceError.value = null
             try {
@@ -1549,7 +1567,7 @@ class LearnViewModel @JvmOverloads constructor(
     fun buildStudySession(noteId: String, choice: CourseChoice) {
         _createError.value = null
         _createdNoteId.value = null
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             try {
                 _createStage.value = CreateStage.COURSE
                 val courseId = resolveCourse(choice)
@@ -1570,7 +1588,7 @@ class LearnViewModel @JvmOverloads constructor(
 
     /** Write study notes: makes the note in the chosen course and opens it. */
     fun createNotesSession(choice: CourseChoice, onCreated: (noteId: String) -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             try {
                 val courseId = resolveCourse(choice)
                 createStudyNote(title = "Study notes", courseNotebookId = courseId, onCreated = onCreated)
@@ -1583,7 +1601,7 @@ class LearnViewModel @JvmOverloads constructor(
 
     /** Record a lecture: remembers the course so the lecture lands in it when it is ready. */
     fun prepareRecording(choice: CourseChoice, onReady: () -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             val courseId = runCatching { resolveCourse(choice) }.getOrNull()
             pendingRecordCourse = courseId?.let { it to System.currentTimeMillis() }
             onReady()
@@ -1599,7 +1617,7 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(crashGuard) {
             lectureNotes.collect { applyPendingRecordCourse(it) }
         }
     }

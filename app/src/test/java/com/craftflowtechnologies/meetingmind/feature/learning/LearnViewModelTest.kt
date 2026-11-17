@@ -15,6 +15,7 @@ import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -86,6 +87,23 @@ class LearnViewModelTest {
         ShadowLooper.idleMainLooper(pollIntervalMs, TimeUnit.MILLISECONDS)
     }
 
+    /**
+     * Waits for a view-model StateFlow to satisfy [predicate] while idling the paused main looper
+     * (TESTING.md gotcha 1). A bare `first {}` can wait forever: Room posts the update to the main
+     * looper, which only runs when something idles it.
+     */
+    private fun <T> awaitValue(flow: kotlinx.coroutines.flow.StateFlow<T>, predicate: (T) -> Boolean): T {
+        val watcher = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
+            .launch { flow.collect {} }
+        try {
+            awaitCondition(timeoutMs = 10_000) { predicate(flow.value) }
+            assertTrue("the flow never reached the expected value: ${flow.value}", predicate(flow.value))
+            return flow.value
+        } finally {
+            watcher.cancel()
+        }
+    }
+
     @Test
     fun `createCourse creates course with domain properties`() = runTest {
         viewModel.createCourse(
@@ -96,7 +114,7 @@ class LearnViewModelTest {
             term = "Fall 2026"
         )
 
-        val courses = viewModel.courses.first { it.isNotEmpty() }
+        val courses = awaitValue(viewModel.courses) { it.isNotEmpty() }
         assertEquals(1, courses.size)
         val course = courses.first()
         assertEquals("Calculus II", course.notebook.name)
@@ -116,7 +134,7 @@ class LearnViewModelTest {
             dailyMinutesTarget = 45
         )
 
-        val goals = viewModel.goals.first { it.isNotEmpty() }
+        val goals = awaitValue(viewModel.goals) { it.isNotEmpty() }
         assertEquals(1, goals.size)
         assertEquals("Final Exam", goals.first().title)
         assertEquals(45, goals.first().dailyMinutesTarget)
@@ -332,5 +350,26 @@ class LearnViewModelTest {
 
         assertTrue(ready)
         assertTrue(viewModel.practiceActivities.value.isNotEmpty())
+    }
+
+    @Test
+    fun `saving a cram sheet under a goal id that is not a notebook saves to the default notebook`() = runTest {
+        // A goal card's id, or "" for a goal with no course, used to reach the notes table and
+        // fail its notebook foreign key, which ended the app.
+        var savedId: String? = null
+        viewModel.saveCramSheetAsNote("Finals cram", "goal_not_a_notebook", "# Finals\n\n- Recall the rule") { id ->
+            savedId = id
+        }
+        testScheduler.advanceUntilIdle()
+        awaitCondition { savedId != null }
+
+        val note = noteRepo.getNote(assertNotNullId(savedId))
+        assertNotNull(note)
+        assertTrue(note!!.notebookId != "goal_not_a_notebook")
+    }
+
+    private fun assertNotNullId(id: String?): String {
+        assertNotNull("the cram sheet was not saved", id)
+        return id!!
     }
 }

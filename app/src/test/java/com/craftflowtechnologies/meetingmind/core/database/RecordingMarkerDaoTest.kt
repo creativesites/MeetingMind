@@ -123,7 +123,8 @@ class RecordingMarkerDaoTest {
     @Test
     fun theStoredKindNamesAreUnchangedAndIdeaIsAppended() {
         assertEquals(
-            listOf("KEY", "ACTION", "QUESTION", "DECISION", "SCRIPTURE", "NOTE", "PRAYER", "IDEA"),
+            // Learning appended EXAM_HINT and CONFUSED; earlier names and their order never change.
+            listOf("KEY", "ACTION", "QUESTION", "DECISION", "SCRIPTURE", "NOTE", "PRAYER", "IDEA", "EXAM_HINT", "CONFUSED"),
             MarkKind.entries.map { it.name }
         )
     }
