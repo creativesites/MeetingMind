@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
@@ -249,7 +250,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.firstMeetingItems(
         if (attendees.isEmpty()) {
             item(key = "prep-who-empty") { PrepRow(text = "No guests on the invite.", detail = null) {} }
         } else {
-            items(attendees, key = { "prep-who-$it" }) { a -> PrepRow(text = a, detail = null) {} }
+            itemsIndexed(attendees, key = { i, a -> "prep-who-$i-$a" }) { _, a -> PrepRow(text = a, detail = null) {} }
         }
     }
     item(key = "prep-what") { SectionHead("What you have", if (material.isEmpty()) null else "${material.size}") }

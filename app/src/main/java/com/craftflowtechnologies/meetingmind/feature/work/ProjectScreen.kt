@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -156,7 +157,7 @@ internal fun LazyListScope.timelineItems(page: PageData, actions: PageActions) {
     if (entries.isEmpty()) item(key = "tl-empty") {
         EmptyLine(if (page.monthOnly) "Nothing this month." else "Meetings and changes will build a timeline here.")
     }
-    items(entries.take(60), key = { "tl-${it.at}-${it.text.hashCode()}-${it.itemId}" }) { e ->
+    itemsIndexed(entries.take(60), key = { i, it -> "tl-$i-${it.at}-${it.itemId}" }) { _, e ->
         PageRow(title = e.text, detail = Pulse.shortDate(e.at)) {
             val itemId = e.itemId
             if (itemId != null) actions.onOpenSource(SourceRef(itemId = itemId, meetingId = e.meetingId))

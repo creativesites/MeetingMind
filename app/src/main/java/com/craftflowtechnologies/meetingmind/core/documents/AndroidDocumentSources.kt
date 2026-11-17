@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
+import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -61,7 +62,8 @@ internal object PdfBoxBootstrap {
 
 /** A PDF: text layer through PdfBox, rasterised pages through [PdfPageRenderer], recognition through ML Kit. */
 internal class PdfDocumentSource(file: File) : DocumentPageSource {
-    private val document: PDDocument = PDDocument.load(file, "")
+    // Mixed memory: past 16 MB PdfBox spools to a temp file in the cache, so a large PDF is not held in the heap.
+    private val document: PDDocument = PDDocument.load(file, "", MemoryUsageSetting.setupMixed(16L * 1024 * 1024))
     private val renderer: PdfPageRenderer
     private val ocr = OcrRecognizer()
 

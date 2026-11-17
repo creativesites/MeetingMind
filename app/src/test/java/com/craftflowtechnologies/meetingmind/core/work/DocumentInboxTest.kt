@@ -65,6 +65,14 @@ class DocumentInboxTest {
         assertEquals("PROPOSED", stored(item.id).status)
     }
 
+    @Test fun aPageMarkerTooBigForAnIntInTheDocumentTextDoesNotCrashTheProposal() = runBlocking {
+        // Crash audit: OCR or a pasted citation can put "[p. 99999999999]" in a page's text; parsing it must not throw.
+        val item = pdf("Acme launch")
+        readDone(item.id, "Acme launch statement of work.\n[p. 99999999999]\nSee the appendix.")
+        val filing = proposer().propose(stored(item.id))
+        assertEquals("nb", filing!!.targetId)
+    }
+
     @Test fun aDocumentThatCouldNotBeReadIsStillProposedByItsName() = runBlocking {
         val item = pdf("Acme launch")
         runBlocking { f.db.inboxDao().updateReadState(item.id, "LOCKED", null, 0, null) }

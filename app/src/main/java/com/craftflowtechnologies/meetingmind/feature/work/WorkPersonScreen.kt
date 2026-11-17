@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
@@ -172,7 +173,7 @@ internal fun LazyListScope.orgHistoryItems(page: PageData, actions: PageActions)
     }
     if (page.state.timeline.isNotEmpty()) {
         item(key = "oh-changes") { WorkSectionTitle("Recent changes", "${page.state.timeline.size}") }
-        items(page.state.timeline.take(12), key = { "oc-${it.at}-${it.text.hashCode()}" }) { e ->
+        itemsIndexed(page.state.timeline.take(12), key = { i, it -> "oc-$i-${it.at}" }) { _, e ->
             PageRow(title = e.text, detail = Pulse.shortDate(e.at)) {
                 val itemId = e.itemId
                 if (itemId != null) actions.onOpenSource(SourceRef(itemId = itemId, meetingId = e.meetingId))

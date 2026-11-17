@@ -60,6 +60,9 @@ class DocumentReadWorker(context: Context, params: WorkerParameters) : Coroutine
             throw e
         } catch (e: Exception) {
             ExtractionOutcome.Failed(FailureReason.CORRUPT)
+        } catch (e: OutOfMemoryError) {
+            // Too big for this phone: the item says it couldn't be read, and the app keeps running.
+            ExtractionOutcome.Failed(FailureReason.CORRUPT)
         }
 
         withContext(Dispatchers.IO) {

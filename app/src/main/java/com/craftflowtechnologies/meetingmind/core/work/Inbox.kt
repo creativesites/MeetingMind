@@ -344,9 +344,10 @@ class InboxProposer(
 
     private fun pageSegments(text: String): List<Pair<Int, String>> {
         val marks = PAGE_MARK.findAll(text).toList()
-        return marks.mapIndexed { i, m ->
+        return marks.mapIndexedNotNull { i, m ->
             val end = if (i + 1 < marks.size) marks[i + 1].range.first else text.length
-            m.groupValues[1].toInt() to text.substring(m.range.last + 1, end)
+            // A page number too big for an Int (or a stray "[p. 999…]" in the document) is skipped, not thrown.
+            m.groupValues[1].toIntOrNull()?.let { it to text.substring(m.range.last + 1, end) }
         }
     }
 

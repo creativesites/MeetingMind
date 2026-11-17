@@ -54,7 +54,8 @@ object ShareIn {
             mime = intent.type,
             text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
             subject = intent.getStringExtra(Intent.EXTRA_SUBJECT),
-            streams = streams.map { it.toString() to resolver.getType(it) },
+            // One unreadable stream (permission gone, provider crashed) must not sink the whole share.
+            streams = streams.map { it.toString() to runCatching { resolver.getType(it) }.getOrNull() },
             sourceApp = rawSource
         )
         if (parts.isEmpty()) return@withContext 0
@@ -86,9 +87,15 @@ object ShareIn {
     /** Fire and forget from an activity, with a confirmation toast. */
     fun handleInBackground(context: Context, intent: Intent, scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch {
-            val n = handle(context, intent)
+            // A database or provider error while filing a share says so; it never takes the app down.
+            val n = runCatching { handle(context, intent) }.getOrElse { e -> if (e is kotlinx.coroutines.CancellationException) throw e else -1 }
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, if (n == 0) "Nothing to add to your inbox" else "Saved to your Work inbox", Toast.LENGTH_SHORT).show()
+                val message = when {
+                    n < 0 -> "Couldn't save that to your inbox. Try sharing it again."
+                    n == 0 -> "Nothing to add to your inbox"
+                    else -> "Saved to your Work inbox"
+                }
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             }
         }
     }

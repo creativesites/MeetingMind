@@ -305,13 +305,14 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissInbox(item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity) = viewModelScope.launch { inbox.dismiss(item.id) }
     /** Adds what a document scan or a picker returned, the same way a share does. */
     fun addToInbox(parts: List<com.craftflowtechnologies.meetingmind.core.work.SharedPart>) = viewModelScope.launch {
-        val added = inbox.add(parts) { com.craftflowtechnologies.meetingmind.core.work.ShareIn.copy(getApplication(), it) }
-        added.forEach { proposeInbox(it) }
+        val added = runCatching { inbox.add(parts) { com.craftflowtechnologies.meetingmind.core.work.ShareIn.copy(getApplication(), it) } }.getOrDefault(emptyList())
+        added.forEach { runCatching { proposeInbox(it) } }
     }
     /** Imports a single file URI (e.g. a WhatsApp voice note, video, or PDF) directly into the Work Inbox. */
     fun importUriToInbox(uri: android.net.Uri, sourceHint: String? = null, onAdded: (Int) -> Unit = {}) = viewModelScope.launch {
-        val added = com.craftflowtechnologies.meetingmind.core.work.ShareIn.importUriToInbox(getApplication(), uri, sourceHint)
-        added.forEach { proposeInbox(it) }
+        // A file the picker handed over can become unreadable (permission revoked, provider gone): add nothing, don't crash.
+        val added = runCatching { com.craftflowtechnologies.meetingmind.core.work.ShareIn.importUriToInbox(getApplication(), uri, sourceHint) }.getOrDefault(emptyList())
+        added.forEach { runCatching { proposeInbox(it) } }
         onAdded(added.size)
     }
     /** Adds pasted text or a link directly into the Work Inbox. */
