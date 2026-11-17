@@ -541,6 +541,11 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                         if (provider == null && (doneText != null || raw.isNotEmpty())) {
                             provider = localResolved.modelId
                         }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (t: Throwable) {
+                        // A native on-device engine failure (or out of memory) must not take the app down.
+                        failure = "On-device AI stopped before finishing. Try again, or use Internet mode."
                     } finally {
                         com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
                     }
@@ -1656,6 +1661,11 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                             resolved.languageModel, resolved.contextLengthTokens
                         ).polish(noteId, linkedMeetingId ?: noteId, currentNote.workflow, segments, userNotes = userBlocks, marks = marks)
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    // The model can throw (a native engine error, out of memory): the note stays as it was.
+                    com.craftflowtechnologies.meetingmind.ai.common.AiResult.Failed("Note polish stopped: ${t.message ?: t::class.simpleName}", t)
                 } finally {
                     val ranLocal = !resolved.isCloud ||
                         (resolved.languageModel as? com.craftflowtechnologies.meetingmind.ai.routing.ResilientLanguageModel)?.lastRanLocally == true

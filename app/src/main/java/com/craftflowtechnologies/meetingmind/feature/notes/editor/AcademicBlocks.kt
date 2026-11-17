@@ -219,6 +219,10 @@ object LatexMathParser {
 
     private val RELATIONAL_STOP_SYMBOLS = setOf("=", "≠", "≤", "≥", "<", ">", "≈", "≡", "→", "⇒", "⇔", "⇌")
 
+    /** [parse], or the raw text as one plain node when the parser fails on unusual input. */
+    fun parseOrText(rawLatex: String, mathStepsPayload: String? = null): LatexNode =
+        runCatching { parse(rawLatex, mathStepsPayload) }.getOrElse { LatexNode.Text(rawLatex.trim()) }
+
     fun parse(rawLatex: String, mathStepsPayload: String? = null): LatexNode {
         val stripped = stripMathDelimiters(rawLatex.trim())
         if (stripped.isEmpty()) return LatexNode.Text("")
@@ -1173,7 +1177,8 @@ internal fun MathBlock(
     var showComposer by remember { mutableStateOf(false) }
     val rawLatex = block.content.text
     val mathStepsPayload = block.payload[NoteBlock.PAYLOAD_MATH_STEPS]
-    val ast = remember(rawLatex, mathStepsPayload) { LatexMathParser.parse(rawLatex, mathStepsPayload) }
+    // Saved or AI-written LaTeX must never crash the note: unparsable input shows as its text.
+    val ast = remember(rawLatex, mathStepsPayload) { LatexMathParser.parseOrText(rawLatex, mathStepsPayload) }
     val isAligned = ast is LatexNode.Aligned
     val meetingId = block.payload[NoteBlock.PAYLOAD_MEETING_ID]
     val startMs = block.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()
@@ -1291,7 +1296,8 @@ internal fun MathComposerDialog(
     var field by remember {
         mutableStateOf(TextFieldValue(initialLatex, TextRange(initialLatex.length)))
     }
-    val previewNode = remember(field.text) { LatexMathParser.parse(field.text) }
+    // Parsed on every keystroke, so half-typed LaTeX must never throw.
+    val previewNode = remember(field.text) { LatexMathParser.parseOrText(field.text) }
 
     fun insertSnippet(snippet: String) {
         val start = field.selection.min.coerceIn(0, field.text.length)
@@ -1642,6 +1648,10 @@ object MermaidDiagramParser {
     private val ARROW_TOKEN = Regex("""(-->|-.->|==>|--o|--x)(?:\|([^|]*)\|)?""")
     private val STATE_DESCRIPTION = Regex("""^([A-Za-z0-9_]+)\s*:\s*(.+)$""")
 
+    /** [parse], or an empty diagram (the block then shows its "nothing to draw" state) when parsing fails. */
+    fun parseOrEmpty(source: String): ParsedDiagram =
+        runCatching { parse(source) }.getOrElse { ParsedDiagram(DiagramDirection.TD, emptyList(), emptyList()) }
+
     fun parse(source: String): ParsedDiagram {
         val rawLines = source.replace("\r\n", "\n").lines()
         var direction = DiagramDirection.TD
@@ -1864,7 +1874,7 @@ internal fun DiagramBlock(
     val syntax = remember(block.payload[NoteBlock.PAYLOAD_DIAGRAM_SYNTAX], block.content.text) {
         block.payload[NoteBlock.PAYLOAD_DIAGRAM_SYNTAX]?.takeIf { it.isNotBlank() } ?: block.content.text
     }
-    val parsed = remember(syntax) { MermaidDiagramParser.parse(syntax) }
+    val parsed = remember(syntax) { MermaidDiagramParser.parseOrEmpty(syntax) }
     var editing by remember { mutableStateOf(false) }
     val accent = LearningFixedColors.SapphireMid
 
@@ -2154,7 +2164,7 @@ private fun DiagramEditorDialog(
     onDismiss: () -> Unit
 ) {
     var source by remember { mutableStateOf(initialSyntax) }
-    val preview = remember(source) { MermaidDiagramParser.parse(source) }
+    val preview = remember(source) { MermaidDiagramParser.parseOrEmpty(source) }
     val templates = listOf(
         "Flowchart TD" to DEFAULT_MERMAID_DIAGRAM,
         "Flowchart LR" to "flowchart LR\n    A[Input] --> B(Transform) --> C([Output])",

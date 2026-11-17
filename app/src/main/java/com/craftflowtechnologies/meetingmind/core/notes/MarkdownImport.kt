@@ -372,7 +372,9 @@ object YouTube {
     fun startSeconds(url: String): Int? {
         val raw = Regex("[?&#](?:t|start)=([0-9hms]+)").find(url)?.groupValues?.get(1) ?: return null
         raw.toIntOrNull()?.let { return it }
-        val parts = Regex("(\\d+)([hms])").findAll(raw).associate { it.groupValues[2] to it.groupValues[1].toInt() }
-        return (parts["h"] ?: 0) * 3600 + (parts["m"] ?: 0) * 60 + (parts["s"] ?: 0)
+        // toIntOrNull: a pasted link with an absurd time (t=99999999999s) must not throw.
+        val parts = Regex("(\\d+)([hms])").findAll(raw).associate { it.groupValues[2] to (it.groupValues[1].toIntOrNull() ?: Int.MAX_VALUE) }
+        val total = (parts["h"] ?: 0).toLong() * 3600 + (parts["m"] ?: 0).toLong() * 60 + (parts["s"] ?: 0)
+        return total.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
     }
 }

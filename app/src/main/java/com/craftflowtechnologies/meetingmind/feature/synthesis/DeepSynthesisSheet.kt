@@ -111,7 +111,15 @@ fun DeepSynthesisSheet(
     suspend fun executeRun(gathered: GatheredDeepContext, mode: DeepSynthesisMode) {
         selectedMode = mode
         uiState = DeepSynthesisUiState.Generating(gathered, mode)
-        when (val result = DeepSynthesisWorkspace.runSynthesis(context, gathered, mode)) {
+        // The model can throw (a local engine error, out of memory, a database read): show it, don't crash.
+        val result = try {
+            DeepSynthesisWorkspace.runSynthesis(context, gathered, mode)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            AiResult.Failed("Deep Synthesis stopped before finishing. Try again.", t)
+        }
+        when (result) {
             is AiResult.Success -> {
                 savedNoteId = null
                 addedTasksCount = null
@@ -129,10 +137,17 @@ fun DeepSynthesisSheet(
 
     LaunchedEffect(target) {
         uiState = DeepSynthesisUiState.Gathering
-        val gathered = when (target) {
-            is DeepSynthesisTarget.Meeting -> DeepSynthesisWorkspace.gatherForMeeting(context, target.meetingId)
-            is DeepSynthesisTarget.Note -> DeepSynthesisWorkspace.gatherForNote(context, target.noteId)
-            is DeepSynthesisTarget.Notebook -> DeepSynthesisWorkspace.gatherForNotebook(context, target.notebookId)
+        val gathered = try {
+            when (target) {
+                is DeepSynthesisTarget.Meeting -> DeepSynthesisWorkspace.gatherForMeeting(context, target.meetingId)
+                is DeepSynthesisTarget.Note -> DeepSynthesisWorkspace.gatherForNote(context, target.noteId)
+                is DeepSynthesisTarget.Notebook -> DeepSynthesisWorkspace.gatherForNotebook(context, target.notebookId)
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            uiState = DeepSynthesisUiState.Error("Deep Synthesis couldn't read this content right now. Try again.", null, DeepSynthesisMode.EXECUTIVE_PACK)
+            return@LaunchedEffect
         }
         if (gathered == null) {
             uiState = DeepSynthesisUiState.Error(
@@ -415,15 +430,21 @@ fun DeepSynthesisSheet(
                                     } else {
                                         savingNote = true
                                         scope.launch {
-                                            val newId = DeepSynthesisWorkspace.saveAsNote(
-                                                context = context,
-                                                dossier = dossier,
-                                                workflow = s.context.workflow,
-                                                notebookId = s.context.targetNotebookId
-                                            )
+                                            val newId = try {
+                                                DeepSynthesisWorkspace.saveAsNote(
+                                                    context = context,
+                                                    dossier = dossier,
+                                                    workflow = s.context.workflow,
+                                                    notebookId = s.context.targetNotebookId
+                                                )
+                                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                                throw e
+                                            } catch (t: Throwable) {
+                                                null
+                                            }
                                             savingNote = false
                                             savedNoteId = newId
-                                            Toast.makeText(context, "Saved to your notebook", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, if (newId != null) "Saved to your notebook" else "Couldn't save the note. Try again.", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 }
@@ -442,10 +463,20 @@ fun DeepSynthesisSheet(
                                     onClick = {
                                         savingTasks = true
                                         scope.launch {
-                                            val count = DeepSynthesisWorkspace.addCommitmentsAsTasks(context, dossier)
+                                            val count = try {
+                                                DeepSynthesisWorkspace.addCommitmentsAsTasks(context, dossier)
+                                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                                throw e
+                                            } catch (t: Throwable) {
+                                                null
+                                            }
                                             savingTasks = false
                                             addedTasksCount = count
-                                            val msg = if (count == 0) "All commitments already in Tasks" else "Added $count to Tasks"
+                                            val msg = when (count) {
+                                                null -> "Couldn't add them to Tasks. Try again."
+                                                0 -> "All commitments already in Tasks"
+                                                else -> "Added $count to Tasks"
+                                            }
                                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                         }
                                     }

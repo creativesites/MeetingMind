@@ -52,6 +52,7 @@ Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
   - "Written by AI" shows once per AI section, with the report flag.
   - Each AI block has "Report this" in its block menu. Hide collapses the reported run to one line.
 - **Verified:** on the S20+ `.dev` build of 13:04, both broken notes ("Joyce Meyer…", "Factoring Trinomials…") read cleanly, including the list previews; inline maths renders; Play on YouTube and the source line show. Unit tests (13:27 run): AiMarkdownTest, NoteCitationsTest, InlineMathTest, NotePolishJsonReplyTest, YouTubeSourceTest, YouTubeIngestionTest and MarkdownImportTest pass. The fix to PostTranscriptionNoteFormattingTest (an expectation that could never match) is in the 14:15 re-run.
+- **Crash audit (2026-11-17), Notes, YouTube, share, synthesis:** nine guards. Covered: on-device AI edit and polish failures, broken LaTeX and Mermaid, damaged saved versions, absurd YouTube `t=` times, share card render and audio share, and Deep Synthesis run, gather, save and add-to-tasks. `NotesCrashGuardsTest` passes. Left (Low, Room failures only): undo `launch` blocks in NotesScreen and NotesViewModel, the NotesLibrary flow collect, VerseSheet saves.
 - **Open:**
   - Phone recheck of the caption and `[Speaker n]` fixes.
   - The two sermon quotes showing the same ▶ 11:04 (`SermonNoteBuilder` quote timestamps; not this work).

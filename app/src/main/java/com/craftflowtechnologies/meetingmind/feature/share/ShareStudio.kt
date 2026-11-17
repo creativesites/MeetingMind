@@ -175,8 +175,16 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
             request.caption
         }
         scope.launch {
-            val file = withContext(Dispatchers.Default) { ShareActions.saveToCache(context, ShareCardRenderer.render(context, request.content, style)) }
-            message = runCatching { ShareActions.send(context, file, target, caption) }.getOrElse { "Couldn't open that app." }
+            // Rendering and saving the card can fail (disk full, out of memory): say so, never crash.
+            val file = try {
+                withContext(Dispatchers.Default) { ShareActions.saveToCache(context, ShareCardRenderer.render(context, request.content, style)) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                sending = false
+                throw e
+            } catch (t: Throwable) {
+                null
+            }
+            message = if (file == null) "Couldn't make the card. Try again." else runCatching { ShareActions.send(context, file, target, caption) }.getOrElse { "Couldn't open that app." }
             sending = false
         }
     }
@@ -290,7 +298,10 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
                     } else {
                         request.caption
                     }
-                    TargetIcon("Audio", Icons.Filled.GraphicEq) { message = ShareActions.shareAudio(context, File(path), audioCaption) }
+                    TargetIcon("Audio", Icons.Filled.GraphicEq) {
+                        // The audio file may have been removed since the card opened.
+                        message = runCatching { ShareActions.shareAudio(context, File(path), audioCaption) }.getOrElse { "Couldn't share the audio. It may have been removed." }
+                    }
                 }
                 TargetIcon("More", Icons.Filled.Share) { send(ShareTarget.ANY) }
             }
