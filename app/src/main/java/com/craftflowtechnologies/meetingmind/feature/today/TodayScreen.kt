@@ -486,7 +486,7 @@ fun TodayScreen(
                             fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = InkNavy, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp))
                     }
                     if (dayItems.isEmpty()) item(key = "month-empty") { Text("Nothing on this day.", color = Slate, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp)) }
-                    items(dayItems, key = { "m-" + it.id }) { TimelineCard(it, ::open, { q -> quick = q }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+                    items(dayItems.distinctBy { it.id }, key = { "m-" + it.id }) { TimelineCard(it, ::open, { q -> quick = q }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 }
                 CalendarView.RIVER -> {
                     // Newest first, grouped by month, with big picture cards.
@@ -497,7 +497,7 @@ fun TodayScreen(
                             Text(month, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = OutfitFamily, color = InkNavy,
                                 modifier = Modifier.fillMaxWidth().background(SurfaceBase.copy(alpha = 0.96f)).padding(horizontal = 16.dp, vertical = 8.dp))
                         }
-                        items(list, key = { "r-" + it.id }) { item ->
+                        items(list.distinctBy { it.id }, key = { "r-" + it.id }) { item ->
                             TimelineCard(item, ::open, { quick = it }, Modifier.padding(horizontal = 16.dp, vertical = 5.dp).animateItem(),
                                 height = if (item.coverPath != null) 190.dp else 132.dp, showDate = true)
                         }

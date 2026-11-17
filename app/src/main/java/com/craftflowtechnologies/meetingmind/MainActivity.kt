@@ -238,9 +238,13 @@ class MainActivity : FragmentActivity() {
      * away, and is also filed in the Work Inbox when Work is on. Anything else goes to the Inbox.
      */
     private fun handleShare(intent: android.content.Intent) {
+        // A database or content-resolver error while filing a share must not crash the app.
+        val shareScope = kotlinx.coroutines.CoroutineScope(lifecycleScope.coroutineContext + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+            android.util.Log.w("MainActivity", "Couldn't file the shared item", e)
+        })
         val youTube = com.craftflowtechnologies.meetingmind.feature.importing.YouTubeLinks.sharedLink(intent)
         if (youTube == null) {
-            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, shareScope)
             return
         }
         com.craftflowtechnologies.meetingmind.feature.importing.YouTubeLinkRequests.offer(youTube)
@@ -249,7 +253,7 @@ class MainActivity : FragmentActivity() {
                 com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(applicationContext).preferencesFlow.first().identity.spaces
             }.getOrNull()
             if (spaces == null || com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces) {
-                com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+                com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, shareScope)
             }
         }
     }
@@ -427,7 +431,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         if (deepLink == null || prefsState?.onboardingCompleted != true) return@LaunchedEffect
         when (val link = com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.consume()) {
             is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Processing -> openProcessing(link.meetingId)
-            is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Recording -> navController.navigate(Routes.meetingDetailRoute(link.meetingId))
+            // The activity is exported: a malformed id from another app's intent must not crash it.
+            is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Recording -> runCatching { navController.navigate(Routes.meetingDetailRoute(link.meetingId)) }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Models -> navController.navigate(Routes.MODELS) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Bible -> navController.navigate(Routes.BIBLE_HOME) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Devotional -> navController.navigate(Routes.devotionalRoute()) { launchSingleTop = true }
@@ -1220,7 +1225,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null }
         )) { entry ->
             val vm: ImportViewModel = viewModel()
-            val path = URLDecoder.decode(entry.arguments?.getString("path").orEmpty(), "UTF-8")
+            // Navigation has already decoded the path once; a literal "%" in a file name makes a second decode throw.
+            val rawPath = entry.arguments?.getString("path").orEmpty()
+            val path = runCatching { URLDecoder.decode(rawPath, "UTF-8") }.getOrDefault(rawPath)
             val presetType = entry.arguments?.getString("type")?.let { t ->
                 runCatching { com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(t) }.getOrNull()
             }

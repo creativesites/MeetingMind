@@ -207,6 +207,8 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             combine(database.noteDao().observeActive(), database.meetingDao().getAllMeetings(), layers, view, _focus) { _, _, _, _, _ -> Unit }
                 .debounce(250)
+                // A database error (corrupt or closed file) must not take the app down; Today just stops refreshing.
+                .catch { e -> android.util.Log.w("TodayViewModel", "Today's sources stopped", e) }
                 .collect { reload() }
         }
         viewModelScope.launch {
@@ -262,14 +264,19 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Opens (or makes) the event's note; [onReady] gets its id and the type it was filed as. */
     fun noteForEvent(event: CalendarEvent, onReady: (String, RecordingType) -> Unit) = viewModelScope.launch {
-        val note = notes.noteForCalendarEvent(event, com.craftflowtechnologies.meetingmind.core.calendar.UpNext.suggestedType(event.title))
+        // A failed database write leaves the tap doing nothing rather than crashing the app.
+        val note = runCatching {
+            notes.noteForCalendarEvent(event, com.craftflowtechnologies.meetingmind.core.calendar.UpNext.suggestedType(event.title))
+        }.onFailure { android.util.Log.w("TodayViewModel", "Couldn't open the event's note", it) }.getOrNull() ?: return@launch
         onReady(note.id, note.workflow)
     }
 
     /** A note for a day that has nothing yet (morning of that day), opened for writing. */
     fun planNote(day: Long, onCreated: (String) -> Unit) = viewModelScope.launch {
         val at = Calendar.getInstance().apply { timeInMillis = TimelineDays.startOfDay(day); set(Calendar.HOUR_OF_DAY, 9) }.timeInMillis
-        onCreated(notes.createNote(eventDate = at, draft = true).id)
+        runCatching { notes.createNote(eventDate = at, draft = true).id }
+            .onSuccess(onCreated)
+            .onFailure { android.util.Log.w("TodayViewModel", "Couldn't plan a note", it) }
     }
 
     fun setAvatar(uri: android.net.Uri) = viewModelScope.launch {

@@ -75,7 +75,8 @@ class RecipesViewModel(application: Application) : AndroidViewModel(application)
 
     fun approveCard(card: ApprovalCard) {
         viewModelScope.launch {
-            engine.approve(card)
+            // A failed write keeps the card pending instead of crashing; the person can approve again.
+            if (runCatching { engine.approve(card) }.onFailure { android.util.Log.w("RecipesViewModel", "Approve failed", it) }.isFailure) return@launch
             _pendingApprovals.value = _pendingApprovals.value.map {
                 if (it.id == card.id) card.copy(status = ApprovalStatus.APPROVED) else it
             }
