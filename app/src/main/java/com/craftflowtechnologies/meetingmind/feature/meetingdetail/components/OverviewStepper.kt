@@ -29,6 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.common.Formatters
@@ -119,7 +122,16 @@ fun OverviewStepper(
 
     Column(modifier = modifier.fillMaxSize()) {
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth()) { page ->
-            Column(modifier = Modifier.fillMaxSize().padding(horizontal = 30.dp)) {
+            // Pages swipe sideways, and each page scrolls down on its own, so a long summary or a
+            // long list of decisions is never cut off (founder, 2026-11-18).
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 30.dp)
+                    .padding(bottom = 24.dp)
+                    .testTag("overview_page_$page")
+            ) {
                 Text(
                     text = "${page + 1} OF ${steps.size}",
                     style = RecordingPageType.stepCounter,

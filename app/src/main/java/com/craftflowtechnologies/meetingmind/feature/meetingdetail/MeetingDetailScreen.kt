@@ -989,6 +989,7 @@ fun MeetingDetailScreen(
                 // below it — previously this had zero inset handling and rendered under the status
                 // bar, overlapping the clock/battery icons (see MiniPlayerBar for the same pattern
                 // applied to the nav-bar side).
+                Column {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1038,6 +1039,47 @@ fun MeetingDetailScreen(
                         )
                     }
 
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.testTag("meeting_menu_btn")
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = InkSecondary)
+                        }
+                    }
+
+                    // The design's mini dial is a conic play/progress indicator, present on every
+                    // tab and never scrolling away (docs/recording-page-implementation.md §2.1).
+                    // Long-press reveals the full scrub player below (see showFullPlayer) — the
+                    // old always-visible player's slider/lyrics-preview didn't fit the dial's
+                    // "shrinks to a corner" brief, so it moved behind that disclosure instead of
+                    // being deleted.
+                    MiniDialPlayer(
+                        progress = if (isThisRecordingActive && playbackState.durationMs > 0L) {
+                            (playbackState.positionMs.toFloat() / playbackState.durationMs.toFloat()).coerceIn(0f, 1f)
+                        } else 0f,
+                        isPlaying = isThisRecordingActive && playbackState.isPlaying,
+                        onTogglePlayPause = {
+                            if (isThisRecordingActive) {
+                                viewModel.togglePlayPause()
+                            } else if (audioPath != null) {
+                                viewModel.playAudio(File(audioPath))
+                            }
+                        },
+                        onLongPress = { showFullPlayer = !showFullPlayer },
+                        modifier = Modifier.testTag("mini_dial_player")
+                    )
+                }
+                // The actions (Note, Brief, Study, Deep Pack, Autopilot) get their own row that scrolls
+                // sideways. In the title row they squeezed the title out and wrapped "Deep Pack".
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 66.dp, end = 18.dp, top = 8.dp, bottom = 6.dp)
+                        .testTag("meeting_actions_row"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     meeting?.noteId?.let { noteId ->
                         Surface(
                             onClick = { onOpenNote(noteId) },
@@ -1099,36 +1141,7 @@ fun MeetingDetailScreen(
                         }
                     }
 
-                    Box {
-                        IconButton(
-                            onClick = { menuExpanded = true },
-                            modifier = Modifier.testTag("meeting_menu_btn")
-                        ) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = InkSecondary)
-                        }
-                    }
-
-                    // The design's mini dial is a conic play/progress indicator, present on every
-                    // tab and never scrolling away (docs/recording-page-implementation.md §2.1).
-                    // Long-press reveals the full scrub player below (see showFullPlayer) — the
-                    // old always-visible player's slider/lyrics-preview didn't fit the dial's
-                    // "shrinks to a corner" brief, so it moved behind that disclosure instead of
-                    // being deleted.
-                    MiniDialPlayer(
-                        progress = if (isThisRecordingActive && playbackState.durationMs > 0L) {
-                            (playbackState.positionMs.toFloat() / playbackState.durationMs.toFloat()).coerceIn(0f, 1f)
-                        } else 0f,
-                        isPlaying = isThisRecordingActive && playbackState.isPlaying,
-                        onTogglePlayPause = {
-                            if (isThisRecordingActive) {
-                                viewModel.togglePlayPause()
-                            } else if (audioPath != null) {
-                                viewModel.playAudio(File(audioPath))
-                            }
-                        },
-                        onLongPress = { showFullPlayer = !showFullPlayer },
-                        modifier = Modifier.testTag("mini_dial_player")
-                    )
+                }
                 }
             }
         },

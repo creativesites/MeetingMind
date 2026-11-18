@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -237,13 +235,14 @@ fun ProfessionalHome(
                 )
             }
 
-            // 2. The floating Up next tile. It overlaps the bottom edge of the hero by 38 dp.
+            // 2. The Up next tile, under the mode switch at its full height. (It used to float 38 dp up over the
+            //    hero in a 54 dp slot, which covered the switch caption and squeezed the tile and its button.)
             if (upNextChoice != UpNextChoice.NONE) item {
-                Box(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 24.dp)) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp)) {
                     val meeting = nextItem
                     val review = firstReview
                     val followUp = firstFollowUp
-                    val floating = Modifier.offset(y = (-38).dp)
+                    val floating = Modifier
                     when {
                         upNextChoice == UpNextChoice.MEETING && meeting != null && nextEvent != null -> WorkUpNextTile(
                             overline = "UP NEXT · " + fmt.format(Date(meeting.start)).uppercase(),

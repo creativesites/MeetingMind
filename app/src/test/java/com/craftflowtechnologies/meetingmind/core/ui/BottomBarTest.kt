@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.core.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -19,7 +20,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The bar follows the person's spaces (core/navigation/BarConfig.kt, Work spec R2): Today, Notes,
- * New, then two space places. Replaces TabSlotTest, whose Work-or-Search slot R2 retired.
+ * New, then two space places, then Settings (founder, 2026-11-18). Replaces TabSlotTest, whose
+ * Work-or-Search slot R2 retired.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -41,7 +43,6 @@ class BottomBarTest {
         compose.onNodeWithTag("bottom_nav_work").performClick()
         compose.onNodeWithTag("bottom_nav_learn").performClick()
         assertEquals(listOf(BottomNavDestination.WORK, BottomNavDestination.LEARN), tapped)
-        compose.onNodeWithTag("bottom_nav_settings").assertDoesNotExist()
         compose.onNodeWithTag("bottom_nav_faith").assertDoesNotExist()
     }
 
@@ -66,6 +67,30 @@ class BottomBarTest {
         compose.onNodeWithTag("bottom_nav_new").performClick()
         assertEquals(listOf(BottomNavDestination.NOTES, BottomNavDestination.NEW), tapped)
         compose.onNodeWithTag("bottom_nav_notes").assertContentDescriptionEquals("Notes")
+    }
+
+    @Test fun settingsIsAlwaysTheLastPlace() {
+        show(setOf(NotebookSpace.WORK))
+        compose.onNodeWithTag("bottom_nav_settings").assertContentDescriptionEquals("Settings")
+        compose.onNodeWithTag("bottom_nav_settings").performClick()
+        assertEquals(listOf(BottomNavDestination.SETTINGS), tapped)
+    }
+
+    @Test fun onSettingsTheSettingsChipIsActive() {
+        show(NotebookSpace.entries.toSet(), current = BottomNavDestination.SETTINGS)
+        compose.onNodeWithTag("bottom_nav_settings").assertExists()
+        compose.onNodeWithTag("bottom_nav_work").assertContentDescriptionEquals("Work")
+    }
+
+    /** A narrow phone: New drops its label so all six items stay on screen and tappable. */
+    @Test @Config(qualifiers = "w320dp-h640dp-xhdpi", sdk = [34])
+    fun aNarrowPhoneStillShowsEveryItem() {
+        show(NotebookSpace.entries.toSet())
+        listOf("home", "notes", "new", "work", "learn", "settings").forEach {
+            compose.onNodeWithTag("bottom_nav_$it").assertIsDisplayed()
+        }
+        compose.onNodeWithTag("bottom_nav_settings").performClick()
+        assertEquals(listOf(BottomNavDestination.SETTINGS), tapped)
     }
 
     @Test fun theCurrentSpaceShowsAsTheActiveChip() {
