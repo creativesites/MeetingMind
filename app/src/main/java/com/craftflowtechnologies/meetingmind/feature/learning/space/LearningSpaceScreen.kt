@@ -333,6 +333,16 @@ private fun LearnPane(viewModel: LearnViewModel, actions: LearningSpaceActions, 
             }
             else -> item(key = "done") { DoneForToday(reviewedToday) }
         }
+        // Lecture notes from YouTube: the same shared card as every home, with Lecture preset.
+        item(key = "youtube") {
+            val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
+            com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
+                onClick = { youTube.open(from = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING) },
+                modifier = Modifier.testTag("learn_youtube"),
+                title = "Lecture from a YouTube video",
+                benefit = "Paste a link, get lecture notes with timestamps"
+            )
+        }
         val recent = sessions.filter { !it.isPaused }.sortedByDescending { it.lastStudiedAt ?: it.updatedAt }.take(2)
         if (recent.isNotEmpty()) {
             item(key = "continue_h") { SectionHeader("Continue", count = null) }

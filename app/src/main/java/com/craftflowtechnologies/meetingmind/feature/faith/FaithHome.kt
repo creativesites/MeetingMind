@@ -257,15 +257,17 @@ fun FaithHomeContent(
                         leading = { Icon(Icons.Rounded.Mic, null, tint = c.inkSecondary) },
                         trailing = { Chevron() }, onClick = actions.onRecordSermon
                     )
-                    val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
-                    ListRow(
-                        title = "Sermon from a YouTube video", subtitle = "Paste a link: sermon notes, scripture and key points",
-                        modifier = Modifier.padding(horizontal = MM.space.s).testTag("faith_youtube_sermon"),
-                        leading = { Icon(Icons.Rounded.SmartDisplay, null, tint = c.inkSecondary) },
-                        trailing = { Chevron() },
-                        onClick = { youTube.open(from = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH) }
-                    )
                 }
+            }
+            // Sermon notes from YouTube: the same shared card as every home, with Sermon preset.
+            item(key = "sermon_youtube") {
+                val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
+                com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
+                    onClick = { youTube.open(from = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH) },
+                    modifier = Modifier.testTag("faith_youtube_sermon"),
+                    title = "Sermon from a YouTube video",
+                    benefit = "Paste a link: sermon notes, scripture and key points"
+                )
             }
             if (state.recent.isNotEmpty()) {
                 item(key = "recent") {

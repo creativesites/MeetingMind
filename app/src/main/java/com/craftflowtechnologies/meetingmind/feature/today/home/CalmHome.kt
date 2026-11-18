@@ -150,6 +150,15 @@ fun CalmHome(
                 )
             }
 
+            // Notes from a YouTube video: the same shared card as every home.
+            item(key = "youtube") {
+                val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
+                com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
+                    onClick = { youTube.open() },
+                    modifier = Modifier.padding(horizontal = 24.dp).padding(top = 20.dp).testTag("calm_youtube")
+                )
+            }
+
             // The next thing, in large type. Faith mode leads with the devotional instead.
             item {
                 val faithLead = mode == TodayFocus.FAITH

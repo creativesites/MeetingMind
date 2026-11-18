@@ -323,6 +323,14 @@ fun ProfessionalHome(
                 }
             }
 
+            // Notes from a YouTube video (a talk, a webinar, a recorded meeting): the same shared card as every home.
+            item(key = "youtube") {
+                val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
+                com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
+                    onClick = { youTube.open(from = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK) },
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp).testTag("work_youtube")
+                )
+            }
             // 4. Your day: the Briefing card, with the ribbon, what needs you, what changed, and the buttons.
             item {
                 Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
