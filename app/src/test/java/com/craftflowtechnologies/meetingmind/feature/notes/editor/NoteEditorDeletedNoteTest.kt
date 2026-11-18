@@ -49,7 +49,7 @@ class NoteEditorDeletedNoteTest {
     @Test fun `a save after the note was deleted does not throw`() {
         val id = runBlocking {
             val note = notes.createNote(title = "Gone soon")
-            notes.saveBlocks(note.id, listOf(NoteBlock(NoteRepository.newId("block"), note.id, 0, NoteBlockType.PARAGRAPH, RichText.plain("Words"))))
+            notes.saveBlocks(note.id, listOf(NoteBlock("words", note.id, 0, NoteBlockType.PARAGRAPH, RichText.plain("Words"))))
             note.id
         }
         val vm = NoteEditorViewModel(app, id)
@@ -60,6 +60,8 @@ class NoteEditorDeletedNoteTest {
         }
         assertTrue("the editor loaded", vm.loaded.value)
 
+        // An unsaved edit, so the flush below really writes (an untouched editor never writes).
+        vm.onTextChanged("words", "Words and more", "Words and more".length)
         runBlocking { notes.deleteNote(id) }
         runBlocking { vm.flush() } // threw SQLiteConstraintException (FOREIGN KEY) before the fix
         runBlocking { vm.flush() } // and the editor now knows the note is gone

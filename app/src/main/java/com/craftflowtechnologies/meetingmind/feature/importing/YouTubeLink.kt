@@ -56,7 +56,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi
 import com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity
@@ -255,28 +254,23 @@ private fun VideoBadge(size: Int = 44) {
     }
 }
 
-/** The always-visible entry on Today: one tap to the sheet. */
+/**
+ * The always-visible entry on Today and the other homes: one tap to the sheet. It is the shared
+ * [com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard], so it looks the same everywhere.
+ */
 @Composable
-fun YouTubeHomeCard(modifier: Modifier = Modifier) {
+fun YouTubeHomeCard(
+    modifier: Modifier = Modifier,
+    title: String = "Notes from a YouTube video",
+    benefit: String = "Paste a link, get study notes with timestamps"
+) {
     val sheet = LocalYouTubeSheet.current
-    val colors = MM.colors
-    Surface(
+    com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
         onClick = { sheet.open() },
-        shape = MM.radius.card,
-        color = colors.surfaceRaised,
-        border = BorderStroke(1.dp, colors.line),
-        modifier = modifier.fillMaxWidth().testTag("home_youtube_card")
-    ) {
-        Row(Modifier.padding(MM.space.m), verticalAlignment = Alignment.CenterVertically) {
-            VideoBadge(40)
-            Spacer(Modifier.width(MM.space.m))
-            Column(Modifier.weight(1f)) {
-                Text("Notes from a YouTube video", style = MM.type.bodyStrong, color = colors.ink)
-                Text("Paste a link: a lecture, sermon or talk becomes notes", style = MM.type.caption, color = colors.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Text("Paste link", style = MM.type.bodyStrong, color = colors.accent)
-        }
-    }
+        modifier = modifier.testTag("home_youtube_card"),
+        title = title,
+        benefit = benefit
+    )
 }
 
 /** Whether a copied link should be offered. Pure. Each video is offered once; the offer can be turned off. */

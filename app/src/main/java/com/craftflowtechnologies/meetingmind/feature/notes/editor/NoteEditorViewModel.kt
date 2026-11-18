@@ -224,13 +224,14 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
             if (doc == null) { _gone.value = true; return@launch }
             _note.value = doc.note
             var lastObservedUpdatedAt = doc.note.updatedAt
+            synced = doc.blocks.sortedBy { it.position }
             // AI paragraphs saved with the model's JSON wrapper read as the Markdown inside (no migration).
             _blocks.value = BlockEditing.ensureTrailingParagraph(com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(doc.blocks.sortedBy { it.position }), noteId)
             opened = com.craftflowtechnologies.meetingmind.core.notes.NoteSnapshot(doc.note.title, doc.blocks.sortedBy { it.position })
             _loaded.value = true
-            // Keep note-level fields (title from a recording, status) current, and reload
-            // background-generated blocks (e.g. post-transcription sermon/lecture/meeting notes)
-            // if the user hasn't started editing in this session.
+            // Keep note-level fields (title from a recording, status) current, and reload blocks
+            // written underneath (a retry's or polish's notes, another screen) whenever this editor has
+            // nothing unsaved. With unsaved edits the next save merges them with what is stored.
             notes.observeNote(noteId).collect { fresh ->
                 if (fresh == null) _gone.value = true
                 else {
@@ -239,13 +240,21 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                         // The saved title is trimmed; the one on screen keeps the space just typed.
                         fresh.copy(title = if (titleDirty || mine.title.trim() == fresh.title.trim()) mine.title else fresh.title)
                     } ?: fresh
-                    val hasGeneratedContent = _blocks.value.any { it.source == BlockSource.AI || it.source == BlockSource.TRANSCRIPT }
-                    if (fresh.updatedAt > lastObservedUpdatedAt && _saved.value && (!sessionStarted || !hasGeneratedContent)) {
+                    // (Before: no reload once a session started and the note had generated content. A
+                    // recording card counts as generated, and a pause save started a session, so an
+                    // editor left open on a failed import never saw its retry's notes and then saved
+                    // the empty note back over them.)
+                    if (fresh.updatedAt > lastObservedUpdatedAt && _saved.value && !dirty) {
                         lastObservedUpdatedAt = fresh.updatedAt
                         notes.getDocument(noteId)?.let { refreshed ->
-                            val sorted = BlockEditing.ensureTrailingParagraph(com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(refreshed.blocks.sortedBy { it.position }), noteId)
-                            _blocks.value = sorted
-                            opened = com.craftflowtechnologies.meetingmind.core.notes.NoteSnapshot(refreshed.note.title, sorted)
+                            val stored = refreshed.blocks.sortedBy { it.position }
+                            // Its own save comes back unchanged: nothing to reload.
+                            if (!dirty && !NoteMerge.sameList(stored, synced)) {
+                                synced = stored
+                                val sorted = BlockEditing.ensureTrailingParagraph(com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(stored), noteId)
+                                _blocks.value = sorted
+                                if (!sessionStarted) opened = com.craftflowtechnologies.meetingmind.core.notes.NoteSnapshot(refreshed.note.title, sorted)
+                            }
                         }
                     } else {
                         lastObservedUpdatedAt = maxOf(lastObservedUpdatedAt, fresh.updatedAt)
@@ -1494,8 +1503,17 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     private var deleted = false
 
+    /** The blocks as stored when this editor last read or wrote them. */
+    private var synced: List<NoteBlock> = emptyList()
+    /** The editor has block changes of its own not yet saved. Only then does it write the note. */
+    private var dirty = false
+    /** Counts edits, so a save that finishes after a newer edit leaves the editor dirty. */
+    private var editGeneration = 0L
+
     private fun update(newBlocks: List<NoteBlock>, recordUndo: Boolean = true) {
         if (recordUndo) history.record(_blocks.value)
+        dirty = true
+        editGeneration++
         _blocks.value = newBlocks
         refreshHistory()
         scheduleSave()
@@ -1512,18 +1530,39 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     private suspend fun persist() {
         if (deleted || !_loaded.value) return
+        // Nothing of its own to save: never write (an untouched editor would put back an old copy).
+        if (!dirty) { _saved.value = titleJob?.isActive != true; return }
         // A draft with nothing of the person's in it isn't written (PLAN_V2 F0).
         if (!promoteDraftIfNeeded()) { _saved.value = true; return }
+        val generation = editGeneration
+        val toWrite = withStored(_blocks.value, synced)
+        if (toWrite !== _blocks.value) _blocks.value = toWrite
         try {
-            notes.saveBlocks(noteId, _blocks.value)
+            notes.saveBlocks(noteId, toWrite)
         } catch (e: android.database.sqlite.SQLiteConstraintException) {
             // The note was deleted under the editor (elsewhere, or by an empty-note cleanup): nothing to save into.
             if (notes.getNote(noteId) != null) throw e
             deleted = true
             return
         }
+        synced = toWrite.mapIndexed { i, b -> b.copy(noteId = noteId, position = i) }
+        if (editGeneration == generation) dirty = false
         _saved.value = titleJob?.isActive != true
         runCatching { sessionSnapshot() }
+    }
+
+    /**
+     * [ours] ready to write: as it is when the stored note hasn't changed since [base], or merged with
+     * what was written meanwhile, so neither the person's edits nor the new blocks are lost.
+     */
+    private suspend fun withStored(ours: List<NoteBlock>, base: List<NoteBlock>): List<NoteBlock> {
+        val stored = notes.getDocument(noteId)?.blocks?.sortedBy { it.position } ?: return ours
+        if (NoteMerge.sameList(stored, base)) return ours
+        // Compared as shown: saved AI replies are repaired on screen, and repairing never counts as an edit.
+        val shownBase = com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(base)
+        val shownStored = com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(stored)
+        val merged = NoteMerge.merge(shownBase, NoteMerge.core(ours), shownStored)
+        return BlockEditing.ensureTrailingParagraph(merged, noteId)
     }
 
     /**
@@ -1782,6 +1821,8 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
             val blocks = _blocks.value
             val note = _note.value
             val title = note?.title.takeIf { titleDirty }
+            val hasEdits = dirty
+            val base = synced
             closingScope.launch {
                 val draft = note != null && com.craftflowtechnologies.meetingmind.core.repository.NoteContent.isDraft(note)
                 if (draft) {
@@ -1790,9 +1831,13 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                     notes.keepDraft(noteId)
                 }
                 title?.let { notes.renameNote(noteId, it) }
-                notes.saveBlocks(noteId, blocks)
-                // The session's last state joins the history (skipped if nothing changed).
-                if (sessionStarted) runCatching { versions.snapshot(noteId, com.craftflowtechnologies.meetingmind.core.notes.VersionReason.EDIT_SESSION, blocks = blocks) }
+                // Only the person's own unsaved changes are written, merged with anything stored meanwhile.
+                if (hasEdits) {
+                    val toWrite = withStored(blocks, base)
+                    notes.saveBlocks(noteId, toWrite)
+                    // The session's last state joins the history (skipped if nothing changed).
+                    if (sessionStarted) runCatching { versions.snapshot(noteId, com.craftflowtechnologies.meetingmind.core.notes.VersionReason.EDIT_SESSION, blocks = toWrite) }
+                }
                 discardIfEmpty()
             }
         }
