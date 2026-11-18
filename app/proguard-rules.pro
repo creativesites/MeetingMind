@@ -5,6 +5,10 @@
 
 # MeetingMind JNI & native bindings
 -keep class com.k2fsa.sherpa.onnx.** { *; }
+# sherpa-onnx's JNI finds the diarization progress callback by name: invoke(IIJ)Ljava/lang/Integer;
+-keep class com.craftflowtechnologies.meetingmind.ai.diarization.DiarizationProgressCallback {
+    java.lang.Integer invoke(int, int, long);
+}
 -keep class app.rive.** { *; }
 -keep class com.google.mediapipe.** { *; }
 -dontwarn com.google.mediapipe.**

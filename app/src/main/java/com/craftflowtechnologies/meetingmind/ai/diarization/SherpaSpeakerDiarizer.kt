@@ -102,11 +102,7 @@ class SherpaSpeakerDiarizer(
                     holder.set(d)
                     if (abandoned.get()) { SherpaEngineManager.detachDiarizer(d); work.complete(null); return@execute }
                     Breadcrumbs.log("speakers", "native diarization start")
-                    val segments = d.processWithCallback(decoded.samples, { processed, total, _ ->
-                        if (total > 0) onProgress((processed.toFloat() / total).coerceIn(0f, 1f))
-                        // Best effort: a non-zero return asks sherpa-onnx to stop early.
-                        if (abandoned.get()) 1 else 0
-                    }, 0L)
+                    val segments = d.processWithCallback(decoded.samples, DiarizationProgressCallback(onProgress, abandoned), 0L)
                     Breadcrumbs.log("speakers", "native diarization done: ${segments.size} segments")
                     work.complete(
                         segments.map {
