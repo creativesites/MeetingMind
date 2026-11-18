@@ -77,6 +77,14 @@ Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
   - The Learning studio's lecture summary flag (asked of the Learning session).
   - Explicit Gemini `safetySettings`, as a separate task.
   - Not yet checked on the phone.
+- **Crash audit (2026-11-17), AI, recording and services:** `a2e43d2`. Twelve guards; the full report is in the Learning session's notes folder (`crash-audit-ai-recording.md`).
+- **Keep recording and auto-recovery (2026-11-18, founder: "Keep recording", "nothing lost"):**
+  - Recording continues after Back or a swipe from Recents. The service starts itself when capture begins and shows a "Recording" notification with the elapsed time, Pause, Stop, and a tap that opens the recorder.
+  - A Stop from the notification queues notes at once.
+  - If the system ends the service, the mic is released and the journal kept.
+  - On launch, an interrupted recording is saved automatically as a SAVED meeting with "Make notes / Later". A new recording parks an unrecovered journal instead of overwriting it.
+  - Capture was already crash-safe: ADTS with a sync every 8 s. A breadcrumb logs any phone that takes the MPEG_4 fallback.
+  - Tests: 46/46 green (Learning run fix5). Phone checks on the S20+ are pending.
 
 ## Work premium redesign, Phase B: paused for the team release (2026-11-16)
 - **Founder-approved design:** `design/work-vertical-design-spec.md` §R (revision 2) and `design/Work Vertical Redesign.dc.html`. Commits on this branch (none pushed):

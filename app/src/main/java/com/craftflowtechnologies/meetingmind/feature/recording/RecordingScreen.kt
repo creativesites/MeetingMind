@@ -154,6 +154,15 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         )
     }
 
+    init {
+        // Reopened while a recording is still going (swiped away, or its notification tapped):
+        // bind straight away so the screen shows that recording instead of asking for a new one.
+        if (MeetingRecordingService.capturing.value) ensureBound()
+    }
+
+    /** The running recording's title, once bound. */
+    fun liveTitle(): String? = _boundService.value?.liveTitle
+
     fun startRecording(title: String, context: com.craftflowtechnologies.meetingmind.core.model.RecordingContext) {
         meetingTitle = title
         this.recordingContext = context
@@ -286,6 +295,15 @@ fun RecordingScreen(
     val durationMs by viewModel.durationMs.collectAsState()
     var showDiscardDialog by remember { mutableStateOf(false) }
     var hasStarted by remember { mutableStateOf(false) }
+
+    // A recording already running (the screen was reopened mid-recording): show it, skip the picker.
+    LaunchedEffect(state) {
+        if (!typeChosen && (state == com.craftflowtechnologies.meetingmind.core.audio.RecordingState.RECORDING || state == com.craftflowtechnologies.meetingmind.core.audio.RecordingState.PAUSED)) {
+            viewModel.liveTitle()?.let { meetingTitle = it }
+            hasStarted = true
+            typeChosen = true
+        }
+    }
 
     LaunchedEffect(hasAudioPermission, typeChosen) {
         if (typeChosen && hasAudioPermission && !hasStarted) {

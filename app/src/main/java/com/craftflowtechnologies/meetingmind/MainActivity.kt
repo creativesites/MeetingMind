@@ -35,14 +35,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.craftflowtechnologies.meetingmind.core.audio.PlaybackController
-import com.craftflowtechnologies.meetingmind.core.audio.RecordingJournalEntry
-import com.craftflowtechnologies.meetingmind.core.audio.RecordingJournalStore
-import com.craftflowtechnologies.meetingmind.core.audio.RecordingState
 import com.craftflowtechnologies.meetingmind.core.common.Formatters
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.MeetingSource
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
-import com.craftflowtechnologies.meetingmind.core.repository.MeetingRepository
 import com.craftflowtechnologies.meetingmind.core.ui.MiniPlayerBar
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -261,7 +257,6 @@ class MainActivity : FragmentActivity() {
 
 /** The unfinished-recording check happens once per process, however often the UI is re-composed (rotation, unlocking). */
 private object RecordingRecovery {
-    val entry = kotlinx.coroutines.flow.MutableStateFlow<RecordingJournalEntry?>(null)
     @Volatile var checked = false
 }
 
@@ -291,47 +286,26 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
 
     val startRoute = if (prefsState?.onboardingCompleted == true) Routes.HOME else Routes.ONBOARDING
 
-    // Crash recovery (design spec §3.7): a journal left behind in RECORDING/PAUSED state means
-    // the process died mid-capture rather than stopping cleanly — MeetingRecordingService clears
-    // the journal on every normal stop/discard, so its mere presence in one of those two states
-    // is itself the signal, checked once per app launch.
-    val journalStore = remember { RecordingJournalStore(context) }
-    val recoveryMeetingRepository = remember { MeetingRepository(context, MeetMindDatabase.getInstance(context)) }
+    // Crash recovery (design spec §3.7): a journal left behind by a recording that never stopped
+    // cleanly (a kill, a crash, a flat battery) is recovered automatically, once per process: the
+    // audio is salvaged, a SAVED meeting row is made, and only then is the journal cleared. The
+    // person is told after, so a dismissed prompt can never lose a recording.
     val recoveryScope = rememberCoroutineScope()
-    val recoveryEntry by RecordingRecovery.entry.collectAsState()
     LaunchedEffect(Unit) {
         if (RecordingRecovery.checked) return@LaunchedEffect
+        // A recording still going (the app was swiped away and reopened) is live, not lost.
+        if (com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService.capturing.value) return@LaunchedEffect
         RecordingRecovery.checked = true
-        val entry = journalStore.read()
-        // A process death mid-capture (RECORDING/PAUSED), mid-finalization (STOPPING/SAVING), or a
-        // finished recording whose database row could not be written (SAVE_FAILED) can all leave
-        // auto-saved audio on this phone that the app has not indexed yet. Every one is salvaged
-        // and offered on next launch; none is silently discarded.
-        if (entry != null && (
-                entry.state == RecordingState.RECORDING.name ||
-                    entry.state == RecordingState.PAUSED.name ||
-                    entry.state == RecordingState.STOPPING.name ||
-                    entry.state == RecordingState.SAVING.name ||
-                    entry.state == RecordingState.SAVE_FAILED.name
-                )
-        ) {
-            val salvaged = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                com.craftflowtechnologies.meetingmind.core.audio.RecordingAudioSalvager.salvageForRecovery(
-                    context = context,
-                    meetingId = entry.meetingId,
-                    recordedPath = entry.audioFilePath
-                )
-            }
-            if (salvaged != null) {
-                RecordingRecovery.entry.value = entry.copy(
-                    audioFilePath = salvaged.file.absolutePath,
-                    lastKnownDurationMs = maxOf(entry.lastKnownDurationMs, salvaged.durationMs)
-                )
-            } else {
-                // Keep the original entry when no playable checkpoint exists yet so the user still
-                // sees what happened and can explicitly delete it rather than losing track silently.
-                RecordingRecovery.entry.value = entry
-            }
+        runCatching { com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.recoverPending(context) }
+    }
+
+    // Reopened while a recording kept going in the background: go back to the recorder, once.
+    var reopenedRecorder by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(prefsState?.onboardingCompleted) {
+        if (reopenedRecorder || prefsState?.onboardingCompleted != true) return@LaunchedEffect
+        if (com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService.capturing.value) {
+            reopenedRecorder = true
+            navController.navigate(Routes.RECORDING) { launchSingleTop = true }
         }
     }
 
@@ -433,6 +407,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Processing -> openProcessing(link.meetingId)
             // The activity is exported: a malformed id from another app's intent must not crash it.
             is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Recording -> runCatching { navController.navigate(Routes.meetingDetailRoute(link.meetingId)) }
+            // The recording's ongoing notification: back to the recorder, which shows the live recording.
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.LiveRecording -> navController.navigate(Routes.RECORDING) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Models -> navController.navigate(Routes.MODELS) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Bible -> navController.navigate(Routes.BIBLE_HOME) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Devotional -> navController.navigate(Routes.devotionalRoute()) { launchSingleTop = true }
@@ -1730,93 +1706,44 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         navigate = { route -> navController.navigate(route) { launchSingleTop = true } }
     )
 
-    recoveryEntry?.let { entry ->
-        val notYetSaved = entry.state == RecordingState.SAVE_FAILED.name
-        AlertDialog(
-            onDismissRequest = { /* Never auto-dismiss into a silent discard — spec §3.7. Back
-                gesture just closes this composition's state; the same journal is read again and
-                re-prompted on the next app launch since nothing here has cleared it. */ RecordingRecovery.entry.value = null },
-            title = {
-                Text(if (notYetSaved) "We couldn't add your recording to your notes." else "We found an unfinished recording.")
-            },
-            text = {
-                Text(
-                    if (notYetSaved) {
-                        "\"${entry.title}\" was recorded (about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)}), " +
-                            "but adding it to your notes didn't complete. The audio is still on this phone. " +
-                            "Add it now, or delete it."
-                    } else {
-                        "MeetingMind closed unexpectedly while recording \"${entry.title}\" " +
-                            "(about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)} captured). " +
-                            "Continuing this recording isn't supported yet, but you can save what was " +
-                            "already captured or delete it."
-                    }
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    recoveryScope.launch {
-                        val salvaged = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            com.craftflowtechnologies.meetingmind.core.audio.RecordingAudioSalvager.salvageForRecovery(
-                                context = context,
-                                meetingId = entry.meetingId,
-                                recordedPath = entry.audioFilePath
-                            )
-                        }
-                        if (salvaged == null) {
-                            android.widget.Toast.makeText(
-                                context,
-                                "No playable audio frames were saved before the phone turned off.",
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
-                            return@launch
-                        }
-                        val recordingType = try {
-                            RecordingType.valueOf(entry.recordingType)
-                        } catch (e: Exception) {
-                            RecordingType.GENERAL
-                        }
-                        val recoveredPath = salvaged.file.absolutePath
-                        val recoveredDurationMs = maxOf(entry.lastKnownDurationMs, salvaged.durationMs)
-                        // The journal is cleared only if the row is actually written. A failure
-                        // here leaves the recording offered again rather than losing it.
-                        val saved = runCatching {
-                            recoveryMeetingRepository.createInitialMeeting(
-                                id = entry.meetingId,
-                                title = entry.title,
-                                source = MeetingSource.LOCAL_RECORDING,
-                                audioFilePath = recoveredPath,
-                                recordingType = recordingType
-                            )
-                        }.isSuccess
-                        if (!saved) {
-                            android.widget.Toast.makeText(
-                                context,
-                                "Still couldn't add it. The recording is safe on this phone; we'll offer it again next time.",
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
-                            return@launch
-                        }
-                        journalStore.clear()
-                        RecordingRecovery.entry.value = null
-                        navController.navigate(
-                            Routes.processingRoute(entry.meetingId, recoveredPath, recoveredDurationMs)
-                        )
-                    }
-                }) { Text(if (notYetSaved) "Add it now" else "Save recording") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    com.craftflowtechnologies.meetingmind.core.audio.RecordingAudioSalvager.deleteMeetingAudioArtifacts(
-                        context = context,
-                        meetingId = entry.meetingId,
-                        primaryPath = entry.audioFilePath
+    // What automatic recovery found, told after the fact; never while a recording is running.
+    val recoveryNotices by com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.notices.collectAsState()
+    val capturingNow by com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService.capturing.collectAsState()
+    recoveryNotices.firstOrNull()?.takeIf { !capturingNow }?.let { notice ->
+        val autoRecovery = com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery
+        val entry = notice.entry
+        when (notice) {
+            is com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.Outcome.Recovered -> AlertDialog(
+                onDismissRequest = { autoRecovery.dismiss(notice) },
+                title = { Text("We recovered a recording") },
+                text = {
+                    Text(
+                        "\"${entry.title}\" (${Formatters.formatDurationHms(notice.durationMs)}) was interrupted, " +
+                            "so we saved what was recorded. It's in your notes. Make its notes now, or later from the recording."
                     )
-                    journalStore.clear()
-                    RecordingRecovery.entry.value = null
-                }) { Text("Delete") }
-            }
-        )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        autoRecovery.dismiss(notice)
+                        navController.navigate(Routes.processingRoute(entry.meetingId, notice.audioPath, notice.durationMs))
+                    }) { Text("Make notes") }
+                },
+                dismissButton = { TextButton(onClick = { autoRecovery.dismiss(notice) }) { Text("Later") } }
+            )
+            is com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.Outcome.NoAudio -> AlertDialog(
+                onDismissRequest = { autoRecovery.dismiss(notice) },
+                title = { Text("A recording was interrupted") },
+                text = { Text("MeetingMind closed while recording \"${entry.title}\", before any audio could be saved.") },
+                confirmButton = { TextButton(onClick = { autoRecovery.dismiss(notice) }) { Text("OK") } }
+            )
+            is com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.Outcome.NotYet -> AlertDialog(
+                onDismissRequest = { autoRecovery.dismiss(notice) },
+                title = { Text("We couldn't add your recording yet") },
+                text = { Text("\"${entry.title}\" is safe on this phone. We'll add it to your notes the next time you open MeetingMind.") },
+                confirmButton = { TextButton(onClick = { autoRecovery.dismiss(notice) }) { Text("OK") } }
+            )
+            is com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.Outcome.AlreadySaved -> LaunchedEffect(notice) { autoRecovery.dismiss(notice) }
+        }
     }
     }
     }

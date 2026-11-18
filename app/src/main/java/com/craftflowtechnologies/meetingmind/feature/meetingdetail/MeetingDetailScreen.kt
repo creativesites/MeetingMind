@@ -1224,6 +1224,32 @@ fun MeetingDetailScreen(
                 }
             }
 
+            // Saved but no notes yet (a recovered recording the person chose to finish later).
+            if (meeting?.status == MeetingStatus.SAVED) {
+                val savedMeeting = meeting
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Column(Modifier.padding(14.dp).fillMaxWidth()) {
+                        Text("Notes not made yet", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            "The recording is saved on this phone. Make its notes when you're ready.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        TextButton(
+                            onClick = {
+                                val audioPath = savedMeeting?.audioFilePath
+                                if (savedMeeting != null && audioPath != null) onTranscribe(savedMeeting.id, audioPath, savedMeeting.durationMs)
+                            },
+                            modifier = Modifier.padding(top = 6.dp)
+                        ) { Text("Make notes") }
+                    }
+                }
+            }
+
             // Processing failed: say why, in the pipeline's words, with the way forward.
             if (meeting?.status == MeetingStatus.ERROR) {
                 val processingError by viewModel.processingError.collectAsState()

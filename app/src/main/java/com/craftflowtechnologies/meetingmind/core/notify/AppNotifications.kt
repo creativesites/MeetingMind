@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 sealed interface DeepLink {
     data class Processing(val meetingId: String) : DeepLink
     data class Recording(val meetingId: String) : DeepLink
+    /** The recorder, for the recording in progress (its ongoing notification). */
+    data object LiveRecording : DeepLink
     data object Models : DeepLink
     data object Bible : DeepLink
     data object Devotional : DeepLink
@@ -61,6 +63,7 @@ object DeepLinks {
         _pending.value = when (target) {
             "processing" -> meeting?.let { DeepLink.Processing(it) }
             "recording" -> meeting?.let { DeepLink.Recording(it) }
+            "live_recording" -> DeepLink.LiveRecording
             "models" -> DeepLink.Models
             "bible" -> DeepLink.Bible
             "devotional" -> DeepLink.Devotional
@@ -83,6 +86,7 @@ object DeepLinks {
         val (target, meeting) = when (link) {
             is DeepLink.Processing -> "processing" to link.meetingId
             is DeepLink.Recording -> "recording" to link.meetingId
+            DeepLink.LiveRecording -> "live_recording" to null
             DeepLink.Models -> "models" to null
             DeepLink.Bible -> "bible" to null
             DeepLink.Devotional -> "devotional" to null

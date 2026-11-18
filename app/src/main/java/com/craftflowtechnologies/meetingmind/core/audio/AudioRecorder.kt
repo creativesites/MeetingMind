@@ -66,6 +66,11 @@ class AudioRecorder(private val context: Context) {
             capturingAsAdts = true
             captureAac
         } else {
+            // This phone refused ADTS. The MPEG_4 file has no moov atom until stop(), so a hard
+            // kill on this path loses the recording: logged to learn whether any phone takes it.
+            com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs.log(
+                "recording", "AAC_ADTS refused, MPEG_4 fallback on ${Build.MANUFACTURER} ${Build.MODEL} (API ${Build.VERSION.SDK_INT})"
+            )
             runCatching { captureAac.delete() }
             tryStartMediaRecorderOrThrow(outputM4a, useAdts = false)
             capturingAsAdts = false
@@ -201,6 +206,31 @@ class AudioRecorder(private val context: Context) {
         }
 
         return activeFile
+    }
+
+    /**
+     * Ends capture without trimming or converting: stops and releases the microphone and leaves
+     * the captured file where it is, for the recovery on the next launch. For when the system
+     * destroys the recording service, where slow file work on the main thread could freeze the app.
+     */
+    fun releaseForRecovery() {
+        if (_state.value == RecorderState.RECORDING) {
+            accumulatedDurationMs += (System.currentTimeMillis() - startTimeMs)
+        }
+        _durationMs.value = accumulatedDurationMs
+        amplitudeJob?.cancel()
+        checkpointSync()
+        try {
+            mediaRecorder?.stop()
+        } catch (e: Exception) {
+            Log.w("AudioRecorder", "Stop for recovery failed; the file on flash stays: ${e.message}")
+        } finally {
+            releaseRecorder()
+        }
+        _state.value = RecorderState.STOPPED
+        currentOutputFile = null
+        finalM4aTarget = null
+        capturingAsAdts = false
     }
 
     fun discardRecording() {
