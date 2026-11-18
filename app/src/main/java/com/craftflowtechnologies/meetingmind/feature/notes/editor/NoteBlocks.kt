@@ -659,6 +659,10 @@ internal fun RecordingBlock(
                             "PROCESSING" -> Triple("Transcribing…", AccentWash, Accent)
                             "ERROR" -> Triple("Needs attention", DangerWash, Danger)
                             "RECORDING" -> Triple("Recording", AccentWash, Accent)
+                            // Audio is safe on the phone (a recovered recording, say) but nothing has been made from it.
+                            "SAVED" -> Triple("Notes not made yet", SurfaceSunk, InkSecondary)
+                            "QUEUED" -> Triple("Waiting to make notes", SurfaceSunk, InkSecondary)
+                            "MODEL_REQUIRED" -> Triple("Needs a speech model", AccentWash, Accent)
                             else -> Triple("Ready", SurfaceSunk, InkSecondary)
                         }
                         Surface(
