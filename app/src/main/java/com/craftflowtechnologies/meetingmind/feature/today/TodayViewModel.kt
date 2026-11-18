@@ -200,6 +200,11 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
     /** How far back the timeline river has loaded. */
     private var riverFrom = TimelineDays.addMonths(TimelineDays.startOfMonth(System.currentTimeMillis()), -2)
 
+    /** The Timeline's paging: how many items show, whether a page is loading, and whether older notes exist. */
+    private val _river = MutableStateFlow(TimelinePage(windowFrom = riverFrom))
+    val river: StateFlow<TimelinePage> = _river.asStateFlow()
+    private var moreJob: Job? = null
+
     private var loadJob: Job? = null
 
     init {
@@ -251,8 +256,42 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
         prefs.setTimelineLayers((if (on) current + layer else current - layer).map { it.name }.toSet())
     }
 
-    /** The timeline river reaches further back. */
-    fun loadEarlier() { riverFrom = TimelineDays.addMonths(riverFrom, -3); reload() }
+    /**
+     * The Timeline's next page. It reveals items already loaded, or reads back just far enough for
+     * a full page: one lookup finds the date of the note that fills it, then one read loads the window.
+     */
+    fun loadMore() {
+        val page = _river.value
+        if (page.loading || !page.checked) return
+        val now = System.currentTimeMillis()
+        val loaded = TimelinePaging.riverItems(_items.value, now).size
+        if (!TimelinePaging.hasMore(loaded, page)) return
+        if (TimelinePaging.nextIsLoaded(loaded, page)) { _river.value = TimelinePaging.next(loaded, page); return }
+        _river.value = page.copy(loading = true)
+        moreJob = viewModelScope.launch {
+            // A failed read leaves the list as it was, with the button back, rather than crashing Home.
+            try {
+                val p = prefs.preferencesFlow.first()
+                val calOn = p.calendarEnabled && calendar.hasPermission()
+                val noteDao = database.noteDao()
+                val earliest = noteDao.earliestNoteDate()
+                val missing = (page.shown + TimelinePaging.PAGE_SIZE - loaded).coerceAtLeast(1)
+                val reach = noteDao.noteDateBefore(riverFrom, missing - 1)
+                val from = TimelinePaging.olderWindowFrom(riverFrom, reach, earliest)
+                val found = timeline.between(from, riverTo(), focusedLayers(), calOn)
+                riverFrom = from
+                if (view.value == CalendarView.RIVER) _items.value = found
+                val loadedNow = TimelinePaging.riverItems(found, now).size
+                _river.value = TimelinePaging.next(loadedNow, _river.value.copy(earliest = earliest, windowFrom = from))
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                android.util.Log.w("TodayViewModel", "Couldn't load earlier items", e)
+            } finally {
+                _river.value = _river.value.copy(loading = false)
+            }
+        }
+    }
+
+    private fun riverTo() = TimelineDays.addDays(TimelineDays.startOfDay(System.currentTimeMillis()), TimelinePaging.AHEAD_DAYS + 1)
 
     fun setCalendarEnabled(enabled: Boolean) = viewModelScope.launch {
         prefs.setCalendarEnabled(enabled)
@@ -296,7 +335,7 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
             CalendarView.WEEK -> TimelineDays.startOfWeek(d).let { it to TimelineDays.addDays(it, 7) }
             CalendarView.MONTH -> TimelineDays.startOfWeek(TimelineDays.startOfMonth(d)).let { it to TimelineDays.addDays(it, 42) }
             CalendarView.AGENDA -> d to TimelineDays.addDays(d, 14)
-            CalendarView.RIVER -> riverFrom to TimelineDays.addDays(TimelineDays.startOfDay(System.currentTimeMillis()), 15)
+            CalendarView.RIVER -> riverFrom to riverTo()
         }
     }
 
@@ -321,7 +360,14 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
             val todayStart = TimelineDays.startOfDay(now)
 
             val (from, to) = range()
-            _items.value = timeline.between(from, to, layerSet, calOn)
+            val found = timeline.between(from, to, layerSet, calOn)
+            // A Timeline page may have read further back while this ran; don't put the shorter window back.
+            val stale = view.value == CalendarView.RIVER && from > riverFrom
+            if (!stale) _items.value = found
+            if (view.value == CalendarView.RIVER) {
+                val earliest = runCatching { database.noteDao().earliestNoteDate() }.getOrNull()
+                _river.value = _river.value.copy(earliest = earliest, windowFrom = riverFrom, checked = true)
+            }
 
             // Week strip / month dots.
             val stripFrom = if (view.value == CalendarView.MONTH) from else TimelineDays.startOfWeek(_selectedDay.value)

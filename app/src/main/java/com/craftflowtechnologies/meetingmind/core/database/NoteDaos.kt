@@ -133,6 +133,14 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND COALESCE(eventDate, createdAt) >= :from AND COALESCE(eventDate, createdAt) < :to ORDER BY COALESCE(eventDate, createdAt)")
     suspend fun getNotesBetween(from: Long, to: Long): List<NoteEntity>
 
+    /** When the oldest note on the timeline happened (null with no notes): where Today's Timeline stops paging. */
+    @Query("SELECT MIN(COALESCE(eventDate, createdAt)) FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL")
+    suspend fun earliestNoteDate(): Long?
+
+    /** The date of the note [skip] places older than the newest one before [before]: how far back a page of that many reaches. */
+    @Query("SELECT COALESCE(eventDate, createdAt) AS d FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND COALESCE(eventDate, createdAt) < :before ORDER BY d DESC LIMIT 1 OFFSET :skip")
+    suspend fun noteDateBefore(before: Long, skip: Int): Long?
+
     /** Prayer requests answered in [from, to), for the "Answered" milestone. */
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND deletedAt IS NULL AND answeredAt IS NOT NULL AND answeredAt >= :from AND answeredAt < :to")
     suspend fun getAnsweredBetween(from: Long, to: Long): List<NoteEntity>
