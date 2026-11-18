@@ -38,6 +38,8 @@ interface CirclesApi {
     suspend fun createCircle(req: CreateCircleRequest): CirclesResult<String>
     suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String? = null, coverPath: String? = null): CirclesResult<Unit>
     suspend fun myCircles(): CirclesResult<List<String>>
+    /** Moves the circles of the guest account [guestToken] belongs to over to the caller. Returns the circle ids moved. */
+    suspend fun adoptGuestCircles(guestToken: String): CirclesResult<List<String>>
     suspend fun createInvite(circleId: String, expiresInDays: Int = 7, maxUses: Int = 50): CirclesResult<Invite>
     suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int = 7, maxUses: Int = 50): CirclesResult<Invite>
     suspend fun revokeInvite(code: String): CirclesResult<Unit>
@@ -128,6 +130,7 @@ object NotConfiguredCirclesApi : CirclesApi {
     override suspend fun deleteMedia(circleId: String, path: String) = no<Unit>()
     override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?, requestId: String?) = no<Unit>()
     override suspend fun myCircles() = no<List<String>>()
+    override suspend fun adoptGuestCircles(guestToken: String) = no<List<String>>()
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = no<Invite>()
     override suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int, maxUses: Int) = no<Invite>()
     override suspend fun revokeInvite(code: String) = no<Unit>()
@@ -346,6 +349,12 @@ class HttpCirclesApi(
             if (description != null) put("description", description)
             if (coverPath != null) put("coverPath", coverPath)
         })
+
+    override suspend fun adoptGuestCircles(guestToken: String): CirclesResult<List<String>> =
+        call("adoptGuestCircles", JSONObject().put("guestToken", guestToken)).map { o ->
+            val a = o.optJSONArray("moved") ?: JSONArray()
+            (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } }
+        }
 
     override suspend fun myCircles(): CirclesResult<List<String>> = call("myCircles").map { o ->
         val a = o.optJSONArray("circleIds") ?: JSONArray()

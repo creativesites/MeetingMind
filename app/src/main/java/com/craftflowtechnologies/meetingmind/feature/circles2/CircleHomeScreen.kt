@@ -165,7 +165,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
 
     val circle = state.circle
     if (showSettings && circle != null) {
+        val coverUi by home.cover.collectAsState()
         CircleSettingsContent(
+            coverBusy = coverUi.busy, coverNote = coverUi.note,
             circle = circle, me = state.me, onBack = { showSettings = false },
             onSave = home::saveSettings, onCover = home::setCover, onMute = home::setMuted, onLeave = { home.leave { CircleRhythm.clear(context, circleId); onBack() } },
             account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict

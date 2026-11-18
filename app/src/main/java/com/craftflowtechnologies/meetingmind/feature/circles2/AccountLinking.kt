@@ -55,9 +55,8 @@ class AccountViewModel(private val repo: CirclesRepository) : ViewModel() {
         if (_state.value.busy) return
         _state.update { it.copy(busy = true, conflict = false) }
         viewModelScope.launch {
-            val r = repo.auth.switchToLinkedAccount()
-            if (r is LinkResult.Linked) repo.onAccountSwitched()
-            apply(r, switched = true)
+            // Circles made on this phone before signing in come along; if they can't yet, nothing switches.
+            apply(repo.switchAccountKeepingCircles(), switched = true)
         }
     }
 
@@ -133,7 +132,7 @@ fun AccountSection(state: AccountUiState, onLink: (Context) -> Unit, onSwitch: (
 }
 
 @Composable
-private fun SwitchAccountDialog(state: AccountUiState, onSwitch: () -> Unit, onDismiss: () -> Unit) {
+internal fun SwitchAccountDialog(state: AccountUiState, onSwitch: () -> Unit, onDismiss: () -> Unit) {
     if (!state.conflict) return
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = MM.colors.surfaceRaised,

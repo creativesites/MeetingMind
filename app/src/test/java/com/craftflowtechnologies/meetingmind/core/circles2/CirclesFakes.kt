@@ -21,6 +21,7 @@ class FakeAuth(var uid: String? = "me", var anonymous: Boolean = true) : Circles
         (linkResult as? LinkResult.Linked)?.let { anonymous = false; linkedEmail = it.email }
         return linkResult
     }
+    override suspend fun guestToken(): String? = if (anonymous) uid?.let { "guest:$it" } else null
     override suspend fun switchToLinkedAccount(): LinkResult {
         authCalls += "switch"
         (switchResult as? LinkResult.Linked)?.let { anonymous = false; linkedEmail = it.email; uid = "other-phone-uid" }
@@ -50,8 +51,24 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
         lastCreateCircle = req
         return reply("createCircle", "new-circle")
     }
-    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?, coverPath: String?) = reply("updateCircle", Unit)
+    var lastCoverPath: String? = null
+    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?, coverPath: String?): CirclesResult<Unit> {
+        if (coverPath != null) lastCoverPath = coverPath
+        return reply("updateCircle", Unit)
+    }
     override suspend fun myCircles() = reply("myCircles", myCirclesResult)
+    var avatarUploads = 0
+    override suspend fun uploadAvatar(bytes: ByteArray, mime: String): CirclesResult<Long> { avatarUploads++; return reply("uploadAvatar", 42L) }
+    override suspend fun removeAvatar(): CirclesResult<Unit> = reply("removeAvatar", Unit)
+    /** What adoptGuestCircles answers, and the guest tokens it was given. Null failure means it works. */
+    var adoptFailure: CirclesFailure? = null
+    var adoptMoves: List<String> = emptyList()
+    val adoptTokens = mutableListOf<String>()
+    override suspend fun adoptGuestCircles(guestToken: String): CirclesResult<List<String>> {
+        adoptTokens += guestToken
+        adoptFailure?.let { calls += "adoptGuestCircles"; return CirclesResult.Err(it) }
+        return reply("adoptGuestCircles", adoptMoves)
+    }
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = reply("createInvite", Invite("GRACE-7K2Q", null, 50))
     override suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int, maxUses: Int) = reply("createEmailInvite", Invite("GRACE-EMAIL", null, maxUses))
     override suspend fun revokeInvite(code: String) = reply("revokeInvite", Unit)

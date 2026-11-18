@@ -45,6 +45,11 @@ interface CirclesAuth {
     suspend fun linkGoogle(activityContext: Context): LinkResult
     /** After [LinkResult.AlreadyInUse] and the person agreeing: signs in as that existing account. */
     suspend fun switchToLinkedAccount(): LinkResult
+    /**
+     * A fresh ID token for the current guest (anonymous) account, or null when signed in with Google. Taken just before
+     * switching accounts: it is the proof the Worker needs to carry this phone's circles over to the signed-in account.
+     */
+    suspend fun guestToken(): String? = null
 }
 
 class FirebaseCirclesAuth(private val context: Context) : CirclesAuth {
@@ -138,6 +143,17 @@ class FirebaseCirclesAuth(private val context: Context) : CirclesAuth {
             Log.w(TAG, "Switching account failed: ${e.message}")
             collided = null
             LinkResult.Failed("Couldn't switch accounts. Choose your Google account again.")
+        }
+    }
+
+    override suspend fun guestToken(): String? {
+        val user = auth?.currentUser?.takeIf { it.isAnonymous } ?: return null
+        return try {
+            user.getIdToken(true).await()?.token?.takeIf { it.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
         }
     }
 

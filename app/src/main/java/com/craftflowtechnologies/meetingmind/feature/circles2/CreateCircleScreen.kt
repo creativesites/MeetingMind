@@ -87,6 +87,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleTemplate
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
@@ -282,7 +283,9 @@ fun CreateCircleScreen(onBack: () -> Unit, onCreated: (String) -> Unit, initialS
             }
         },
         onDescription = vm::setDescription,
-        onJoinApproval = vm::setJoinApproval
+        onJoinApproval = vm::setJoinApproval,
+        onCoverPack = vm::pickCoverPack,
+        onCoverPhoto = vm::pickCoverPhoto
     )
 }
 
@@ -301,9 +304,13 @@ fun CreateCircleContent(
     onWhoCanInvite: (WhoCanInvite) -> Unit,
     onCreate: () -> Unit,
     onDescription: (String) -> Unit = {},
-    onJoinApproval: (Boolean) -> Unit = {}
+    onJoinApproval: (Boolean) -> Unit = {},
+    onCoverPack: (String) -> Unit = {},
+    onCoverPhoto: (PickedFile) -> Unit = {}
 ) {
     val c = MM.colors
+    var coverUnreadable by remember { mutableStateOf(false) }
+    val pickCoverPhoto = rememberCoverPhotoPicker { picked -> coverUnreadable = picked == null; picked?.let(onCoverPhoto) }
     val haptic = LocalHapticFeedback.current
     val theme = rememberSpaceTheme(state.spaceTab)
     val accent by animateColorAsState(theme.accent, MM.motion.standard(), label = "verticalAccent")
@@ -445,6 +452,20 @@ fun CreateCircleContent(
             // Live Editorial Preview Card
             item(key = "live_preview") {
                 LiveCirclePreviewCard(state = state, theme = theme)
+            }
+
+            // Cover: one of ours (the type's picture first) or their own photo
+            item(key = "cover_section") {
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    SectionHeader(title = "Cover")
+                    CoverPickerRow(
+                        template = state.template.id, space = state.template.space,
+                        selectedPack = state.shownCoverPack, chosenOwn = state.coverPhoto != null,
+                        onPickPack = { coverUnreadable = false; onCoverPack(it) }, onUpload = pickCoverPhoto,
+                        contentPadding = PaddingValues(0.dp)
+                    )
+                    if (coverUnreadable) StatusLine(StatusKind.Warning, "That photo couldn't be read. Try another, or pick one of ours.")
+                }
             }
 
             // 01 · Blueprint Templates
@@ -803,12 +824,22 @@ private fun LiveCirclePreviewCard(
                 .fillMaxWidth()
                 .background(Brush.linearGradient(theme.bannerColors))
         ) {
+            // The cover they'll get: their own photo, or the pack picture chosen (the type's own by default).
+            val own = state.coverPhoto
+            val ownBitmap = remember(own) {
+                own?.let { runCatching { android.graphics.BitmapFactory.decodeByteArray(it.bytes, 0, it.bytes.size)?.asImageBitmap() }.getOrNull() }
+            }
+            if (ownBitmap != null) {
+                androidx.compose.foundation.Image(ownBitmap, null, Modifier.matchParentSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            } else {
+                PackImage(state.shownCoverPack, thumb = false, modifier = Modifier.matchParentSize())
+            }
             Box(
                 Modifier
                     .matchParentSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.42f))
+                            listOf(MM.colors.scrim.copy(alpha = 0.25f), MM.colors.scrim.copy(alpha = 0.7f))
                         )
                     )
             )

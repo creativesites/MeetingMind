@@ -57,7 +57,10 @@ class AccountLinkingTest {
         vm.switchAccount()
         assertEquals(listOf("link", "switch"), auth.authCalls)
         assertTrue("myCircles" in api.calls)
-        assertEquals(listOf("c7"), store.circleIds())          // this phone's guest list is replaced by the account's
+        // The guest's circles were handed to the Worker to carry over (a check before switching, the move after);
+        // the list then loads from the account.
+        assertEquals(listOf("guest:me", "guest:me"), api.adoptTokens)
+        assertEquals(listOf("c7"), store.circleIds())
         assertTrue(vm.state.value.linked)
         assertFalse(vm.state.value.conflict)
     }

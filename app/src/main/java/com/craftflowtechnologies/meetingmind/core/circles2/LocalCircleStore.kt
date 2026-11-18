@@ -52,6 +52,21 @@ interface LocalCircleStore {
     fun circleIds(): List<String>
     fun addCircle(id: String)
     fun removeCircle(id: String)
+    /**
+     * Circles this phone knew but can no longer read with the account it has now: almost always a new sign-in after a
+     * reinstall. Kept, never deleted, so the list can say "sign in to get them back" instead of losing them quietly.
+     */
+    fun earlierCircleIds(): List<String> = emptyList()
+    /** Which app profile photo (path and time) was last sent as the Circles photo. Null until one is. */
+    var appAvatarSynced: String?
+        get() = null
+        set(_) = Unit
+    /** True once the person picked (or removed) a photo inside Circles: the app photo no longer overrides it. */
+    var circlesAvatarOwn: Boolean
+        get() = false
+        set(_) = Unit
+    fun addEarlierCircle(id: String) = Unit
+    fun clearEarlierCircle(id: String) = Unit
     fun myPostIds(circleId: String): Set<String>
     fun addMyPost(circleId: String, postId: String)
     /** Posts I wrote anonymously: my own comments on these must go through the Worker (`commentAsAuthor`). */
@@ -103,6 +118,12 @@ class InMemoryLocalCircleStore : LocalCircleStore {
     override fun circleIds() = circles.toList()
     override fun addCircle(id: String) { circles += id }
     override fun removeCircle(id: String) { circles -= id }
+    private val earlier = LinkedHashSet<String>()
+    override var appAvatarSynced: String? = null
+    override var circlesAvatarOwn: Boolean = false
+    override fun earlierCircleIds() = earlier.toList()
+    override fun addEarlierCircle(id: String) { earlier += id }
+    override fun clearEarlierCircle(id: String) { earlier -= id }
     override fun myPostIds(circleId: String): Set<String> = mine[circleId].orEmpty()
     override fun addMyPost(circleId: String, postId: String) { mine.getOrPut(circleId) { mutableSetOf() } += postId }
     override fun anonymousPostIds(circleId: String): Set<String> = anon[circleId].orEmpty()
@@ -172,6 +193,15 @@ class SharedPrefsLocalCircleStore(context: Context) : LocalCircleStore {
     override fun circleIds() = prefs.getString("ids", "").orEmpty().split(',').filter { it.isNotBlank() }
     override fun addCircle(id: String) { val l = circleIds(); if (id !in l) prefs.edit().putString("ids", (l + id).joinToString(",")).apply() }
     override fun removeCircle(id: String) { prefs.edit().putString("ids", (circleIds() - id).joinToString(",")).apply() }
+    override fun earlierCircleIds() = prefs.getString("earlier_ids", "").orEmpty().split(',').filter { it.isNotBlank() }
+    override var appAvatarSynced: String?
+        get() = prefs.getString("app_avatar_synced", null)
+        set(value) { prefs.edit().putString("app_avatar_synced", value).apply() }
+    override var circlesAvatarOwn: Boolean
+        get() = prefs.getBoolean("circles_avatar_own", false)
+        set(value) { prefs.edit().putBoolean("circles_avatar_own", value).apply() }
+    override fun addEarlierCircle(id: String) { val l = earlierCircleIds(); if (id !in l) prefs.edit().putString("earlier_ids", (l + id).takeLast(50).joinToString(",")).apply() }
+    override fun clearEarlierCircle(id: String) { prefs.edit().putString("earlier_ids", (earlierCircleIds() - id).joinToString(",")).apply() }
     override fun myPostIds(circleId: String): Set<String> = set("mine_$circleId")
     override fun addMyPost(circleId: String, postId: String) = put("mine_$circleId", set("mine_$circleId").apply { add(postId) })
     override fun anonymousPostIds(circleId: String): Set<String> = set("anon_$circleId")

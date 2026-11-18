@@ -4,7 +4,9 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.craftflowtechnologies.meetingmind.core.circles2.CircleCovers
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleSettings
+import com.craftflowtechnologies.meetingmind.core.circles2.CoverChoice
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
 import com.craftflowtechnologies.meetingmind.core.circles2.FailureKind
 import com.craftflowtechnologies.meetingmind.core.circles2.InvitePreview
@@ -157,9 +159,22 @@ data class CreateUiState(
     val busy: Boolean = false,
     val error: String? = null,
     val description: String = "",
-    val joinApproval: Boolean = false
+    val joinApproval: Boolean = false,
+    /** A pack picture the person chose. Null means the picture that fits the type, which follows the template. */
+    val coverPack: String? = null,
+    /** Their own photo, uploaded once the circle exists. Wins over [coverPack]. */
+    val coverPhoto: PickedFile? = null
 ) {
     val canCreate: Boolean get() = name.isNotBlank() && displayName.isNotBlank() && types.isNotEmpty() && !busy
+    /** The pack picture shown when no photo of their own is chosen. */
+    val shownCoverPack: String get() = coverPack ?: CircleCovers.defaultFor(template.id, template.space)
+}
+
+/** What to save as the new circle's cover. Null when it is the type's own picture: that needs no saving. */
+internal fun coverToSave(s: CreateUiState): CoverChoice? = when {
+    s.coverPhoto != null -> CoverChoice.Photo(s.coverPhoto.bytes, s.coverPhoto.mime, s.coverPhoto.name)
+    s.coverPack != null && s.coverPack != CircleCovers.defaultFor(s.template.id, s.template.space) -> CoverChoice.Pack(s.coverPack)
+    else -> null
 }
 
 private fun normalizeSpaceArg(raw: String?): String? = when (raw?.trim()?.lowercase()) {
@@ -231,6 +246,8 @@ class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: S
     fun setApproval(on: Boolean) = _state.update { it.copy(prayerApproval = on, requestId = null) }
     fun setJoinApproval(on: Boolean) = _state.update { it.copy(joinApproval = on, requestId = null) }
     fun setWhoCanInvite(w: WhoCanInvite) = _state.update { it.copy(whoCanInvite = w, requestId = null) }
+    fun pickCoverPack(photoId: String) = _state.update { it.copy(coverPack = photoId, coverPhoto = null) }
+    fun pickCoverPhoto(file: PickedFile) = _state.update { it.copy(coverPhoto = file) }
 
     fun create(onCreated: (String) -> Unit) {
         val s = _state.value
@@ -259,7 +276,11 @@ class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: S
                 description = s.description.trim(),
                 space = s.template.space
             ).fold(
-                onOk = { id -> _state.update { it.copy(busy = false, requestId = null) }; onCreated(id) },
+                onOk = { id ->
+                    // The circle exists now. A cover that doesn't save leaves the type's picture, changeable in Settings.
+                    coverToSave(s)?.let { repo.setCover(id, it) }
+                    _state.update { it.copy(busy = false, requestId = null) }; onCreated(id)
+                },
                 onErr = { f ->
                     val friendly = if (f.message.contains("unknown template", ignoreCase = true)) {
                         "\"${s.template.label}\" isn't active on the connected Circles server yet. Redeploy server/circles-api to enable Work and Study templates."

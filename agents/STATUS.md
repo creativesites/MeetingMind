@@ -129,6 +129,22 @@ Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
   - **Not mine:** `DesignSystemGuardTest` fails on `core/ui/mm/AiCraft.kt` (`fontSize = …sp`, from `8d97b49`); its owner needs to fix it.
   - **Pre-existing:** minSdk 24 uses `java.time` without core-library desugaring, a crash risk on Android 7. It's the founder's call.
 
+## Circles: missing circles, sign-in carry-over, covers and profile photo (2026-11-18)
+
+- **Why the founder's circles vanished:** a reinstall gave the phone a new guest Circles account; the circles stayed on the server, and Google sign-in brought them back. A circle made *before* sign-in was then lost, because switching to the existing Google account left it with the guest account.
+- **Fixed (live with the Worker deploy below):**
+  - The new `adoptGuestCircles` route moves a guest's circles (membership, ownership, list) to the signed-in account, proved by the guest's ID token.
+  - Before switching, the app checks the Worker can do this. If it can't, nothing switches.
+- **The phone never forgets circles quietly:** a cache-only "doesn't exist" no longer removes a circle. Circles the current account can't read are kept as "from an earlier sign-in", and the list offers the way back.
+- **Sign-in up front:** a Sign in card is the first thing on the Circles home in every state.
+- **Covers:**
+  - Cover upload in Settings now shows saving, success and a calm error. (Before, it failed silently: Settings had no snackbar.)
+  - Every circle type has a default cover from the image pack. Create and Settings offer the pack, or Upload your own.
+  - A pack cover is stored as `pack:photo_N`, so nothing is uploaded.
+- **Profile photo:** Circles uses the app profile photo until the person picks one in Circles.
+- **Deployed (2026-11-18):** the Worker from `99f1133` (with D5) is live as version `58102286-7f61-4ab3-a12d-e868c5055a8a`; roll back to `a2829b9d` if needed. The carry-over and pack covers work against it. The D5 Firestore rules passed 26/26 on the emulator; the founder is deploying them.
+- **Next:** the premium redesign of every Circles page (Updates and post card, Create post, chat, members, settings, invite), Google-branded sign-in button, bottom insets.
+
 ## Circles experience redesign: Phase B, paused for the team pause (2026-11-16)
 - Design files: `design/Circles Experience Redesign.dc.html`, plus `design/circles-{experience-design-spec,motion-spec,innovation-concepts}.md`.
 - **Founder decisions:**

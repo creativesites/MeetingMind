@@ -44,6 +44,8 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SegmentedControl
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
+import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
@@ -61,8 +63,11 @@ fun CircleSettingsContent(
     onLink: (android.content.Context) -> Unit = {},
     onSwitch: () -> Unit = {},
     onDismissConflict: () -> Unit = {},
-    /** The cover photo picked on this phone. Admins only. */
-    onCover: (PickedFile) -> Unit = {}
+    /** A new cover: a pack picture or a photo picked on this phone. Admins only. */
+    onCover: (com.craftflowtechnologies.meetingmind.core.circles2.CoverChoice) -> Unit = {},
+    /** True while a cover is saving; [coverNote] is the last outcome, shown under the cover (this screen has no snackbar). */
+    coverBusy: Boolean = false,
+    coverNote: CoverNote? = null
 ) {
     val admin = me?.role?.isAdmin == true
     var name by rememberSaveable(circle.id, circle.name) { mutableStateOf(circle.name) }
@@ -75,12 +80,22 @@ fun CircleSettingsContent(
     var reactions by remember(circle.settings) { mutableStateOf(circle.settings.reactions) }
     var guidelines by remember(circle.settings) { mutableStateOf(circle.settings.guidelines) }
     var confirmLeave by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val ctx = androidx.compose.ui.platform.LocalContext.current
-    val pickCover = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri: android.net.Uri? ->
-        if (uri != null) {
-            scope.launch { readPickedAsync(ctx, uri)?.let(onCover) }
+    var choosingCover by remember { mutableStateOf(false) }
+    var unreadablePhoto by remember { mutableStateOf(false) }
+    val pickPhoto = rememberCoverPhotoPicker { picked ->
+        unreadablePhoto = picked == null
+        if (picked != null) {
+            choosingCover = false
+            onCover(com.craftflowtechnologies.meetingmind.core.circles2.CoverChoice.Photo(picked.bytes, picked.mime, picked.name))
         }
+    }
+    if (choosingCover && admin) {
+        CoverChooserSheet(
+            template = circle.template, space = circle.space, currentCover = circle.coverPath, busy = coverBusy,
+            onPickPack = { id -> choosingCover = false; unreadablePhoto = false; onCover(com.craftflowtechnologies.meetingmind.core.circles2.CoverChoice.Pack(id)) },
+            onUpload = pickPhoto,
+            onDismiss = { choosingCover = false }
+        )
     }
     val changed = admin && (name.trim() != circle.name || vocab.trim() != circle.vocab || types != circle.settings.allowedTypes ||
         description.trim() != circle.description || joinApproval != circle.settings.joinApproval || approval != circle.settings.prayerApproval || who != circle.settings.whoCanInvite || reactions != circle.settings.reactions || guidelines != circle.settings.guidelines)
@@ -126,11 +141,10 @@ fun CircleSettingsContent(
                                 )
                             )
                     ) {
-                        if (circle.coverPath != null) {
-                            MediaImage(circle.id, circle.coverPath, Modifier.fillMaxSize(), "Cover photo")
-                        } else {
-                            Box(Modifier.fillMaxSize().padding(MM.space.l), contentAlignment = Alignment.BottomStart) {
-                                InitialsAvatar(circle.name, size = 48.dp)
+                        CircleCoverImage(circle.coverPath, circle.template, circle.space, circle.id, Modifier.fillMaxSize(), contentDescription = "Cover")
+                        if (coverBusy) {
+                            Box(Modifier.matchParentSize().background(MM.colors.scrim.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+                                androidx.compose.material3.CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp, color = FixedWhite)
                             }
                         }
                         Box(
@@ -168,7 +182,7 @@ fun CircleSettingsContent(
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
                                     .padding(MM.space.s)
-                                    .clickable { pickCover.launch("image/*") }
+                                    .clickable(enabled = !coverBusy) { choosingCover = true }
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -182,7 +196,7 @@ fun CircleSettingsContent(
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Text(
-                                        if (circle.coverPath != null) "Change cover" else "Add cover",
+                                        if (coverBusy) "Saving…" else "Change cover",
                                         style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
                                         color = MM.colors.ink
                                     )
@@ -196,12 +210,26 @@ fun CircleSettingsContent(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("Cover photo", style = MM.type.bodyStrong, color = MM.colors.ink)
-                            Text("Shown at the top of the circle home.", style = MM.type.caption, color = MM.colors.inkSecondary)
+                            Text("Cover", style = MM.type.bodyStrong, color = MM.colors.ink)
+                            Text(
+                                if (circle.coverPath == null) "A picture chosen for this kind of circle. Shown at the top of the circle home."
+                                else "Shown at the top of the circle home.",
+                                style = MM.type.caption, color = MM.colors.inkSecondary
+                            )
                         }
                         if (admin) {
-                            TextAction(if (circle.coverPath != null) "Replace" else "Upload", { pickCover.launch("image/*") })
+                            TextAction("Change", { if (!coverBusy) choosingCover = true })
                         }
+                    }
+                    val note = when {
+                        unreadablePhoto -> CoverNote("That photo couldn't be read. Try another, or pick one of ours.", failed = true)
+                        else -> coverNote
+                    }
+                    if (note != null && !coverBusy) {
+                        StatusLine(
+                            if (note.failed) StatusKind.Warning else StatusKind.Info, note.text,
+                            modifier = Modifier.padding(start = MM.space.m, end = MM.space.m, bottom = MM.space.s)
+                        )
                     }
                 }
             }
@@ -343,3 +371,6 @@ private fun PermissionSummaryRow(role: Role, summary: String) {
         Text(summary, style = MM.type.caption, color = MM.colors.inkSecondary, modifier = Modifier.weight(1f))
     }
 }
+
+/** The outcome of the last cover change, shown in place. */
+data class CoverNote(val text: String, val failed: Boolean)

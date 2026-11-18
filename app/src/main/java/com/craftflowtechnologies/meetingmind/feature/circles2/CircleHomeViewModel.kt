@@ -370,6 +370,7 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
 
     /** Sets my profile photo. The Worker writes the new version onto my member doc in every circle I'm in. */
     fun setProfilePhoto(file: PickedFile) {
+        say("Updating your photo…")
         viewModelScope.launch {
             val jpeg = withContext(Dispatchers.Default) { avatarJpeg(file.bytes) }
             if (jpeg == null) { fail(CirclesFailure(FailureKind.Rejected, "That photo couldn't be read. Try another.", "bad_image")); return@launch }
@@ -381,14 +382,19 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         viewModelScope.launch { repo.removeProfilePhoto().fold(onOk = { say("Profile photo removed.") }, onErr = ::fail) }
     }
 
-    /** The cover photo for the circle's hero. Admins only; the Worker checks it. */
-    fun setCover(file: PickedFile) {
+    /** Saving state and the last outcome of a cover change, for Settings (which has no snackbar of its own). */
+    data class CoverUi(val busy: Boolean = false, val note: CoverNote? = null)
+    private val _cover = MutableStateFlow(CoverUi())
+    val cover: StateFlow<CoverUi> = _cover
+
+    /** A new cover for the circle's hero: a pack picture (no upload) or a photo. Admins only; the Worker checks it. */
+    fun setCover(choice: com.craftflowtechnologies.meetingmind.core.circles2.CoverChoice) {
+        if (_cover.value.busy) return
+        _cover.value = CoverUi(busy = true)
         viewModelScope.launch {
-            repo.uploadAttachment(circleId, MediaKind.Image, file.bytes, file.mime, file.name, null).fold(
-                onOk = { a ->
-                    repo.api.updateCircle(circleId, null, null, null, null, coverPath = a.path).fold(onOk = { say("Cover photo saved.") }, onErr = ::fail)
-                },
-                onErr = ::fail
+            repo.setCover(circleId, choice).fold(
+                onOk = { _cover.value = CoverUi(note = CoverNote("Cover saved.", failed = false)) },
+                onErr = { f -> _cover.value = CoverUi(note = CoverNote(com.craftflowtechnologies.meetingmind.core.circles2.coverFailureLine(f), failed = true)) }
             )
         }
     }

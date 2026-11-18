@@ -106,12 +106,9 @@ private fun HomeBanner(circle: Circle, faces: List<Member>, myUid: String?, nav:
     Box(
         Modifier.fillMaxWidth().height(120.dp).clip(MM.radius.card)
     ) {
-        if (circle.coverPath != null) {
-            MediaImage(circle.id, circle.coverPath, Modifier.fillMaxSize(), "Cover photo for ${circle.name}")
-        } else {
-            RippleCover(circle.id, Modifier.fillMaxSize())
-        }
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)))))
+        // Its own photo, a pack picture it chose, or the picture that fits its type.
+        CircleCoverImage(circle.coverPath, circle.template, circle.space, circle.id, Modifier.fillMaxSize(), contentDescription = "Cover for ${circle.name}")
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, MM.colors.scrim.copy(alpha = 0.7f)))))
         Column(Modifier.align(Alignment.BottomStart).padding(MM.space.m), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (circle.description.isNotBlank()) {
                 Text(circle.description, style = MM.type.secondary, color = com.craftflowtechnologies.meetingmind.ui.theme.CirclesFixedColors.White, maxLines = 2, overflow = TextOverflow.Ellipsis)

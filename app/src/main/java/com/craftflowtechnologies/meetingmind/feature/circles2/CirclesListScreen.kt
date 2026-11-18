@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -135,6 +137,16 @@ fun CirclesListScreen(
     var checking by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { vm.refreshEngagement() }
+    // Circles uses the app's profile photo until the person picks one in Circles.
+    LaunchedEffect(Unit) {
+        val path = runCatching {
+            com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).preferencesFlow.first().identity.avatarPath
+        }.getOrNull()
+        val file = path?.let { java.io.File(it) }?.takeIf { it.isFile } ?: return@LaunchedEffect
+        repo.syncAppAvatar("${file.absolutePath}@${file.lastModified()}") {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { avatarJpeg(file.readBytes()) }.getOrNull() }
+        }
+    }
     LaunchedEffect(initialCode) {
         if (initialCode != null) { vm.onPaste(initialCode); showJoin = true; onInitialCodeHandled() }
     }
@@ -296,21 +308,19 @@ fun CirclesListContent(
                 modifier = Modifier.padding(horizontal = MM.space.l),
                 illustration = { Icon(Icons.Rounded.Groups, null, tint = MM.colors.inkMuted, modifier = Modifier.padding(top = MM.space.xl)) }
             )
-            CirclesListState.Loading -> Column(Modifier.padding(MM.space.l)) { StatusLine(StatusKind.Info, "Loading your circles...") }
+            CirclesListState.Loading -> Column(Modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+                if (account != null) CirclesAccountCard(account, 0, onLink, onSwitch, onDismissConflict)
+                StatusLine(StatusKind.Info, "Loading your circles...")
+            }
             is CirclesListState.Ready -> if (state.circles.isEmpty()) {
-                Column {
+                // Signed out and empty is where a reinstall or a new phone lands: sign-in comes first, then the welcome.
+                Column(
+                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l, vertical = MM.space.s),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.m)
+                ) {
                     state.note?.let { Note(it, onRefresh) }
-                    EmptyState(
-                        title = "No circles yet",
-                        body = "A circle is a small private space for your team, study group, or faith community to share updates, resources, and chat.",
-                        modifier = Modifier.padding(horizontal = MM.space.l),
-                        action = {
-                            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s), horizontalAlignment = Alignment.CenterHorizontally) {
-                                PrimaryButton("Start a circle", createForActiveSpace, leadingIcon = Icons.Rounded.Add)
-                                SecondaryButton("Join with a code", onShowJoin)
-                            }
-                        }
-                    )
+                    if (account != null) CirclesAccountCard(account, state.earlier, onLink, onSwitch, onDismissConflict)
+                    CirclesWelcome(onStart = createForActiveSpace, onJoin = onShowJoin)
                 }
             } else {
                 val filteredCircles = remember(state.circles, selectedSpace, searchQuery) {
@@ -340,6 +350,7 @@ fun CirclesListContent(
                         verticalArrangement = Arrangement.spacedBy(MM.space.m)
                     ) {
                         state.note?.let { n -> item { Note(n, onRefresh) } }
+                        if (account != null) item(key = "account") { CirclesAccountCard(account, state.earlier, onLink, onSwitch, onDismissConflict) }
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                                 Text("Your circles", style = MM.type.title.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
@@ -434,7 +445,6 @@ fun CirclesListContent(
                                 }
                             }
                         }
-                        if (account != null) item { KeepCirclesOffer(account, onLink, onSwitch, onDismissConflict) }
                         item {
                             Row(
                                 Modifier.fillMaxWidth().padding(top = MM.space.s),
@@ -480,13 +490,7 @@ private fun FeaturedCircleCard(c: Circle, modifier: Modifier = Modifier, onClick
                         )
                     )
             ) {
-                if (c.coverPath != null) {
-                    MediaImage(c.id, c.coverPath, Modifier.fillMaxSize(), "Cover photo for ${c.name}")
-                } else {
-                    Box(Modifier.fillMaxSize().padding(MM.space.l), contentAlignment = Alignment.BottomStart) {
-                        InitialsAvatar(c.name, size = 52.dp)
-                    }
-                }
+                CircleCoverImage(c.coverPath, c.template, c.space, c.id, Modifier.fillMaxSize(), contentDescription = "Cover for ${c.name}")
                 Box(
                     Modifier
                         .matchParentSize()
@@ -575,15 +579,7 @@ private fun CircleRow(c: Circle, modifier: Modifier = Modifier, onClick: () -> U
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
-            if (c.coverPath != null) {
-                MediaImage(
-                    c.id, c.coverPath,
-                    Modifier.size(48.dp).clip(MM.radius.card),
-                    "Cover photo for ${c.name}"
-                )
-            } else {
-                InitialsAvatar(c.name, size = 48.dp)
-            }
+            CircleCoverImage(c.coverPath, c.template, c.space, c.id, Modifier.size(52.dp).clip(MM.radius.card), thumb = true)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -631,12 +627,12 @@ private fun CircleRow(c: Circle, modifier: Modifier = Modifier, onClick: () -> U
     }
 }
 
-/** What a code leads to, shown before the person joins. The cover is generated: real covers need membership. */
+/** What a code leads to, shown before the person joins. A pack cover shows as is; an uploaded one needs membership, so the type's picture stands in. */
 @Composable
 private fun JoinPreviewCard(p: InvitePreview) {
     MMCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
-            RippleCover(seed = p.circleId ?: p.name, modifier = Modifier.size(56.dp).clip(MM.radius.card))
+            CircleCoverImage(p.coverPath, p.template, p.space, circleId = null, modifier = Modifier.size(56.dp).clip(MM.radius.card), thumb = true)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                 Text(p.name, style = MM.type.heading, color = MM.colors.ink)
                 Text(
