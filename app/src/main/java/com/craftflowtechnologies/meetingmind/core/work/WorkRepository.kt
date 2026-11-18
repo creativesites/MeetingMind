@@ -527,6 +527,21 @@ class WorkRepository(private val database: MeetMindDatabase) {
 
         fun followUpSentAt(metadataJson: String): Long? =
             runCatching { JSONObject(metadataJson).optString(FOLLOW_UP_SENT).toLongOrNull() }.getOrNull()
+
+        /** "Not processed": the audio is kept but no notes have been made (saved, recovered, queued, or waiting on a model). */
+        const val TRANSCRIPT_NOT_PROCESSED = "NOT_PROCESSED"
+
+        /**
+         * The transcript marker for a note's recordings. Only a READY meeting reads as ready: a recording that was
+         * saved or recovered (SAVED), queued for later (QUEUED) or is waiting on a model (MODEL_REQUIRED) has no notes yet.
+         */
+        fun transcriptIndicator(statuses: List<String>): String? = when {
+            statuses.isEmpty() -> null
+            statuses.any { it == "ERROR" } -> "ERROR"
+            statuses.any { it == "PROCESSING" || it == "RECORDING" } -> "PROCESSING"
+            statuses.any { it == "READY" } -> "READY"
+            else -> TRANSCRIPT_NOT_PROCESSED
+        }
     }
 
     /** What a page of notes shows beside each title: a recording, its transcript state, open tasks. One bounded query set per page. */
@@ -537,12 +552,7 @@ class WorkRepository(private val database: MeetMindDatabase) {
         (work.openTaskCountsForNotes(ids) + work.openMeetingTaskCountsForNotes(ids)).forEach { tasks[it.noteId] = (tasks[it.noteId] ?: 0) + it.count }
         ids.associateWith { id ->
             val st = statuses[id].orEmpty()
-            NoteIndicators(hasRecording = st.isNotEmpty(), transcript = when {
-                st.isEmpty() -> null
-                st.any { it == "ERROR" } -> "ERROR"
-                st.any { it == "PROCESSING" || it == "RECORDING" } -> "PROCESSING"
-                else -> "READY"
-            }, openTasks = tasks[id] ?: 0)
+            NoteIndicators(hasRecording = st.isNotEmpty(), transcript = transcriptIndicator(st), openTasks = tasks[id] ?: 0)
         }
     }
 
