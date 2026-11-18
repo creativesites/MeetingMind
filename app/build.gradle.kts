@@ -185,9 +185,12 @@ android {
    * emulator. An arm64 emulator (the default on Apple Silicon) is fine. Add "x86_64" to the
    * include list if an x86 emulator is needed.
    */
+  // Off when building an app bundle: Play splits a bundle by ABI itself, and AGP now refuses a bundle
+  // while ABI splits are on ("Multiple shrunk-resources files found", issuetracker 402800800).
+  val buildingBundle = gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
   splits {
     abi {
-      isEnable = true
+      isEnable = !buildingBundle
       reset()
       include("arm64-v8a", "armeabi-v7a")
       isUniversalApk = false
