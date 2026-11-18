@@ -30,7 +30,10 @@ class WorkHomeLayoutTest {
     }
 
     @Test fun needsRespectsACustomCap() {
-        assertEquals(2 to 1, WorkHomeLayout.needsShown(reviews = 5, followUps = 5, cap = 3))
+        // Reviews come first, so five reviews fill a cap of 3 on their own.
+        assertEquals(3 to 0, WorkHomeLayout.needsShown(reviews = 5, followUps = 5, cap = 3))
+        // Follow-ups fill the room the reviews leave under the custom cap.
+        assertEquals(2 to 1, WorkHomeLayout.needsShown(reviews = 2, followUps = 5, cap = 3))
     }
 
     @Test fun pastEventIsPast() {
