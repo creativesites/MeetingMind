@@ -32,6 +32,7 @@ Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
   - Checking the Play Data safety form against `docs/DATA_SAFETY.md`.
   - Deleting the old `$rc_*` packages.
   - Switching the launch offers off when the promo ends.
+- **Next store build (Play warning, fix by Feb 2027):** Play scored release 46 at 0% obfuscation, below its 25% threshold. R8 is on, but nothing is being renamed. The likely cause is a library rule that turns renaming off. Plan and test list: `agents/PLAY_STORE.md`, "Before the next store build".
 
 ## Notes rendering: no raw JSON, inline maths and chemistry, citations, YouTube source (2026-11-16)
 - Plan: `design/notes-blocks-and-math-plan.md` parts A, B and C, plus the founder's YouTube items (play on YouTube, source line at the bottom) and the note-editor hooks for "Report this" (part E).

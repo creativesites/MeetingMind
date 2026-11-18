@@ -75,3 +75,49 @@ The code is complete. These steps need the store accounts, so they are done outs
 **Prices and trials** are set in Play Console, not in the app. The prices in `SimulatedBillingGateway` are test placeholders and are never used by a release build.
 
 **Testing before launch**: a debug build with no RevenueCat key uses the simulated store, so the paywall can be run on a device. A debug build with a RevenueCat Test Store key (`revenuecat.testApiKey` in `local.properties`) uses real RevenueCat flows.
+
+## Before the next store build: Play's code-optimisation warning (raised 2026-11-18, fix by Feb 2027)
+**What Play said** (Play Console, "Needs attention", on release 46, `1.0-v46`; labelled Memory usage, Bad behaviour):
+"DEX code optimisation is below our threshold: Obfuscation 0%." Any category under 25% may affect the
+app's visibility and its ability to publish. Deadline: **February 2027**. Guide:
+https://developer.android.com/topic/performance/vitals/code-optimization
+
+**What it means.** R8 shrinks, optimises and *obfuscates* (renames classes and methods to short names) the
+release code. Play measured how much of our code was renamed and found none. Shrinking and optimising are
+not flagged. Smaller, renamed code makes the download smaller, and the app starts faster and uses less memory.
+That is why Play files the warning under memory.
+
+**What we know (2026-11-18).** `app/build.gradle.kts` release already has `isMinifyEnabled = true` and
+`isShrinkResources = true` with `proguard-android-optimize.txt`. `app/proguard-rules.pro` has **no**
+`-dontobfuscate`. v47 to v49 use the same rules, so they will score the same. Exactly 0% means renaming is
+switched off for the whole app, not just for the kept libraries. The likely cause is a library whose own
+packaged rules contain `-dontobfuscate`, which applies to the whole app. This is not confirmed yet: the
+release build output and the Gradle cache were cleared, so the merged rules could not be read.
+
+**What to do (by the build runner, on a release build):**
+1. Find the cause. After `bundleRelease`, open `app/build/outputs/mapping/release/configuration.txt`
+   (R8's merged rules; or add `-printconfiguration build/r8-merged.txt` to `proguard-rules.pro` for one
+   build). Search it for `-dontobfuscate`. The comment above it names the library it came from. Also check
+   `mapping.txt`: if `com.craftflowtechnologies…` classes map to themselves, nothing was renamed.
+2. Remove it. Update that library if a newer version drops the rule. Otherwise, AGP 9.1 can be told to ignore one
+   library's packaged rules. Then copy into `proguard-rules.pro` only the keep rules that library really needs.
+3. Narrow our broad keeps. These keep every name in a whole library and lower the score:
+   `com.k2fsa.sherpa.onnx.**`, `app.rive.**`, `com.google.mediapipe.**`, `com.revenuecat.purchases.**`,
+   `com.tom_roush.**`, `com.google.mlkit.vision.text.**`. Keep the JNI and reflection entry points.
+   Use `-keep,allowobfuscation` or the library's own packaged rules where only reachability matters.
+   RevenueCat, ML Kit and MediaPipe ship their own rules.
+4. Test the release build on a phone before upload, because renaming breaks code that looks things up by
+   name. Check:
+   - Record and transcribe (sherpa-onnx, JNI).
+   - On-device AI (MediaPipe).
+   - Rive animations.
+   - Buy and restore (RevenueCat).
+   - Circles (Firestore models).
+   - PDF reading and scans (PdfBox, ML Kit).
+   - Opening an existing database after an update (Room).
+   - Anything parsed from JSON by field name.
+5. Crash reports: the bundle carries R8's `mapping.txt`, so Play Console deobfuscates stack traces itself.
+   Our own CrashLog stack traces will show short names. Keep each build's `mapping.txt` (CI artifact), so
+   they can be read with `retrace`.
+6. Check the result in Play Console › Android vitals after the next upload. The target is 25% or more in
+   every category.
