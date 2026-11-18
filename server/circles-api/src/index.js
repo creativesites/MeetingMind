@@ -1,5 +1,5 @@
 // MeetingMind Circles API (Cloudflare Worker). See README.md.
-import { authenticate } from "./auth.js";
+import { authenticate, verifyIdToken, googleKeyGetter } from "./auth.js";
 import { ApiError } from "./errors.js";
 import { Firestore } from "./firestore.js";
 import { Fcm } from "./fcm.js";
@@ -61,6 +61,8 @@ export async function handle(request, env, ctxExec, deps = {}) {
     const { db, fcm } = deps.services || services(env);
     const ctx = {
       env, db, fcm, kv: env.RATE, uid, body, now: new Date(), requestId,
+      // A second ID token in the body (adoptGuestCircles), checked the same way as the caller's own.
+      verifyToken: deps.verifyToken || ((t) => verifyIdToken(t, { projectId: env.FIREBASE_PROJECT_ID, getKey: googleKeyGetter() })),
       ip: request.headers.get("CF-Connecting-IP") || "unknown",
       defer: (p) => ctxExec.waitUntil(Promise.resolve(p).catch((e) => console.error("deferred", e?.message))),
     };

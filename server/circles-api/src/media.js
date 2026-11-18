@@ -246,9 +246,16 @@ export async function checkPostAttachments(ctx, circleId, list) {
   return out;
 }
 
-/** The cover image of a circle: an admin's choice of an uploaded image in this circle. null clears it. */
+/** A picture from the app's own image pack ("pack:photo_206"): drawn from the app, so nothing is uploaded or stored. */
+const PACK_COVER = /^pack:photo_[0-9]{1,6}$/;
+
+/**
+ * The cover image of a circle: an admin's choice of an uploaded image in this circle, or a picture from the app's
+ * image pack. null clears it.
+ */
 export async function checkCover(ctx, circleId, path) {
   if (path === null) return null;
+  if (typeof path === "string" && PACK_COVER.test(path)) return path;
   uuidFromPath(circleId, path);
   const head = await ctx.env.MEDIA.head(path);
   if (!head) throw notFound("That image");

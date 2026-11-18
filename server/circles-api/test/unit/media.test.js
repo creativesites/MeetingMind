@@ -205,6 +205,19 @@ test("cover: an admin sets an uploaded image; members and non-images are refused
   assert.equal(W.db.dump(C(id)).coverPath, null);
 });
 
+test("cover: a picture from the app's image pack is stored as a reference; anything else that looks like one is refused", async () => {
+  const W = world();
+  const id = await circle(W);
+  await joinAs(W, "pat", id, "Pat");
+  await W.call("owner", "updateCircle", { circleId: id, coverPath: "pack:photo_206" });
+  assert.equal(W.db.dump(C(id)).coverPath, "pack:photo_206");
+  assert.equal((await W.err("pat", "updateCircle", { circleId: id, coverPath: "pack:photo_510" })).status, 403);
+  for (const badRef of ["pack:../secret", "pack:photo_", "pack:photo_12x", "pack:other_1", "PACK:photo_1"]) {
+    assert.equal((await W.err("owner", "updateCircle", { circleId: id, coverPath: badRef })).code, "bad_request", badRef);
+  }
+  assert.equal(W.db.dump(C(id)).coverPath, "pack:photo_206");
+});
+
 test("sweep: old unreferenced media goes; media a message, post, pending request or cover uses stays; recent media stays", async () => {
   const W = world();
   const id = await circle(W);

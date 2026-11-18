@@ -180,6 +180,59 @@ async function myCircles(ctx) {
   return { circleIds: ids.filter((_, i) => members[i]) };
 }
 
+const ROLE_RANK = { owner: 3, admin: 2, member: 1 };
+
+/**
+ * Moves the circles of the guest (anonymous) account this phone used before signing in over to the signed-in account.
+ * Signing in with a Google account that already exists switches the phone to that account; without this, a circle made
+ * before sign-in would stay with the abandoned guest account and vanish from the list. The caller proves it held the
+ * guest account with that account's ID token, taken just before switching (valid for an hour). Membership, ownership
+ * and the circle list move; the only thing removed is the guest's member record, which the new one replaces.
+ */
+async function adoptGuestCircles(ctx) {
+  const token = ctx.body.guestToken;
+  if (typeof token !== "string" || !token) throw new ApiError(400, "bad_request", "Missing guestToken");
+  let guest;
+  try { guest = await ctx.verifyToken(token); } catch { throw new ApiError(403, "forbidden", "That earlier sign-in couldn't be confirmed."); }
+  if (guest?.claims?.firebase?.sign_in_provider !== "anonymous") throw new ApiError(403, "forbidden", "Only a guest sign-in can be moved.");
+  if (guest.uid === ctx.uid) return { moved: [], skipped: [] };
+  await hit(ctx.kv, `rl:adopt:${ctx.uid}`, RATE.createCircle);
+  const guestMeta = await ctx.db.get(`userMeta/${guest.uid}`);
+  const ids = (guestMeta?.data.circleIds || []).slice(0, LIMITS.circlesPerUser);
+  const moved = new Set();
+  const skipped = new Set();
+  for (const id of ids) {
+    await ctx.db.runTx(async (tx) => {
+      moved.delete(id); skipped.delete(id);
+      const circle = await tx.get(C(id));
+      const old = await tx.get(`${C(id)}/members/${guest.uid}`);
+      const mine = await tx.get(`${C(id)}/members/${ctx.uid}`);
+      const myMeta = await tx.get(`userMeta/${ctx.uid}`);
+      const gMeta = await tx.get(`userMeta/${guest.uid}`);
+      if (!circle || circle.data.closed || !old) return [];
+      const myIds = myMeta?.data.circleIds || [];
+      if (!mine && myIds.length >= LIMITS.circlesPerUser) { skipped.add(id); return []; }
+      const writes = [w.del(`${C(id)}/members/${guest.uid}`)];
+      const circleUpdate = {};
+      if (circle.data.ownerUid === guest.uid) circleUpdate.ownerUid = ctx.uid;
+      if (mine) {
+        // Already a member: keep the stronger role, and the circle has one member fewer.
+        if ((ROLE_RANK[old.data.role] || 0) > (ROLE_RANK[mine.data.role] || 0)) writes.push(w.update(`${C(id)}/members/${ctx.uid}`, { role: old.data.role }));
+        circleUpdate.memberCount = Math.max(1, (circle.data.memberCount || 1) - 1);
+      } else {
+        writes.push(w.create(`${C(id)}/members/${ctx.uid}`, { ...old.data, ...avatarField(myMeta) }));
+        writes.push(userMetaWrite(ctx.uid, { circleCount: myIds.length + 1, circleIds: [...myIds.filter((x) => x !== id), id] }));
+      }
+      if (Object.keys(circleUpdate).length) writes.push(w.update(C(id), circleUpdate));
+      const gIds = (gMeta?.data.circleIds || []).filter((x) => x !== id);
+      writes.push(userMetaWrite(guest.uid, { circleCount: gIds.length, circleIds: gIds }));
+      moved.add(id);
+      return writes;
+    });
+  }
+  return { moved: [...moved], skipped: [...skipped] };
+}
+
 // ---------- invites ----------
 async function createInvite(ctx) {
   const id = str(ctx.body, "circleId");
@@ -1071,7 +1124,7 @@ export const HANDLERS = {
   createCircle, updateCircle, createInvite, createEmailInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
   createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, setWorkStatus, toggleChecklistItem, deletePost,
   prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken, notifyChat,
-  createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
+  createPoll, closePoll, startChain, celebrate, myCircles, adoptGuestCircles, reportMessage,
   decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp, claimBringItem,
   setExternal, setDecisionStatus, previewInvite,
   createUploadTicket, sendMessage, deleteMedia, removeAvatar,
