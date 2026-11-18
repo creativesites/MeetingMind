@@ -48,13 +48,23 @@ object RecordingTitleBackfill {
     /** Deliberately small: a launch should not spend minutes of inference retitling a library. */
     private const val MAX_PER_RUN = 3
 
+    /**
+     * Wait while a pipeline runs or a recording is being captured right now. Capture is read
+     * from the recording service, not from RECORDING rows: a row keeps that status after a stop
+     * until its notes are made, and one stopped recording left unprocessed used to stop every
+     * later backfill.
+     */
+    internal fun shouldWait(processingRows: Int, capturing: Boolean): Boolean = processingRows > 0 || capturing
+
     suspend fun run(context: Context): Unit = withContext(Dispatchers.IO) {
         runCatching {
             val database = MeetMindDatabase.getInstance(context)
             val meetingDao = database.meetingDao()
             // Never compete with a recording or an active pipeline for the one LLM allocation.
-            if (meetingDao.getMeetingsWithStatus(MeetingStatus.PROCESSING.name).isNotEmpty() ||
-                meetingDao.getMeetingsWithStatus(MeetingStatus.RECORDING.name).isNotEmpty()
+            if (shouldWait(
+                    processingRows = meetingDao.getMeetingsWithStatus(MeetingStatus.PROCESSING.name).size,
+                    capturing = com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService.capturing.value
+                )
             ) {
                 return@runCatching
             }

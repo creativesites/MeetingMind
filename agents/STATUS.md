@@ -85,7 +85,8 @@ Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
   - If the system ends the service, the mic is released and the journal kept.
   - On launch, an interrupted recording is saved automatically as a SAVED meeting with "Make notes / Later". A new recording parks an unrecovered journal instead of overwriting it.
   - Capture was already crash-safe: ADTS with a sync every 8 s. A breadcrumb logs any phone that takes the MPEG_4 fallback.
-  - Tests: 46/46 green (Learning run fix5). Phone checks on the S20+ are pending.
+  - `584ed3a`. Tests: 46/46 green. S20+: survived swipe-away; notification Stop ran notes to COMPLETED with the app closed; both notifications cleared.
+  - Follow-up: title backfill waits on live capture, not on RECORDING rows, so a stopped recording no longer blocks it. Open: a SAVED recording shows as "Ready" in NoteBlocks.kt and WorkRepository.kt (owners told).
 
 ## Work premium redesign, Phase B: paused for the team release (2026-11-16)
 - **Founder-approved design:** `design/work-vertical-design-spec.md` §R (revision 2) and `design/Work Vertical Redesign.dc.html`. Commits on this branch (none pushed):
