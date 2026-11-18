@@ -498,6 +498,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
                     }
                     navController.navigate(Routes.recordTypeRoute(RecordingType.MEETING)) { launchSingleTop = true }
+                },
+                // Picked "On this phone": Home underneath, the guided on-device setup on top, so Back lands on Home.
+                onSetUpOnDevice = {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                    navController.navigate(Routes.SETUP) { launchSingleTop = true }
                 }
             )
         }
@@ -1617,6 +1624,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     // After a real recording's notes appear: one gentle, dismissible offer (never the sample, never more than weekly).
     com.craftflowtechnologies.meetingmind.feature.paywall.PostResultOfferHost(
         onResultScreen = currentRoute == Routes.MEETING_DETAIL,
+        meetingId = if (currentRoute == Routes.MEETING_DETAIL) currentBackStackEntry?.arguments?.getString("meetingId") else null,
         onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) { launchSingleTop = true } }
     )
 

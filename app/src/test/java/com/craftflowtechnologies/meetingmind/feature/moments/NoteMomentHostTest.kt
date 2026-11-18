@@ -251,7 +251,7 @@ class NoteMomentHostTest {
             )
         )
         assertEquals(
-            null,
+            "", // Behind the Faith lock nothing is planned yet (the empty subject), as in noteMomentSubject.
             selectNoteMomentSubject(
                 noteLoaded = true,
                 locked = true,

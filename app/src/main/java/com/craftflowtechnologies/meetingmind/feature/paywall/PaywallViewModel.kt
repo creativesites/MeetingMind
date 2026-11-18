@@ -30,7 +30,7 @@ data class PaywallUiState(
     /** The store is still processing a purchase: don't offer to start another. */
     val pending: Boolean = false,
     val message: String? = null,
-    val outcome: OutcomeCopy = PaywallCopy.outcome(emptySet(), emptySet()),
+    val outcome: OutcomeCopy = PaywallCopy.outcome(emptySet()),
     /** Set once the person owns a plan; the screen then thanks them and closes. */
     val purchased: Boolean = false
 ) {
@@ -57,9 +57,11 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
 
     init {
         viewModelScope.launch {
-            val saved = prefs.preferencesFlow.first()
-            val outcome = PaywallCopy.outcome(saved.onboardingGoals, saved.onboardingOutcomes)
-            val offers = gateway.offers()
+            // An unreadable store or a failing store call leaves the general headline and "plans unavailable",
+            // never a crash on the way to the plans.
+            val spaces = runCatching { prefs.preferencesFlow.first().identity.spaces }.getOrDefault(emptySet())
+            val outcome = PaywallCopy.outcome(spaces)
+            val offers = runCatching { gateway.offers() }.getOrDefault(emptyList())
             _state.update { it.copy(loading = false, offers = offers, selectedId = defaultOffer(offers)?.id, outcome = outcome) }
         }
     }
@@ -147,12 +149,12 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
     /** Records that the paywall was put in front of the person unasked, for the weekly limit. */
     fun shown(trigger: PaywallTrigger) {
         Analytics.track(Events.PAYWALL_VIEWED, "placement" to trigger.name.lowercase())
-        if (trigger != PaywallTrigger.SETTINGS) viewModelScope.launch { prefs.markPaywallShown(System.currentTimeMillis(), trigger == PaywallTrigger.FIRST_RESULT) }
+        if (trigger != PaywallTrigger.SETTINGS) viewModelScope.launch { runCatching { prefs.markPaywallShown(System.currentTimeMillis(), trigger == PaywallTrigger.FIRST_RESULT) } }
     }
 
     fun dismissed() {
         Analytics.track(Events.PAYWALL_DISMISSED)
-        viewModelScope.launch { prefs.recordPaywallDismissed() }
+        viewModelScope.launch { runCatching { prefs.recordPaywallDismissed() } }
     }
 
     fun exitSheetShown() = Analytics.track(Events.EXIT_SHEET_SHOWN)

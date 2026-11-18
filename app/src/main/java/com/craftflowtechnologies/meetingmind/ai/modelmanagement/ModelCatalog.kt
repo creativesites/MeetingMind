@@ -21,7 +21,7 @@ object ModelCatalog {
     val sileroVad = AiModelInfo(
         id = "vad_silero",
         name = "Silero Voice Activity Detection",
-        capability = setOf(ModelCapability.TRANSCRIPTION),
+        capability = setOf(ModelCapability.VOICE_ACTIVITY),
         files = listOf(
             ModelFileSpec(
                 fileName = "silero_vad.onnx",

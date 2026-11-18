@@ -93,8 +93,14 @@ class AskEverythingEngine(
     private val maxSources: Int = 14,
     private val localModelProvider: (suspend () -> LanguageModel?)? = null,
     private val preferLocal: Boolean = false,
-    private val onLocalFinished: (() -> Unit)? = null
+    private val onLocalFinished: (() -> Unit)? = null,
+    /** True when any found source must stay on the phone (a confidential project): the answer is then
+     * written on the phone, never by a cloud model, whatever the processing profile. */
+    private val keepOnDevice: (suspend (List<AskSource>) -> Boolean)? = null
 ) {
+    private suspend fun cloudAllowedFor(sources: List<AskSource>): Boolean =
+        keepOnDevice?.let { check -> runCatching { !check(sources) }.getOrDefault(false) } ?: true
+
     fun askStream(question: String): Flow<AskEverythingStreamEvent> = flow {
         val cloudReady = !preferLocal && transport.refreshConfigured()
         if (!cloudReady && localModelProvider == null) {
@@ -106,6 +112,11 @@ class AskEverythingEngine(
             emit(AskEverythingStreamEvent.Complete(AiResult.Success(AskAnswer("I couldn't find anything about that in your notes, recordings or tasks.", emptyList(), emptyList(), emptyList()))))
             return@flow
         }
+        val useCloud = cloudReady && cloudAllowedFor(sources)
+        if (!useCloud && localModelProvider == null) {
+            emit(AskEverythingStreamEvent.Complete(AiResult.ModelUnavailable("local-llm", CONFIDENTIAL_NEEDS_LOCAL)))
+            return@flow
+        }
         val model = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL
         val system = (if (sources.any { it.faith }) Prompts.faithContract + "\n\n" else "") + Prompts.get("ask_everything").system()
         val raw = StringBuilder()
@@ -113,7 +124,7 @@ class AskEverythingEngine(
         var failureMsg: String? = null
         var emittedText = false
 
-        if (cloudReady) {
+        if (useCloud) {
             transport.stream(
                 GeminiRequest(
                     model,
@@ -198,9 +209,10 @@ class AskEverythingEngine(
         if (sources.isEmpty()) {
             return AiResult.Success(AskAnswer("I couldn't find anything about that in your notes, recordings or tasks.", emptyList(), emptyList(), emptyList()))
         }
-        // 3. Answer from those sources only.
+        // 3. Answer from those sources only (on the phone when any of them must stay there).
+        val useCloud = cloudReady && cloudAllowedFor(sources)
         val system = (if (sources.any { it.faith }) Prompts.faithContract + "\n\n" else "") + Prompts.get("ask_everything").system()
-        if (cloudReady) {
+        if (useCloud) {
             val res = transport.execute(GeminiRequest(model, system, "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question", timeoutMs = 60_000))
             if (res is AiResult.Success) return AiResult.Success(AskEverything.parse(res.value, sources))
             val local = localModelProvider?.invoke() ?: return AiResult.Failed(res.describeFailure() ?: "Ask failed.")
@@ -263,6 +275,7 @@ class AskEverythingEngine(
     }
 
     private companion object {
+        const val CONFIDENTIAL_NEEDS_LOCAL = "Some of what this question touches belongs to a confidential project, so it can only be answered on this phone. Download a model for Summaries & Ask in Settings → AI Engine."
         const val QUERIES_SCHEMA = """{"type":"object","properties":{"queries":{"type":"array","items":{"type":"string"}}},"required":["queries"]}"""
     }
 }

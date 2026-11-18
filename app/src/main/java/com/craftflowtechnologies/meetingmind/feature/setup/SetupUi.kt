@@ -236,7 +236,7 @@ fun SetupScreen(viewModel: SetupViewModel, onBack: () -> Unit, onInternetMode: (
                         Text(if (s.internetReady) "Internet mode is on" else "Or: use Internet mode", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Text(
-                        "No big downloads: Gemini transcribes and summarises. Needs a connection and your own Gemini API key, and recordings are sent to Google.",
+                        androidx.compose.ui.res.stringResource(com.craftflowtechnologies.meetingmind.R.string.setup_internet_mode_line),
                         color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 6.dp)
                     )
                     Text(if (s.internetReady) "Manage in Settings →" else "Set up in Settings →", color = Brand.Lilac, fontSize = 13.5.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp))

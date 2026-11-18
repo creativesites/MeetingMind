@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
+import com.craftflowtechnologies.meetingmind.core.datastore.AppPreferencesState
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
@@ -48,8 +49,29 @@ class OnboardingTest {
         repeat(300) { if (!job.isCompleted) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(10) } }
     }
 
+    /** A moments ledger of its own, so Zuri's once-ever hello is always still unused in a test. */
+    private fun freshMoments() = com.craftflowtechnologies.meetingmind.core.companion.MomentLedgerStore(
+        androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+        ) { java.io.File(app.cacheDir, "moments-${System.nanoTime()}.preferences_pb") }
+    )
+
+    /** The stored preferences once [ready] holds (writes land on Dispatchers.IO), or as they are after ~5 s. */
+    private suspend fun awaitPrefs(ready: (AppPreferencesState) -> Boolean): AppPreferencesState {
+        repeat(100) {
+            val p = UserPreferencesManager(app).preferencesFlow.first()
+            if (ready(p)) return p
+            org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(50)
+        }
+        return UserPreferencesManager(app).preferencesFlow.first()
+    }
+
+    private fun waitFor(condition: () -> Boolean) {
+        repeat(200) { if (!condition()) { Thread.sleep(25); org.robolectric.shadows.ShadowLooper.idleMainLooper(); compose.waitForIdle() } }
+    }
+
     @Test fun `walks through every step and remembers the choices`() {
-        val vm = OnboardingViewModel(app)
+        val vm = OnboardingViewModel(app, com.craftflowtechnologies.meetingmind.core.companion.CompanionSettingsStore(app), freshMoments())
         var finished = false
         compose.setContent {
             MeetMindTheme {
@@ -59,31 +81,51 @@ class OnboardingTest {
                 }
             }
         }
-        val shots = listOf("welcome", "companion", "sample", "goals", "setup", "bible", "plan", "permissions")
+        val shots = listOf("welcome", "companion", "spaces", "sample", "setup")
         shots.forEachIndexed { i, name ->
             compose.waitForIdle()
             compose.mainClock.advanceTimeBy(600)
-            if (name == "goals") {
-                compose.onNodeWithTag("goal_SERMONS").performClick()
-                compose.onNodeWithTag("outcome_SUMMARIES").performClick()
-                compose.onNodeWithTag("onboarding_name_field").performTextInput("Ana")
+            if (name == "companion") compose.onNodeWithTag("onboarding_name_field").performScrollTo().performTextInput("Ana")
+            if (name == "spaces") {
+                // All four start on; the person turns Personal off.
+                assertEquals(OnboardingSpaces.toSet(), vm.spaces.value)
+                compose.onNodeWithTag("space_PERSONAL").performScrollTo().performClick()
             }
             if (name == "setup") compose.onNodeWithTag("setup_choice_internet").performClick()
             compose.waitForIdle()
             compose.onRoot().captureRoboImage("build/outputs/roborazzi/onboarding_${i}_$name.png")
             compose.onNodeWithTag("onboarding_next_btn").performClick()
+            if (name == "sample") {
+                // Leaving the example early still plays Zuri's first reveal; closing it moves on.
+                waitFor { vm.hello.value != null }
+                assertTrue(vm.hello.value?.hello == true)
+                compose.onNodeWithText("Open note").performClick()
+                waitFor { vm.step.value == OnboardingStep.SETUP }
+                assertEquals(OnboardingStep.SETUP, vm.step.value)
+            }
         }
         compose.waitForIdle()
         runBlocking {
-            repeat(50) { if (!finished) { org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS); Thread.sleep(50); compose.waitForIdle() } }
-            val prefs = UserPreferencesManager(app).preferencesFlow.first()
-            assertTrue(finished && prefs.onboardingCompleted)
+            repeat(200) { if (!finished) { org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS); Thread.sleep(50); compose.waitForIdle() } }
+            val prefs = awaitPrefs { it.onboardingCompleted }
+            assertTrue("finished=$finished completed=${prefs.onboardingCompleted} step=${vm.step.value}", finished && prefs.onboardingCompleted)
             assertEquals("Ana", prefs.userName)
             assertEquals(ProcessingProfile.INTERNET, prefs.processingProfile)
-            // The reading step was skipped: nothing is written and the devotional stays on Morning and Evening.
-            val profile = UserPreferencesManager(app).devotionalProfile.first()
-            assertEquals(com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.CLASSIC, profile.source)
-            assertEquals("morning-and-evening", profile.planId)
+            assertEquals(OnboardingSpaces.toSet() - com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL, prefs.identity.spaces)
+        }
+    }
+
+    @Test fun `on this phone is always saved, with large downloads waiting for Wi-Fi`() {
+        val vm = OnboardingViewModel(app)
+        vm.setSetup(SetupChoice.ON_DEVICE)
+        var done = false
+        vm.completeOnboarding { done = true }
+        runBlocking {
+            repeat(250) { if (!done) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(20) } }
+            val prefs = awaitPrefs { it.onboardingCompleted }
+            assertTrue("done=$done completed=${prefs.onboardingCompleted}", done && prefs.onboardingCompleted)
+            assertEquals(ProcessingProfile.OFFLINE, prefs.processingProfile)
+            assertTrue(prefs.wifiOnlyDownload)
         }
     }
 
@@ -117,15 +159,10 @@ class OnboardingTest {
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(600)
         assertEquals(OnboardingStep.SETUP, vm.step.value)
+        // No permissions step: the recorder asks for the microphone, the processing screen for notifications.
         compose.onNodeWithTag("onboarding_next_btn").performClick()
-        compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(600)
-        // The record route still ends on the permissions ask: notifications are the only way a
-        // person learns their notes are ready. Answering "not now" still starts the recording.
-        assertEquals(OnboardingStep.PERMISSIONS, vm.step.value)
-        compose.onNodeWithTag("onboarding_next_btn").performClick()
-        runBlocking { repeat(50) { if (!recorded) { Thread.sleep(50); compose.waitForIdle() } } }
-        assertTrue(recorded && !finished)
+        repeat(200) { if (!recorded) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(25); compose.waitForIdle() } }
+        assertTrue("recorded=$recorded finished=$finished step=${vm.step.value} route=${vm.route.value}", recorded && !finished)
     }
 
     @Test fun `the sample is reachable offline and ends with notes and an answer`() {
@@ -141,6 +178,10 @@ class OnboardingTest {
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(600)
         assertEquals(OnboardingStep.COMPANION, vm.step.value)
+        compose.onNodeWithTag("onboarding_next_btn").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(600)
+        assertEquals(OnboardingStep.SPACES, vm.step.value)
         compose.onNodeWithTag("onboarding_next_btn").performClick()
         compose.waitForIdle()
         // The transcript streams in on a timer; skip ahead past the last line.
@@ -162,7 +203,6 @@ class OnboardingTest {
     @Test fun `internet mode is the default, with the offline pack sized for this phone`() {
         val vm = OnboardingViewModel(app)
         assertEquals(SetupChoice.INTERNET, vm.setup.value)
-        assertEquals(3, vm.pack.size)
         assertTrue(vm.packBytes > 500_000_000L)
     }
 

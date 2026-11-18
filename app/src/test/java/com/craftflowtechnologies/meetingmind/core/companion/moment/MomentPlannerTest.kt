@@ -152,14 +152,24 @@ class MomentPlannerTest {
         assertEquals(listOf<Moment>(Moment.FirstRecordingPeak), e.record)
     }
 
-    @Test fun `row 3 with the flag - the system and honesty guards still step down`() {
-        assertEquals(MomentPlan.Plain(PlainReason.REDUCED_MOTION), plan(facts(flags = shipped, device = DeviceFacts(durationScale = 0f))))
-        assertEquals(MomentPlan.Nod(), plan(facts(flags = shipped, device = DeviceFacts(batterySaver = true))))
-        assertEquals(MomentPlan.Nod(), plan(facts(flags = shipped, device = DeviceFacts(lowEnd = true))))
-        assertTrue(plan(facts(flags = shipped, audioMs = 19_999)) is MomentPlan.Unveil || plan(facts(flags = shipped, audioMs = 19_999)) is MomentPlan.FirstKeep)
-        assertEquals(MomentPlan.Nod(), plan(facts(flags = shipped, retried = true)))
+    @Test fun `row 3 with the flag - every recording gets the First Keep, whatever the phone is doing`() {
+        // Founder decision, 2026-11-17: "make sure it shows on every recording". Reduced motion shows the still end state.
+        val every = MomentPlan.FirstKeep(quiet = false, hello = false, onceEver = false, chime = false, space = MomentSpace.EVERYDAY)
+        assertEquals(every, plan(facts(flags = shipped, device = DeviceFacts(durationScale = 0f))))
+        assertEquals(every, plan(facts(flags = shipped, device = DeviceFacts(batterySaver = true))))
+        assertEquals(every, plan(facts(flags = shipped, device = DeviceFacts(lowEnd = true))))
+        assertEquals(every, plan(facts(flags = shipped, retried = true)))
+        assertEquals(every, plan(facts(flags = shipped, audioMs = 19_999)))
         val quiet = plan(facts(flags = shipped, ticket = ticket(space = NotebookSpace.FAITH))) as MomentPlan.FirstKeep
         assertTrue(quiet.quiet && !quiet.chime)
+    }
+
+    @Test fun `row 3 with the flag - a recording opened days later still gets its First Keep`() {
+        val late = plan(facts(flags = shipped, ticket = ticket(readyAt = noon - 5 * 24 * hour)))
+        assertTrue(late is MomentPlan.FirstKeep)
+        // Only a running recording holds it back, until the recording stops.
+        assertEquals(MomentPlan.Plain(PlainReason.DEFERRED), plan(facts(flags = shipped, recording = true)))
+        assertTrue(plan(facts(flags = shipped, ticket = ticket(deferred = true))) is MomentPlan.FirstKeep)
     }
 
     @Test fun `row 3 with the flag - the presence filter keeps the moment without the character`() {

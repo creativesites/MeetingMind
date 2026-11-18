@@ -6,8 +6,7 @@ import com.craftflowtechnologies.meetingmind.core.billing.Entitlements
 import com.craftflowtechnologies.meetingmind.core.billing.OfferKind
 import com.craftflowtechnologies.meetingmind.core.billing.Plan
 import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
-import com.craftflowtechnologies.meetingmind.feature.onboarding.CaptureGoal
-import com.craftflowtechnologies.meetingmind.feature.onboarding.DesiredOutcome
+import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -21,9 +20,12 @@ class PaywallCopyTest {
     private val ownedPro = Entitlements(Plan.PRO, EntitlementState.ACTIVE, now + 30 * day, willRenew = true, verifiedAtMs = now)
 
     @Test fun `the headline follows what the person asked for`() {
-        assertEquals("Never lose an action item", PaywallCopy.outcome(emptySet(), setOf(DesiredOutcome.ACTION_ITEMS.name)).headline)
-        assertEquals("Your sermons, searchable", PaywallCopy.outcome(setOf(CaptureGoal.SERMONS.name), emptySet()).headline)
-        assertEquals("Get more from every recording", PaywallCopy.outcome(emptySet(), emptySet()).headline)
+        assertEquals("Never lose an action item", PaywallCopy.outcome(setOf(NotebookSpace.WORK)).headline)
+        assertEquals("Your sermons, searchable", PaywallCopy.outcome(setOf(NotebookSpace.FAITH)).headline)
+        assertEquals("Every lecture, ready to revise", PaywallCopy.outcome(setOf(NotebookSpace.LEARNING)).headline)
+        // All four spaces (the onboarding default) keep the general line.
+        assertEquals("Get more from every recording", PaywallCopy.outcome(NotebookSpace.entries.toSet()).headline)
+        assertEquals("Get more from every recording", PaywallCopy.outcome(emptySet()).headline)
     }
 
     @Test fun `the timeline only states the store's price and period`() {

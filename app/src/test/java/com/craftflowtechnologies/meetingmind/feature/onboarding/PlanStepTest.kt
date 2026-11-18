@@ -75,12 +75,10 @@ class PlanStepTest {
         assertTrue(choices.first().previewText!!.startsWith("“They did eat of the fruit"))
     }
 
-    @Test fun `Morning and Evening is chosen until the person picks, and skipping writes nothing`() {
-        val vm = OnboardingViewModel(app)
-        assertEquals(DevotionalPlans.DEFAULT_ID, vm.reading.value)
-        assertFalse(vm.readingTouched.value)
-        // A fresh install already reads Morning and Evening.
+    @Test fun `a fresh install already reads Morning and Evening`() {
+        // Onboarding no longer asks how to read (that is set up in Faith), so the default plan must be right on its own.
         assertEquals(DevotionalProfile(), DevotionalProfile.fromJson(null))
+        assertEquals(DevotionalPlans.DEFAULT_ID, DevotionalProfile().planId)
     }
 
     @Test fun `choosing a plan or AI changes only the source and plan`() {

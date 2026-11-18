@@ -26,10 +26,10 @@
 - Generic by default. Personal context (profile, sermons, prayer list) only when the person turns on Personal touch.
 
 ## Moments (Zuri)
-- First Keep on every note-ready arrival. The chime plays only on the two once-ever moments (the hello sample note and the first real recording).
+- First Keep on every recording (founder decision, 2026-11-17: "make sure it shows on every recording"): the first open of every finished recording plays it, even days later, on battery saver, on a low-end phone or after a retry; reduced motion shows its still end state. Only a running recording defers it. The chime plays only on the two once-ever moments (the hello sample note and the first real recording). Nothing else (the first-result offer included) is drawn over it.
 - Unveil on every open of a note: Notes list, meeting detail, wrap-up, note editor. Every note gets its moment, every time it is opened (founder decision, 2026-10-14, overrides the earlier guards below).
 - Every note gets its moment, including notes with no speech, typed notes, failed notes and sacred notes (founder decision, 2026-10-14). The earlier rule that failed and sacred notes stay plain is withdrawn.
-- Still open: reduced motion and battery saver. The founder has not yet decided whether these keep their plain or nod behaviour (accessibility); until decided, the code keeps them.
+- Reduced motion and battery saver: decided for the First Keep (above; reduced motion gets the still end state, never an animation). For the Unveil on later opens they keep their plain or nod behaviour.
 - Sermons get the quiet version; a recording in progress defers the moment.
 - Zuri may share the note screen during a designed moment, but never covers, edits or replaces the user's own words.
 

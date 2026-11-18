@@ -165,5 +165,60 @@
     <string name="paywall_action_upgrade">Upgrade plan</string>
     <string name="paywall_tier_annual">Annual</string>
     <string name="paywall_tier_monthly">Monthly</string>
+    <!-- On-device AI: removing a model (asks first; recordings are never touched) -->
+    <string name="models_remove_title">Remove %1$s?</string>
+    <string name="models_remove_body">Frees %1$s. Your recordings, transcripts and notes stay exactly as they are. To process new recordings on this phone with this job, you\'d need a model for it again. In Internet mode, everything keeps working.</string>
+    <string name="models_remove_confirm">Remove</string>
+    <string name="models_remove_keep">Keep</string>
+    <!-- First-result offer: after a real recording became notes, once -->
+    <string name="first_result_offer_title">Get more from every recording</string>
+    <string name="first_result_offer_body">MeetingMind is free to keep using, with a monthly allowance of internet transcription. Pro adds many more hours each month, Autopilot follow-ups and deep synthesis across your notes. Your notes stay yours either way.</string>
+    <string name="setup_internet_mode_line">No big downloads: Google\'s Gemini AI, through MeetingMind, transcribes and summarises. It needs a connection, the free plan includes a monthly allowance, and recordings are sent to Google.</string>
+    <!-- Processing: the notification question, asked once, in context -->
+    <string name="notify_primer_title">Want a nudge when it\'s ready?</string>
+    <string name="notify_primer_body">We\'ll only tell you about your own recordings and downloads.</string>
+    <string name="notify_primer_yes">Notify me</string>
+    <string name="notify_primer_no">No thanks</string>
+    <!-- Onboarding (launch redesign 2026-11-17): companion, four spaces, example with Zuri's reveal, how MeetingMind thinks -->
+    <string name="onboarding_button_set_up_phone">Set up on this phone</string>
+    <string name="onboarding_guide_spaces">Keep the spaces you\'ll use. All four are on.</string>
+    <string name="onboarding_guide_spaces_named">Nice to meet you, %1$s. Keep the spaces you\'ll use.</string>
+    <string name="onboarding_guide_sample">%1$s is listening to the example with you…</string>
+    <string name="onboarding_guide_setup">Pick how I turn recordings into notes. You can change it any time.</string>
+    <string name="onboarding_spaces_title">What will you use MeetingMind for?</string>
+    <string name="onboarding_spaces_line">All four are on. Turn off any you won\'t use.</string>
+    <string name="onboarding_space_work">Work</string>
+    <string name="onboarding_space_work_line">Meetings, interviews, tasks and decisions</string>
+    <string name="onboarding_space_learning">Learning</string>
+    <string name="onboarding_space_learning_line">Lectures, classes, revision and practice</string>
+    <string name="onboarding_space_faith">Faith</string>
+    <string name="onboarding_space_faith_line">Sermons, Bible study, devotionals and prayer</string>
+    <string name="onboarding_space_personal">Personal</string>
+    <string name="onboarding_space_personal_line">Conversations, ideas and voice notes</string>
+    <string name="onboarding_spaces_footnote">Keep at least one. You can change this any time in Settings.</string>
+    <string name="onboarding_name_title_plain">What should we call you?</string>
+    <string name="onboarding_name_optional">%1$s (optional)</string>
+    <string name="onboarding_name_placeholder">Your first name</string>
+    <string name="onboarding_name_privacy">Stays on this phone. Used for greetings and so Ask AI can address you.</string>
+    <string name="onboarding_setup_title">How should MeetingMind think?</string>
+    <string name="onboarding_setup_line">Recording always works, even with no signal. This is about where your audio becomes text and notes.</string>
+    <string name="onboarding_setup_internet">Over the internet</string>
+    <string name="onboarding_setup_internet_badge">Recommended to start</string>
+    <string name="onboarding_setup_internet_line">Works right away, with nothing to download.</string>
+    <string name="onboarding_setup_internet_fact_1">Fast, accurate transcripts, speakers and notes</string>
+    <string name="onboarding_setup_internet_fact_2">Your audio is sent to Google\'s Gemini AI through MeetingMind. The results are saved on this phone.</string>
+    <string name="onboarding_setup_internet_fact_3">The free plan includes a monthly allowance. Settings shows what\'s left.</string>
+    <string name="onboarding_setup_device">On this phone</string>
+    <string name="onboarding_setup_device_badge">Most private</string>
+    <string name="onboarding_setup_device_line">Audio and notes never leave your phone.</string>
+    <string name="onboarding_setup_device_fact_1">Works with no signal once it\'s set up</string>
+    <string name="onboarding_setup_device_fact_2">One download of about %1$s, set up right after this. It waits for Wi-Fi.</string>
+    <string name="onboarding_setup_device_fact_3">Slower, and the quality depends on your phone</string>
+    <string name="onboarding_setup_compare">What else should I know?</string>
+    <string name="onboarding_setup_compare_hide">Show less</string>
+    <string name="onboarding_setup_always_online">Some features always need the internet: importing from YouTube, live voice conversations and AI images.</string>
+    <string name="onboarding_setup_backup_disclosure">In Internet mode, if Google\'s AI can\'t answer, text (never audio) may be sent to DeepSeek, our backup AI provider.</string>
+    <string name="onboarding_setup_confidential">Projects you mark as confidential always stay on this phone, whichever you choose.</string>
+    <string name="onboarding_setup_change_later">You can switch at any time in Settings.</string>
 </resources>
 

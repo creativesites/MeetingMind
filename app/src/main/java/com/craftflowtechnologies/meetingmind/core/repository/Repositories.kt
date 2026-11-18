@@ -1068,9 +1068,12 @@ class ModelRepository(
     private fun AiModelEntity.toDomain(): AiModelInfo = AiModelInfo(
         id = id,
         name = name,
-        capability = capabilities.split(",").filter { it.isNotBlank() }.mapNotNull {
-            try { ModelCapability.valueOf(it) } catch (e: Exception) { null }
-        }.toSet(),
+        // Like tier below, capability comes from the catalog when it knows the model, so a row stored
+        // before a catalog change (Silero was once filed under TRANSCRIPTION) can't keep an old role.
+        capability = ModelCatalog.entries.find { it.id == id }?.capability
+            ?: capabilities.split(",").filter { it.isNotBlank() }.mapNotNull {
+                try { ModelCapability.valueOf(it) } catch (e: Exception) { null }
+            }.toSet(),
         files = filesJson.toModelFiles(),
         minimumRamMb = minimumRamMb,
         recommendedRamMb = recommendedRamMb,

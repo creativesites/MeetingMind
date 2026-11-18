@@ -3,72 +3,51 @@ package com.craftflowtechnologies.meetingmind.feature.onboarding
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 
 /** Bump when the onboarding flow changes shape: saved progress from another version restarts at the welcome. */
-const val ONBOARDING_VERSION = 3
+const val ONBOARDING_VERSION = 4
 
 /**
- * The onboarding steps. [COMPANION] is step 1 of the flow on both routes (ZURI_EXPERIENCE §5.1: bond and
- * ownership before anything is asked, progress shown filled from step 1). [PLAN] ("Choose how you read") and
- * [BIBLE] only appear for people who use Faith.
+ * The onboarding steps (launch redesign, founder-approved 2026-11-17, `design/Launch Experience Redesign.dc.html`
+ * turn 1, with the founder's changes):
+ *
+ * - [COMPANION]: pick who keeps you company, on both routes (the companion is part of onboarding).
+ * - [SPACES]: the four spaces, all selected by default; one question instead of goals, outcomes and a work profile.
+ * - [SAMPLE]: the example becoming notes, ending in Zuri's First Keep reveal (the hello moment).
+ * - [SETUP]: how MeetingMind thinks, Internet or on this phone. Always saved; no model catalogue here.
+ *
+ * Permissions are asked where they are used (the recorder asks for the microphone, the processing screen for
+ * notifications), and the Bible and reading plan are set up in Faith, so neither is an onboarding step.
  */
-enum class OnboardingStep { WELCOME, COMPANION, SAMPLE, GOALS, SETUP, BIBLE, PLAN, PERMISSIONS }
+enum class OnboardingStep { WELCOME, COMPANION, SPACES, SAMPLE, SETUP }
 
 /** How the person chose to start. */
 enum class EntryRoute { SAMPLE, RECORD }
 
-/** What the person captures. Several can be picked; each turns on the space it belongs to. */
-enum class CaptureGoal(val label: String, val space: NotebookSpace) {
-    WORK_MEETINGS("Work meetings", NotebookSpace.WORK),
-    SERMONS("Sermons and Bible study", NotebookSpace.FAITH),
-    LECTURES("Lectures, classes and exam prep", NotebookSpace.LEARNING),
-    REFLECTIONS("Personal reflections", NotebookSpace.PERSONAL),
-    INTERVIEWS("Interviews and field research", NotebookSpace.WORK),
-    IDEAS("Ideas and everyday conversations", NotebookSpace.PERSONAL)
-}
-
-/** What the person wants back from a recording. Stored for personalization; it never hides a feature. */
-enum class DesiredOutcome(val label: String) {
-    SUMMARIES("Clear summaries"),
-    STRUCTURED_NOTES("Structured notes"),
-    ACTION_ITEMS("Action items and commitments"),
-    SEARCHABLE("Searchable knowledge"),
-    QUESTIONS("Questions and answers"),
-    SPEAKERS("Speaker identification")
-}
-
 /**
- * The steps for a route. Both routes start by picking who keeps the person company. The sample route
- * then shows the example (which plays the hello First Keep), asks what the person captures, then sets up
- * the AI. The Bible and reading steps only appear for people who use Faith. The record route goes from
- * the companion to the AI choice, because a first recording that can't be transcribed would miss the
- * point; the microphone is asked for by the recorder itself.
+ * The steps for a route. Both start with the companion. The example route then asks which spaces to keep, shows
+ * the example (with the hello First Keep) and sets how the AI runs. The record route goes from the companion
+ * straight to the AI choice, because a first recording that can't be transcribed would miss the point.
  */
-fun stepsFor(route: EntryRoute, spaces: Set<NotebookSpace>): List<OnboardingStep> = when (route) {
-    // The record route still ends on permissions: the microphone is asked for by the recorder
-    // itself, but notifications (the only way a person learns their notes are ready) are asked for
-    // here, with the reason, rather than never.
-    EntryRoute.RECORD -> listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SETUP, OnboardingStep.PERMISSIONS)
-    EntryRoute.SAMPLE -> buildList {
-        add(OnboardingStep.WELCOME)
-        add(OnboardingStep.COMPANION)
-        add(OnboardingStep.SAMPLE)
-        add(OnboardingStep.GOALS)
-        add(OnboardingStep.SETUP)
-        if (NotebookSpace.FAITH in spaces) {
-            add(OnboardingStep.BIBLE)
-            add(OnboardingStep.PLAN)
-        }
-        add(OnboardingStep.PERMISSIONS)
-    }
+fun stepsFor(route: EntryRoute): List<OnboardingStep> = when (route) {
+    EntryRoute.RECORD -> listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SETUP)
+    EntryRoute.SAMPLE -> listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SPACES, OnboardingStep.SAMPLE, OnboardingStep.SETUP)
 }
 
-/**
- * The spaces onboarding may offer, including [NotebookSpace.LEARNING] in production.
- */
-val OfferedNotebookSpaces: Set<NotebookSpace> = NotebookSpace.entries.toSet()
+/** The spaces onboarding offers, in the order they are shown. All four start selected. */
+val OnboardingSpaces: List<NotebookSpace> = listOf(NotebookSpace.WORK, NotebookSpace.LEARNING, NotebookSpace.FAITH, NotebookSpace.PERSONAL)
 
-/** Goals pick the spaces; no goals picked leaves every offered space on, as before. */
-fun spacesFor(goals: Set<CaptureGoal>): Set<NotebookSpace> =
-    if (goals.isEmpty()) OfferedNotebookSpaces else goals.map { it.space }.toSet()
+/** Turns one space on or off. The last selected space can't be turned off: MeetingMind needs at least one. */
+fun toggleSpace(current: Set<NotebookSpace>, space: NotebookSpace): Set<NotebookSpace> = when {
+    space !in current -> current + space
+    current.size <= 1 -> current
+    else -> current - space
+}
+
+/** The example that fits the spaces: a sermon when Faith is the only space, a lecture for Learning alone, else a meeting. */
+fun sampleKindFor(spaces: Set<NotebookSpace>): SampleKind = when (spaces) {
+    setOf(NotebookSpace.FAITH), setOf(NotebookSpace.FAITH, NotebookSpace.PERSONAL) -> SampleKind.SERMON
+    setOf(NotebookSpace.LEARNING), setOf(NotebookSpace.LEARNING, NotebookSpace.PERSONAL) -> SampleKind.LECTURE
+    else -> SampleKind.MEETING
+}
 
 /** The saved step, or the welcome when it is missing, unreadable, or from another onboarding version. */
 fun restoredStep(saved: String?, savedVersion: Int): OnboardingStep =

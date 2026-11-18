@@ -158,7 +158,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     timestampMs = 0L, matchType = SearchMatchType.SCRIPTURE, relevanceScore = 1f, reference = it.passageId()
                 )
             }
-            _results.value = listOfNotNull(scripture) + searchUseCase(newQuery)
+            // A failed index read (a damaged search table, a database error) shows no results, never a crash.
+            val found = runCatching { searchUseCase(newQuery) }
+                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                .getOrDefault(emptyList())
+            _results.value = listOfNotNull(scripture) + found
             _isSearching.value = false
         }
     }
@@ -196,6 +200,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     )?.languageModel
                 },
                 preferLocal = profile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.OFFLINE,
+                keepOnDevice = { found -> anyMustStayOnDevice(found) },
                 onLocalFinished = {
                     viewModelScope.launch {
                         com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
@@ -221,6 +226,14 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     fun dismissAnswer() { askJob?.cancel(); _ask.value = AskState.Idle }
 
     fun cancelAsk() { askJob?.cancel(); _ask.value = AskState.Idle }
+
+    /** A found source that must never reach a cloud model: a note or recording in a confidential project. */
+    private suspend fun anyMustStayOnDevice(found: List<com.craftflowtechnologies.meetingmind.ai.assistant.AskSource>): Boolean {
+        val app = getApplication<Application>()
+        return found.any { src ->
+            com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.mustStayOnDevice(app, meetingId = src.meetingId, noteId = src.noteId)
+        }
+    }
 
     private suspend fun sources(query: String): List<com.craftflowtechnologies.meetingmind.ai.assistant.AskSource> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val fts = com.craftflowtechnologies.meetingmind.core.scripture.BibleStore.ftsQuery(query) ?: return@withContext emptyList()
@@ -252,6 +265,14 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         if (out.size <= 1) return@withContext out
+        // Ranking by meaning sends the query and the excerpts to Google's embedding model, so it runs only in
+        // Internet mode and only when nothing found belongs to a confidential project. Otherwise the on-phone
+        // full-text order stands (the "On-device only" promise in Settings).
+        val profile = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(getApplication())
+            .preferencesFlow.first().processingProfile
+        if (profile != com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET || anyMustStayOnDevice(out)) {
+            return@withContext out
+        }
         val qVec = runCatching { neuralEmbeddings.embedQuery(query) }.getOrNull() ?: return@withContext out
         val docVecs = runCatching { neuralEmbeddings.embedBatch(out.map { "${it.title}\n${it.text}" }, isQuery = false) }.getOrNull()
             ?: return@withContext out

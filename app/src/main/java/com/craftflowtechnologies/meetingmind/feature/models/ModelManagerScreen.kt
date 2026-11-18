@@ -140,7 +140,7 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
     val availableStorageMb: Long get() = DeviceCapabilityDetector.getAvailableStorageMb()
 
     init {
-        viewModelScope.launch { modelRepository.ensureCatalogSeeded() }
+        viewModelScope.launch { runCatching { modelRepository.ensureCatalogSeeded() } }
         // A partial download left from before (paused, or the phone restarted) shows as paused.
         viewModelScope.launch {
             downloadingModelIds.collect { active ->
@@ -196,6 +196,14 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
         }
         _pausedModelIds.value = _pausedModelIds.value - modelId
         com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(getApplication(), modelId, wifiOnly)
+        // A speech model needs the small voice-activity helper (Silero, under 1 MB). It is no longer listed as a
+        // choice of its own, so it comes along with whichever speech model is downloaded.
+        val helperId = com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.sileroVad.id
+        val wantsHelper = models.value.find { it.id == modelId }?.capability?.contains(ModelCapability.TRANSCRIPTION) == true
+        val helper = models.value.find { it.id == helperId }
+        if (wantsHelper && helper?.isInstalled != true && helperId !in downloadingModelIds.value) {
+            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(getApplication(), helperId, wifiOnly)
+        }
     }
 
     /** Stops the download but keeps every byte written so far; [installModel] continues it. */
@@ -262,6 +270,33 @@ fun ModelManagerScreen(
     val pausedModelIds by viewModel.pausedModelIds.collectAsState()
     val caps = viewModel.deviceCapabilities
     val snackbarHostState = remember { SnackbarHostState() }
+    // Removing a model asks first and says what stays (the recordings, transcripts and notes are never touched).
+    var pendingDelete by remember { mutableStateOf<AiModelInfo?>(null) }
+    pendingDelete?.let { model ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(androidx.compose.ui.res.stringResource(com.craftflowtechnologies.meetingmind.R.string.models_remove_title, model.name)) },
+            text = {
+                Text(
+                    androidx.compose.ui.res.stringResource(
+                        com.craftflowtechnologies.meetingmind.R.string.models_remove_body,
+                        Formatters.formatBytes(model.sizeBytes)
+                    )
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { viewModel.deleteModel(model.id); pendingDelete = null },
+                    modifier = Modifier.testTag("model_delete_confirm")
+                ) { Text(androidx.compose.ui.res.stringResource(com.craftflowtechnologies.meetingmind.R.string.models_remove_confirm)) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { pendingDelete = null }) {
+                    Text(androidx.compose.ui.res.stringResource(com.craftflowtechnologies.meetingmind.R.string.models_remove_keep))
+                }
+            }
+        )
+    }
 
     LaunchedEffect(statusMessage) {
         statusMessage?.let {
@@ -361,7 +396,7 @@ fun ModelManagerScreen(
                             onInstall = { viewModel.installModel(it) },
                             onPause = { viewModel.pauseDownload(it) },
                             onCancel = { viewModel.cancelDownload(it) },
-                            onDelete = { viewModel.deleteModel(it) }
+                            onDelete = { id -> pendingDelete = models.find { it.id == id } }
                         )
                     }
                 }

@@ -627,6 +627,7 @@ internal fun ProcessingRunning(
                     secondary = "View recording" to onViewRecording
                 )
                 !state.isComplete -> {
+                    NotifyWhenReadyPrimer(Modifier.padding(bottom = 12.dp))
                     BackgroundHint()
                     Button(
                         onClick = onMinimise,

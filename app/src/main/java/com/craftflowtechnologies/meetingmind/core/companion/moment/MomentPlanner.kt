@@ -31,6 +31,10 @@ data class MomentFlags(
     val firstKeepEveryNote: Boolean = CompanionFlags.firstKeepEveryNote,
     val unveilOnEveryOpen: Boolean = CompanionFlags.unveilOnEveryOpen
 ) {
+    /** How long a note-ready ticket still counts as an arrival under these flags. */
+    val ticketLifetimeMs: Long
+        get() = if (firstKeepEveryNote) UnveilTicket.KeepUntilOpenedMs else UnveilTicket.LifetimeMs
+
     companion object {
         /** The shipped values ([CompanionFlags]). */
         val Current = MomentFlags()
@@ -196,7 +200,7 @@ object MomentPlanner {
         val now = f.clock.nowMs
         val t = f.ticket
         if (!f.freshOpen) return PlannedMoment(MomentPlan.Plain(PlainReason.NOT_FRESH), MomentEffects())
-        val arrival = t != null && t.isValid(now)
+        val arrival = t != null && t.isValid(now, f.flags.ticketLifetimeMs)
         // A ticket is consumed by any fresh open that reads it (an expired one is just cleaned up).
         val consume = if (t != null) TicketAction.CONSUME else TicketAction.NONE
         fun done(plan: MomentPlan, record: List<Moment> = emptyList(), rotation: RotationState? = null, ticket: TicketAction = consume) =
@@ -231,10 +235,9 @@ object MomentPlanner {
                         record = listOf(onceEver)
                     )
                 }
-                // Every note (decision 9): the system and honesty guards still step down.
-                if (f.device.reducedMotion) return done(MomentPlan.Plain(PlainReason.REDUCED_MOTION))
-                if (f.retried) return done(nod(f, space))
-                if (f.device.batterySaver || f.device.lowEnd) return done(nod(f, space))
+                // Every recording (founder decision, 2026-11-17: "make sure it shows on every recording"): the First Keep
+                // plays like the once-ever ones do, on a retried note, with battery saver, on a low-end phone, and with
+                // reduced motion (the overlay then shows its still end state). Only a running recording defers it.
                 return done(MomentPlan.FirstKeep(quiet, hello = false, onceEver = false, chime = false, space = space, companion = shown))
             }
         }

@@ -46,6 +46,14 @@ import java.time.Instant
 import java.time.ZoneId
 import java.util.TimeZone
 
+/**
+ * Whether a First Keep overlay is on screen anywhere. Other app-wide prompts (the first-result offer) wait
+ * for it, so nothing is ever drawn over the note's moment.
+ */
+object MomentOverlay {
+    val showing = kotlinx.coroutines.flow.MutableStateFlow(false)
+}
+
 /** The moments store; null is the app's DataStore-backed one. Tests provide their own. */
 val LocalMomentLedgerStore = androidx.compose.runtime.staticCompositionLocalOf<MomentLedgerStore?> { null }
 
@@ -56,9 +64,15 @@ class NoteMomentState {
         internal set
     var facts: NoteFacts? by mutableStateOf(null)
         internal set
+    private var showingOverlay: Boolean by mutableStateOf(false)
+
     /** The First Keep overlay is showing; "Open note" (or Back) clears it, and it never comes back. */
-    var overlay: Boolean by mutableStateOf(false)
-        internal set
+    var overlay: Boolean
+        get() = showingOverlay
+        internal set(value) {
+            showingOverlay = value
+            MomentOverlay.showing.value = value
+        }
 
     fun closeOverlay() { overlay = false }
 }
@@ -77,6 +91,9 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
     val context = LocalContext.current
     val session = rememberOpenSession()
     val state = remember(noteId) { NoteMomentState() }
+    androidx.compose.runtime.DisposableEffect(state) {
+        onDispose { if (state.overlay) MomentOverlay.showing.value = false }
+    }
     val provided = LocalMomentLedgerStore.current
     val store = remember(provided, context) { provided ?: MomentLedgerStore(context) }
     val shown by rememberUpdatedState(rememberCompanionVisible(CompanionPage.NOTE_READY))
@@ -84,7 +101,10 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
     val hasPendingReady = pendingReady.any { it.noteId == noteId }
     LaunchedEffect(noteId, refreshKey, hasPendingReady) {
         if (noteId.isBlank()) return@LaunchedEffect
-        val facts = readNoteFacts(context, noteId) ?: readTypedNoteFacts(context, noteId) ?: return@LaunchedEffect
+        // A database read that fails while the note opens means no moment, never a crash (crash audit, 2026-11-17).
+        val facts = runCatching { readNoteFacts(context, noteId) }.getOrNull()
+            ?: runCatching { readTypedNoteFacts(context, noteId) }.getOrNull()
+            ?: return@LaunchedEffect
         state.facts = facts
         if (session.claimed && !(hasPendingReady && state.plan !is MomentPlan.FirstKeep)) {
             // Not a fresh open: the note just shows (a moment never replays).
@@ -96,21 +116,26 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
         val today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
         val retried = RetriedNotes.consume(context, noteId)
         val fromSnackbar = NoteReadyEvents.consumeSnackbarOpen(noteId)
-        val planned = runCatching {
-            store.planOpen(noteId, clock) { ticket, ledger, rotation ->
-                MomentFacts(
-                    noteId = noteId, ticket = ticket, freshOpen = true, outcome = facts.outcome, sensitive = facts.sensitive,
-                    goodFriday = NoteFactsRules.goodFriday(today), space = facts.space, sermon = facts.sermon,
-                    audioMs = facts.audioMs, transcriptWords = facts.transcriptWords, retried = retried,
-                    recordingActive = recordingActive(), device = MomentEnvironment.read(context), companionShown = shown,
-                    nodPlayedInSnackbar = fromSnackbar, clock = clock, ledger = ledger, rotation = rotation
-                )
-            }.plan
-        }.getOrElse { MomentPlan.Plain(PlainReason.NOT_FRESH) }
-        session.claim()
-        NoteReadyEvents.dismiss(noteId)
-        state.plan = planned
-        state.overlay = planned is MomentPlan.FirstKeep
+        // Planning consumes the ticket, so it finishes and is applied as one step. A restart of this effect
+        // (the note-ready event and the refresh key often change together) must not cancel it half-way:
+        // the ticket would be gone without its First Keep, and the next run would play an Unveil instead.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+            val planned = runCatching {
+                store.planOpen(noteId, clock) { ticket, ledger, rotation ->
+                    MomentFacts(
+                        noteId = noteId, ticket = ticket, freshOpen = true, outcome = facts.outcome, sensitive = facts.sensitive,
+                        goodFriday = NoteFactsRules.goodFriday(today), space = facts.space, sermon = facts.sermon,
+                        audioMs = facts.audioMs, transcriptWords = facts.transcriptWords, retried = retried,
+                        recordingActive = recordingActive(), device = MomentEnvironment.read(context), companionShown = shown,
+                        nodPlayedInSnackbar = fromSnackbar, clock = clock, ledger = ledger, rotation = rotation
+                    )
+                }.plan
+            }.getOrElse { MomentPlan.Plain(PlainReason.NOT_FRESH) }
+            session.claim()
+            NoteReadyEvents.dismiss(noteId)
+            state.plan = planned
+            state.overlay = planned is MomentPlan.FirstKeep
+        }
     }
     return state
 }

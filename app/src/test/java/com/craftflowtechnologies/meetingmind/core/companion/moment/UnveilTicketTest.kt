@@ -40,13 +40,23 @@ class UnveilTicketTest {
         MomentFacts(noteId = "n1", ticket = t, clock = LocalClock(noon), ledger = l, rotation = r, flags = flags)
     }
 
-    @Test fun `a ticket is valid for 24 hours`() {
+    @Test fun `under the budgeted ladder a ticket is valid for 24 hours`() {
         val t = UnveilTicket("n1", noon)
-        assertTrue(t.isValid(noon))
-        assertTrue(t.isValid(noon + 24 * hour - 1))
-        assertFalse(t.isValid(noon + 24 * hour))
-        assertTrue("a small clock skew is tolerated", t.isValid(noon - 10 * 60_000))
-        assertFalse(t.isValid(noon - 2 * hour))
+        val day = UnveilTicket.LifetimeMs
+        assertTrue(t.isValid(noon, day))
+        assertTrue(t.isValid(noon + 24 * hour - 1, day))
+        assertFalse(t.isValid(noon + 24 * hour, day))
+        assertTrue("a small clock skew is tolerated", t.isValid(noon - 10 * 60_000, day))
+        assertFalse(t.isValid(noon - 2 * hour, day))
+    }
+
+    @Test fun `by default a ticket waits for its note to be opened, up to 30 days`() {
+        val t = UnveilTicket("n1", noon)
+        assertTrue(t.isValid(noon + 5 * 24 * hour))
+        assertTrue(t.isValid(noon + 30 * 24 * hour - 1))
+        assertFalse(t.isValid(noon + 30 * 24 * hour))
+        assertEquals(UnveilTicket.KeepUntilOpenedMs, MomentFlags.Current.ticketLifetimeMs)
+        assertEquals(UnveilTicket.LifetimeMs, MomentFlags.Budgeted.ticketLifetimeMs)
     }
 
     @Test fun `a ticket round-trips and junk is ignored`() {
@@ -83,7 +93,7 @@ class UnveilTicketTest {
 
     @Test fun `an expired ticket plays nothing and is pruned`() = runBlocking {
         val store = newStore()
-        store.issueTicket(UnveilTicket("old", noon - 30 * hour))
+        store.issueTicket(UnveilTicket("old", noon - UnveilTicket.KeepUntilOpenedMs - hour))
         assertNull(store.peekTicket("old", noon))
         // Issuing a newer ticket prunes the expired one.
         store.issueTicket(UnveilTicket("new", noon))

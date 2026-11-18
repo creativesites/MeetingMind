@@ -3,8 +3,7 @@ package com.craftflowtechnologies.meetingmind.feature.paywall
 import com.craftflowtechnologies.meetingmind.core.billing.Capability
 import com.craftflowtechnologies.meetingmind.core.billing.Entitlements
 import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
-import com.craftflowtechnologies.meetingmind.feature.onboarding.CaptureGoal
-import com.craftflowtechnologies.meetingmind.feature.onboarding.DesiredOutcome
+import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 
 /** The outcome the first paywall page leads with, chosen from what the person said they want. */
 data class OutcomeCopy(val headline: String, val line: String)
@@ -41,18 +40,20 @@ object PaywallCopy {
     )
 
     /**
-     * The outcome the first page leads with, chosen from what the person said they want in
-     * onboarding. It never promises a gated feature: every line here is true on the free plan too,
-     * and the page says so. Learning is not offered (out of MVP scope).
+     * The outcome the first page leads with, chosen from the spaces the person kept in onboarding (one space
+     * says what they came for; several, or all four, keep the general line). It never promises a gated
+     * feature: every line here is true on the free plan too, and the page says so.
      */
-    fun outcome(goals: Set<String>, outcomes: Set<String>): OutcomeCopy = when {
-        DesiredOutcome.ACTION_ITEMS.name in outcomes ->
+    fun outcome(spaces: Set<NotebookSpace>): OutcomeCopy = when (spaces.singleOrNull()) {
+        NotebookSpace.WORK ->
             OutcomeCopy("Never lose an action item", "Every commitment from every conversation, found and listed for you.")
-        CaptureGoal.SERMONS.name in goals ->
+        NotebookSpace.FAITH ->
             OutcomeCopy("Your sermons, searchable", "Come back to a message, a verse or a challenge with a question instead of a rewind.")
-        DesiredOutcome.SEARCHABLE.name in outcomes ->
+        NotebookSpace.LEARNING ->
+            OutcomeCopy("Every lecture, ready to revise", "Come back to a class with a question instead of a rewind.")
+        NotebookSpace.PERSONAL ->
             OutcomeCopy("Find anything you've ever said", "Search every conversation by what was said, not when it happened.")
-        else ->
+        null ->
             OutcomeCopy("Get more from every recording", "More of MeetingMind's AI assistance for your meetings, study and ideas.")
     }
 

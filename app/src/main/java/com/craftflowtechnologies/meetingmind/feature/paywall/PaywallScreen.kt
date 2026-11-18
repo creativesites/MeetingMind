@@ -74,6 +74,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Brand
 import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 private fun Context.findActivity(): Activity? {
     var c: Context? = this
@@ -365,7 +366,7 @@ fun UpgradeDialog(title: String, body: String, onSeePlans: () -> Unit, onNotNow:
  * and never more than weekly. It explains the plans and lets the person walk straight on.
  */
 @Composable
-fun PostResultOfferHost(onResultScreen: Boolean, onOpenPlans: (PaywallTrigger) -> Unit) {
+fun PostResultOfferHost(onResultScreen: Boolean, onOpenPlans: (PaywallTrigger) -> Unit, meetingId: String? = null) {
     val context = LocalContext.current
     val prefsManager = remember { UserPreferencesManager(context) }
     val prefs by prefsManager.preferencesFlow.collectAsState(initial = null)
@@ -375,22 +376,32 @@ fun PostResultOfferHost(onResultScreen: Boolean, onOpenPlans: (PaywallTrigger) -
     var show by remember { mutableStateOf(false) }
     val saved = prefs
 
-    LaunchedEffect(onResultScreen, saved?.firstResultOfferShown, tierMode) {
+    LaunchedEffect(onResultScreen, meetingId, saved?.firstResultOfferShown, tierMode) {
         com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.current(context)
-        if (!onResultScreen) { show = false; return@LaunchedEffect }
+        if (!onResultScreen || meetingId == null) { show = false; return@LaunchedEffect }
         if (saved == null || show) return@LaunchedEffect
-        delay(2500) // let them read their notes first
+        // Never over Zuri's moment: wait for the First Keep to finish, then let them read their notes.
+        com.craftflowtechnologies.meetingmind.feature.moments.MomentOverlay.showing.first { !it }
+        delay(2500)
+        if (com.craftflowtechnologies.meetingmind.feature.moments.MomentOverlay.showing.value) return@LaunchedEffect
+        // Only after a real recording that became notes: never a failed, partial, silent or still-processing one.
+        val outcome = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { com.craftflowtechnologies.meetingmind.feature.moments.readNoteFacts(context, meetingId)?.outcome }.getOrNull()
+        }
+        val succeeded = outcome == com.craftflowtechnologies.meetingmind.core.companion.moment.NoteOutcome.COMPLETE ||
+            outcome == com.craftflowtechnologies.meetingmind.core.companion.moment.NoteOutcome.AI_FALLBACK
+        if (!succeeded) return@LaunchedEffect
         val now = System.currentTimeMillis()
         val state = PaywallState(saved.paywallLastShownAt, saved.paywallDismissals, saved.firstResultOfferShown)
         if (PaywallPolicy.shouldShow(PaywallTrigger.FIRST_RESULT, billing, owned.effective(now), state, now, tierMode)) {
-            prefsManager.markPaywallShown(now, firstResult = true)
+            runCatching { prefsManager.markPaywallShown(now, firstResult = true) }
             // PAYWALL_VIEWED is tracked once, by PaywallViewModel when the paywall itself opens.
             show = true
         }
     }
     if (show) UpgradeDialog(
-        title = "Get more from every recording",
-        body = "MeetingMind is free to keep using. A plan adds cloud transcription and AI notes with a monthly allowance, or BYOK with your own key. Your notes stay yours either way.",
+        title = androidx.compose.ui.res.stringResource(com.craftflowtechnologies.meetingmind.R.string.first_result_offer_title),
+        body = androidx.compose.ui.res.stringResource(com.craftflowtechnologies.meetingmind.R.string.first_result_offer_body),
         onSeePlans = { show = false; onOpenPlans(PaywallTrigger.FIRST_RESULT) },
         onNotNow = { show = false; com.craftflowtechnologies.meetingmind.core.analytics.Analytics.track(com.craftflowtechnologies.meetingmind.core.analytics.Events.PAYWALL_DISMISSED, "placement" to "first_result_sheet") }
     )

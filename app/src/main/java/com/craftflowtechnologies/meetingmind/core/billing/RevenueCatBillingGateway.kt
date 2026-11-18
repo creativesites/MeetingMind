@@ -45,7 +45,7 @@ class RevenueCatBillingGateway(app: Application, apiKey: String) : BillingGatewa
         }
         scope.launch {
             // Start from what the store last confirmed, so the plan is known offline; it lapses on its own.
-            state.value = cache.read().effective(System.currentTimeMillis())
+            runCatching { cache.read() }.getOrNull()?.let { state.value = it.effective(System.currentTimeMillis()) }
             refresh()
         }
     }
@@ -102,7 +102,9 @@ class RevenueCatBillingGateway(app: Application, apiKey: String) : BillingGatewa
 
     private suspend fun publish(info: CustomerInfo) {
         val e = map(info)
-        cache.write(e)
+        // The store's answer stands even if the offline copy can't be saved (full or unreadable storage): a
+        // failed write must never crash the app or undo a purchase that Google Play has already confirmed.
+        runCatching { cache.write(e) }
         state.value = e.effective(System.currentTimeMillis())
     }
 

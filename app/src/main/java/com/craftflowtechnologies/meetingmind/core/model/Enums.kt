@@ -44,6 +44,9 @@ enum class MeetingStatus {
 
 enum class ModelCapability {
     TRANSCRIPTION,
+    /** Finds where speech is in a recording (Silero VAD). A helper the speech-to-text job needs, never a
+     * choice the person makes, so it is not listed as a speech recognition model. */
+    VOICE_ACTIVITY,
     // Retained for backward compatibility with existing LlmModelResolver call sites and stored
     // preferences — every current LLM catalog entry still carries this alongside the more granular
     // capabilities below, which describe the same underlying "general-purpose instruct LLM"
