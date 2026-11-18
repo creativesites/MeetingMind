@@ -2,6 +2,22 @@ package com.craftflowtechnologies.meetingmind.core.ui
 
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextOverflow
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +36,6 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -42,7 +57,6 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
-import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 
 enum class CreateAction { RECORD, NOTE, MEDIA, IMPORT, YOUTUBE }
 
@@ -76,22 +90,8 @@ fun CreateSheet(onPick: (CreateAction) -> Unit, onDismiss: () -> Unit) {
                 CreateTile("Import a file", Icons.Filled.FileUpload, Modifier.weight(1f)) { onPick(CreateAction.IMPORT) }
             }
             Spacer(Modifier.height(10.dp))
-            // Notes from a YouTube link: its own row, so it is never hidden behind "Import".
-            Surface(
-                onClick = { onPick(CreateAction.YOUTUBE) }, shape = RoundedCornerShape(18.dp), color = SurfaceSunk,
-                border = BorderStroke(1.dp, Line), modifier = Modifier.fillMaxWidth().testTag("create_youtube")
-            ) {
-                Row(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = CircleShape, color = AccentWash, modifier = Modifier.size(40.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.SmartDisplay, contentDescription = null, tint = Accent, modifier = Modifier.size(21.dp)) }
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Notes from a YouTube video", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                        Text("Paste a link to a lecture, sermon or talk", fontSize = 12.5.sp, color = InkSecondary)
-                    }
-                }
-            }
+            // Notes from a YouTube link: its own card, so it is never hidden behind "Import".
+            YouTubeCard { onPick(CreateAction.YOUTUBE) }
             Text(
                 "Every recording gets its own note, so what you write and what was said stay together.",
                 fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 14.dp, start = 2.dp)
@@ -110,3 +110,112 @@ private fun CreateTile(label: String, icon: ImageVector, modifier: Modifier, onC
         }
     }
 }
+
+/**
+ * "Notes from a YouTube video": second only to Record. A video frame with a play mark and a
+ * scrubber, a benefit line and a "New" badge, on a soft accent-to-violet wash that follows the
+ * theme (light, dark, any accent). One light sweep crosses it as the sheet opens; none with
+ * reduced motion. No YouTube logo or red: the glyph is a generic play mark.
+ */
+@Composable
+private fun YouTubeCard(onClick: () -> Unit) {
+    val c = MM.colors
+    val motion = MM.motion
+    val start = c.accent
+    val end = c.speaker2
+    val washAlpha = if (c.isDark) 0.20f else 0.11f
+    val wash = Brush.linearGradient(listOf(start.copy(alpha = washAlpha), end.copy(alpha = washAlpha * 0.8f)))
+    val edge = Brush.linearGradient(listOf(start.copy(alpha = 0.45f), end.copy(alpha = 0.30f)))
+    val frame = Brush.linearGradient(listOf(start, end))
+    val shape = MM.radius.card
+
+    // Entrance: rises in just after Record; snaps into place with reduced motion.
+    val enter = remember { Animatable(if (motion.reduced) 1f else 0f) }
+    // One sweep of light across the card, then still.
+    val sweep = remember { Animatable(if (motion.reduced) 1f else 0f) }
+    LaunchedEffect(motion.reduced) {
+        if (motion.reduced) return@LaunchedEffect
+        enter.animateTo(1f, motion.enter())
+        sweep.animateTo(1f, tween(durationMillis = (SweepMs * motion.durationScale).toInt().coerceAtLeast(1), easing = LinearEasing))
+    }
+    // A light sheen in both themes: the page colour on light, the text colour (light) on dark.
+    val shine = if (c.isDark) c.ink else c.surface
+
+    Surface(
+        onClick = onClick,
+        shape = shape,
+        color = c.surface,
+        border = BorderStroke(1.dp, edge),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                alpha = enter.value
+                translationY = (1f - enter.value) * 10.dp.toPx()
+            }
+            .testTag("create_youtube")
+    ) {
+        Row(
+            Modifier
+                .background(wash)
+                .drawWithContent {
+                    drawContent()
+                    val p = sweep.value
+                    if (p in 0.001f..0.999f) {
+                        val band = size.width * 0.35f
+                        val x = -band + (size.width + band * 2) * p
+                        drawRect(
+                            Brush.linearGradient(
+                                listOf(shine.copy(alpha = 0f), shine.copy(alpha = if (c.isDark) 0.16f else 0.45f), shine.copy(alpha = 0f)),
+                                start = Offset(x - band, 0f),
+                                end = Offset(x + band, size.height)
+                            )
+                        )
+                    }
+                }
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // The video frame: a gradient screen, a bold play mark and a scrubber part-way along.
+            Box(
+                Modifier
+                    .size(width = 66.dp, height = 46.dp)
+                    .clip(MM.radius.small)
+                    .background(frame)
+            ) {
+                Box(
+                    Modifier.align(Alignment.Center).size(26.dp).clip(CircleShape).background(c.onAccent.copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(20.dp))
+                }
+                Box(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp)
+                        .height(3.dp).clip(CircleShape).background(c.onAccent.copy(alpha = 0.30f))
+                ) {
+                    Box(Modifier.fillMaxWidth(0.42f).fillMaxHeight().clip(CircleShape).background(c.onAccent.copy(alpha = 0.92f)))
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Notes from a YouTube video", style = MM.type.bodyStrong, color = c.ink,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.clip(MM.radius.pill).background(frame).padding(horizontal = 7.dp, vertical = 1.dp)) {
+                        Text("New", style = MM.type.caption, fontWeight = FontWeight.SemiBold, color = c.onAccent)
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
+                Text("Paste a link, get study notes with timestamps", style = MM.type.secondary, color = c.inkSecondary)
+            }
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.size(32.dp).clip(CircleShape).background(c.accentWash), contentAlignment = Alignment.Center) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+private const val SweepMs = 1100
