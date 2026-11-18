@@ -1,6 +1,14 @@
 # Status
 
-Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+Updated: 2026-11-18. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+
+## Release v50 for closed testing (2026-11-18)
+- **Bundle:** built at `7f7e68e`, copied to the founder's `~/Downloads/meetingmind-v50.aab` (216 MB, both ABIs). Verified: upload-key signed (SHA-1 A5:DC:…:7C:D5), versionName 1.0-v50, closed testing all-access on, no raw API keys in the dex, and the diarization callback keeps `invoke(IIJ)Ljava/lang/Integer;` after R8. Not pushed. Upload to closed testing is the founder's (the file is too large for the browser upload tool).
+- **Release blocker fixed (`5cb8f2d`):** v46 on Play aborted at the speakers step. sherpa-onnx's JNI looks up `invoke(IIJ)Ljava/lang/Integer;` on the progress callback, and an invokedynamic Kotlin lambda doesn't have it. The callback is now `DiarizationProgressCallback`, kept by R8, guarded by `DiarizationProgressCallbackTest` (the test is written but not yet run).
+- **Bundles and ABI splits (`7f7e68e`):** AGP refuses `bundleRelease` while ABI splits are on, so splits are off whenever a bundle task is requested; APKs keep them.
+- **Builds on the 8 GB Mac:** run `bundleRelease` on its own, `-Xmx3584m -XX:+UseParallelGC --max-workers=1`. Compiling debug and release in one 3 GB run stalled for 2.5 hours on garbage collection.
+- **In v50:** Settings in the bottom bar, Home review tile and Overview scrolling (`5de7c92`); Timeline paging (`fba3b02`); the shared YouTube card everywhere and the retried-import fix (`eecdc4c`, `1b923ba`); Circles sign-in, covers, guest carry-over (`65b8e44`) and the premium redesign (`1cd27c9`).
+- **Open after v50:** `TodayScreenTest` hangs at the Agenda scroll; `DesignSystemGuardTest` on `AiCraft.kt`; a re-run of the Circles screenshots after `1cd27c9` (record mode); insets on the S20+ for Circles; guest posts and messages don't move with adopted circles.
 
 ## Release v49 for closed testing, and the store setup (2026-11-16)
 - **Team pause:** every session committed its own work, and nothing is pushed:
