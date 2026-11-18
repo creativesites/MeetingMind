@@ -33,7 +33,14 @@ then 2 months at 62% off), `pro_yearly:yearly:launch-first-year-30off` (first ye
 - `SYSTEM_GEMINI_API_KEY` (required: the built-in key testers use for Internet mode)
 - Optional: `SYSTEM_DEEPSEEK_API_KEY`, `YOUVERSION_APP_KEY`, `DEEPSEEK_PROXY_URL`
 
-## Before you release
+## Closed testing: tiers off (founder decision 2026-11-17)
+- Release builds made with `meetingmind.closedTestingAllAccess=true` (in `gradle.properties`) give every tester everything, as if on Pro lifetime. No paywall or plan purchase appears, and Settings says "Closed testing: everything is included". The code is in `core/billing/ClosedTesting.kt`.
+- The Gemini proxy's `PLAN_ALLOWANCES` gives `free` Pro's allowance for now: 72000 audio seconds and 1200 actions a month.
+- **Before the production launch, undo both:**
+  - set the property to `false`;
+  - put `free` back to `{"audioSeconds":1800,"actions":30}` with `wrangler secret put PLAN_ALLOWANCES`;
+  - check that the paywall shows on a fresh install.
+
 - Bump `versionCode` in `app/build.gradle.kts` (currently 49; `versionName` follows it). Play rejects a repeated code.
 - Run the full unit suite on the commit being released.
 - Check the release build has no debug-only features on: the dev-only flags are in `app/build.gradle.kts` (`COMPANION_LIVE_WHISPER`, `FEATURE_*`).

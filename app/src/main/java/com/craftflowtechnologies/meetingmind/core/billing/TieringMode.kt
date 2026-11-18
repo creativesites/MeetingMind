@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * Whether paywalls and plan checks run, or are switched off for a debug build.
  *
  * This is a developer tool, never a product setting: [PRODUCTION] is the default everywhere and a
- * release build always enforces tiers, whatever value an earlier debug install may have saved.
+ * release build enforces tiers, whatever value an earlier debug install may have saved. The one
+ * exception is a closed-testing release made with tiers off ([ClosedTesting]).
  * [CLOSED_TESTING] only exists in debug builds, where it hides unasked paywalls and lets a tester
  * use their own Gemini key without a plan.
  */
@@ -32,13 +33,19 @@ object TieringModeStore {
     private const val PREFS = "meetmind_tiering_mode"
     private const val KEY = "mode"
     private fun defaultMode(): TieringMode =
-        if (showTierSwitch(BuildConfig.DEBUG)) TieringMode.CLOSED_TESTING else TieringMode.PRODUCTION
+        if (ClosedTesting.allAccess || showTierSwitch(BuildConfig.DEBUG)) TieringMode.CLOSED_TESTING else TieringMode.PRODUCTION
 
     private val _mode = MutableStateFlow(defaultMode())
     val mode: StateFlow<TieringMode> = _mode.asStateFlow()
     @Volatile private var loaded = false
 
     fun current(context: Context): TieringMode {
+        // A closed-testing release (tiers off) is always in closed-testing mode.
+        if (ClosedTesting.allAccess) {
+            _mode.value = TieringMode.CLOSED_TESTING
+            loaded = true
+            return TieringMode.CLOSED_TESTING
+        }
         // A release build can never be put in closed-testing mode, even by a value saved earlier.
         if (!showTierSwitch(BuildConfig.DEBUG)) {
             _mode.value = TieringMode.PRODUCTION

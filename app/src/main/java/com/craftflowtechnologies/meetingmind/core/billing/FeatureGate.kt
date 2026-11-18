@@ -16,7 +16,7 @@ package com.craftflowtechnologies.meetingmind.core.billing
  */
 object FeatureGate {
     fun can(capability: Capability, nowMs: Long = System.currentTimeMillis()): Boolean =
-        can(Billing.gateway.entitlements.value, capability, nowMs)
+        ClosedTesting.allAccess || can(Billing.gateway.entitlements.value, capability, nowMs)
 
     fun can(entitlements: Entitlements, capability: Capability, nowMs: Long = System.currentTimeMillis()): Boolean =
         entitlements.effective(nowMs).has(capability)

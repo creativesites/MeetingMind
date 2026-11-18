@@ -41,6 +41,9 @@ class MeetingMindApp : Application() {
         // without a key is simply free: nothing is offered and nothing breaks.
         val key = BuildConfig.REVENUECAT_API_KEY
         Billing.gateway = when {
+            // Closed testing with tiers off: everyone has everything and nothing is sold.
+            com.craftflowtechnologies.meetingmind.core.billing.ClosedTesting.allAccess ->
+                com.craftflowtechnologies.meetingmind.core.billing.ClosedTestingBillingGateway
             key.isNotBlank() -> runCatching { RevenueCatBillingGateway(this, key) as com.craftflowtechnologies.meetingmind.core.billing.BillingGateway }
                 .getOrDefault(DisabledBillingGateway)
             BuildConfig.DEBUG -> SimulatedBillingGateway(this)

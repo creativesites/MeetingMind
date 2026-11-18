@@ -1482,6 +1482,8 @@ private fun PlanAndUsageRow(onOpen: () -> Unit) {
         SettingsNavRow(
             title = "Plan and usage",
             subtitle = (when {
+                com.craftflowtechnologies.meetingmind.core.billing.ClosedTesting.allAccess ->
+                    com.craftflowtechnologies.meetingmind.core.billing.ClosedTesting.SUMMARY
                 !configured -> "Plans aren't available in this build"
                 debugBuild && tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ->
                     "${owned.plan.label} (Closed testing — paywalls off)"

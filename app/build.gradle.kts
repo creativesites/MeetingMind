@@ -128,7 +128,8 @@ android {
       // Debug only: a RevenueCat Test Store key (never a real Play key) and the raw Gemini key, so a
       // fresh development install can record and reach a paywall without any setup.
       buildConfigField("String", "REVENUECAT_API_KEY", "\"${debugRevenueCatKey.replace("\"", "")}\"")
-      buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${debugSystemGeminiKey.replace("\"", "")}\"")
+      buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${debugSystemGeminiKey.replace("\"", "")}\"")      // Debug builds keep their own tier switch in Settings (TieringModeStore).
+      buildConfigField("Boolean", "CLOSED_TESTING_ALL_ACCESS", "false")
     }
     release {
       isCrunchPngs = false
@@ -143,6 +144,13 @@ android {
       // Founder decision 2026-10-25 (amends B1): a Play build carries NO raw Google key. Managed AI
       // goes through the proxy, which holds the key and meters each plan's allowance.
       buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"\"")
+      // Closed testing (founder decision 2026-11-17): tiers are off and every tester has everything,
+      // as if on Pro lifetime. Set meetingmind.closedTestingAllAccess=false in gradle.properties
+      // for the production launch (see agents/PLAY_STORE.md).
+      buildConfigField(
+        "Boolean", "CLOSED_TESTING_ALL_ACCESS",
+        (providers.gradleProperty("meetingmind.closedTestingAllAccess").orNull ?: "false").toBoolean().toString()
+      )
       // Sign-in registrations for W13 (docs/INTEGRATION_CREDENTIALS.md)
       buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-k9t9e8c1altm4boq43j5f5t4p06ksdhk.apps.googleusercontent.com\"")
       buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
