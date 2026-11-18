@@ -93,7 +93,10 @@ class NotesUiTest {
         val vm = NoteEditorViewModel(app, id)
         compose.setContent {
             MeetMindTheme {
-                NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+                // The note's companion moment animates every frame; reduced motion lets Compose go idle in tests.
+                CompositionLocalProvider(LocalCompanionReducedMotion provides true) {
+                    NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+                }
             }
         }
         compose.waitUntil(60_000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS); vm.loaded.value }
@@ -120,7 +123,10 @@ class NotesUiTest {
         val vm = NoteEditorViewModel(app, id)
         compose.setContent {
             MeetMindTheme {
-                NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+                // The note's companion moment animates every frame; reduced motion lets Compose go idle in tests.
+                CompositionLocalProvider(LocalCompanionReducedMotion provides true) {
+                    NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+                }
             }
         }
         compose.waitUntil(60_000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS); vm.loaded.value }
@@ -130,10 +136,17 @@ class NotesUiTest {
         val last = compose.onNode(hasSetTextAction() and hasText("Last line", substring = true))
         last.performClick()
         last.performTextInput("\n" + answer)
-        compose.waitForIdle()
+        // The paste is applied in the view model straight away. Wait on that, not on the whole screen going
+        // idle: the paste also shows a snackbar and scrolls to the new line, which a loaded run can time out on.
+        compose.waitUntil(60_000) {
+            org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS)
+            vm.blocks.value.any { it.type == com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.MARKDOWN }
+        }
         val after = vm.blocks.value
         assertEquals("one Markdown block (plus a line to keep typing on)", 1, after.count { it.type == com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.MARKDOWN })
         assertTrue("was $before blocks, now ${after.size}", after.size <= before + 2)
+        // Past the snackbar's few seconds, so the picture is of the note.
+        compose.mainClock.advanceTimeBy(6_000)
         compose.onRoot().captureRoboImage("src/test/screenshots/note_editor_paste.png")
     }
 
@@ -143,7 +156,10 @@ class NotesUiTest {
         val vm = NoteEditorViewModel(app, id)
         compose.setContent {
             MeetMindTheme {
-                NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+                // The note's companion moment animates every frame; reduced motion lets Compose go idle in tests.
+                CompositionLocalProvider(LocalCompanionReducedMotion provides true) {
+                    NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+                }
             }
         }
         compose.waitUntil(60_000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS); vm.loaded.value }

@@ -25,7 +25,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,8 +69,17 @@ enum class CreateAction { RECORD, NOTE, MEDIA, IMPORT, YOUTUBE }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateSheet(onPick: (CreateAction) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
+    // The navigation bar read from the app's window: inside the sheet's own window the insets can come
+    // through as zero (3-button navigation on some phones), which drew the last line under the bar.
+    val appNavBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceBase,
+        // The content pads for the navigation bar itself (below), so the sheet adds none.
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
+    ) {
+        val sheetNavBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp + maxOf(appNavBar, sheetNavBar))) {
             Text("Create", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, letterSpacing = (-0.3).sp)
             Spacer(Modifier.height(14.dp))
             Surface(onClick = { onPick(CreateAction.RECORD) }, shape = RoundedCornerShape(20.dp), color = Accent, modifier = Modifier.fillMaxWidth()) {
@@ -175,9 +186,12 @@ private fun YouTubeCard(onClick: () -> Unit) {
                 .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // The video frame: a gradient screen, a bold play mark and a scrubber part-way along.
+            // The video frame: a gradient screen, a bold play mark and a scrubber part-way along, with the
+            // "New" sticker on its corner (beside the title it cut the title short).
+            Box {
             Box(
                 Modifier
+                    .padding(top = 6.dp, start = 6.dp)
                     .size(width = 66.dp, height = 46.dp)
                     .clip(MM.radius.small)
                     .background(frame)
@@ -195,18 +209,17 @@ private fun YouTubeCard(onClick: () -> Unit) {
                     Box(Modifier.fillMaxWidth(0.42f).fillMaxHeight().clip(CircleShape).background(c.onAccent.copy(alpha = 0.92f)))
                 }
             }
+            Box(
+                Modifier.align(Alignment.TopStart).clip(MM.radius.pill).background(c.surface).padding(1.5.dp)
+                    .clip(MM.radius.pill).background(frame).padding(horizontal = 6.dp)
+            ) {
+                Text("New", style = MM.type.caption, fontWeight = FontWeight.SemiBold, color = c.onAccent)
+            }
+            }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Notes from a YouTube video", style = MM.type.bodyStrong, color = c.ink,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Box(Modifier.clip(MM.radius.pill).background(frame).padding(horizontal = 7.dp, vertical = 1.dp)) {
-                        Text("New", style = MM.type.caption, fontWeight = FontWeight.SemiBold, color = c.onAccent)
-                    }
-                }
+                // The whole title always shows; at large text sizes it wraps to a second line.
+                Text("Notes from a YouTube video", style = MM.type.bodyStrong, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(2.dp))
                 Text("Paste a link, get study notes with timestamps", style = MM.type.secondary, color = c.inkSecondary)
             }
