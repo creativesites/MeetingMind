@@ -114,11 +114,9 @@ internal fun CirclesAccountCard(
                 }
                 Column(Modifier.padding(MM.space.m), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                     Text(copy.body, style = MM.type.secondary, color = MM.colors.inkSecondary)
-                    PrimaryButton(
-                        copy.action ?: "Opening Google…",
-                        { onLink(context.findHostActivity() ?: context) },
-                        enabled = !account.busy,
-                        leadingIcon = Icons.AutoMirrored.Rounded.Login,
+                    com.craftflowtechnologies.meetingmind.core.ui.GoogleSignInButton(
+                        onClick = { onLink(context.findHostActivity() ?: context) },
+                        busy = account.busy,
                         modifier = Modifier.fillMaxWidth()
                     )
                     account.message?.let { StatusLine(StatusKind.Info, it) }
@@ -169,4 +167,36 @@ private fun WelcomeTile(photoId: String, modifier: Modifier) {
     ) {
         PackImage(photoId, thumb = true, modifier = Modifier.fillMaxSize().clip(MM.radius.card))
     }
+}
+
+/**
+ * The sign-in offer inside the create and join flows: one line on why, and the Google button. Shown only while the
+ * person is signed out, so the circle they make or join follows them to any phone. Nothing here blocks the flow.
+ */
+@Composable
+internal fun CirclesSignInPrompt(
+    account: AccountUiState,
+    body: String,
+    onLink: (Context) -> Unit,
+    onSwitch: () -> Unit,
+    onDismissConflict: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (account.linked) return
+    val context = LocalContext.current
+    Surface(shape = MM.radius.card, color = MM.colors.surfaceSunk, modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                Icon(Icons.Rounded.CloudDone, null, tint = MM.colors.inkSecondary, modifier = Modifier.size(MMSize.iconSmall))
+                Text(body, style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.weight(1f))
+            }
+            com.craftflowtechnologies.meetingmind.core.ui.GoogleSignInButton(
+                onClick = { onLink(context.findHostActivity() ?: context) },
+                busy = account.busy,
+                modifier = Modifier.fillMaxWidth()
+            )
+            account.message?.let { StatusLine(StatusKind.Info, it) }
+        }
+    }
+    SwitchAccountDialog(account, onSwitch, onDismissConflict)
 }

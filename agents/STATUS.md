@@ -129,6 +129,34 @@ Updated: 2026-11-16. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
   - **Not mine:** `DesignSystemGuardTest` fails on `core/ui/mm/AiCraft.kt` (`fontSize = …sp`, from `8d97b49`); its owner needs to fix it.
   - **Pre-existing:** minSdk 24 uses `java.time` without core-library desugaring, a crash risk on Android 7. It's the founder's call.
 
+## Circles premium redesign: every page, Google sign-in, insets (2026-11-18)
+
+- **Why:** the founder found Circles functional but "like a different app". Every Circles page now uses Home's and Work's
+  building blocks (MM tokens, Work's header anatomy, MMCard groups, the app's floating bottom bar). No Circles-only look.
+- **Shared kit:** `feature/circles2/CirclesKit.kt` holds `CirclesTopBar`, section titles, row dividers, `circlesBottomInset`,
+  `CirclesReveal` (a once-only 30 ms stagger; off under `MM.motion.reduced`) and `chatBubbleColors`.
+- **Pages:**
+  - List: a living featured card (cover edge to edge), the other circles grouped in one card, quiet header (Search, Join, ＋).
+  - Circle page: cover, name and one subtitle line in the header; a plain ⋯ menu. The dock is now the app's floating pill bar.
+  - Post card: avatar, name and time only in the header; type and status in one dot-and-word line; media edge to edge; a
+    muted footer (React or Pray, Comment, Save, Share). Everything else is in the ⋯ menu.
+  - Updates opens on a "Share with the …" prompt. Create post is a tall sheet: Post in the header, type chips, a borderless
+    writing area, and a media toolbar pinned above the keyboard.
+  - Chat: no blue. Your bubbles are charcoal ink in light and raised graphite in dark; others sit on the surface. Photos and
+    videos have no bubble or backdrop; a caption gets its own bubble. Calmer day labels, input bar and attachment tray.
+  - People: grouped rows, one quiet line per person. D3 is still paused, so post counts and "Top contributor" remain, as text.
+  - Settings: grouped cards, Save in the header and pinned above the navigation bar while there are changes.
+- **Sign in with Google:** `core/ui/GoogleSignInButton.kt`, per Google's branding (multicolour G on a white or #131314 pill).
+  The G is `res/drawable/ic_google_g.xml`; the pill colours are in the button file, in the colour baseline with a comment.
+  Used by the account card (including "Sign in to get your circles back"), the create flow, the join sheet and Settings.
+- **Insets:** the circle page pads top and sides with `safeDrawing`; the dock clears the navigation bar; while the keyboard is
+  up the page pads the navigation bar and the keyboard; Circles sheets ride the keyboard. Not yet checked on the S20+.
+- **Tests:** `CirclesPremium{List,Updates,Chat,People}ScreenshotTest`, light and dark (images under
+  `build/outputs/roborazzi/circles_premium_*`). fix17 green: List 6/6, Updates 7/7, Chat 3/3, People 4/4,
+  CirclesScreenshotTest 19/19, ColorLiteralGuardTest 1/1 (DesignSystemGuardTest fails only on the old AiCraft.kt). The
+  Learning session reviewed the images; after that the busy Google button got a visible ring and the shots wait for pack
+  covers to decode. Those two need a rerun of the screenshot tests.
+
 ## Circles: missing circles, sign-in carry-over, covers and profile photo (2026-11-18)
 
 - **Why the founder's circles vanished:** a reinstall gave the phone a new guest Circles account; the circles stayed on the server, and Google sign-in brought them back. A circle made *before* sign-in was then lost, because switching to the existing Google account left it with the guest account.

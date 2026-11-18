@@ -31,6 +31,16 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.Tag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite as FixedWhiteInk
 import com.craftflowtechnologies.meetingmind.core.devotional.ClassicDevotionals
 import com.craftflowtechnologies.meetingmind.core.devotional.ClassicReading
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
@@ -244,7 +254,9 @@ fun ComposerSheet(
     members: List<Member> = emptyList(),
     meta: PostMeta? = null,
     onMetaChange: (PostMeta?) -> Unit = {},
-    isAdmin: Boolean = false
+    isAdmin: Boolean = false,
+    /** False draws the composer in place instead of in a sheet window: screenshot tests use it. */
+    inSheet: Boolean = true
 ) {
     BackHandler(enabled = state.open) { onDismiss() }
     // Type suggestion reads the body after a 400 ms pause, and a dismissed chip stays hidden for this composer session.
@@ -347,642 +359,326 @@ fun ComposerSheet(
         )
     }
 
-    CircleSheet(onDismiss) {
-        // Redesigned modern header with space badge
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val spaceBadge = when {
-                        circle.isWork -> "WORK POST"
-                        circle.isLearning -> "STUDY POST"
-                        circle.space.equals("community", ignoreCase = true) || circle.space.equals("general", ignoreCase = true) -> "COMMUNITY POST"
-                        else -> "FAITH POST"
-                    }
+    val canSend = !state.sending && !isUploading &&
+        (state.body.isNotBlank() || state.attachments.isNotEmpty() || selectedDevotional != null || selectedStudyNote != null)
+    val sendLabel = when {
+        state.sending -> "Posting…"
+        isUploading -> "Uploading…"
+        type == PostType.Prayer && circle.settings.prayerApproval -> "Send"
+        else -> "Post"
+    }
+    var tagsChecklistExpanded by remember { mutableStateOf(localMeta.tags.isNotEmpty() || localMeta.checklist.isNotEmpty()) }
+    var tagInput by remember { mutableStateOf("") }
+    var checklistInput by remember { mutableStateOf("") }
+    val quickPickTags = remember(circle.isWork, circle.isLearning) {
+        when {
+            circle.isWork -> listOf("sprint", "shipped", "blocked", "decision")
+            circle.isLearning -> listOf("exam", "summary", "formula", "review")
+            else -> listOf("gratitude", "prayer", "event", "resource")
+        }
+    }
+
+    ComposerFrame(
+        onDismiss = onDismiss,
+        inSheet = inSheet,
+        header = {
+            // ---- header: close, what you're writing and where, and Post ----
+            Row(
+                Modifier.fillMaxWidth().padding(start = MM.space.xs, end = MM.space.l),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, if (state.hasText) "Save draft and close" else "Close", tint = MM.colors.ink)
+                }
+                Column(Modifier.weight(1f).padding(start = MM.space.xs)) {
+                    Text(type.verb, style = MM.type.heading, color = MM.colors.ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     Text(
-                        spaceBadge,
-                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
-                        color = CirclesPalette.Accent
+                        "To ${circle.name}" + if (state.hasText) " · draft saved" else "",
+                        style = MM.type.caption, color = MM.colors.inkMuted, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
+                if (state.hasText) TextAction("Discard", onClick = onDiscardDraft)
+                ComposerPostButton(sendLabel, canSend, onSend)
+            }
+            // ---- what kind of post: chips, the current one filled ----
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = MM.space.l, vertical = MM.space.s),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+            ) {
+                availableTypes.forEach { t -> MMChip(t.label, selected = t == type, onClick = { onTypeChange(t) }) }
+            }
+        },
+        toolbar = {
+            if (isUploading) {
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = MM.colors.ink, trackColor = MM.colors.track)
+            }
+            HorizontalDividerLine()
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = MM.space.s, vertical = MM.space.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ComposerTool(Icons.Rounded.Image, "Add a photo", enabled = !attachmentsFull && !isUploading) {
+                    pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
+                ComposerTool(Icons.Rounded.Videocam, "Add a video", enabled = !attachmentsFull && !isUploading) {
+                    pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                }
+                ComposerTool(Icons.Rounded.PictureAsPdf, "Add a PDF", enabled = !attachmentsFull && !isUploading) {
+                    pickPdf.launch("application/pdf")
+                }
+                ComposerTool(Icons.Rounded.Tag, if (tagsChecklistExpanded) "Hide tags and list" else "Tags and a shared list", active = tagsChecklistExpanded) {
+                    tagsChecklistExpanded = !tagsChecklistExpanded
+                }
+                Spacer(Modifier.weight(1f))
                 Text(
-                    type.verb,
-                    style = MM.type.title.copy(fontWeight = FontWeight.Bold),
-                    color = MM.colors.ink
-                )
-                Text(
-                    "Posting to ${circle.name}",
+                    when {
+                        attachmentsFull -> "4 of 4 attachments"
+                        state.body.length > 3600 -> "${state.body.length} / 4000"
+                        else -> ""
+                    },
                     style = MM.type.caption,
-                    color = MM.colors.inkSecondary
+                    color = if (state.body.length > 3800) MM.colors.danger else MM.colors.inkMuted,
+                    modifier = Modifier.padding(end = MM.space.s)
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (state.hasText) {
-                    TextAction("Discard", onClick = onDiscardDraft)
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Rounded.Close, if (state.hasText) "Save draft & close" else "Cancel", tint = MM.colors.inkSecondary)
-                }
-            }
         }
-
-        if (state.hasText || state.draftRestored) {
-            StatusLine(
-                StatusKind.Info,
-                if (state.draftRestored) "Draft restored — automatically saved as you type."
-                else "Auto-saving draft — pressing Back won't lose your words."
-            )
-        }
-
+    ) {
         if (circle.template == "client_engagement") {
-            StatusLine(StatusKind.Info, "External client space — visible to client members.")
+            StatusLine(StatusKind.Info, "External client space: visible to client members.")
         }
-
-        // Type switcher chips
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(MM.space.s)
-        ) {
-            availableTypes.forEach { t ->
-                MMChip(t.label, selected = t == type, onClick = { onTypeChange(t) })
-            }
+        if (state.draftRestored) {
+            Text("Draft restored. It saves as you type.", style = MM.type.caption, color = MM.colors.inkMuted)
         }
-
         if (state.fromAnswered) {
             StatusLine(StatusKind.Info, "Thank God with the group! Edit this testimony however you like.")
         }
 
-        // Work metadata inputs
-        if (circle.isWork && type in setOf(PostType.Task, PostType.Blocker, PostType.Decision)) {
-            Surface(
-                shape = MM.radius.card,
-                color = MM.colors.surfaceSunk,
-                border = BorderStroke(1.dp, MM.colors.line),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    Modifier.padding(MM.space.m),
-                    verticalArrangement = Arrangement.spacedBy(MM.space.s)
-                ) {
-                    // Assignee or Decision owner
-                    if (type == PostType.Decision) {
-                        Text(
-                            "Decision owner",
-                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                            color = MM.colors.inkSecondary
-                        )
-                        if (members.isNotEmpty()) {
-                            Row(
-                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                            ) {
-                                members.forEach { m ->
-                                    val isSel = localMeta.decisionOwner == m.displayName
-                                    MMChip(
-                                        label = m.displayName,
-                                        selected = isSel,
-                                        onClick = {
-                                            updateMeta { it.copy(decisionOwner = if (isSel) null else m.displayName) }
-                                        }
-                                    )
-                                }
-                            }
-                        } else {
-                            CircleField(
-                                value = localMeta.decisionOwner.orEmpty(),
-                                onValueChange = { owner -> updateMeta { it.copy(decisionOwner = owner.ifBlank { null }) } },
-                                label = "Decision owner (person or team)",
-                                placeholder = "e.g. Jane, Product Lead"
-                            )
-                        }
-                    } else {
-                        Text(
-                            "Assignee",
-                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                            color = MM.colors.inkSecondary
-                        )
-                        if (members.isNotEmpty()) {
-                            Row(
-                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                            ) {
-                                members.forEach { m ->
-                                    val isSel = localMeta.assigneeUid == m.uid
-                                    MMChip(
-                                        label = "@${m.displayName}",
-                                        selected = isSel,
-                                        onClick = {
-                                            updateMeta { curr ->
-                                                if (isSel) curr.copy(assigneeUid = null, assigneeName = null)
-                                                else curr.copy(assigneeUid = m.uid, assigneeName = m.displayName)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        } else {
-                            CircleField(
-                                value = localMeta.assigneeName.orEmpty(),
-                                onValueChange = { name -> updateMeta { it.copy(assigneeName = name.ifBlank { null }) } },
-                                label = "Assignee name",
-                                placeholder = "e.g. Jane"
-                            )
-                        }
-                    }
-
-                    // Quick due pills + custom due text
-                    if (type in setOf(PostType.Task, PostType.Blocker)) {
-                        Text(
-                            "Due date",
-                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                            color = MM.colors.inkSecondary
-                        )
-                        Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            listOf("Today", "Tomorrow", "Friday").forEach { pill ->
-                                val isSel = localMeta.dueText == pill
-                                MMChip(
-                                    label = pill,
-                                    selected = isSel,
-                                    onClick = {
-                                        val nextDue = if (isSel) null else pill
-                                        updateMeta { it.copy(dueText = nextDue) }
-                                    }
-                                )
-                            }
-                        }
-                        CircleField(
-                            value = localMeta.dueText.orEmpty(),
-                            onValueChange = { text -> updateMeta { it.copy(dueText = text.ifBlank { null }) } },
-                            label = "Custom due date or milestone (optional)",
-                            placeholder = "e.g. Today, by Friday, End of Q3"
-                        )
-                    }
-
-                    // Priority chips (Normal, High, Urgent)
-                    Text(
-                        "Priority",
-                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                        color = MM.colors.inkSecondary
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        listOf(WorkPriority.Normal, WorkPriority.High, WorkPriority.Urgent).forEach { pr ->
-                            val isSel = localMeta.priority == pr
-                            val (bg, fg) = when (pr) {
-                                WorkPriority.Urgent -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
-                                WorkPriority.High -> CirclesPalette.WarmBg to CirclesPalette.WarmInk
-                                WorkPriority.Normal -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
-                                else -> MM.colors.surfaceSunk to MM.colors.inkSecondary
-                            }
-                            Surface(
-                                shape = MM.radius.pill,
-                                color = if (isSel) bg else MM.colors.surfaceSunk,
-                                border = BorderStroke(1.dp, if (isSel) fg.copy(alpha = 0.35f) else MM.colors.line),
-                                modifier = Modifier.clickable {
-                                    updateMeta { it.copy(priority = if (isSel) null else pr) }
-                                }
-                            ) {
-                                Text(
-                                    pr.label,
-                                    style = MM.type.caption.copy(fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium),
-                                    color = if (isSel) fg else MM.colors.inkSecondary,
-                                    modifier = Modifier.padding(horizontal = MM.space.m, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // For Blocker: Blocked on field
-                    if (type == PostType.Blocker) {
-                        CircleField(
-                            value = localMeta.blockedOn.orEmpty(),
-                            onValueChange = { blocked -> updateMeta { it.copy(blockedOn = blocked.ifBlank { null }) } },
-                            label = "Blocked on (person or dependency)",
-                            placeholder = "e.g. Waiting on API credentials from DevOps"
-                        )
-                    }
-                }
-            }
-        }
-
-        // Standup helper template
-        if (type == PostType.Standup) {
-            Surface(
-                shape = MM.radius.pill,
-                color = CirclesPalette.AccentSoft,
-                border = BorderStroke(1.dp, CirclesPalette.Accent.copy(alpha = 0.25f)),
-                modifier = Modifier.clickable {
-                    onBody("Done:\n- \n\nNext:\n- \n\nBlockers:\n- None")
-                }
-            ) {
-                Row(
-                    Modifier.padding(horizontal = MM.space.m, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        "Use Done / Next / Blockers template",
-                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                        color = CirclesPalette.AccentDeep
-                    )
-                }
-            }
-        }
-
-        // Devotional selector & preview card
-        if (type == PostType.Devotional) {
-            Surface(
-                shape = MM.radius.card,
-                color = CirclesPalette.WarmBg,
-                border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
-                modifier = Modifier.fillMaxWidth().clip(MM.radius.card)
-            ) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Rounded.AutoStories, contentDescription = null, tint = CirclesPalette.WarmInk, modifier = Modifier.size(16.dp))
-                            Text(
-                                selectedDevotional?.heading?.ifBlank { "Devotional Reading" } ?: "Devotional Reading",
-                                style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
-                                color = CirclesPalette.WarmInk
-                            )
-                        }
-                        Text(
-                            selectedDevotional?.date ?: "Today",
-                            style = MM.type.caption,
-                            color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
-                        )
-                    }
-                    selectedDevotional?.let { d ->
-                        Text(
-                            "“${d.keyText}”",
-                            style = MM.type.scripture,
-                            color = MM.colors.ink
-                        )
-                        Text(d.referenceText, style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.WarmInk)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        SecondaryButton(
-                            if (selectedDevotional == null) "Select Devotional" else "Change Devotional",
-                            { showDevotionalPicker = true }
-                        )
-                    }
-                }
-            }
-        }
-
-        // Study selector & preview card
-        if (type == PostType.Study) {
-            Surface(
-                shape = MM.radius.card,
-                color = CirclesPalette.WarmBg,
-                border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
-                modifier = Modifier.fillMaxWidth().clip(MM.radius.card)
-            ) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = CirclesPalette.WarmInk, modifier = Modifier.size(16.dp))
-                            Text(
-                                selectedStudyNote?.first ?: "Bible Study Entry",
-                                style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
-                                color = CirclesPalette.WarmInk
-                            )
-                        }
-                    }
-                    selectedStudyNote?.let { n ->
-                        Text("“${n.third}”", style = MM.type.scripture, color = MM.colors.ink, maxLines = 4)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        SecondaryButton(
-                            if (selectedStudyNote == null) "Pick from Study Journal" else "Change Study Note",
-                            { showStudyPicker = true }
-                        )
-                    }
-                }
-            }
-        }
-
         // "The type follows the words": a dismissable hint above the field. Switch keeps the words (openComposer keeps the body).
-        if (suggestedType != null) {
-            Surface(
-                shape = MM.radius.pill,
-                color = MM.colors.accentWash,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+        AnimatedVisibility(visible = suggestedType != null, enter = fadeIn(MM.motion.quick()) + expandVertically(MM.motion.standard()), exit = fadeOut(MM.motion.quick()) + shrinkVertically(MM.motion.standard())) {
+            val st = suggestedType
+            if (st != null) {
                 Row(
-                    Modifier.padding(start = MM.space.m, end = MM.space.xs),
+                    Modifier.fillMaxWidth().clip(MM.radius.pill).background(MM.colors.surfaceSunk).padding(start = MM.space.l, end = MM.space.xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "Looks like ${PostTypeSuggester.describe(suggestedType)} ·",
-                        style = MM.type.caption,
-                        color = MM.colors.ink,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextAction("Switch", onClick = { onTypeChange(suggestedType) })
+                    Text("Looks like ${PostTypeSuggester.describe(st)}", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.weight(1f))
+                    TextAction("Switch", onClick = { onTypeChange(st) })
                     IconButton(onClick = { suggestionDismissed = true }) {
-                        Icon(Icons.Rounded.Close, "Dismiss suggestion", tint = MM.colors.inkSecondary)
+                        Icon(Icons.Rounded.Close, "Dismiss suggestion", tint = MM.colors.inkMuted, modifier = Modifier.size(MMSize.iconSmall))
                     }
                 }
             }
         }
 
-        // Redesigned modern text field container
-        Surface(
-            shape = MM.radius.card,
-            color = MM.colors.surface,
-            border = BorderStroke(1.dp, MM.colors.line),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(Modifier.padding(12.dp)) {
-                CircleField(
-                    state.body,
-                    { onBody(it.take(4000)) },
-                    label = when (type) {
-                        PostType.Devotional -> "Your thoughts or reflection on this reading"
-                        PostType.Study -> "Your study takeaways or reflection"
-                        PostType.Prayer -> "What would you like prayer for?"
-                        PostType.Testimony -> "What did God do?"
-                        PostType.Encouragement -> "Encouraging word or reflection"
-                        PostType.Task -> "Action item & assignee"
-                        PostType.Decision -> "Decision & context"
-                        PostType.Brief -> "Meeting brief or summary"
-                        PostType.Standup -> "Status update"
-                        PostType.Blocker -> "What is blocking you?"
-                        else -> "Write your post"
-                    },
-                    placeholder = when (type) {
-                        PostType.Devotional -> "Add what God spoke to you through this devotional…"
-                        PostType.Study -> "Write your study insights or share with the group…"
-                        PostType.Prayer -> "Share your prayer request with details or specific prayer points…"
-                        PostType.Testimony -> "Tell the story of how God moved or answered prayer…"
-                        PostType.Encouragement -> "Share a thought, verse reflection, or word of encouragement…"
-                        PostType.Task -> "e.g. Update API client for work circles (@Jane, by Friday)…"
-                        PostType.Decision -> "e.g. Decided to adopt Jetpack Compose for all new flows…"
-                        PostType.Brief -> "Summary of meeting key points, next steps and milestones…"
-                        PostType.Standup -> "What did you complete? What are you working on next?"
-                        PostType.Blocker -> "What's in the way, who can help, and what's needed to unblock?"
-                        else -> if (circle.isWork) "Share an update, question, or note with the team…" else "Share an update, question, or note with the circle…"
-                    },
-                    minLines = 4,
-                    maxLines = 10
-                )
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 4.dp, end = 4.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Text(
-                        "${state.body.length} / 4000",
-                        style = MM.type.caption,
-                        color = if (state.body.length > 3800) CirclesPalette.RoseInk else MM.colors.inkMuted
-                    )
-                }
+        // ---- the words: a borderless page, the way Notes writes ----
+        ComposerTextArea(
+            value = state.body,
+            onValueChange = { onBody(it.take(4000)) },
+            placeholder = when (type) {
+                PostType.Devotional -> "What did God speak to you through this reading?"
+                PostType.Study -> "Your study takeaways or reflection…"
+                PostType.Prayer -> "What would you like prayer for?"
+                PostType.Testimony -> "Tell the story of how God moved…"
+                PostType.Encouragement -> "A word of encouragement for the group…"
+                PostType.Task -> "What needs doing, and by whom?"
+                PostType.Decision -> "What was decided, and why?"
+                PostType.Brief -> "Key points, next steps and milestones…"
+                PostType.Standup -> "Done, next, and anything in the way…"
+                PostType.Blocker -> "What's in the way, and what would unblock it?"
+                else -> if (circle.isWork) "Share an update with the team…" else "Share something with the ${circle.groupWord.lowercase()}…"
             }
+        )
+
+        if (type == PostType.Standup && state.body.isBlank()) {
+            TextAction("Use the Done, Next, Blockers outline", { onBody("Done:\n- \n\nNext:\n- \n\nBlockers:\n- None") })
         }
 
-        // Collapsible compact Tags & Checklist section
-        var tagsChecklistExpanded by remember { mutableStateOf(localMeta.tags.isNotEmpty() || localMeta.checklist.isNotEmpty()) }
-        var tagInput by remember { mutableStateOf("") }
-        var checklistInput by remember { mutableStateOf("") }
-        val quickPickTags = remember(circle.isWork, circle.isLearning) {
-            when {
-                circle.isWork -> listOf("sprint", "shipped", "blocked", "decision")
-                circle.isLearning -> listOf("exam", "summary", "formula", "review")
-                else -> listOf("gratitude", "prayer", "event", "resource")
-            }
-        }
-
-        Surface(
-            shape = MM.radius.card,
-            color = MM.colors.surfaceSunk,
-            border = BorderStroke(MMSize.hairline, MM.colors.line),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                Modifier.padding(MM.space.m),
-                verticalArrangement = Arrangement.spacedBy(MM.space.s)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().clip(MM.radius.card).clickable { tagsChecklistExpanded = !tagsChecklistExpanded },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs / 2)) {
-                        Text(
-                            "Tags & Checklist",
-                            style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold),
-                            color = MM.colors.ink
-                        )
-                        val summaryParts = listOfNotNull(
-                            "${localMeta.tags.size}/4 tags".takeIf { localMeta.tags.isNotEmpty() },
-                            "${localMeta.checklist.size}/8 items".takeIf { localMeta.checklist.isNotEmpty() }
-                        )
-                        if (summaryParts.isNotEmpty()) {
-                            Text(
-                                summaryParts.joinToString(" · "),
-                                style = MM.type.caption,
-                                color = MM.colors.inkSecondary
-                            )
+        // ---- staged attachments: thumbnails you can remove ----
+        if (state.attachments.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                state.attachments.forEach { a ->
+                    Box(Modifier.size(88.dp).clip(MM.radius.small).background(MM.colors.surfaceSunk)) {
+                        if (!a.isVideo && !a.isPdf) {
+                            MediaImage(circleId = circle.id, path = a.path, modifier = Modifier.fillMaxSize(), contentDescription = a.name ?: "Attached photo", allowFullscreen = false)
                         } else {
-                            Text(
-                                "Add labels or action items",
-                                style = MM.type.caption,
-                                color = MM.colors.inkMuted
-                            )
+                            Column(Modifier.align(Alignment.Center).padding(MM.space.s), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(if (a.isVideo) Icons.Rounded.Videocam else Icons.Rounded.PictureAsPdf, null, tint = MM.colors.inkSecondary, modifier = Modifier.size(MMSize.icon))
+                                Text(
+                                    a.durationMs?.takeIf { it > 0 }?.let(::formatDuration) ?: formatBytes(a.bytes),
+                                    style = MM.type.caption, color = MM.colors.inkMuted, maxLines = 1
+                                )
+                            }
+                        }
+                        Surface(
+                            onClick = { onRemovePhoto(a) },
+                            shape = MM.radius.pill,
+                            color = MM.colors.scrim,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(MM.space.xs).size(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Close, "Remove attachment", tint = FixedWhiteInk, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
-                    Icon(
-                        if (tagsChecklistExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                        contentDescription = if (tagsChecklistExpanded) "Collapse" else "Expand",
-                        tint = MM.colors.inkSecondary
+                }
+            }
+        }
+        videoNotice?.let { StatusLine(StatusKind.Warning, it) }
+
+        // ---- work details: who, when, how urgent (only what the server stores) ----
+        if (circle.isWork && type in setOf(PostType.Task, PostType.Blocker, PostType.Decision)) {
+            InsetPanel(contentPadding = MM.space.m) {
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    ComposerFieldLabel(if (type == PostType.Decision) "Decision owner" else "Who")
+                    if (members.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                            members.forEach { m ->
+                                if (type == PostType.Decision) {
+                                    val isSel = localMeta.decisionOwner == m.displayName
+                                    MMChip(m.displayName, selected = isSel, onClick = { updateMeta { it.copy(decisionOwner = if (isSel) null else m.displayName) } })
+                                } else {
+                                    val isSel = localMeta.assigneeUid == m.uid
+                                    MMChip(m.displayName, selected = isSel, onClick = {
+                                        updateMeta { curr -> if (isSel) curr.copy(assigneeUid = null, assigneeName = null) else curr.copy(assigneeUid = m.uid, assigneeName = m.displayName) }
+                                    })
+                                }
+                            }
+                        }
+                    } else if (type == PostType.Decision) {
+                        CircleField(localMeta.decisionOwner.orEmpty(), { owner -> updateMeta { it.copy(decisionOwner = owner.ifBlank { null }) } }, label = "Decision owner", placeholder = "A person or a team")
+                    } else {
+                        CircleField(localMeta.assigneeName.orEmpty(), { name -> updateMeta { it.copy(assigneeName = name.ifBlank { null }) } }, label = "Who", placeholder = "A name")
+                    }
+                    if (type in setOf(PostType.Task, PostType.Blocker)) {
+                        ComposerFieldLabel("When")
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                            listOf("Today", "Tomorrow", "Friday").forEach { pill ->
+                                val isSel = localMeta.dueText == pill
+                                MMChip(pill, selected = isSel, onClick = { updateMeta { it.copy(dueText = if (isSel) null else pill) } })
+                            }
+                        }
+                        CircleField(localMeta.dueText.orEmpty(), { text -> updateMeta { it.copy(dueText = text.ifBlank { null }) } }, label = "Or a date or milestone", placeholder = "By Friday, end of Q3")
+                    }
+                    ComposerFieldLabel("Priority")
+                    SegmentedControl(
+                        options = listOf(WorkPriority.Normal, WorkPriority.High, WorkPriority.Urgent).map { it.label },
+                        selectedIndex = listOf(WorkPriority.Normal, WorkPriority.High, WorkPriority.Urgent).indexOf(localMeta.priority ?: WorkPriority.Normal),
+                        onSelect = { i -> updateMeta { it.copy(priority = listOf(WorkPriority.Normal, WorkPriority.High, WorkPriority.Urgent)[i]) } }
+                    )
+                    if (type == PostType.Blocker) {
+                        CircleField(localMeta.blockedOn.orEmpty(), { blocked -> updateMeta { it.copy(blockedOn = blocked.ifBlank { null }) } }, label = "Blocked on", placeholder = "A person or a dependency")
+                    }
+                }
+            }
+        }
+
+        // ---- devotional and study: pick the source, see it on warm paper ----
+        if (type == PostType.Devotional || type == PostType.Study) {
+            val isDevotional = type == PostType.Devotional
+            Surface(shape = MM.radius.card, color = MM.colors.goldWash, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                        Icon(if (isDevotional) Icons.Rounded.AutoStories else Icons.Rounded.Bookmark, null, tint = MM.colors.goldInk, modifier = Modifier.size(MMSize.iconSmall))
+                        Text(
+                            if (isDevotional) selectedDevotional?.heading?.ifBlank { "Devotional" } ?: "Devotional" else selectedStudyNote?.first ?: "From your study journal",
+                            style = MM.type.bodyStrong, color = MM.colors.goldInk, modifier = Modifier.weight(1f)
+                        )
+                        if (isDevotional) Text(selectedDevotional?.date ?: "Today", style = MM.type.caption, color = MM.colors.goldInk)
+                    }
+                    if (isDevotional) selectedDevotional?.let { d ->
+                        Text("“${d.keyText}”", style = MM.type.scripture, color = MM.colors.ink)
+                        Text(d.referenceText, style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.goldInk)
+                    } else selectedStudyNote?.let { n ->
+                        Text("“${n.third}”", style = MM.type.scripture, color = MM.colors.ink, maxLines = 4)
+                    }
+                    TextAction(
+                        when {
+                            isDevotional && selectedDevotional == null -> "Choose a devotional"
+                            isDevotional -> "Change devotional"
+                            selectedStudyNote == null -> "Pick from your study journal"
+                            else -> "Change study note"
+                        },
+                        { if (isDevotional) showDevotionalPicker = true else showStudyPicker = true }
                     )
                 }
+            }
+        }
 
-                if (tagsChecklistExpanded) {
-                    // --- Tags (up to 4) ---
-                    Text(
-                        "Tags (${localMeta.tags.size}/4)",
-                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                        color = MM.colors.inkSecondary
-                    )
-                    if (localMeta.tags.isNotEmpty()) {
-                        Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            localMeta.tags.forEach { tag ->
-                                Surface(
-                                    shape = MM.radius.pill,
-                                    color = MM.colors.accentWash,
-                                    border = BorderStroke(MMSize.hairline, MM.colors.accent.copy(alpha = 0.35f)),
-                                    modifier = Modifier.clip(MM.radius.pill).clickable {
-                                        updateMeta { it.copy(tags = it.tags.filter { t -> t != tag }) }
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(start = MM.space.s, top = MM.space.xs / 2, end = MM.space.xs, bottom = MM.space.xs / 2),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
-                                    ) {
-                                        Text(
-                                            "#$tag",
-                                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                            color = MM.colors.accent
-                                        )
-                                        Icon(
-                                            Icons.Rounded.Close,
-                                            contentDescription = "Remove tag $tag",
-                                            tint = MM.colors.accent,
-                                            modifier = Modifier.size(MMSize.iconSmall - MM.space.xs)
-                                        )
-                                    }
+        // ---- scripture (faith circles) with a live preview ----
+        if (!circle.isWork && type != PostType.Announcement && type != PostType.Devotional) {
+            CircleField(state.verse, onVerse, label = "Scripture (optional)", placeholder = "Romans 8:28")
+            if (parsedRef != null) {
+                Surface(shape = MM.radius.card, color = MM.colors.goldWash, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                            Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = MM.colors.goldInk, modifier = Modifier.size(MMSize.iconSmall))
+                            Text(parsedRef.display(), style = MM.type.bodyStrong, color = MM.colors.goldInk, modifier = Modifier.weight(1f))
+                            (passageResult as? PassageResult.Found)?.let { Text(it.passage.versionAbbreviation, style = MM.type.caption, color = MM.colors.goldInk) }
+                        }
+                        when (passageResult) {
+                            is PassageResult.Found -> {
+                                Text("“${passageResult.passage.text.trim().trim('“', '”')}”", style = MM.type.scripture, color = MM.colors.ink)
+                                if (passageResult.passage.attribution.isNotBlank()) {
+                                    Text(passageResult.passage.attribution, style = MM.type.caption, color = MM.colors.inkMuted)
                                 }
                             }
+                            null -> Text("Looking up the passage…", style = MM.type.caption, color = MM.colors.inkMuted)
+                            else -> Unit
                         }
                     }
+                }
+            }
+        }
 
-                    // Space-specific quick-pick chips
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        quickPickTags.forEach { qTag ->
-                            val isSelected = qTag in localMeta.tags
-                            MMChip(
-                                label = "#$qTag",
-                                selected = isSelected,
-                                onClick = {
-                                    if (isSelected) {
-                                        updateMeta { it.copy(tags = it.tags.filter { t -> t != qTag }) }
-                                    } else if (localMeta.tags.size < 4) {
-                                        updateMeta { it.copy(tags = (it.tags + qTag).distinct().take(4)) }
-                                    }
-                                }
-                            )
+        // ---- tags and a shared list, behind the # tool ----
+        AnimatedVisibility(visible = tagsChecklistExpanded, enter = fadeIn(MM.motion.quick()) + expandVertically(MM.motion.standard()), exit = fadeOut(MM.motion.quick()) + shrinkVertically(MM.motion.standard())) {
+            InsetPanel(contentPadding = MM.space.m) {
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    ComposerFieldLabel("Tags · ${localMeta.tags.size} of 4")
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                        (localMeta.tags + quickPickTags.filter { it !in localMeta.tags }).forEach { tag ->
+                            val isSelected = tag in localMeta.tags
+                            MMChip("#$tag", selected = isSelected, onClick = {
+                                if (isSelected) updateMeta { it.copy(tags = it.tags.filter { t -> t != tag }) }
+                                else if (localMeta.tags.size < 4) updateMeta { it.copy(tags = (it.tags + tag).distinct().take(4)) }
+                            })
                         }
                     }
-
-                    // Inline tag input
                     if (localMeta.tags.size < 4) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                             Box(Modifier.weight(1f)) {
-                                CircleField(
-                                    value = tagInput,
-                                    onValueChange = { tagInput = it.take(24) },
-                                    label = "Custom tag",
-                                    placeholder = "e.g. launch, meeting"
-                                )
+                                CircleField(tagInput, { tagInput = it.take(24) }, label = "Your own tag", placeholder = "launch")
                             }
-                            SecondaryButton(
-                                text = "Add",
-                                onClick = {
-                                    val clean = tagInput.trim().lowercase().removePrefix("#")
-                                    if (clean.isNotEmpty() && clean !in localMeta.tags && localMeta.tags.size < 4) {
-                                        updateMeta { it.copy(tags = (it.tags + clean).distinct().take(4)) }
-                                        tagInput = ""
-                                    }
-                                },
-                                enabled = tagInput.trim().isNotEmpty() && localMeta.tags.size < 4
-                            )
-                        }
-                    }
-
-                    // --- Checklist (up to 8 items) ---
-                    Text(
-                        "Checklist (${localMeta.checklist.size}/8)",
-                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                        color = MM.colors.inkSecondary
-                    )
-                    if (localMeta.checklist.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                            localMeta.checklist.forEach { item ->
-                                Row(
-                                    Modifier.fillMaxWidth()
-                                        .clip(MM.radius.small)
-                                        .background(MM.colors.surface)
-                                        .padding(horizontal = MM.space.s, vertical = MM.space.xs),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                                ) {
-                                    IconButton(
-                                        onClick = {
-                                            updateMeta { m ->
-                                                m.copy(checklist = m.checklist.map {
-                                                    if (it.id == item.id) it.copy(done = !it.done) else it
-                                                })
-                                            }
-                                        },
-                                        modifier = Modifier.size(MMSize.iconSmall + MM.space.s)
-                                    ) {
-                                        Icon(
-                                            if (item.done) Icons.Rounded.CheckCircle else Icons.Rounded.CheckCircleOutline,
-                                            contentDescription = if (item.done) "Mark incomplete" else "Mark complete",
-                                            tint = if (item.done) MM.colors.accent else MM.colors.inkMuted,
-                                            modifier = Modifier.size(MMSize.iconSmall)
-                                        )
-                                    }
-                                    Text(
-                                        item.text,
-                                        style = if (item.done) MM.type.caption.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough) else MM.type.caption,
-                                        color = if (item.done) MM.colors.inkMuted else MM.colors.ink,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    IconButton(
-                                        onClick = {
-                                            updateMeta { m -> m.copy(checklist = m.checklist.filter { it.id != item.id }) }
-                                        },
-                                        modifier = Modifier.size(MMSize.iconSmall + MM.space.s)
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.Close,
-                                            contentDescription = "Remove item",
-                                            tint = MM.colors.inkSecondary,
-                                            modifier = Modifier.size(MMSize.iconSmall - MM.space.xs)
-                                        )
-                                    }
+                            TextAction("Add", {
+                                val clean = tagInput.trim().lowercase().removePrefix("#")
+                                if (clean.isNotEmpty() && clean !in localMeta.tags && localMeta.tags.size < 4) {
+                                    updateMeta { it.copy(tags = (it.tags + clean).distinct().take(4)) }
+                                    tagInput = ""
                                 }
+                            }, enabled = tagInput.trim().isNotEmpty())
+                        }
+                    }
+                    ComposerFieldLabel("Shared list · ${localMeta.checklist.size} of 8")
+                    localMeta.checklist.forEach { item ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                            IconButton(onClick = { updateMeta { m -> m.copy(checklist = m.checklist.map { if (it.id == item.id) it.copy(done = !it.done) else it }) } }) {
+                                Icon(
+                                    if (item.done) Icons.Rounded.CheckCircle else Icons.Rounded.CheckCircleOutline,
+                                    if (item.done) "Mark incomplete" else "Mark complete",
+                                    tint = if (item.done) MM.colors.success else MM.colors.inkMuted, modifier = Modifier.size(MMSize.iconSmall)
+                                )
+                            }
+                            Text(item.text, style = MM.type.body, color = if (item.done) MM.colors.inkMuted else MM.colors.ink, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { updateMeta { m -> m.copy(checklist = m.checklist.filter { it.id != item.id }) } }) {
+                                Icon(Icons.Rounded.Close, "Remove item", tint = MM.colors.inkMuted, modifier = Modifier.size(MMSize.iconSmall))
                             }
                         }
                     }
-
-                    // Inline checklist input
                     if (localMeta.checklist.size < 8) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                             Box(Modifier.weight(1f)) {
-                                CircleField(
-                                    value = checklistInput,
-                                    onValueChange = { checklistInput = it.take(120) },
-                                    label = "Add action item",
-                                    placeholder = "Add action item…"
-                                )
+                                CircleField(checklistInput, { checklistInput = it.take(120) }, label = "Add an item", placeholder = "Bring snacks")
                             }
                             IconButton(
                                 onClick = {
@@ -993,205 +689,111 @@ fun ComposerSheet(
                                         checklistInput = ""
                                     }
                                 },
-                                enabled = checklistInput.trim().isNotEmpty() && localMeta.checklist.size < 8
-                            ) {
-                                Icon(Icons.Rounded.Add, contentDescription = "Add item", tint = MM.colors.accent)
-                            }
+                                enabled = checklistInput.trim().isNotEmpty()
+                            ) { Icon(Icons.Rounded.Add, "Add item", tint = MM.colors.ink) }
                         }
                     }
                 }
             }
         }
 
-        // Staged attachments preview tray
-        if (state.attachments.isNotEmpty()) {
-            Text("Attached media (${state.attachments.size})", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                state.attachments.forEach { a ->
-                    Surface(
-                        shape = MM.radius.card,
-                        color = MM.colors.surfaceSunk,
-                        border = BorderStroke(1.dp, MM.colors.line),
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    ) {
-                        Row(
-                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                when {
-                                    a.isVideo -> Icons.Rounded.Videocam
-                                    a.isPdf -> Icons.Rounded.PictureAsPdf
-                                    else -> Icons.Rounded.Image
-                                },
-                                contentDescription = null,
-                                tint = CirclesPalette.Accent,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                a.name ?: listOfNotNull(a.durationMs?.takeIf { it > 0 }?.let(::formatDuration), formatBytes(a.bytes)).joinToString(" · "),
-                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                                color = MM.colors.ink,
-                                maxLines = 1
-                            )
-                            IconButton(onClick = { onRemovePhoto(a) }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Rounded.Close, "Remove attachment", tint = MM.colors.inkSecondary, modifier = Modifier.size(14.dp))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Scripture verse section with live preview (for faith circles)
-        if (!circle.isWork && type != PostType.Announcement && type != PostType.Devotional) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                CircleField(
-                    state.verse,
-                    onVerse,
-                    label = "Scripture verse (optional)",
-                    placeholder = "e.g. Romans 8:28, Psalm 23:1, John 3:16"
-                )
-                if (parsedRef != null) {
-                    Surface(
-                        shape = MM.radius.card,
-                        color = CirclesPalette.WarmBg,
-                        border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
-                        modifier = Modifier.fillMaxWidth().clip(MM.radius.card)
-                    ) {
-                        Column(Modifier.padding(14.dp)) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.MenuBook,
-                                        contentDescription = null,
-                                        tint = CirclesPalette.WarmInk,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Text(
-                                        parsedRef.display(),
-                                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
-                                        color = CirclesPalette.WarmInk
-                                    )
-                                }
-                                (passageResult as? PassageResult.Found)?.let { found ->
-                                    Text(
-                                        found.passage.versionAbbreviation,
-                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                        color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
-                                    )
-                                }
-                            }
-                            when (passageResult) {
-                                is PassageResult.Found -> {
-                                    Text(
-                                        "“${passageResult.passage.text.trim().trim('“', '”')}”",
-                                        style = MM.type.scripture,
-                                        color = MM.colors.ink,
-                                        modifier = Modifier.padding(top = 6.dp)
-                                    )
-                                    if (passageResult.passage.attribution.isNotBlank()) {
-                                        Text(
-                                            passageResult.passage.attribution,
-                                            style = MM.type.caption,
-                                            color = MM.colors.inkMuted,
-                                            modifier = Modifier.padding(top = 4.dp)
-                                        )
-                                    }
-                                }
-                                null -> Text("Looking up scripture passage…", style = MM.type.caption, color = MM.colors.inkMuted, modifier = Modifier.padding(top = 4.dp))
-                                else -> Unit
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (isUploading) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth().clip(MM.radius.pill),
-                    color = MM.colors.accent,
-                    trackColor = MM.colors.track
-                )
-                Text(
-                    "Uploading attachment…",
-                    style = MM.type.caption,
-                    color = MM.colors.inkSecondary
-                )
-            }
-        }
-
-        // Modern multi-modal media attachment tray buttons (Photo, Video, PDF)
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SecondaryButton(
-                    "Photo",
-                    { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    leadingIcon = Icons.Rounded.Image,
-                    enabled = !attachmentsFull && !isUploading,
-                    modifier = Modifier.weight(1f)
-                )
-                SecondaryButton(
-                    "Video",
-                    { pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
-                    leadingIcon = Icons.Rounded.Videocam,
-                    enabled = !attachmentsFull && !isUploading,
-                    modifier = Modifier.weight(1f)
-                )
-                SecondaryButton(
-                    "PDF",
-                    { pickPdf.launch("application/pdf") },
-                    leadingIcon = Icons.Rounded.PictureAsPdf,
-                    enabled = !attachmentsFull && !isUploading,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            if (attachmentsFull) {
-                Text(
-                    "Up to 4 attachments",
-                    style = MM.type.caption,
-                    color = MM.colors.inkMuted
-                )
-            }
-        }
-
-        videoNotice?.let { StatusLine(StatusKind.Warning, it) }
-
-        // Anonymous toggle for prayer requests
+        // ---- prayer: anonymous, and the honest line about review ----
         if (type == PostType.Prayer) {
-            ToggleRow("Post anonymously", "Nobody sees who asked, admins included.", state.anonymous, onAnonymous)
+            ToggleRow("Post anonymously", "Nobody sees who asked, not even leaders.", state.anonymous, onAnonymous)
             if (circle.settings.prayerApproval) {
-                StatusLine(StatusKind.Info, "An admin reviews prayer requests before they appear in the circle.")
+                Text("An admin reviews prayer requests before they appear.", style = MM.type.caption, color = MM.colors.inkMuted)
             }
         }
 
         state.error?.let { StatusLine(StatusKind.Error, it) }
+    }
+}
 
-        PrimaryButton(
-            if (state.sending) "Posting..."
-            else if (isUploading) "Uploading..."
-            else if (type == PostType.Prayer && circle.settings.prayerApproval) "Send for approval"
-            else if (circle.isWork) "Share with team"
-            else "Share with circle",
-            onSend,
-            enabled = !state.sending && !isUploading && (state.body.isNotBlank() || state.attachments.isNotEmpty() || selectedDevotional != null || selectedStudyNote != null),
-            modifier = Modifier.fillMaxWidth()
+/**
+ * The composer's frame: a tall sheet with the header pinned at the top, the writing in the middle (it scrolls), and
+ * the media toolbar pinned at the bottom, riding the keyboard and clearing the navigation bar.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ComposerFrame(
+    onDismiss: () -> Unit,
+    inSheet: Boolean,
+    header: @Composable ColumnScope.() -> Unit,
+    toolbar: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val body: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth().fillMaxHeight(if (inSheet) 0.92f else 1f).imePadding()) {
+            header()
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l, vertical = MM.space.s),
+                verticalArrangement = Arrangement.spacedBy(MM.space.m),
+                content = content
+            )
+            Column(Modifier.fillMaxWidth().navigationBarsPadding(), content = toolbar)
+        }
+    }
+    if (inSheet) {
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MM.colors.surfaceRaised,
+            shape = MM.radius.sheet
+        ) { body() }
+    } else {
+        Surface(color = MM.colors.surfaceRaised, shape = MM.radius.sheet, modifier = Modifier.fillMaxSize()) { body() }
+    }
+}
+
+@Composable
+private fun HorizontalDividerLine() {
+    androidx.compose.material3.HorizontalDivider(thickness = MMSize.hairline, color = MM.colors.lineSoft)
+}
+
+/** The writing area: no box, no outline, a generous minimum height, the same body type as Notes. */
+@Composable
+private fun ComposerTextArea(value: String, onValueChange: (String) -> Unit, placeholder: String) {
+    Box(Modifier.fillMaxWidth().heightIn(min = 140.dp)) {
+        if (value.isEmpty()) Text(placeholder, style = MM.type.body, color = MM.colors.inkMuted)
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            textStyle = MM.type.body.copy(color = MM.colors.ink),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(MM.colors.accent),
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp)
+                .semantics { contentDescription = placeholder }
         )
     }
+}
+
+/** The compact Post button in the composer header: accent when ready, a quiet track when not. */
+@Composable
+private fun ComposerPostButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+    androidx.compose.material3.Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = MM.radius.pill,
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+            containerColor = MM.colors.accent, contentColor = MM.colors.onAccent,
+            disabledContainerColor = MM.colors.track, disabledContentColor = MM.colors.inkMuted
+        ),
+        contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.xs),
+        modifier = Modifier.heightIn(min = 36.dp)
+    ) { Text(label, style = MM.type.bodyStrong) }
+}
+
+/** One tool in the composer's bottom bar: a 48 dp icon in muted ink, ink when its panel is open. */
+@Composable
+private fun ComposerTool(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, enabled: Boolean = true, active: Boolean = false, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(icon, description, tint = when { !enabled -> MM.colors.inkFaint; active -> MM.colors.ink; else -> MM.colors.inkSecondary })
+    }
+}
+
+@Composable
+private fun ComposerFieldLabel(text: String) {
+    Text(text, style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
 }
 
 /** One text box used for editing a post and for posting an update. */
@@ -1249,8 +851,9 @@ fun ThreadSheet(
         ) {
             Text(
                 if (thread != null && thread.comments.isNotEmpty()) "Comments (${thread.comments.size})" else "Comments",
-                style = MM.type.title.copy(fontWeight = FontWeight.Bold),
-                color = MM.colors.ink
+                style = MM.type.title,
+                color = MM.colors.ink,
+                modifier = Modifier.semantics { heading() }
             )
             IconButton(onClick = onDismiss) {
                 Icon(Icons.Rounded.Close, "Close", tint = MM.colors.inkSecondary)
@@ -1261,10 +864,9 @@ fun ThreadSheet(
             Surface(
                 shape = MM.radius.card,
                 color = MM.colors.surfaceSunk,
-                border = BorderStroke(1.dp, MM.colors.line),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1292,7 +894,6 @@ fun ThreadSheet(
                             color = MM.colors.ink,
                             modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
                         )
-                        PostTypeBadge(post.type)
                         Spacer(Modifier.weight(1f))
                         Text(
                             relativeTime(now, post.createdAt),
@@ -1356,14 +957,14 @@ fun ThreadSheet(
             thread.updates.forEach { u ->
                 Surface(
                     shape = MM.radius.card,
-                    color = CirclesPalette.AccentSoft,
+                    color = MM.colors.surfaceSunk,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(Modifier.padding(12.dp)) {
+                    Column(Modifier.padding(MM.space.m)) {
                         Text(
-                            "Author update · ${relativeTime(now, u.createdAt)}",
-                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                            color = CirclesPalette.AccentDeep
+                            "UPDATE FROM THE AUTHOR · ${relativeTime(now, u.createdAt).uppercase()}",
+                            style = MM.type.overline,
+                            color = MM.colors.inkMuted
                         )
                         SelectionContainer {
                             Text(u.body, style = MM.type.body, color = MM.colors.ink, modifier = Modifier.padding(top = 4.dp))
@@ -1382,8 +983,8 @@ fun ThreadSheet(
                 )
             } else {
                 LazyColumn(
-                    Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 340.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.m)
                 ) {
                     items(thread.comments, key = { it.id }) { cm ->
                         val isMyComment = cm.authorUid != null && cm.authorUid == myUid
@@ -1409,12 +1010,8 @@ fun ThreadSheet(
                                     modifier = Modifier.clickable { onMemberClick?.invoke(cm.authorUid ?: cm.authorName) }
                                 )
                             }
-                            Surface(
-                                shape = MM.radius.card,
-                                color = MM.colors.surfaceSunk,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                            Box(Modifier.weight(1f)) {
+                                Column {
                                     Row(
                                         Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -1422,14 +1019,14 @@ fun ThreadSheet(
                                     ) {
                                         Text(
                                             cm.authorName,
-                                            style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
+                                            style = MM.type.bodyStrong,
                                             color = MM.colors.ink,
                                             modifier = Modifier.clickable { onMemberClick?.invoke(cm.authorUid ?: cm.authorName) }
                                         )
                                         Text(
                                             relativeTime(now, cm.createdAt),
                                             style = MM.type.caption,
-                                            color = MM.colors.inkSecondary
+                                            color = MM.colors.inkMuted
                                         )
                                     }
                                     SelectionContainer {
@@ -1437,12 +1034,12 @@ fun ThreadSheet(
                                             cm.body,
                                             style = MM.type.body,
                                             color = MM.colors.ink,
-                                            modifier = Modifier.padding(top = 4.dp)
+                                            modifier = Modifier.padding(top = 2.dp)
                                         )
                                     }
                                     Row(
-                                        Modifier.fillMaxWidth().padding(top = 4.dp),
-                                        horizontalArrangement = Arrangement.End,
+                                        Modifier.fillMaxWidth().offset(x = -MM.space.m),
+                                        horizontalArrangement = Arrangement.Start,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         TextAction("Copy", { clipboard.setText(AnnotatedString(cm.body)) })
@@ -1474,7 +1071,7 @@ fun ThreadSheet(
             )
             Surface(
                 shape = MM.radius.pill,
-                color = if (text.isNotBlank()) CirclesPalette.Accent else MM.colors.surfaceSunk,
+                color = if (text.isNotBlank()) MM.colors.ink else MM.colors.surfaceSunk,
                 modifier = Modifier
                     .size(48.dp)
                     .clip(MM.radius.pill)
@@ -1490,7 +1087,7 @@ fun ThreadSheet(
                     Icon(
                         Icons.Rounded.Send,
                         "Send comment",
-                        tint = if (text.isNotBlank()) CirclesPalette.White else MM.colors.inkMuted,
+                        tint = if (text.isNotBlank()) MM.colors.onInk else MM.colors.inkMuted,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -1513,7 +1110,8 @@ fun InviteSheet(
     var emailInput by remember { mutableStateOf("") }
 
     CircleSheet(onDismiss) {
-        Text("Invite people", style = MM.type.title, color = MM.colors.ink)
+        Text("Invite people", style = MM.type.title, color = MM.colors.ink, modifier = Modifier.semantics { heading() })
+        Text("Only people with the code can join. Circles are stored on MeetingMind's servers, not end-to-end encrypted.", style = MM.type.secondary, color = MM.colors.inkSecondary)
 
         if (onCreateEmailInvite != null) {
             SegmentedControl(
@@ -1552,11 +1150,7 @@ fun InviteSheet(
 
             val invite = state.invite
             if (invite != null && state.shareText != null) {
-                InsetPanel {
-                    SelectionContainer {
-                        Text(invite.code, style = MM.type.title, color = MM.colors.ink)
-                    }
-                }
+                InviteCodePanel(invite.code) { clipboard.setText(AnnotatedString(invite.code)) }
                 PrimaryButton("Share invite", {
                     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, state.shareText)
                     runCatching { context.startActivity(Intent.createChooser(send, "Share invite").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -1571,7 +1165,7 @@ fun InviteSheet(
             when {
                 state.busy -> StatusLine(StatusKind.Info, "Making a code...")
                 invite != null && state.shareText != null -> {
-                    InsetPanel { SelectionContainer { Text(invite.code, style = MM.type.title, color = MM.colors.ink) } }
+                    InviteCodePanel(invite.code) { clipboard.setText(AnnotatedString(invite.code)) }
                     Text("Works for one week and up to ${invite.maxUses ?: 50} people. Anyone with the code can join, so share it only with people you know.", style = MM.type.secondary, color = MM.colors.inkSecondary)
                     PrimaryButton("Share invite", {
                         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, state.shareText)
@@ -1585,6 +1179,22 @@ fun InviteSheet(
                     PrimaryButton(if (state.error != null) "Try again" else "Make a code", onCreate, modifier = Modifier.fillMaxWidth())
                 }
             }
+        }
+    }
+}
+
+/** The invite code, large and spaced so it reads aloud easily, with one Copy action. */
+@Composable
+private fun InviteCodePanel(code: String, onCopy: () -> Unit) {
+    Surface(shape = MM.radius.card, color = MM.colors.surfaceSunk, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = MM.space.l, end = MM.space.xs, top = MM.space.m, bottom = MM.space.m), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("INVITE CODE", style = MM.type.overline, color = MM.colors.inkMuted)
+                SelectionContainer {
+                    Text(code, style = MM.type.display.copy(letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp)), color = MM.colors.ink)
+                }
+            }
+            TextAction("Copy", onCopy)
         }
     }
 }

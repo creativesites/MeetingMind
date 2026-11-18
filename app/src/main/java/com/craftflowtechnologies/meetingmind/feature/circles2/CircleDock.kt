@@ -1,6 +1,15 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentWidth
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -60,7 +69,10 @@ fun CircleTab.label(isWork: Boolean): String = when (this) {
 
 /**
  * The thumb dock (founder decision D1): Home|Overview · Updates · ＋ · Chat · People, within thumb reach.
- * The ＋ starts a post. It is hidden on Chat, where the message bar sits just above the dock.
+ * It is the app's own bottom bar, inside a circle: a floating pill on the surface with one soft shadow, the current
+ * place as an accent-wash chip with its label, the others as icons, and the ＋ as the one accent action. It clears the
+ * navigation bar (3-button or gesture) itself. The ＋ starts a post and is hidden on Chat, where the message bar sits
+ * above the dock.
  */
 @Composable
 fun CircleDock(
@@ -71,37 +83,48 @@ fun CircleDock(
     onCompose: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    Surface(color = MM.colors.surface, modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.navigationBarsPadding()) {
-            HorizontalDivider(color = MM.colors.lineSoft)
+    Box(
+        modifier.fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+            .padding(horizontal = MM.space.l)
+            .padding(top = MM.space.xs, bottom = MM.space.s),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = MM.radius.pill,
+            color = MM.colors.surfaceRaised,
+            border = BorderStroke(MMSize.hairline, MM.colors.line),
+            shadowElevation = MM.elevation.floating,
+            modifier = Modifier.wrapContentWidth()
+        ) {
             Row(
-                Modifier.fillMaxWidth().height(64.dp).padding(horizontal = MM.space.s),
+                Modifier.padding(MM.space.xs + 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                DockItem(CircleTab.Home, tab, isWork, if (isWork) Icons.Rounded.Dashboard else Icons.Rounded.Home, 0, onTab, Modifier.weight(1f))
-                DockItem(CircleTab.Updates, tab, isWork, Icons.Rounded.ViewAgenda, 0, onTab, Modifier.weight(1f))
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    if (onCompose != null && tab != CircleTab.Chat) {
-                        Surface(
-                            onClick = onCompose,
-                            shape = CircleShape,
-                            color = MM.colors.accent,
-                            shadowElevation = 2.dp,
-                            modifier = Modifier.size(48.dp).semantics { contentDescription = if (isWork) "New post for the team" else "New post" }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Add, null, tint = MM.colors.onAccent, modifier = Modifier.size(26.dp))
-                            }
+                DockItem(CircleTab.Home, tab, isWork, if (isWork) Icons.Rounded.Dashboard else Icons.Rounded.Home, 0, onTab)
+                DockItem(CircleTab.Updates, tab, isWork, Icons.Rounded.ViewAgenda, 0, onTab)
+                if (onCompose != null && tab != CircleTab.Chat) {
+                    Surface(
+                        onClick = onCompose,
+                        shape = MM.radius.pill,
+                        color = MM.colors.accent,
+                        modifier = Modifier.height(DockHeight).semantics { contentDescription = if (isWork) "New post for the team" else "New post" }
+                    ) {
+                        Box(Modifier.padding(horizontal = MM.space.m), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Add, null, tint = MM.colors.onAccent, modifier = Modifier.size(MMSize.iconSmall))
                         }
                     }
                 }
-                DockItem(CircleTab.Chat, tab, isWork, Icons.Rounded.ChatBubbleOutline, chatUnread, onTab, Modifier.weight(1f))
-                DockItem(CircleTab.People, tab, isWork, Icons.Rounded.Groups, 0, onTab, Modifier.weight(1f))
+                DockItem(CircleTab.Chat, tab, isWork, Icons.Rounded.ChatBubbleOutline, chatUnread, onTab)
+                DockItem(CircleTab.People, tab, isWork, Icons.Rounded.Groups, 0, onTab)
             }
         }
     }
 }
+
+/** The dock's item height: 44 dp inside the bar, full-width 48 dp hit areas from the bar padding. */
+private val DockHeight = 44.dp
 
 @Composable
 private fun DockItem(
@@ -110,36 +133,37 @@ private fun DockItem(
     isWork: Boolean,
     icon: ImageVector,
     badge: Int,
-    onTab: (CircleTab) -> Unit,
-    modifier: Modifier
+    onTab: (CircleTab) -> Unit
 ) {
     val selected = item == current
-    val pill by animateColorAsState(if (selected) MM.colors.accentWash else Color.Transparent, tween(250), label = "dockPill")
-    val tint by animateColorAsState(if (selected) MM.colors.accent else MM.colors.inkSecondary, tween(250), label = "dockTint")
+    val pill by animateColorAsState(if (selected) MM.colors.accentWash else Color.Transparent, MM.motion.quick(), label = "dockPill")
+    val tint by animateColorAsState(if (selected) MM.colors.accent else MM.colors.inkSecondary, MM.motion.quick(), label = "dockTint")
     val label = item.label(isWork)
     val spoken = if (badge > 0) "$label, $badge unread" else label
     Surface(
         onClick = { onTab(item) },
-        color = Color.Transparent,
+        color = pill,
         shape = MM.radius.pill,
-        modifier = modifier
-            .heightIn(min = 48.dp)
+        modifier = Modifier
+            .height(DockHeight)
+            .animateContentSize(MM.motion.spring())
             .clearAndSetSemantics {
                 contentDescription = spoken
                 role = Role.Tab
                 this.selected = selected
             }
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Row(
+            Modifier.padding(horizontal = if (selected) MM.space.m else MM.space.m - 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box {
-                Box(Modifier.background(pill, MM.radius.pill).padding(horizontal = 14.dp, vertical = 3.dp)) {
-                    Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
-                }
+                Icon(icon, null, tint = tint, modifier = Modifier.size(MMSize.iconSmall))
                 if (badge > 0) {
                     Surface(
                         color = MM.colors.danger,
                         shape = MM.radius.pill,
-                        modifier = Modifier.align(Alignment.TopEnd).offset(x = 2.dp, y = (-2).dp)
+                        modifier = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-6).dp)
                     ) {
                         Text(
                             if (badge > 99) "99+" else badge.toString(),
@@ -150,12 +174,15 @@ private fun DockItem(
                     }
                 }
             }
-            Text(
-                label,
-                style = MM.type.caption.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium),
-                color = tint,
-                maxLines = 1
-            )
+            if (selected) {
+                Text(
+                    label,
+                    style = MM.type.secondary.copy(fontWeight = FontWeight.SemiBold),
+                    color = MM.colors.ink,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = MM.space.s - 2.dp)
+                )
+            }
         }
     }
 }

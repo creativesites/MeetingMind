@@ -13,6 +13,12 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.NotificationsNone
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Gavel
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.lazy.LazyColumn
@@ -481,55 +487,33 @@ fun CircleHomeContent(
         }
     }
     Box(Modifier.fillMaxSize().background(MM.colors.background)) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            ScreenHeader(
-                circle?.name ?: "Circle", Modifier.padding(horizontal = MM.space.s),
-                leading = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.inkSecondary) } },
+        // Edge to edge: the top and the sides clear the status bar and cutouts here; the bottom is cleared by the dock
+        // (or, while it steps aside for the keyboard, by the content itself), so nothing sits under 3-button navigation.
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
+            CirclesTopBar(
+                title = circle?.name ?: "Circle",
+                onBack = onBack,
+                subtitle = circle?.let { circleSubtitle(it, state.isAdmin) },
+                leading = if (circle != null) ({
+                    CircleCoverImage(
+                        circle.coverPath, circle.template, circle.space, circle.id,
+                        Modifier.size(36.dp).clip(MM.radius.small), thumb = true
+                    )
+                }) else null,
                 actions = {
-                    if (circle != null) {
-                        Surface(
-                            onClick = onSearch,
-                            shape = CircleShape,
-                            color = MM.colors.surfaceRaised,
-                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Search, "Search in circle", tint = MM.colors.inkSecondary, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    }
-                    if (canInvite) {
-                        Surface(
-                            onClick = onInvite,
-                            shape = CircleShape,
-                            color = MM.colors.surfaceRaised,
-                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.PersonAdd, "Invite people", tint = MM.colors.inkSecondary, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    }
+                    if (circle != null) CirclesHeaderAction(Icons.Rounded.Search, "Search in circle", onSearch)
+                    if (canInvite) CirclesHeaderAction(Icons.Rounded.PersonAdd, "Invite people", onInvite)
                     if (circle != null) {
                         Box {
-                            Surface(
-                                onClick = { menuOpen = true },
-                                shape = CircleShape,
-                                color = MM.colors.surfaceRaised,
-                                border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
-                                modifier = Modifier.size(36.dp)
+                            CirclesHeaderAction(Icons.Rounded.MoreHoriz, "More for this ${circle.groupWord.lowercase()}") { menuOpen = true }
+                            DropdownMenu(
+                                expanded = menuOpen, onDismissRequest = { menuOpen = false },
+                                containerColor = MM.colors.surfaceRaised, shape = MM.radius.card
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Rounded.MoreVert, "More for this ${circle.groupWord.lowercase()}", tint = MM.colors.inkSecondary, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, containerColor = MM.colors.surfaceRaised) {
-                                DropdownMenuItem(text = { Text("Notifications and daily rhythm", color = MM.colors.ink) }, onClick = { menuOpen = false; onNotifications() })
-                                DropdownMenuItem(text = { Text("Photos and files", color = MM.colors.ink) }, onClick = { menuOpen = false; onMedia() })
-                                if (circle.isWork) DropdownMenuItem(text = { Text("Decision ledger", color = MM.colors.ink) }, onClick = { menuOpen = false; onDecisions() })
-                                DropdownMenuItem(text = { Text("Settings", color = MM.colors.ink) }, onClick = { menuOpen = false; onSettings() })
+                                CircleMenuItem(Icons.Rounded.NotificationsNone, "Notifications and daily rhythm") { menuOpen = false; onNotifications() }
+                                CircleMenuItem(Icons.Rounded.PhotoLibrary, "Photos and files") { menuOpen = false; onMedia() }
+                                if (circle.isWork) CircleMenuItem(Icons.Rounded.Gavel, "Decision ledger") { menuOpen = false; onDecisions() }
+                                CircleMenuItem(Icons.Rounded.Settings, "Settings") { menuOpen = false; onSettings() }
                             }
                         }
                     }
@@ -538,74 +522,14 @@ fun CircleHomeContent(
             when {
                 state.gone -> EmptyState(
                     "You're not in this circle any more", "You may have been removed, or left from another phone. Ask for a new invite code to join again.",
-                    action = { PrimaryButton("Back to Circles", onBack) }
+                    action = { PrimaryButton("Back to Circles", onBack) },
+                    modifier = Modifier.navigationBarsPadding()
                 )
-                circle == null -> Column(Modifier.padding(MM.space.l)) {
+                circle == null -> Column(Modifier.padding(MM.space.l).navigationBarsPadding()) {
                     if (state.failure != null) StatusLine(StatusKind.Warning, state.failure.message, actionLabel = "Back", onAction = onBack)
                     else StatusLine(StatusKind.Info, "Opening your circle...")
                 }
                 else -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = MM.space.l),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
-                    ) {
-                        val spaceLabel = circleSpace(circle)
-                        Surface(
-                            shape = MM.radius.pill,
-                            color = MM.colors.accentWash
-                        ) {
-                            Text(
-                                spaceLabel,
-                                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                color = MM.colors.accent,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                        Text(
-                            "${circle.groupWord} · ${if (circle.memberCount == 1) "1 member" else "${circle.memberCount} members"}",
-                            style = MM.type.secondary,
-                            color = MM.colors.inkSecondary
-                        )
-                        if (state.isAdmin) {
-                            Surface(
-                                shape = MM.radius.pill,
-                                color = MM.colors.surfaceSunk,
-                                border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
-                            ) {
-                                Text(
-                                    "Admin",
-                                    style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MM.colors.inkSecondary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        if (circle.template == "client_engagement") {
-                            Surface(
-                                shape = MM.radius.pill,
-                                color = MM.colors.surfaceSunk,
-                                border = BorderStroke(MMSize.hairline, MM.colors.line)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = MM.space.s, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Box(
-                                        Modifier
-                                            .size(6.dp)
-                                            .background(MM.colors.accent, CircleShape)
-                                    )
-                                    Text(
-                                        "External / Client space",
-                                        style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                                        color = MM.colors.inkSecondary
-                                    )
-                                }
-                            }
-                        }
-                    }
                     if (!notificationsEnabled && !notifyDismissed && state.me != null && !state.me.muted) {
                         Box(Modifier.padding(horizontal = MM.space.l, vertical = MM.space.xs)) {
                             StatusLine(
@@ -626,10 +550,12 @@ fun CircleHomeContent(
                             )
                         }
                     }
+                    // While the keyboard is up the dock steps aside, so the page itself clears the navigation bar and the keyboard.
+                    val pageInsets = if (showDock) Modifier else Modifier.navigationBarsPadding().imePadding()
                     when (tab) {
-                        CircleTab.Home -> CircleHomeTab(state, now, feed, homeNav, Modifier.weight(1f))
+                        CircleTab.Home -> CircleHomeTab(state, now, feed, homeNav, Modifier.weight(1f).then(pageInsets))
                         CircleTab.Updates -> FeedTab(
-                            state, now, feed, Modifier.weight(1f), savedDraft = savedDraft,
+                            state, now, feed, Modifier.weight(1f).then(pageInsets), savedDraft = savedDraft,
                             homeSections = false, filterRequest = updatesFilter, onFilterConsumed = onFilterConsumed
                         )
                         CircleTab.Chat -> ChatTab(
@@ -643,7 +569,7 @@ fun CircleHomeContent(
                             scrollToMessageId = targetChatMessageId,
                             onScrollHandled = onScrollHandled
                         )
-                        CircleTab.People -> MembersTab(state, members, Modifier.weight(1f))
+                        CircleTab.People -> MembersTab(state, members, Modifier.weight(1f).then(pageInsets))
                     }
                     if (showDock) CircleDock(
                         tab = tab,
@@ -655,7 +581,8 @@ fun CircleHomeContent(
                 }
             }
         }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = MM.space.l, end = MM.space.l, bottom = 76.dp))
+        // Above the 64 dp dock and the navigation bar, so a message never covers the dock or the composer.
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding().padding(start = MM.space.l, end = MM.space.l, bottom = 72.dp))
     }
 }
 
@@ -810,3 +737,12 @@ fun CircleSearchSheet(
     }
 }
 
+@Composable
+private fun CircleMenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(label, style = MM.type.body, color = MM.colors.ink) },
+        leadingIcon = { Icon(icon, null, tint = MM.colors.inkSecondary, modifier = Modifier.size(MMSize.iconSmall)) },
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = MMSize.minTouch)
+    )
+}

@@ -265,6 +265,8 @@ fun CreateCircleScreen(onBack: () -> Unit, onCreated: (String) -> Unit, initialS
         factory = CreateCircleViewModel.Factory(repo, initialSpace)
     )
     val state by vm.state.collectAsState()
+    val account: AccountViewModel = viewModel(factory = AccountViewModel.Factory(repo))
+    val accountState by account.state.collectAsState()
     val askNotifications = rememberNotificationAsk()
     CreateCircleContent(
         state = state,
@@ -285,7 +287,8 @@ fun CreateCircleScreen(onBack: () -> Unit, onCreated: (String) -> Unit, initialS
         onDescription = vm::setDescription,
         onJoinApproval = vm::setJoinApproval,
         onCoverPack = vm::pickCoverPack,
-        onCoverPhoto = vm::pickCoverPhoto
+        onCoverPhoto = vm::pickCoverPhoto,
+        account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict
     )
 }
 
@@ -306,7 +309,12 @@ fun CreateCircleContent(
     onDescription: (String) -> Unit = {},
     onJoinApproval: (Boolean) -> Unit = {},
     onCoverPack: (String) -> Unit = {},
-    onCoverPhoto: (PickedFile) -> Unit = {}
+    onCoverPhoto: (PickedFile) -> Unit = {},
+    /** Signed out: the create flow offers Sign in with Google first, so the new circle follows the person. */
+    account: AccountUiState? = null,
+    onLink: (android.content.Context) -> Unit = {},
+    onSwitch: () -> Unit = {},
+    onDismissConflict: () -> Unit = {}
 ) {
     val c = MM.colors
     var coverUnreadable by remember { mutableStateOf(false) }
@@ -336,55 +344,7 @@ fun CreateCircleContent(
             .statusBarsPadding()
             .imePadding()
     ) {
-        // Editorial Top Bar
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = MM.space.s, vertical = MM.space.xs),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.size(MMSize.minTouch)
-            ) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.inkSecondary)
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "New circle",
-                    style = MM.type.title.copy(fontWeight = FontWeight.Bold),
-                    color = c.ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.semantics { heading() }
-                )
-                Text(
-                    theme.headline,
-                    style = MM.type.caption,
-                    color = c.inkSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Surface(
-                shape = MM.radius.pill,
-                color = accentWash,
-                border = BorderStroke(MMSize.hairline, accent.copy(alpha = 0.28f))
-            ) {
-                Row(
-                    Modifier.padding(horizontal = MM.space.m, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                ) {
-                    Icon(theme.icon, null, tint = accent, modifier = Modifier.size(15.dp))
-                    Text(
-                        theme.label,
-                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                        color = accent
-                    )
-                }
-            }
-        }
+        CirclesTopBar(title = "New circle", onBack = onBack, subtitle = theme.headline)
 
         // Vertical Switcher Rail
         Row(
@@ -449,6 +409,13 @@ fun CreateCircleContent(
             contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.m),
             verticalArrangement = Arrangement.spacedBy(MM.space.l)
         ) {
+            if (account != null && !account.linked) item(key = "sign_in") {
+                CirclesSignInPrompt(
+                    account, "Sign in first and this circle stays with you on any phone.",
+                    onLink, onSwitch, onDismissConflict
+                )
+            }
+
             // Live Editorial Preview Card
             item(key = "live_preview") {
                 LiveCirclePreviewCard(state = state, theme = theme)

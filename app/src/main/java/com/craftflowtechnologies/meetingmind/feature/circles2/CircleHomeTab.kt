@@ -81,7 +81,7 @@ private fun FaithHome(circle: Circle, state: CircleHomeUiState, now: Long, actio
         verticalArrangement = Arrangement.spacedBy(MM.space.l)
     ) {
         state.failure?.let { f -> item(key = "failure") { StatusLine(StatusKind.Warning, f.message) } }
-        item(key = "banner") { HomeBanner(circle, d.faces, state.myUid, nav) }
+        item(key = "banner") { CirclesReveal(0) { HomeBanner(circle, d.faces, state.myUid, nav) } }
         if (d.newSinceVisit > 0) item(key = "since") { SinceStrip(d.newSinceVisit, state.lastVisitAt, now, nav.onCatchUp) }
         if (state.isAdmin && state.pending.isNotEmpty()) item(key = "pending") {
             StatusLine(StatusKind.Info, "${state.pending.size} waiting for your approval", actionLabel = "Review", onAction = { nav.onOpenUpdates(null) })
@@ -89,8 +89,8 @@ private fun FaithHome(circle: Circle, state: CircleHomeUiState, now: Long, actio
         if (d.quiet) {
             item(key = "welcome") { FaithWelcome(circle, actions) }
         } else {
-            item(key = "devotional") { DevotionalHero(d.devotional, PostType.Devotional in allowed, actions, now) }
-            item(key = "prayer") { HoldInPrayer(d.prayers, PostType.Prayer in allowed, actions, nav, now) }
+            item(key = "devotional") { CirclesReveal(1) { DevotionalHero(d.devotional, PostType.Devotional in allowed, actions, now) } }
+            item(key = "prayer") { CirclesReveal(2) { HoldInPrayer(d.prayers, PostType.Prayer in allowed, actions, nav, now) } }
             item(key = "gatherings") {
                 Gatherings(d.gatherings, now, actions.onOpenEvent, if (state.canModerate) actions.onNewEvent else null, word = "Gatherings", emptyLine = "No gatherings planned yet.")
             }
@@ -104,12 +104,12 @@ private fun FaithHome(circle: Circle, state: CircleHomeUiState, now: Long, actio
 @Composable
 private fun HomeBanner(circle: Circle, faces: List<Member>, myUid: String?, nav: HomeNav) {
     Box(
-        Modifier.fillMaxWidth().height(120.dp).clip(MM.radius.card)
+        Modifier.fillMaxWidth().height(168.dp).clip(MM.radius.card)
     ) {
         // Its own photo, a pack picture it chose, or the picture that fits its type.
         CircleCoverImage(circle.coverPath, circle.template, circle.space, circle.id, Modifier.fillMaxSize(), contentDescription = "Cover for ${circle.name}")
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, MM.colors.scrim.copy(alpha = 0.7f)))))
-        Column(Modifier.align(Alignment.BottomStart).padding(MM.space.m), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.3f to Color.Transparent, 1f to MM.colors.scrim.copy(alpha = 0.85f))))
+        Column(Modifier.align(Alignment.BottomStart).padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
             if (circle.description.isNotBlank()) {
                 Text(circle.description, style = MM.type.secondary, color = com.craftflowtechnologies.meetingmind.ui.theme.CirclesFixedColors.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
@@ -168,7 +168,6 @@ private fun WarmCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = nul
     Surface(
         shape = MM.radius.card,
         color = CirclesPalette.WarmBg,
-        border = BorderStroke(MMSize.hairline, CirclesPalette.WarmBorder),
         modifier = modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         Column(Modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.s), content = content)
@@ -401,7 +400,7 @@ private fun WorkOverview(circle: Circle, state: CircleHomeUiState, now: Long, ac
         verticalArrangement = Arrangement.spacedBy(MM.space.l)
     ) {
         state.failure?.let { f -> item(key = "failure") { StatusLine(StatusKind.Warning, f.message) } }
-        item(key = "runway") { RunwayHero(w, now, actions, state.canModerate) }
+        item(key = "runway") { CirclesReveal(0) { RunwayHero(w, now, actions, state.canModerate) } }
         if (w.newSinceVisit > 0) item(key = "since") { SinceStrip(w.newSinceVisit, state.lastVisitAt, now, nav.onCatchUp) }
         if (state.isAdmin && state.pending.isNotEmpty()) item(key = "pending") {
             StatusLine(StatusKind.Info, "${state.pending.size} waiting for your approval", actionLabel = "Review", onAction = { nav.onOpenUpdates(null) })
@@ -409,7 +408,7 @@ private fun WorkOverview(circle: Circle, state: CircleHomeUiState, now: Long, ac
         if (w.quiet) {
             item(key = "welcome") { WorkWelcome(circle, actions) }
         } else {
-            item(key = "needs") { NeedsTheTeam(w.needsTeam, state, actions, now) }
+            item(key = "needs") { CirclesReveal(1) { NeedsTheTeam(w.needsTeam, state, actions, now) } }
             item(key = "due") { DueThisWeek(w.dueThisWeek, state, actions, now) }
             w.latestBrief?.let { b -> item(key = "brief") { LatestBrief(b, actions, now) } }
             if (w.laterEvents.isNotEmpty()) item(key = "next") {

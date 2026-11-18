@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
@@ -89,179 +91,115 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
 
     LazyColumn(
         modifier,
-        contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.s, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(MM.space.m)
+        contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.s, bottom = MM.space.xl),
+        verticalArrangement = Arrangement.spacedBy(MM.space.l)
     ) {
-        item {
-            Surface(
-                shape = MM.radius.card,
-                color = MM.colors.surfaceSunk,
-                border = BorderStroke(MMSize.hairline, MM.colors.line),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = MM.space.m, vertical = MM.space.s),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("${state.members.size}", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
-                        Text("members", style = MM.type.caption, color = MM.colors.inkSecondary)
-                    }
-                    Box(Modifier.width(MMSize.hairline).height(20.dp).background(MM.colors.line))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("$activeContributors", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
-                        Text("active", style = MM.type.caption, color = MM.colors.inkSecondary)
-                    }
-                    Box(Modifier.width(MMSize.hairline).height(20.dp).background(MM.colors.line))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("${state.posts.size}", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
-                        Text("shared posts", style = MM.type.caption, color = MM.colors.inkSecondary)
-                    }
-                }
-            }
+        // The circle at a glance, in words: no stat boxes.
+        item(key = "summary") {
+            Text(
+                listOf(
+                    if (state.members.size == 1) "1 member" else "${state.members.size} members",
+                    "$activeContributors active",
+                    if (state.posts.size == 1) "1 post" else "${state.posts.size} posts"
+                ).joinToString(" · "),
+                style = MM.type.secondary, color = MM.colors.inkSecondary
+            )
         }
-        if (me != null) item {
+        if (me != null) item(key = "me") {
             val myCount = postsByUid[me.uid]?.size ?: 0
-            val isMyTop = me.uid == topContributorUid
-            MMCard {
+            MMCard(contentPadding = 0.dp) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth().padding(start = MM.space.l, end = MM.space.s, top = MM.space.l, bottom = MM.space.s),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(MM.space.m)
                 ) {
-                    MemberAvatar(circle.id, me.uid, me.displayName, me.avatarVersion, size = 56.dp)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                        Text("Your profile", style = MM.type.caption, color = MM.colors.inkSecondary)
+                    MemberAvatar(circle.id, me.uid, me.displayName, me.avatarVersion, size = 52.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(me.displayName, style = MM.type.heading, color = MM.colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            "${me.displayName} (You)",
-                            style = MM.type.heading,
-                            color = MM.colors.ink
+                            memberLine(me, myCount, me.uid == topContributorUid, null, circle.isWork),
+                            style = MM.type.caption, color = MM.colors.inkMuted
                         )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                        ) {
-                            me.title?.takeIf { it.isNotBlank() }?.let { TitleTag(it) }
-                            RoleTag(me.role)
-                        }
-                        if (myCount > 0 || isMyTop) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                            ) {
-                                if (myCount > 0) {
-                                    Surface(
-                                        shape = MM.radius.pill,
-                                        color = MM.colors.surfaceSunk,
-                                        border = BorderStroke(MMSize.hairline, MM.colors.line)
-                                    ) {
-                                        Text(
-                                            "$myCount ${if (myCount == 1) "post" else "posts"}",
-                                            style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                                            color = MM.colors.inkSecondary,
-                                            modifier = Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs / 2)
-                                        )
-                                    }
-                                }
-                                if (isMyTop) {
-                                    Surface(
-                                        shape = MM.radius.pill,
-                                        color = MM.colors.accentWash,
-                                        border = BorderStroke(MMSize.hairline, MM.colors.accent.copy(alpha = 0.35f))
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs / 2),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
-                                        ) {
-                                            Icon(
-                                                Icons.Rounded.Star,
-                                                contentDescription = null,
-                                                tint = MM.colors.accent,
-                                                modifier = Modifier.size(MMSize.iconSmall - MM.space.s)
-                                            )
-                                            Text(
-                                                "Top contributor",
-                                                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                                color = MM.colors.accent
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
-                Row(
-                    Modifier.fillMaxWidth().padding(top = MM.space.xs),
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.s),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SecondaryButton(
-                        "Update photo",
-                        { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (me.avatarVersion != null) {
-                        TextAction("Remove", actions.onRemovePhoto)
-                    }
+                Row(Modifier.fillMaxWidth().padding(start = MM.space.s, end = MM.space.s, bottom = MM.space.xs)) {
+                    TextAction(if (me.avatarVersion != null) "Change photo" else "Add a photo", {
+                        pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    })
+                    if (me.avatarVersion != null) TextAction("Remove photo", actions.onRemovePhoto)
                 }
             }
         }
-        if (canInvite) item {
-            MMCard {
-                Text("Invite people", style = MM.type.heading, color = MM.colors.ink)
-                Text("Share a code or a link. Admins can let people in one at a time.", style = MM.type.secondary, color = MM.colors.inkSecondary)
-                SecondaryButton("Invite people", actions.onInvite, modifier = Modifier.fillMaxWidth(), leadingIcon = Icons.Rounded.PersonAdd)
+        if (canInvite) item(key = "invite") {
+            MMCard(onClick = actions.onInvite, contentPadding = MM.space.l) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
+                    Box(Modifier.size(40.dp).background(MM.colors.accentWash, MM.radius.pill), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.PersonAdd, null, tint = MM.colors.accent, modifier = Modifier.size(MMSize.iconSmall))
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("Invite people", style = MM.type.bodyStrong, color = MM.colors.ink)
+                        Text("Share a code or a link", style = MM.type.caption, color = MM.colors.inkMuted)
+                    }
+                    Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.inkFaint, modifier = Modifier.size(MMSize.iconSmall))
+                }
             }
         }
-        item {
+        if (state.members.size > 6) item(key = "search") {
             CircleField(
                 value = query,
                 onValueChange = { query = it.take(60) },
                 label = "Search members",
-                placeholder = "Search ${state.members.size} members…",
+                placeholder = "A name",
                 leadingIcon = { Icon(Icons.Rounded.Search, null, tint = MM.colors.inkMuted) }
             )
         }
         if (state.isAdmin && state.joinRequests.isNotEmpty()) {
-            item { SectionHeader("Waiting to join", count = state.joinRequests.size) }
-            item {
-                MMCard {
-                    state.joinRequests.forEachIndexed { idx, r ->
-                        if (idx > 0) HorizontalDivider(color = MM.colors.line)
-                        JoinRequestRow(r, actions)
+            item(key = "requests") {
+                Column {
+                    CirclesSectionTitle("Waiting to join · ${state.joinRequests.size}")
+                    MMCard(contentPadding = 0.dp) {
+                        state.joinRequests.forEachIndexed { idx, r ->
+                            if (idx > 0) CirclesRowDivider()
+                            Box(Modifier.padding(horizontal = MM.space.s)) { JoinRequestRow(r, actions) }
+                        }
                     }
                 }
             }
         }
         if (shown.isEmpty()) {
-            item {
-                MMCard {
-                    Text("No one matches \"${query.trim()}\".", style = MM.type.secondary, color = MM.colors.inkSecondary)
-                }
+            item(key = "none") {
+                Text("No one matches \"${query.trim()}\".", style = MM.type.secondary, color = MM.colors.inkSecondary)
             }
         } else {
-            if (leaders.isNotEmpty()) {
-                item { SectionHeader("Owner and leaders", count = leaders.size) }
-                items(leaders, key = { it.uid }) { m ->
-                    val count = postsByUid[m.uid]?.size ?: 0
-                    val isTop = m.uid == topContributorUid
-                    MemberCard(circle.id, m, me, actions, count, isTop, isWork = circle.isWork)
-                }
-            }
-            if (regulars.isNotEmpty()) {
-                item { SectionHeader("Members", count = regulars.size) }
-                items(regulars, key = { it.uid }) { m ->
-                    val count = postsByUid[m.uid]?.size ?: 0
-                    val isTop = m.uid == topContributorUid
-                    MemberCard(circle.id, m, me, actions, count, isTop, isWork = circle.isWork)
+            listOf("Leaders" to leaders, "Members" to regulars).forEach { (title, group) ->
+                if (group.isNotEmpty()) item(key = "group_$title") {
+                    Column {
+                        CirclesSectionTitle("$title · ${group.size}")
+                        MMCard(contentPadding = 0.dp) {
+                            group.forEachIndexed { i, m ->
+                                if (i > 0) CirclesRowDivider(startInset = MM.space.l + 40.dp + MM.space.m)
+                                MemberCard(circle.id, m, me, actions, postsByUid[m.uid]?.size ?: 0, m.uid == topContributorUid, isWork = circle.isWork)
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+/**
+ * One quiet line under a member's name: role, title, the External tag in work circles, when they joined, and their
+ * contribution (kept while founder decision D3 is paused).
+ */
+private fun memberLine(m: Member, postCount: Int, isTop: Boolean, joined: String?, isWork: Boolean): String = listOfNotNull(
+    m.role.label.takeIf { m.role != Role.Member },
+    m.title?.takeIf { it.isNotBlank() },
+    "External".takeIf { isWork && m.external },
+    joined?.let { "Joined $it" },
+    postCount.takeIf { it > 0 }?.let { "$it ${if (it == 1) "post" else "posts"}" },
+    "Top contributor".takeIf { isTop }
+).ifEmpty { listOf(m.role.label) }.joinToString(" · ")
 
 @Composable
 private fun JoinRequestRow(r: JoinRequest, actions: MemberActions) {
@@ -312,94 +250,37 @@ private fun MemberCard(
         } else null
     }
 
-    MMCard(onClick = { actions.onMemberClick(m) }) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(MM.space.m)
-        ) {
-            MemberAvatar(circleId, m.uid, m.displayName, m.avatarVersion, size = 44.dp)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                ) {
-                    Text(
-                        if (isMe) "${m.displayName} (You)" else m.displayName,
-                        style = MM.type.bodyStrong,
-                        color = MM.colors.ink
-                    )
-                    m.title?.takeIf { it.isNotBlank() }?.let { TitleTag(it) }
-                    if (m.role != Role.Member) RoleTag(m.role)
-                    if (isWork && m.external) ExternalTag()
-                }
-                Text(
-                    if (joined != null) "Joined $joined · ${m.role.label}" else m.role.label,
-                    style = MM.type.caption,
-                    color = MM.colors.inkSecondary
-                )
-                if (postCount > 0 || isTopContributor) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                    ) {
-                        if (postCount > 0) {
-                            Surface(
-                                shape = MM.radius.pill,
-                                color = MM.colors.surfaceSunk,
-                                border = BorderStroke(MMSize.hairline, MM.colors.line)
-                            ) {
-                                Text(
-                                    "$postCount ${if (postCount == 1) "post" else "posts"}",
-                                    style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                                    color = MM.colors.inkSecondary,
-                                    modifier = Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs / 2)
-                                )
-                            }
-                        }
-                        if (isTopContributor) {
-                            Surface(
-                                shape = MM.radius.pill,
-                                color = MM.colors.accentWash,
-                                border = BorderStroke(MMSize.hairline, MM.colors.accent.copy(alpha = 0.35f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs / 2),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.Star,
-                                        contentDescription = null,
-                                        tint = MM.colors.accent,
-                                        modifier = Modifier.size(MMSize.iconSmall - MM.space.s)
-                                    )
-                                    Text(
-                                        "Top contributor",
-                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                        color = MM.colors.accent
-                                    )
-                                }
-                            }
-                        }
-                    }
+    Row(
+        Modifier.fillMaxWidth().clickable { actions.onMemberClick(m) }.heightIn(min = 64.dp)
+            .padding(start = MM.space.l, end = MM.space.xs, top = MM.space.s, bottom = MM.space.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MM.space.m)
+    ) {
+        MemberAvatar(circleId, m.uid, m.displayName, m.avatarVersion, size = 40.dp)
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (isMe) "${m.displayName} (you)" else m.displayName,
+                style = MM.type.bodyStrong, color = MM.colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                memberLine(m, postCount, isTopContributor, joined, isWork),
+                style = MM.type.caption, color = MM.colors.inkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (canChangeRole || canRemove || canEditTitle) {
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreHoriz, "Actions for ${m.displayName}", tint = MM.colors.inkMuted) }
+                DropdownMenu(menu, { menu = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.card) {
+                    if (canEditTitle) Item("Set title") { menu = false; actions.onSetTitle(m) }
+                    if (canChangeRole && m.role != Role.Admin) Item("Make admin") { menu = false; actions.onSetRole(m, Role.Admin) }
+                    if (canChangeRole && m.role != Role.Moderator) Item("Make moderator") { menu = false; actions.onSetRole(m, Role.Moderator) }
+                    if (canChangeRole && m.role != Role.Member) Item("Make a regular member") { menu = false; actions.onSetRole(m, Role.Member) }
+                    if (canChangeRole) Item("Make owner") { menu = false; actions.onSetRole(m, Role.Owner) }
+                    if (canRemove) Item("Remove from circle") { menu = false; actions.onRemove(m) }
                 }
             }
-            if (canChangeRole || canRemove || canEditTitle) {
-                Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "Actions for ${m.displayName}", tint = MM.colors.inkSecondary) }
-                    DropdownMenu(menu, { menu = false }, containerColor = MM.colors.surfaceRaised) {
-                        if (canEditTitle) Item("Set title") { menu = false; actions.onSetTitle(m) }
-                        if (canChangeRole && m.role != Role.Admin) Item("Make admin") { menu = false; actions.onSetRole(m, Role.Admin) }
-                        if (canChangeRole && m.role != Role.Moderator) Item("Make moderator") { menu = false; actions.onSetRole(m, Role.Moderator) }
-                        if (canChangeRole && m.role != Role.Member) Item("Make a regular member") { menu = false; actions.onSetRole(m, Role.Member) }
-                        if (canChangeRole) Item("Make owner") { menu = false; actions.onSetRole(m, Role.Owner) }
-                        if (canRemove) Item("Remove from circle") { menu = false; actions.onRemove(m) }
-                    }
-                }
-            } else {
-                Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.inkMuted, modifier = Modifier.size(20.dp))
-            }
+        } else {
+            Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.inkFaint, modifier = Modifier.size(MMSize.iconSmall).padding(end = MM.space.s))
         }
     }
 }

@@ -31,6 +31,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -238,20 +240,19 @@ fun ChatTab(
             Surface(
                 Modifier.fillMaxWidth().padding(horizontal = MM.space.l, vertical = MM.space.xs),
                 shape = MM.radius.card,
-                color = CirclesPalette.WarmBg,
-                border = BorderStroke(MMSize.hairline, CirclesPalette.WarmBorder)
+                color = MM.colors.surfaceSunk
             ) {
                 Row(
                     Modifier.padding(horizontal = MM.space.m, vertical = MM.space.s),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("📌", style = MM.type.body)
+                    Icon(Icons.Rounded.PushPin, null, tint = MM.colors.inkMuted, modifier = Modifier.size(16.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Pinned by ${p.authorName}", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = CirclesPalette.WarmInk)
+                        Text("Pinned by ${p.authorName}", style = MM.type.caption, color = MM.colors.inkMuted)
                         Text((p.card?.text ?: p.text).ifBlank { "Pinned message" }, style = MM.type.secondary, color = MM.colors.ink, maxLines = 2)
                     }
-                    if (state.isAdmin) IconButton(onClick = actions.onUnpin) { Icon(Icons.Rounded.Close, "Unpin", tint = CirclesPalette.WarmInk) }
+                    if (state.isAdmin) IconButton(onClick = actions.onUnpin) { Icon(Icons.Rounded.Close, "Unpin", tint = MM.colors.inkMuted) }
                 }
             }
         }
@@ -259,7 +260,7 @@ fun ChatTab(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .background(MM.colors.canvas)
+                .background(MM.colors.background)
         ) {
             if (state.messages.isEmpty() && !state.loading) {
                 val emptyBody = when (space) {
@@ -372,8 +373,7 @@ fun ChatTab(
                                 }
                             },
                             shape = MM.radius.pill,
-                            color = MM.colors.accent,
-                            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft.copy(alpha = 0.2f)),
+                            color = MM.colors.ink,
                             shadowElevation = MM.elevation.floating,
                             modifier = Modifier.height(38.dp)
                         ) {
@@ -385,12 +385,12 @@ fun ChatTab(
                                 Text(
                                     text = "${state.unread} new",
                                     style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MM.colors.onAccent
+                                    color = MM.colors.onInk
                                 )
                                 Icon(
                                     Icons.Rounded.KeyboardArrowDown,
                                     contentDescription = "Jump to latest",
-                                    tint = MM.colors.onAccent,
+                                    tint = MM.colors.onInk,
                                     modifier = Modifier.size(MMSize.iconSmall)
                                 )
                             }
@@ -431,7 +431,7 @@ fun ChatTab(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MM.colors.canvas)
+                    .background(MM.colors.background)
             ) {
                 TypingIndicatorBubble(names = state.typing)
             }
@@ -440,7 +440,7 @@ fun ChatTab(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(MM.colors.canvas)
+                    .background(MM.colors.background)
                     .padding(horizontal = MM.space.l)
             ) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -506,31 +506,28 @@ private fun dayLabel(t: Long, now: Long): String = when {
 
 @Composable
 private fun DayDivider(label: String) {
-    Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
-        Surface(
-            shape = MM.radius.pill,
-            color = MM.colors.surface,
-            border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
-        ) {
-            Text(
-                label,
-                style = MM.type.overline,
-                color = MM.colors.inkSecondary,
-                modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs)
-            )
-        }
-    }
+    // A quiet label between days: no pill, no border.
+    Text(
+        label,
+        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+        color = MM.colors.inkMuted,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.s).semantics { heading() }
+    )
 }
 
 @Composable
 private fun UnreadDivider(count: Int) {
-    Text(
-        if (count == 1) "1 new message" else "$count new messages",
-        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-        color = MM.colors.accent,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs)
-    )
+    Row(Modifier.fillMaxWidth().padding(vertical = MM.space.xs), verticalAlignment = Alignment.CenterVertically) {
+        HorizontalDivider(Modifier.weight(1f), thickness = MMSize.hairline, color = MM.colors.accent.copy(alpha = 0.4f))
+        Text(
+            if (count == 1) "1 new message" else "$count new messages",
+            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+            color = MM.colors.accent,
+            modifier = Modifier.padding(horizontal = MM.space.s)
+        )
+        HorizontalDivider(Modifier.weight(1f), thickness = MMSize.hairline, color = MM.colors.accent.copy(alpha = 0.4f))
+    }
 }
 
 @Composable
@@ -573,17 +570,22 @@ private fun MessageItem(
     }
 
     val mine = m.authorUid == state.myUid
-    val isAccentBubble = mine && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply || m.kind == MessageKind.Image || m.kind == MessageKind.Video || m.kind == MessageKind.Voice)
-    val normalBubbleBg = if (isAccentBubble) c.accent else c.surface
-    val targetBubbleBg = if (isHighlighted) {
-        if (isAccentBubble) c.accent.copy(alpha = 0.75f) else c.accentWash
-    } else normalBubbleBg
+    // Your own text, replies and voice notes sit in the ink bubble; everything else on the plain surface. No blue.
+    val isAccentBubble = mine && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply || m.kind == MessageKind.Voice)
+    // Photos and videos with no caption float on the chat with no bubble behind them (founder: videos have no background).
+    val bareMedia = (m.kind == MessageKind.Image || m.kind == MessageKind.Video) && m.attachment != null
+    val bubble = chatBubbleColors(isAccentBubble)
+    val targetBubbleBg = when {
+        bareMedia -> Color.Transparent
+        isHighlighted -> androidx.compose.ui.graphics.lerp(bubble.container, c.accent, 0.12f)
+        else -> bubble.container
+    }
     val bubbleBg by animateColorAsState(
         targetValue = targetBubbleBg,
-        animationSpec = tween(300),
+        animationSpec = MM.motion.standard(),
         label = "bubbleBg_${m.id}"
     )
-    val bubbleFg = if (isAccentBubble) c.onAccent else c.ink
+    val bubbleFg = bubble.content
     val bubbleShape = if (mine) {
         RoundedCornerShape(topStart = MM.space.l, topEnd = MM.space.l, bottomStart = MM.space.l, bottomEnd = MM.space.xs)
     } else {
@@ -686,7 +688,7 @@ private fun MessageItem(
                     Surface(
                         shape = bubbleShape,
                         color = bubbleBg,
-                        border = if (isAccentBubble) null else BorderStroke(MMSize.hairline, c.lineSoft),
+                        border = null,
                         modifier = Modifier
                             .offset { IntOffset(offsetX.value.roundToInt(), 0) }
                             .widthIn(max = MM.space.xxl * 10)
@@ -703,27 +705,23 @@ private fun MessageItem(
                     ) {
                         Box {
                             if (m.kind == MessageKind.Image || m.kind == MessageKind.Video) {
-                            Column {
+                            // Media floats on the chat: no bubble, no backdrop. A caption gets its own bubble underneath.
+                            val captionBubble = chatBubbleColors(mine)
+                            val stamp = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt)
+                            Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                                 val quoted = state.byId(m.replyTo)
                                 if (m.replyTo != null && quoted != null) {
                                     Surface(
                                         shape = MM.radius.small,
-                                        color = if (isAccentBubble) c.onAccent.copy(alpha = 0.16f) else c.surfaceSunk,
-                                        modifier = Modifier
-                                            .clickable { onScrollToMessage(quoted.id) }
-                                            .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp)
+                                        color = captionBubble.container,
+                                        modifier = Modifier.clickable { onScrollToMessage(quoted.id) }
                                     ) {
                                         Row(Modifier.height(IntrinsicSize.Min)) {
-                                            Box(
-                                                Modifier
-                                                    .width(3.dp)
-                                                    .fillMaxHeight()
-                                                    .background(if (isAccentBubble) c.onAccent else c.accent)
-                                            )
+                                            Box(Modifier.width(3.dp).fillMaxHeight().background(captionBubble.quoteBar))
                                             Text(
                                                 "${quoted.authorName}: ${if (quoted.deleted) "Message removed" else quoted.text.ifBlank { "Card" }}",
                                                 style = MM.type.caption,
-                                                color = if (isAccentBubble) c.onAccent.copy(alpha = 0.92f) else c.inkSecondary,
+                                                color = captionBubble.secondary,
                                                 maxLines = 2,
                                                 modifier = Modifier.padding(horizontal = MM.space.s, vertical = 6.dp)
                                             )
@@ -732,93 +730,41 @@ private fun MessageItem(
                                 }
                                 m.attachment?.let { a ->
                                     if (m.kind == MessageKind.Image) {
-                                        if (m.text.isBlank()) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(max = 260.dp)
-                                            ) {
-                                                MediaImage(
-                                                    circleId = state.circleId,
-                                                    path = a.path,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentDescription = "Photo from ${m.authorName}",
-                                                    allowFullscreen = true
-                                                )
-                                                Box(
+                                        Box(Modifier.widthIn(max = 280.dp).heightIn(max = 280.dp).clip(MM.radius.card)) {
+                                            MediaImage(
+                                                circleId = state.circleId,
+                                                path = a.path,
+                                                modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp),
+                                                contentDescription = "Photo from ${m.authorName}",
+                                                allowFullscreen = true
+                                            )
+                                            if (m.text.isBlank()) {
+                                                Text(
+                                                    stamp,
+                                                    style = MM.type.caption,
+                                                    color = FixedWhite,
                                                     modifier = Modifier
                                                         .align(Alignment.BottomEnd)
                                                         .padding(MM.space.s)
                                                         .clip(MM.radius.pill)
-                                                        .background(c.scrim.copy(alpha = 0.65f))
+                                                        .background(c.scrim)
                                                         .padding(horizontal = MM.space.s, vertical = 2.dp)
-                                                ) {
-                                                    Text(
-                                                        text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
-                                                        style = MM.type.caption,
-                                                        color = FixedWhite
-                                                    )
-                                                }
-                                            }
-                                        } else {
-                                            MediaImage(
-                                                circleId = state.circleId,
-                                                path = a.path,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(max = 260.dp),
-                                                contentDescription = "Photo from ${m.authorName}",
-                                                allowFullscreen = true
-                                            )
-                                            Column(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-                                            ) {
-                                                Text(m.text, style = MM.type.body, color = bubbleFg)
-                                                Spacer(Modifier.height(2.dp))
-                                                Text(
-                                                    text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
-                                                    style = MM.type.caption,
-                                                    color = if (isAccentBubble) c.onAccent.copy(alpha = 0.75f) else c.inkMuted,
-                                                    modifier = Modifier.align(Alignment.End)
                                                 )
                                             }
                                         }
                                     } else {
-                                        Box(modifier = Modifier.fillMaxWidth()) {
-                                            VideoBubble(state.circleId, a)
-                                        }
-                                        if (m.text.isNotBlank()) {
-                                            Column(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-                                            ) {
-                                                Text(m.text, style = MM.type.body, color = bubbleFg)
-                                                Spacer(Modifier.height(2.dp))
-                                                Text(
-                                                    text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
-                                                    style = MM.type.caption,
-                                                    color = if (isAccentBubble) c.onAccent.copy(alpha = 0.75f) else c.inkMuted,
-                                                    modifier = Modifier.align(Alignment.End)
-                                                )
-                                            }
-                                        } else {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
-                                            ) {
-                                                Text(
-                                                    text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
-                                                    style = MM.type.caption,
-                                                    color = if (isAccentBubble) c.onAccent.copy(alpha = 0.75f) else c.inkMuted,
-                                                    modifier = Modifier.align(Alignment.CenterEnd)
-                                                )
-                                            }
+                                        VideoBubble(state.circleId, a)
+                                    }
+                                }
+                                if (m.text.isNotBlank()) {
+                                    Surface(shape = bubbleShape, color = captionBubble.container) {
+                                        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp)) {
+                                            Text(mentionText(m.text, state.members, captionBubble.link), style = MM.type.body, color = captionBubble.content)
+                                            Text(stamp, style = MM.type.caption, color = captionBubble.secondary, modifier = Modifier.align(Alignment.End).padding(top = 2.dp))
                                         }
                                     }
+                                } else if (m.kind == MessageKind.Video) {
+                                    Text(stamp, style = MM.type.caption, color = c.inkMuted, modifier = Modifier.padding(horizontal = MM.space.xs))
                                 }
                             }
                         } else {
@@ -829,7 +775,7 @@ private fun MessageItem(
                                 if (m.kind == MessageKind.Reply && m.replyTo != null) {
                                     Surface(
                                         shape = MM.radius.small,
-                                        color = if (isAccentBubble) c.onAccent.copy(alpha = 0.16f) else c.surfaceSunk,
+                                        color = bubble.quoteFill,
                                         modifier = Modifier
                                             .clickable { onScrollToMessage(m.replyTo) }
                                             .padding(bottom = 6.dp)
@@ -839,12 +785,12 @@ private fun MessageItem(
                                                 Modifier
                                                     .width(3.dp)
                                                     .fillMaxHeight()
-                                                    .background(if (isAccentBubble) c.onAccent else c.accent)
+                                                    .background(bubble.quoteBar)
                                             )
                                             Text(
                                                 quoted?.let { "${it.authorName}: ${if (it.deleted) "Message removed" else it.text.ifBlank { "Card" }}" } ?: "Earlier message",
                                                 style = MM.type.caption,
-                                                color = if (isAccentBubble) c.onAccent.copy(alpha = 0.92f) else c.inkSecondary,
+                                                color = bubble.secondary,
                                                 maxLines = 2,
                                                 modifier = Modifier.padding(horizontal = MM.space.s, vertical = 6.dp)
                                             )
@@ -852,7 +798,7 @@ private fun MessageItem(
                                     }
                                 }
                                 when (m.kind) {
-                                    MessageKind.Voice -> m.attachment?.let { VoiceBubble(state.circleId, it, onAccent = isAccentBubble) }
+                                    MessageKind.Voice -> m.attachment?.let { VoiceBubble(state.circleId, it, bubbleInk = bubble.content, bubbleFill = bubble.container) }
                                     MessageKind.File -> m.attachment?.let { FileBubble(state.circleId, it) }
                                     MessageKind.Card -> m.card?.let { ChatCard(it) }
                                     MessageKind.Poll -> m.pollId?.let { PollCard(m, actions) } ?: Text(m.text, style = MM.type.body, color = bubbleFg)
@@ -862,10 +808,10 @@ private fun MessageItem(
                                             Text(
                                                 "Forwarded",
                                                 style = MM.type.caption.copy(fontStyle = FontStyle.Italic),
-                                                color = if (isAccentBubble) c.onAccent.copy(alpha = 0.75f) else c.inkSecondary
+                                                color = bubble.secondary
                                             )
                                         }
-                                        Text(mentionText(m.text, state.members, isAccentBubble), style = MM.type.body, color = bubbleFg)
+                                        Text(mentionText(m.text, state.members, bubble.link), style = MM.type.body, color = bubbleFg)
                                     }
                                 }
                                 val isTextOrReplyOrMedia = m.kind == MessageKind.Text || m.kind == MessageKind.Reply ||
@@ -875,7 +821,7 @@ private fun MessageItem(
                                     Text(
                                         text = (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt),
                                         style = MM.type.caption,
-                                        color = if (isAccentBubble) c.onAccent.copy(alpha = 0.75f) else c.inkMuted,
+                                        color = bubble.secondary,
                                         modifier = Modifier.align(Alignment.End)
                                     )
                                 }
@@ -918,9 +864,9 @@ private fun ReactionRow(messageId: String, actions: ChatActions, mine: Boolean, 
         horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
     ) {
         reactions.forEach { r ->
-            val bg = if (r.mine) MM.colors.accentWash else MM.colors.surface
-            val border = if (r.mine) BorderStroke(1.dp, MM.colors.accent) else BorderStroke(MMSize.hairline, MM.colors.line)
-            val textColor = if (r.mine) MM.colors.accent else MM.colors.inkSecondary
+            val bg = if (r.mine) MM.colors.track else MM.colors.surface
+            val border = if (r.mine) null else BorderStroke(MMSize.hairline, MM.colors.lineSoft)
+            val textColor = if (r.mine) MM.colors.ink else MM.colors.inkSecondary
             Surface(
                 onClick = { actions.onToggleReaction(messageId, r.emoji, reactions) },
                 shape = MM.radius.pill,
@@ -986,11 +932,10 @@ private fun ChatInput(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(c.surface)
+            .background(c.background)
             .navigationBarsPadding()
             .imePadding()
     ) {
-        HorizontalDivider(color = c.lineSoft)
 
         val bar = state.editing?.let { Triple("Editing your message", it.text.take(60), actions.onCancelEdit) }
             ?: state.forwarding?.let { Triple("Forwarding ${it.authorName}'s message", it.text.take(60), actions.onCancelForward) }
@@ -1006,13 +951,12 @@ private fun ChatInput(
                         .fillMaxWidth()
                         .padding(horizontal = MM.space.m, vertical = MM.space.xs),
                     shape = MM.radius.card,
-                    color = c.surfaceRaised,
-                    border = BorderStroke(MMSize.hairline, c.lineSoft)
+                    color = c.surfaceSunk
                 ) {
                     Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.width(3.dp).fillMaxHeight().background(c.accent))
+                        Box(Modifier.width(3.dp).fillMaxHeight().background(c.inkMuted))
                         Column(Modifier.weight(1f).padding(horizontal = MM.space.m, vertical = 6.dp)) {
-                            Text(bar.first, style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = c.accent, maxLines = 1)
+                            Text(bar.first, style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = c.ink, maxLines = 1)
                             if (bar.second.isNotBlank()) {
                                 Text(bar.second, style = MM.type.caption, color = c.inkSecondary, maxLines = 1)
                             }
@@ -1043,8 +987,7 @@ private fun ChatInput(
                         .fillMaxWidth()
                         .padding(horizontal = MM.space.m, vertical = MM.space.xs),
                     shape = MM.radius.card,
-                    color = c.surfaceRaised,
-                    border = BorderStroke(MMSize.hairline, c.accent.copy(alpha = 0.4f))
+                    color = c.surfaceSunk
                 ) {
                     Row(
                         Modifier.padding(horizontal = MM.space.m, vertical = MM.space.s),
@@ -1066,7 +1009,7 @@ private fun ChatInput(
                                     else -> Icons.Rounded.InsertDriveFile
                                 },
                                 contentDescription = null,
-                                tint = c.accent,
+                                tint = c.inkSecondary,
                                 modifier = Modifier.size(MMSize.icon)
                             )
                         }
@@ -1098,7 +1041,7 @@ private fun ChatInput(
                     .padding(horizontal = MM.space.m, vertical = MM.space.xs),
                 shape = MM.radius.card,
                 color = c.surfaceRaised,
-                border = BorderStroke(MMSize.hairline, c.lineSoft)
+                shadowElevation = MM.elevation.floating
             ) {
                 Column {
                     mentionMatches.forEachIndexed { index, member ->
@@ -1208,7 +1151,7 @@ private fun ChatInput(
                                 .weight(1f)
                                 .height(barHeight)
                                 .clip(MM.radius.pill)
-                                .background(c.accent.copy(alpha = (0.35f + amp * 0.65f).coerceIn(0.2f, 1f)))
+                                .background(c.ink.copy(alpha = (0.25f + amp * 0.65f).coerceIn(0.2f, 1f)))
                         )
                     }
                 }
@@ -1222,14 +1165,14 @@ private fun ChatInput(
                 IconButton(
                     onClick = onMicStop,
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
-                        .background(c.accent)
+                        .background(c.ink)
                 ) {
                     Icon(
                         Icons.AutoMirrored.Rounded.Send,
                         contentDescription = "Send",
-                        tint = c.onAccent,
+                        tint = c.onInk,
                         modifier = Modifier.size(MMSize.iconSmall)
                     )
                 }
@@ -1238,21 +1181,21 @@ private fun ChatInput(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = MM.space.m, vertical = MM.space.s),
+                    .padding(start = MM.space.xs, end = MM.space.m, top = MM.space.s, bottom = MM.space.s),
                 verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
             ) {
                 Surface(
                     onClick = { plus = true },
                     shape = MM.radius.pill,
-                    color = c.surfaceSunk,
-                    modifier = Modifier.size(38.dp)
+                    color = Color.Transparent,
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             Icons.Rounded.Add,
                             contentDescription = "More: photo, video, PDF, poll, card, prayer chain, celebrate",
-                            tint = c.accent,
+                            tint = c.inkSecondary,
                             modifier = Modifier.size(MMSize.icon)
                         )
                     }
@@ -1261,13 +1204,14 @@ private fun ChatInput(
                 val placeholderText = if (stagedAttachment != null) "Add a caption…" else "Message…"
                 Surface(
                     shape = MM.radius.card,
-                    color = c.surfaceSunk,
+                    color = if (c.isDark) c.surfaceRaised else c.surface,
+                    border = BorderStroke(MMSize.hairline, c.line),
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 38.dp)
+                        .heightIn(min = 44.dp)
                 ) {
                     Box(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = MM.space.l, vertical = 11.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
                         if (draft.isEmpty()) {
@@ -1301,14 +1245,14 @@ private fun ChatInput(
                         Surface(
                             onClick = onMicStart,
                             shape = MM.radius.pill,
-                            color = c.accentWash,
-                            modifier = Modifier.size(38.dp)
+                            color = Color.Transparent,
+                            modifier = Modifier.size(44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     Icons.Rounded.Mic,
                                     contentDescription = "Record a voice note",
-                                    tint = c.accent,
+                                    tint = c.inkSecondary,
                                     modifier = Modifier.size(MMSize.iconSmall)
                                 )
                             }
@@ -1325,14 +1269,14 @@ private fun ChatInput(
                                 }
                             },
                             shape = MM.radius.pill,
-                            color = c.accent,
-                            modifier = Modifier.size(38.dp)
+                            color = c.ink,
+                            modifier = Modifier.size(44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     Icons.AutoMirrored.Rounded.Send,
                                     contentDescription = "Send",
-                                    tint = c.onAccent,
+                                    tint = c.onInk,
                                     modifier = Modifier.size(MMSize.iconSmall)
                                 )
                             }
@@ -1381,26 +1325,21 @@ private fun AttachmentTraySheet(
     val c = MM.colors
     CircleSheet(onDismiss = onDismiss) {
         Text(
-            "Share to circle",
-            style = MM.type.title.copy(fontWeight = FontWeight.Bold),
+            "Share to the chat",
+            style = MM.type.title,
             color = c.ink,
-            modifier = Modifier.padding(bottom = MM.space.xs)
+            modifier = Modifier.padding(bottom = MM.space.xs).semantics { heading() }
         )
-        val roseBg = CirclesPalette.RoseBg
-        val roseInk = CirclesPalette.RoseInk
-        val greenBg = CirclesPalette.GreenBg
-        val greenInk = CirclesPalette.GreenInk
-        val warmBg = CirclesPalette.WarmBg
-        val warmInk = CirclesPalette.WarmInk
-        val items = remember(isFaith, roseBg, roseInk, greenBg, greenInk, warmBg, warmInk, c, onAttachPhoto, onAttachVideo, onAttachFile, onNewPoll, onShareCard, onCelebrate, onStartChain) {
+        // One quiet tile style for every option: the label carries the meaning, not a rainbow of fills.
+        val items = remember(isFaith, onAttachPhoto, onAttachVideo, onAttachFile, onNewPoll, onShareCard, onCelebrate, onStartChain) {
             listOfNotNull(
-                AttachmentOption("Photo", Icons.Rounded.Image, CirclesPalette.AvatarPairs[1].first, CirclesPalette.AvatarPairs[1].second, onAttachPhoto),
-                AttachmentOption("Video", Icons.Rounded.Videocam, c.dangerWash, c.danger, onAttachVideo),
-                AttachmentOption("PDF", Icons.Rounded.PictureAsPdf, roseBg, roseInk, onAttachFile),
-                AttachmentOption("Poll", Icons.Rounded.Poll, greenBg, greenInk, onNewPoll),
-                AttachmentOption("Card", Icons.Rounded.Style, c.goldWash, c.goldInk, onShareCard),
-                AttachmentOption("Celebrate", Icons.Rounded.Celebration, c.accentWash, c.accent, onCelebrate),
-                if (isFaith) AttachmentOption("Prayer Chain", Icons.Rounded.VolunteerActivism, warmBg, warmInk, onStartChain) else null
+                AttachmentOption("Photo", Icons.Rounded.Image, Color.Unspecified, Color.Unspecified, onAttachPhoto),
+                AttachmentOption("Video", Icons.Rounded.Videocam, Color.Unspecified, Color.Unspecified, onAttachVideo),
+                AttachmentOption("PDF", Icons.Rounded.PictureAsPdf, Color.Unspecified, Color.Unspecified, onAttachFile),
+                AttachmentOption("Poll", Icons.Rounded.Poll, Color.Unspecified, Color.Unspecified, onNewPoll),
+                AttachmentOption("Card", Icons.Rounded.Style, Color.Unspecified, Color.Unspecified, onShareCard),
+                AttachmentOption("Celebrate", Icons.Rounded.Celebration, Color.Unspecified, Color.Unspecified, onCelebrate),
+                if (isFaith) AttachmentOption("Prayer chain", Icons.Rounded.VolunteerActivism, Color.Unspecified, Color.Unspecified, onStartChain) else null
             )
         }
 
@@ -1422,15 +1361,15 @@ private fun AttachmentTraySheet(
                             .padding(vertical = MM.space.xs)
                     ) {
                         Surface(
-                            shape = CircleShape,
-                            color = opt.bg,
-                            modifier = Modifier.size(52.dp)
+                            shape = MM.radius.card,
+                            color = c.surfaceSunk,
+                            modifier = Modifier.size(56.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     opt.icon,
-                                    contentDescription = opt.label,
-                                    tint = opt.fg,
+                                    contentDescription = null,
+                                    tint = c.ink,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
@@ -1490,8 +1429,7 @@ private fun TypingIndicatorBubble(
 
     Surface(
         shape = MM.radius.pill,
-        color = c.surfaceRaised,
-        border = BorderStroke(MMSize.hairline, c.lineSoft),
+        color = chatBubbleColors(false).container,
         modifier = modifier.padding(horizontal = MM.space.l, vertical = MM.space.xs)
     ) {
         Row(
@@ -1508,7 +1446,7 @@ private fun TypingIndicatorBubble(
                         Modifier
                             .offset(y = offset.dp)
                             .size(6.dp)
-                            .background(c.accent, CircleShape)
+                            .background(c.inkMuted, CircleShape)
                     )
                 }
             }
@@ -1625,9 +1563,9 @@ private fun ActionSheetRow(icon: ImageVector, label: String, destructive: Boolea
 
 /** "@Name" in a message, highlighted when it names a member. */
 @Composable
-private fun mentionText(text: String, members: List<Member>, onAccent: Boolean = false): androidx.compose.ui.text.AnnotatedString {
+private fun mentionText(text: String, members: List<Member>, highlightColor: Color): androidx.compose.ui.text.AnnotatedString {
     val names = members.map { it.displayName }.filter { it.isNotBlank() }.sortedByDescending { it.length }
-    val highlight = if (onAccent) MM.colors.onAccent else MM.colors.accent
+    val highlight = highlightColor
     return buildAnnotatedString {
         var i = 0
         while (i < text.length) {

@@ -32,6 +32,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.rounded.BusinessCenter
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -234,70 +240,37 @@ fun CirclesListContent(
     }
     var isRefreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val ready = state as? CirclesListState.Ready
     Column(Modifier.fillMaxSize().background(MM.colors.background).statusBarsPadding()) {
-        ScreenHeader(
-            "Circles", Modifier.padding(horizontal = MM.space.s),
-            leading = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.inkSecondary) } },
+        CirclesTopBar(
+            title = "Circles",
+            onBack = onBack,
+            subtitle = ready?.circles?.takeIf { it.isNotEmpty() }?.let { if (it.size == 1) "1 circle" else "${it.size} circles" },
             actions = {
                 if (canAct) {
                     if (hasManyCircles) {
-                        Surface(
-                            shape = CircleShape,
-                            color = if (searchOpen) MM.colors.accentWash else MM.colors.surfaceRaised,
-                            border = BorderStroke(MMSize.hairline, if (searchOpen) MM.colors.accent else MM.colors.lineSoft),
-                            modifier = Modifier.size(34.dp).clickable {
-                                searchOpen = !searchOpen
-                                if (!searchOpen) searchQuery = ""
-                            }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Rounded.Search,
-                                    "Search circles",
-                                    tint = if (searchOpen) MM.colors.accent else MM.colors.inkSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    Surface(
-                        shape = MM.radius.pill,
-                        color = MM.colors.accentWash,
-                        modifier = Modifier.clickable(onClick = onShowJoin)
-                    ) {
-                        Text(
-                            "Join",
-                            style = MM.type.secondary.copy(fontWeight = FontWeight.SemiBold),
-                            color = MM.colors.accent,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    Surface(
-                        shape = MM.radius.pill,
-                        color = MM.colors.accent,
-                        modifier = Modifier.size(34.dp).clickable(onClick = createForActiveSpace)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Add, "Start a circle", tint = MM.colors.onAccent, modifier = Modifier.size(18.dp))
+                        CirclesHeaderAction(if (searchOpen) Icons.Rounded.Close else Icons.Rounded.Search, if (searchOpen) "Close search" else "Search circles") {
+                            searchOpen = !searchOpen
+                            if (!searchOpen) searchQuery = ""
                         }
                     }
+                    TextAction("Join", onShowJoin)
+                    CirclesHeaderAction(Icons.Rounded.Add, "Start a circle", createForActiveSpace)
                 }
             }
         )
         AnimatedVisibility(
             visible = searchOpen && hasManyCircles,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
+            enter = fadeIn(MM.motion.quick()) + expandVertically(MM.motion.standard()),
+            exit = fadeOut(MM.motion.quick()) + shrinkVertically(MM.motion.standard())
         ) {
             Box(Modifier.fillMaxWidth().padding(horizontal = MM.space.l, vertical = MM.space.xs)) {
                 CircleField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     label = "Search circles",
-                    placeholder = "Filter by name or description…",
-                    leadingIcon = { Icon(Icons.Rounded.Search, null, tint = MM.colors.inkSecondary) }
+                    placeholder = "Name or description",
+                    leadingIcon = { Icon(Icons.Rounded.Search, null, tint = MM.colors.inkMuted) }
                 )
             }
         }
@@ -305,22 +278,26 @@ fun CirclesListContent(
             CirclesListState.NotConnected -> EmptyState(
                 title = "Circles isn't connected yet",
                 body = "Circles lets small groups share updates, resources, and chat together. This build isn't linked to the Circles service yet, so there's nothing to join or create. Everything else in MeetingMind works as normal.",
-                modifier = Modifier.padding(horizontal = MM.space.l),
+                modifier = Modifier.padding(horizontal = MM.space.l).navigationBarsPadding(),
                 illustration = { Icon(Icons.Rounded.Groups, null, tint = MM.colors.inkMuted, modifier = Modifier.padding(top = MM.space.xl)) }
             )
-            CirclesListState.Loading -> Column(Modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+            CirclesListState.Loading -> Column(
+                Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s).navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(MM.space.l)
+            ) {
                 if (account != null) CirclesAccountCard(account, 0, onLink, onSwitch, onDismissConflict)
-                StatusLine(StatusKind.Info, "Loading your circles...")
+                CircleListSkeleton()
             }
             is CirclesListState.Ready -> if (state.circles.isEmpty()) {
                 // Signed out and empty is where a reinstall or a new phone lands: sign-in comes first, then the welcome.
                 Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l, vertical = MM.space.s),
-                    verticalArrangement = Arrangement.spacedBy(MM.space.m)
+                    Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        .padding(horizontal = MM.space.l).padding(top = MM.space.s, bottom = circlesBottomInset()),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.l)
                 ) {
                     state.note?.let { Note(it, onRefresh) }
-                    if (account != null) CirclesAccountCard(account, state.earlier, onLink, onSwitch, onDismissConflict)
-                    CirclesWelcome(onStart = createForActiveSpace, onJoin = onShowJoin)
+                    if (account != null) CirclesReveal(0) { CirclesAccountCard(account, state.earlier, onLink, onSwitch, onDismissConflict) }
+                    CirclesReveal(1) { CirclesWelcome(onStart = createForActiveSpace, onJoin = onShowJoin) }
                 }
             } else {
                 val filteredCircles = remember(state.circles, selectedSpace, searchQuery) {
@@ -332,6 +309,7 @@ fun CirclesListContent(
                         c.name.contains(q, ignoreCase = true) || c.description.contains(q, ignoreCase = true)
                     }
                 }
+                val spacesInUse = remember(state.circles) { listOf("Work", "Study", "Faith", "Community").filter { sp -> state.circles.any { circleSpace(it) == sp } } }
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
                     onRefresh = {
@@ -346,67 +324,21 @@ fun CirclesListContent(
                 ) {
                     LazyColumn(
                         Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s),
-                        verticalArrangement = Arrangement.spacedBy(MM.space.m)
+                        contentPadding = circlesListPadding(),
+                        verticalArrangement = Arrangement.spacedBy(MM.space.l)
                     ) {
                         state.note?.let { n -> item { Note(n, onRefresh) } }
-                        if (account != null) item(key = "account") { CirclesAccountCard(account, state.earlier, onLink, onSwitch, onDismissConflict) }
-                        item {
-                            Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                                Text("Your circles", style = MM.type.title.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
-                                Text(
-                                    "Small groups, teams, and family spaces where you share and stay close.",
-                                    style = MM.type.secondary, color = MM.colors.inkSecondary
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(MM.space.s),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val distinctSpacesCount = remember(state.circles) {
-                                        state.circles.map { circleSpace(it) }.distinct().size
-                                    }
-                                    Surface(
-                                        shape = MM.radius.pill,
-                                        color = MM.colors.surfaceSunk,
-                                        border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
-                                    ) {
-                                        Text(
-                                            "${state.circles.size} ${if (state.circles.size == 1) "circle" else "circles"}",
-                                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                            color = MM.colors.inkSecondary,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                    Surface(
-                                        shape = MM.radius.pill,
-                                        color = MM.colors.surfaceSunk,
-                                        border = BorderStroke(MMSize.hairline, MM.colors.lineSoft)
-                                    ) {
-                                        Text(
-                                            "$distinctSpacesCount ${if (distinctSpacesCount == 1) "space" else "spaces"}",
-                                            style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                                            color = MM.colors.inkMuted,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                }
-                            }
+                        if (account != null) item(key = "account") {
+                            CirclesReveal(0) { CirclesAccountCard(account, state.earlier, onLink, onSwitch, onDismissConflict) }
                         }
-                        if (state.circles.size > 1) {
-                            item {
+                        if (spacesInUse.size > 1) {
+                            item(key = "spaces") {
                                 Row(
                                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                     horizontalArrangement = Arrangement.spacedBy(MM.space.s)
                                 ) {
-                                    listOf("All", "Work", "Study", "Faith", "Community").forEach { spaceName ->
-                                        val count = if (spaceName == "All") state.circles.size else state.circles.count { circleSpace(it) == spaceName }
-                                        val label = if (count > 0 && spaceName != "All") "$spaceName · $count" else spaceName
-                                        MMChip(
-                                            label,
-                                            selected = selectedSpace == spaceName,
-                                            onClick = { selectedSpace = spaceName }
-                                        )
+                                    (listOf("All") + spacesInUse).forEach { spaceName ->
+                                        MMChip(spaceName, selected = selectedSpace == spaceName, onClick = { selectedSpace = spaceName })
                                     }
                                 }
                             }
@@ -417,13 +349,13 @@ fun CirclesListContent(
                                     if (searchQuery.isNotBlank()) {
                                         EmptyState(
                                             title = "No circles found",
-                                            body = "No circles match \"$searchQuery\". Try checking the spelling or clearing the search filter.",
+                                            body = "Nothing matches \"$searchQuery\". Check the spelling or clear the search.",
                                             modifier = Modifier.padding(vertical = MM.space.l)
                                         )
                                     } else {
                                         EmptyState(
                                             title = "No $selectedSpace circles",
-                                            body = "You don't have any $selectedSpace circles yet. You can create one or join with an invite code.",
+                                            body = "You're not in a $selectedSpace circle yet. Start one, or join with an invite code.",
                                             modifier = Modifier.padding(vertical = MM.space.l)
                                         )
                                     }
@@ -432,27 +364,22 @@ fun CirclesListContent(
                         } else {
                             val featured = filteredCircles.first()
                             item(key = "featured_${featured.id}") {
-                                FeaturedCircleCard(featured, modifier = Modifier.animateItem()) { onOpen(featured.id) }
+                                CirclesReveal(1, Modifier.animateItem()) { FeaturedCircleCard(featured) { onOpen(featured.id) } }
                             }
                             if (filteredCircles.size > 1) {
-                                item(key = "all_circles_section_header") {
-                                    Box(Modifier.animateItem()) {
-                                        SectionHeader("All circles", count = filteredCircles.size)
+                                item(key = "all_circles") {
+                                    CirclesReveal(2, Modifier.animateItem()) {
+                                        Column {
+                                            CirclesSectionTitle(if (selectedSpace == "All") "All circles" else "$selectedSpace circles")
+                                            MMCard(contentPadding = 0.dp) {
+                                                filteredCircles.drop(1).forEachIndexed { i, c ->
+                                                    if (i > 0) CirclesRowDivider(startInset = MM.space.l + 44.dp + MM.space.m)
+                                                    CircleRow(c) { onOpen(c.id) }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
-                                items(filteredCircles.drop(1), key = { it.id }) { c ->
-                                    CircleRow(c, modifier = Modifier.animateItem()) { onOpen(c.id) }
-                                }
-                            }
-                        }
-                        item {
-                            Row(
-                                Modifier.fillMaxWidth().padding(top = MM.space.s),
-                                horizontalArrangement = Arrangement.spacedBy(MM.space.s),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                PrimaryButton("Start a circle", createForActiveSpace, leadingIcon = Icons.Rounded.Add, modifier = Modifier.weight(1f))
-                                SecondaryButton("Join with code", onShowJoin, modifier = Modifier.weight(1f))
                             }
                         }
                     }
@@ -460,170 +387,92 @@ fun CirclesListContent(
             }
         }
     }
-    if (showJoin) JoinSheet(join, onHideJoin, onPaste, onJoinName, onJoin)
+    if (showJoin) JoinSheet(
+        join, onHideJoin, onPaste, onJoinName, onJoin,
+        account = account, onLink = onLink, onSwitch = onSwitch, onDismissConflict = onDismissConflict
+    )
 }
 
 @Composable
 private fun Note(f: CirclesFailure, onRefresh: () -> Unit) {
-    Column(Modifier.padding(horizontal = MM.space.l)) { StatusLine(StatusKind.Warning, f.message, actionLabel = "Retry", onAction = onRefresh) }
+    StatusLine(StatusKind.Warning, f.message, actionLabel = "Retry", onAction = onRefresh)
 }
 
-/** Featured Circle hero card matching `circles_home.html` (`170dp` cover + space-adapted lower banner + white `Open` pill). */
+/** While the list loads: a static cover block and three row shapes (no shimmer, no idle animation). */
 @Composable
-private fun FeaturedCircleCard(c: Circle, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val memberLabel = "${c.groupWord} · ${if (c.memberCount == 1) "1 member" else "${c.memberCount} members"}"
-    val spaceLabel = circleSpace(c)
-    val tint = spaceTint(c)
-    Surface(
-        shape = MM.radius.card,
-        color = tint,
-        modifier = modifier.fillMaxWidth().clip(MM.radius.card).clickable(onClick = onClick)
+private fun CircleListSkeleton() {
+    Column(
+        Modifier.fillMaxWidth().semantics { contentDescription = "Loading your circles" },
+        verticalArrangement = Arrangement.spacedBy(MM.space.l)
     ) {
-        Column {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(156.dp)
-                    .background(
-                        Brush.linearGradient(
-                            listOf(CirclesPalette.CoverStart, tint, CirclesPalette.CoverEnd)
-                        )
-                    )
-            ) {
-                CircleCoverImage(c.coverPath, c.template, c.space, c.id, Modifier.fillMaxSize(), contentDescription = "Cover for ${c.name}")
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, MM.colors.scrim.copy(alpha = 0.75f))
-                            )
-                        )
-                )
-                Row(
-                    modifier = Modifier.align(Alignment.TopStart).padding(14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = MM.radius.pill,
-                        color = MM.colors.scrim
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(spaceIcon(c), contentDescription = null, tint = FixedWhite, modifier = Modifier.size(13.dp))
-                            Text(
-                                spaceLabel,
-                                style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
-                                color = FixedWhite
-                            )
-                        }
-                    }
-                    Surface(
-                        shape = MM.radius.pill,
-                        color = MM.colors.scrim
-                    ) {
-                        Text(
-                            memberLabel,
-                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                            color = FixedWhite,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                        )
-                    }
-                }
-            }
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                Text(c.name, style = MM.type.title.copy(fontWeight = FontWeight.Bold), color = MM.colors.onAccent)
-                if (c.description.isNotBlank()) {
-                    Text(c.description, style = MM.type.secondary, color = MM.colors.onAccent.copy(alpha = 0.90f), maxLines = 2)
-                }
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy((-8).dp), verticalAlignment = Alignment.CenterVertically) {
-                        InitialsAvatar(c.name, size = 28.dp)
-                    }
-                    Surface(
-                        shape = MM.radius.pill,
-                        color = MM.colors.onAccent,
-                        modifier = Modifier.clickable(onClick = onClick)
-                    ) {
-                        Row(
-                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text("Open", style = MM.type.secondary.copy(fontWeight = FontWeight.Bold), color = tint)
-                            Icon(Icons.Rounded.ChevronRight, null, tint = tint, modifier = Modifier.size(16.dp))
-                        }
-                    }
+        Box(Modifier.fillMaxWidth().height(184.dp).background(MM.colors.surfaceSunk, MM.radius.card))
+        repeat(3) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
+                Box(Modifier.size(44.dp).background(MM.colors.surfaceSunk, MM.radius.small))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    Box(Modifier.fillMaxWidth(0.5f).height(MM.space.m).background(MM.colors.surfaceSunk, MM.radius.small))
+                    Box(Modifier.fillMaxWidth(0.3f).height(MM.space.s + MM.space.xs).background(MM.colors.surfaceSunk, MM.radius.small))
                 }
             }
         }
     }
 }
 
+/**
+ * The circle you were last in, as a living card: its cover edge to edge with the name and one quiet line over it.
+ * No coloured band, no extra pills; the whole card opens the circle.
+ */
 @Composable
-private fun CircleRow(c: Circle, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val memberLabel = "${c.groupWord} · ${if (c.memberCount == 1) "1 member" else "${c.memberCount} members"}"
-    val spaceLabel = circleSpace(c)
-    val tint = spaceTint(c)
-    MMCard(onClick = onClick, modifier = modifier) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(MM.space.m)
-        ) {
-            CircleCoverImage(c.coverPath, c.template, c.space, c.id, Modifier.size(52.dp).clip(MM.radius.card), thumb = true)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-                ) {
-                    Text(
-                        c.name,
-                        style = MM.type.bodyStrong,
-                        color = MM.colors.ink,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Surface(
-                        shape = MM.radius.pill,
-                        color = tint.copy(alpha = 0.14f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
-                        ) {
-                            Icon(spaceIcon(c), null, tint = tint, modifier = Modifier.size(11.dp))
-                            Text(
-                                spaceLabel,
-                                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                color = tint
-                            )
-                        }
-                    }
-                }
-                Text(memberLabel, style = MM.type.caption, color = MM.colors.inkSecondary)
+private fun FeaturedCircleCard(c: Circle, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val memberLabel = "${circleSpace(c)} · ${c.groupWord} · ${if (c.memberCount == 1) "1 member" else "${c.memberCount} members"}"
+    Surface(
+        onClick = onClick,
+        shape = MM.radius.card,
+        color = MM.colors.surfaceSunk,
+        modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) { }
+    ) {
+        Box(Modifier.fillMaxWidth().height(196.dp)) {
+            CircleCoverImage(c.coverPath, c.template, c.space, c.id, Modifier.fillMaxSize(), contentDescription = null)
+            Box(
+                Modifier.matchParentSize().background(
+                    Brush.verticalGradient(0.35f to Color.Transparent, 1f to MM.colors.scrim.copy(alpha = 0.85f))
+                )
+            )
+            Column(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(MM.space.l),
+                verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+            ) {
+                Text(
+                    c.name, style = MM.type.title, color = FixedWhite,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
+                Text(memberLabel, style = MM.type.caption, color = FixedWhite.copy(alpha = 0.86f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (c.description.isNotBlank()) {
-                    Text(
-                        c.description,
-                        style = MM.type.caption,
-                        color = MM.colors.inkMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Text(c.description, style = MM.type.secondary, color = FixedWhite.copy(alpha = 0.86f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.inkMuted, modifier = Modifier.size(20.dp))
         }
+    }
+}
+
+/** One circle in the grouped list: its cover, the name, one quiet line, and a chevron. */
+@Composable
+private fun CircleRow(c: Circle, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).heightIn(min = 68.dp)
+            .padding(horizontal = MM.space.l, vertical = MM.space.m),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MM.space.m)
+    ) {
+        CircleCoverImage(c.coverPath, c.template, c.space, c.id, Modifier.size(44.dp).clip(MM.radius.small), thumb = true)
+        Column(Modifier.weight(1f)) {
+            Text(c.name, style = MM.type.bodyStrong, color = MM.colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "${circleSpace(c)} · ${if (c.memberCount == 1) "1 member" else "${c.memberCount} members"}",
+                style = MM.type.caption, color = MM.colors.inkMuted, maxLines = 1
+            )
+        }
+        Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.inkFaint, modifier = Modifier.size(MMSize.iconSmall))
     }
 }
 
@@ -647,11 +496,24 @@ private fun JoinPreviewCard(p: InvitePreview) {
 }
 
 @Composable
-fun JoinSheet(join: JoinUiState, onDismiss: () -> Unit, onPaste: (String) -> Unit, onName: (String) -> Unit, onJoin: () -> Unit) {
+fun JoinSheet(
+    join: JoinUiState,
+    onDismiss: () -> Unit,
+    onPaste: (String) -> Unit,
+    onName: (String) -> Unit,
+    onJoin: () -> Unit,
+    account: AccountUiState? = null,
+    onLink: (android.content.Context) -> Unit = {},
+    onSwitch: () -> Unit = {},
+    onDismissConflict: () -> Unit = {}
+) {
     val clipboard = LocalClipboardManager.current
     CircleSheet(onDismiss) {
-        Text("Join a circle", style = MM.type.title, color = MM.colors.ink)
+        Text("Join a circle", style = MM.type.title, color = MM.colors.ink, modifier = Modifier.semantics { heading() })
         Text("Paste the code, the link, or the whole message you were sent.", style = MM.type.secondary, color = MM.colors.inkSecondary)
+        if (account != null && !account.linked) {
+            CirclesSignInPrompt(account, "Joining from a new phone? Sign in first and your other circles come with you.", onLink, onSwitch, onDismissConflict)
+        }
         CircleField(
             join.input, onPaste, "Invite code or message", placeholder = "GRACE-7K2Q", minLines = 2, maxLines = 4,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None)

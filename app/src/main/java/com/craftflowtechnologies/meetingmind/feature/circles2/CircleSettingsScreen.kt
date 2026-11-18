@@ -1,6 +1,11 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -100,247 +105,156 @@ fun CircleSettingsContent(
     val changed = admin && (name.trim() != circle.name || vocab.trim() != circle.vocab || types != circle.settings.allowedTypes ||
         description.trim() != circle.description || joinApproval != circle.settings.joinApproval || approval != circle.settings.prayerApproval || who != circle.settings.whoCanInvite || reactions != circle.settings.reactions || guidelines != circle.settings.guidelines)
 
-    Column(Modifier.fillMaxSize().background(MM.colors.background).statusBarsPadding()) {
-        ScreenHeader(
-            "Settings", Modifier.padding(horizontal = MM.space.s),
-            leading = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.inkSecondary) } }
+    val save: () -> Unit = {
+        onSave(name, vocab, description.trim(), CircleSettings(
+            allowedTypes = types, whoCanInvite = who, prayerApproval = approval,
+            joinApproval = joinApproval, reactions = reactions, guidelines = guidelines.trim()
+        ))
+    }
+    val canSave = changed && name.isNotBlank()
+    Column(Modifier.fillMaxSize().background(MM.colors.background).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
+        CirclesTopBar(
+            title = "Settings",
+            onBack = onBack,
+            subtitle = circle.name,
+            actions = { if (admin) TextAction("Save", save, enabled = canSave) }
         )
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l),
-            verticalArrangement = Arrangement.spacedBy(MM.space.m)
+            Modifier.weight(1f).verticalScroll(rememberScrollState())
+                .padding(horizontal = MM.space.l).padding(top = MM.space.s, bottom = if (canSave) MM.space.xl else circlesBottomInset()),
+            verticalArrangement = Arrangement.spacedBy(MM.space.l)
         ) {
             if (!admin) Text("Only admins can change these. You can still mute or leave.", style = MM.type.secondary, color = MM.colors.inkSecondary)
-            SectionHeader("About")
-            val spaceName = circleSpace(circle)
-            val spaceTint = when (spaceName) {
-                "Work" -> MM.colors.accent
-                "Study" -> MM.colors.speaker2
-                "Faith" -> MM.colors.gold
-                else -> MM.colors.speaker3
-            }
-            val spaceIcon = when (spaceName) {
-                "Work" -> Icons.Rounded.BusinessCenter
-                "Study" -> Icons.Rounded.School
-                "Faith" -> Icons.Rounded.VolunteerActivism
-                else -> Icons.Rounded.Groups
-            }
-            Surface(
-                shape = MM.radius.card,
-                color = MM.colors.surfaceRaised,
-                border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
-                modifier = Modifier.fillMaxWidth().clip(MM.radius.card)
-            ) {
-                Column {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(132.dp)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(CirclesPalette.CoverStart, spaceTint, CirclesPalette.CoverEnd)
-                                )
-                            )
-                    ) {
-                        CircleCoverImage(circle.coverPath, circle.template, circle.space, circle.id, Modifier.fillMaxSize(), contentDescription = "Cover")
-                        if (coverBusy) {
-                            Box(Modifier.matchParentSize().background(MM.colors.scrim.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
-                                androidx.compose.material3.CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp, color = FixedWhite)
-                            }
+
+            // ---- the cover, as the circle shows it ----
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                Box(Modifier.fillMaxWidth().height(156.dp).clip(MM.radius.card).background(MM.colors.surfaceSunk)) {
+                    CircleCoverImage(circle.coverPath, circle.template, circle.space, circle.id, Modifier.fillMaxSize(), contentDescription = "Cover")
+                    if (coverBusy) {
+                        Box(Modifier.matchParentSize().background(MM.colors.scrim), contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp, color = FixedWhite)
                         }
-                        Box(
-                            Modifier
-                                .matchParentSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color.Transparent, MM.colors.scrim.copy(alpha = 0.65f))
-                                    )
-                                )
-                        )
+                    }
+                    if (admin) {
                         Surface(
+                            onClick = { if (!coverBusy) choosingCover = true },
                             shape = MM.radius.pill,
-                            color = MM.colors.scrim,
-                            modifier = Modifier.align(Alignment.TopStart).padding(MM.space.s)
+                            color = MM.colors.surfaceRaised,
+                            shadowElevation = MM.elevation.floating,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(MM.space.m)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                Modifier.heightIn(min = 36.dp).padding(horizontal = MM.space.m),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
                             ) {
-                                Icon(spaceIcon, contentDescription = null, tint = FixedWhite, modifier = Modifier.size(12.dp))
-                                Text(
-                                    spaceName,
-                                    style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
-                                    color = FixedWhite
-                                )
+                                Icon(Icons.Rounded.AddPhotoAlternate, null, tint = MM.colors.ink, modifier = Modifier.size(16.dp))
+                                Text(if (coverBusy) "Saving…" else "Change cover", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.ink)
                             }
                         }
-                        if (admin) {
-                            Surface(
-                                shape = MM.radius.pill,
-                                color = MM.colors.surfaceRaised.copy(alpha = 0.92f),
-                                border = BorderStroke(MMSize.hairline, MM.colors.lineSoft),
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(MM.space.s)
-                                    .clickable(enabled = !coverBusy) { choosingCover = true }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.AddPhotoAlternate,
-                                        contentDescription = "Change cover photo",
-                                        tint = MM.colors.ink,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        if (coverBusy) "Saving…" else "Change cover",
-                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                                        color = MM.colors.ink
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = MM.space.m, vertical = MM.space.s),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("Cover", style = MM.type.bodyStrong, color = MM.colors.ink)
-                            Text(
-                                if (circle.coverPath == null) "A picture chosen for this kind of circle. Shown at the top of the circle home."
-                                else "Shown at the top of the circle home.",
-                                style = MM.type.caption, color = MM.colors.inkSecondary
-                            )
-                        }
-                        if (admin) {
-                            TextAction("Change", { if (!coverBusy) choosingCover = true })
-                        }
-                    }
-                    val note = when {
-                        unreadablePhoto -> CoverNote("That photo couldn't be read. Try another, or pick one of ours.", failed = true)
-                        else -> coverNote
-                    }
-                    if (note != null && !coverBusy) {
-                        StatusLine(
-                            if (note.failed) StatusKind.Warning else StatusKind.Info, note.text,
-                            modifier = Modifier.padding(start = MM.space.m, end = MM.space.m, bottom = MM.space.s)
-                        )
                     }
                 }
+                val note = when {
+                    unreadablePhoto -> CoverNote("That photo couldn't be read. Try another, or pick one of ours.", failed = true)
+                    else -> coverNote
+                }
+                if (note != null && !coverBusy) StatusLine(if (note.failed) StatusKind.Warning else StatusKind.Info, note.text)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Circle name", style = MM.type.caption, color = MM.colors.inkSecondary)
-                Text("${name.length} / 60", style = MM.type.caption, color = MM.colors.inkMuted)
-            }
-            CircleField(name, { name = it.take(60) }, "Name")
-            val vocabPlaceholder = when {
-                circle.isWork -> "Team"
-                circle.isLearning -> "Study group"
-                else -> "Cell group"
-            }
-            CircleField(vocab, { vocab = it.take(40) }, "What your group is called", placeholder = vocabPlaceholder)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("About this circle", style = MM.type.caption, color = MM.colors.inkSecondary)
-                Text("${description.length} / 300", style = MM.type.caption, color = MM.colors.inkMuted)
-            }
-            CircleField(description, { description = it.take(300) }, "About this circle (optional)", placeholder = "Breakfast every second Wednesday.", minLines = 2, maxLines = 4)
 
-            SectionHeader("Members and joining")
-            MMCard {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Circle capacity", style = MM.type.bodyStrong, color = MM.colors.ink)
-                    Text("${circle.memberCount} of 50", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.accent)
+            // ---- about ----
+            SettingsGroup("About") {
+                CircleField(name, { name = it.take(60) }, "Name")
+                val vocabPlaceholder = when {
+                    circle.isWork -> "Team"
+                    circle.isLearning -> "Study group"
+                    else -> "Cell group"
+                }
+                CircleField(vocab, { vocab = it.take(40) }, "What your group is called", placeholder = vocabPlaceholder)
+                CircleField(description, { description = it.take(300) }, "About this circle (optional)", placeholder = "Breakfast every second Wednesday.", minLines = 2, maxLines = 4)
+            }
+
+            // ---- members and joining ----
+            SettingsGroup("Members and joining") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Members", style = MM.type.bodyStrong, color = MM.colors.ink, modifier = Modifier.weight(1f))
+                    Text("${circle.memberCount} of 50", style = MM.type.secondary, color = MM.colors.inkSecondary)
                 }
                 LinearProgressIndicator(
                     progress = { (circle.memberCount / 50f).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(8.dp).clip(MM.radius.pill),
-                    color = MM.colors.accent,
-                    trackColor = MM.colors.surfaceSunk
+                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(MM.radius.pill),
+                    color = MM.colors.ink,
+                    trackColor = MM.colors.track
                 )
                 if (admin) {
-                    HorizontalDivider(Modifier.padding(vertical = MM.space.xs), color = MM.colors.line)
                     ToggleRow("Admins let new people in", "When on, people wait until an admin approves them.", joinApproval) { joinApproval = it }
+                    Text("Who can invite", style = MM.type.caption, color = MM.colors.inkSecondary)
+                    SegmentedControl(WhoCanInvite.entries.map { it.label }, WhoCanInvite.entries.indexOf(who), { who = WhoCanInvite.entries[it] })
                 }
             }
 
             if (admin) {
-                SectionHeader("Posts")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                    PostType.entries.forEach { t ->
-                        MMChip(t.label, t in types, { val next = if (t in types) types - t else types + t; if (next.isNotEmpty()) types = PostType.entries.filter { it in next } })
+                SettingsGroup("Posts") {
+                    Text("What members can share", style = MM.type.caption, color = MM.colors.inkSecondary)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                        PostType.entries.forEach { t ->
+                            MMChip(t.label, t in types, { val next = if (t in types) types - t else types + t; if (next.isNotEmpty()) types = PostType.entries.filter { it in next } })
+                        }
+                    }
+                    val isFaithSpace = (!circle.isWork && !circle.isLearning) || circle.settings.space.equals("faith", ignoreCase = true)
+                    if (isFaithSpace) {
+                        ToggleRow("Approve prayer requests before posting", "Anonymous requests stay anonymous to admins too.", approval) { approval = it }
+                    }
+                    Text("Reactions", style = MM.type.caption, color = MM.colors.inkSecondary)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                        ReactionKind.entries.forEach { k ->
+                            MMChip("${k.emoji} ${k.label}", k in reactions, { val next = if (k in reactions) reactions - k else reactions + k; if (next.isNotEmpty()) reactions = ReactionKind.entries.filter { it in next } })
+                        }
                     }
                 }
-                val isFaithSpace = (!circle.isWork && !circle.isLearning) || circle.settings.space.equals("faith", ignoreCase = true)
-                if (isFaithSpace) {
-                    ToggleRow("Approve prayer requests before posting", "Anonymous requests stay anonymous to admins too.", approval) { approval = it }
-                }
-                SectionHeader("Reactions")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                    ReactionKind.entries.forEach { k ->
-                        MMChip("${k.emoji} ${k.label}", k in reactions, { val next = if (k in reactions) reactions - k else reactions + k; if (next.isNotEmpty()) reactions = ReactionKind.entries.filter { it in next } })
+                SettingsGroup("Community guidelines") {
+                    val guidelinesPlaceholder = when {
+                        circle.isWork -> "Be respectful. Protect confidential and sensitive information."
+                        circle.isLearning -> "Share notes and study materials constructively."
+                        else -> "Be kind. What's shared here stays here."
                     }
+                    CircleField(guidelines, { guidelines = it.take(1000) }, "Guidelines (optional)", placeholder = guidelinesPlaceholder, minLines = 2, maxLines = 6)
                 }
-                SectionHeader("Who can invite")
-                SegmentedControl(WhoCanInvite.entries.map { it.label }, WhoCanInvite.entries.indexOf(who), { who = WhoCanInvite.entries[it] })
-                val guidelinesPlaceholder = when {
-                    circle.isWork -> "Be respectful. Protect confidential and sensitive information."
-                    circle.isLearning -> "Share notes and study materials constructively."
-                    else -> "Be kind. What's shared here stays here."
-                }
-                CircleField(guidelines, { guidelines = it.take(1000) }, "Community guidelines (optional)", placeholder = guidelinesPlaceholder, minLines = 2, maxLines = 6)
-                PrimaryButton(
-                    "Save changes",
-                    {
-                        onSave(name, vocab, description.trim(), CircleSettings(
-                            allowedTypes = types, whoCanInvite = who, prayerApproval = approval,
-                            joinApproval = joinApproval, reactions = reactions, guidelines = guidelines.trim()
-                        ))
-                    },
-                    enabled = changed && name.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth()
-                )
             } else if (circle.settings.guidelines.isNotBlank()) {
-                SectionHeader("Community guidelines")
-                Text(circle.settings.guidelines, style = MM.type.body, color = MM.colors.ink)
+                SettingsGroup("Community guidelines") {
+                    Text(circle.settings.guidelines, style = MM.type.body, color = MM.colors.ink)
+                }
             }
 
-            SectionHeader("Permissions")
-            MMCard {
+            SettingsGroup("Who can do what") {
                 PermissionSummaryRow(Role.Owner, "Full settings, roles, and circle ownership")
-                HorizontalDivider(color = MM.colors.line)
+                CirclesRowDivider(startInset = 0.dp)
                 PermissionSummaryRow(Role.Admin, "Approve requests, pin, events, remove members")
-                HorizontalDivider(color = MM.colors.line)
+                CirclesRowDivider(startInset = 0.dp)
                 PermissionSummaryRow(Role.Moderator, "Manage events and moderate posts or messages")
-                HorizontalDivider(color = MM.colors.line)
+                CirclesRowDivider(startInset = 0.dp)
                 PermissionSummaryRow(Role.Member, "Share posts, chat, react, and vote in polls")
             }
 
-            SectionHeader("For you")
-            ToggleRow("Mute this circle", "No notifications from ${circle.name}.", me?.muted == true, onMute)
+            SettingsGroup("For you") {
+                ToggleRow("Mute this circle", "No notifications from ${circle.name}.", me?.muted == true, onMute)
+            }
             if (account != null) {
-                SectionHeader("Your account")
-                AccountSection(account, onLink, onSwitch, onDismissConflict)
+                SettingsGroup("Your account") { AccountSection(account, onLink, onSwitch, onDismissConflict) }
             }
-            Surface(
-                shape = MM.radius.card,
-                color = MM.colors.dangerWash,
-                border = BorderStroke(MMSize.hairline, MM.colors.danger.copy(alpha = 0.25f)),
-                modifier = Modifier.fillMaxWidth().clickable { confirmLeave = true }
-            ) {
-                Box(Modifier.padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        "Leave this ${circle.groupWord.lowercase()}",
-                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold),
-                        color = MM.colors.danger
-                    )
-                }
+            MMCard(onClick = { confirmLeave = true }, contentPadding = MM.space.l) {
+                Text(
+                    "Leave this ${circle.groupWord.lowercase()}",
+                    style = MM.type.bodyStrong,
+                    color = MM.colors.danger
+                )
             }
-            Spacer(Modifier.height(MM.space.xl))
+        }
+        // Unsaved changes: one pinned Save above the navigation bar, so it is never under 3-button navigation.
+        AnimatedVisibility(visible = admin && canSave, enter = fadeIn(MM.motion.quick()) + expandVertically(MM.motion.standard()), exit = fadeOut(MM.motion.quick()) + shrinkVertically(MM.motion.standard())) {
+            Column(Modifier.fillMaxWidth().background(MM.colors.surface).navigationBarsPadding().imePadding()) {
+                HorizontalDivider(thickness = MMSize.hairline, color = MM.colors.lineSoft)
+                PrimaryButton("Save changes", save, modifier = Modifier.fillMaxWidth().padding(horizontal = MM.space.l, vertical = MM.space.m))
+            }
         }
     }
     if (confirmLeave) {
@@ -374,3 +288,14 @@ private fun PermissionSummaryRow(role: Role, summary: String) {
 
 /** The outcome of the last cover change, shown in place. */
 data class CoverNote(val text: String, val failed: Boolean)
+
+/** A titled group of settings in one card, the way Work's settings group their rows. */
+@Composable
+private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column {
+        CirclesSectionTitle(title)
+        MMCard(contentPadding = MM.space.l) {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.m), content = content)
+        }
+    }
+}

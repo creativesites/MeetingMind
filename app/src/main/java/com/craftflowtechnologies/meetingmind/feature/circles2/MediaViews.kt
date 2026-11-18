@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -505,10 +506,10 @@ private fun InlineVideoPlayer(
         }
     }
 
+    // No backdrop behind a video: the caller clips the shape, and the sunk fill shows only until the first frame is ready.
     Box(
         modifier = modifier
-            .clip(MM.radius.card)
-            .background(MM.colors.surfaceSunk)
+            .background(if (thumbnail == null && !isInlinePlaying) MM.colors.surfaceSunk else Color.Transparent)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center
     ) {
@@ -1365,13 +1366,17 @@ fun PostMediaGrid(
     circleId: String,
     attachments: List<MediaAttachment>,
     who: String = "",
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** True inside a post card: the media runs edge to edge, square-cornered, with hairline gaps. */
+    edgeToEdge: Boolean = false
 ) {
     if (attachments.isEmpty()) return
+    val tileShape: androidx.compose.ui.graphics.Shape = if (edgeToEdge) androidx.compose.ui.graphics.RectangleShape else MM.radius.card
+    val gap = if (edgeToEdge) 2.dp else MM.space.xs
     var selectedPhotoIndex by remember { mutableStateOf<Int?>(null) }
     val photos = remember(attachments) { attachments.filter { !it.isVideo && !it.isPdf } }
 
-    Box(modifier = modifier.fillMaxWidth().clip(MM.radius.card)) {
+    Box(modifier = modifier.fillMaxWidth().clip(tileShape)) {
         when (attachments.size) {
             1 -> {
                 val a = attachments[0]
@@ -1382,7 +1387,7 @@ fun PostMediaGrid(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 200.dp, max = 300.dp)
-                            .clip(MM.radius.card)
+                            .clip(tileShape)
                             .clickable { selectedPhotoIndex = 0 },
                         contentDescription = "Photo from $who",
                         allowFullscreen = false
@@ -1394,7 +1399,7 @@ fun PostMediaGrid(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 200.dp, max = 300.dp)
-                            .clip(MM.radius.card),
+                            .clip(tileShape),
                         contentDescription = if (a.isVideo) "Video from $who" else "File from $who"
                     )
                 }
@@ -1402,14 +1407,14 @@ fun PostMediaGrid(
             2 -> {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    horizontalArrangement = Arrangement.spacedBy(gap)
                 ) {
                     attachments.take(2).forEach { a ->
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(180.dp)
-                                .clip(MM.radius.card)
+                                .clip(tileShape)
                         ) {
                             if (!a.isVideo && !a.isPdf) {
                                 MediaImage(
@@ -1439,14 +1444,14 @@ fun PostMediaGrid(
             3 -> {
                 Row(
                     modifier = Modifier.fillMaxWidth().height(220.dp),
-                    horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    horizontalArrangement = Arrangement.spacedBy(gap)
                 ) {
                     val a0 = attachments[0]
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .clip(MM.radius.card)
+                            .clip(tileShape)
                     ) {
                         if (!a0.isVideo && !a0.isPdf) {
                             MediaImage(
@@ -1472,14 +1477,14 @@ fun PostMediaGrid(
                     }
                     Column(
                         modifier = Modifier.weight(1f).fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                        verticalArrangement = Arrangement.spacedBy(gap)
                     ) {
                         listOf(attachments[1], attachments[2]).forEach { a ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(108.dp)
-                                    .clip(MM.radius.card)
+                                    .clip(tileShape)
                             ) {
                                 if (!a.isVideo && !a.isPdf) {
                                     MediaImage(
@@ -1510,18 +1515,18 @@ fun PostMediaGrid(
             else -> {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    verticalArrangement = Arrangement.spacedBy(gap)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                        horizontalArrangement = Arrangement.spacedBy(gap)
                     ) {
                         attachments.take(2).forEach { a ->
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(130.dp)
-                                    .clip(MM.radius.card)
+                                    .clip(tileShape)
                             ) {
                                 if (!a.isVideo && !a.isPdf) {
                                     MediaImage(
@@ -1549,7 +1554,7 @@ fun PostMediaGrid(
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+                        horizontalArrangement = Arrangement.spacedBy(gap)
                     ) {
                         attachments.drop(2).take(2).forEachIndexed { idx, a ->
                             val remaining = attachments.size - 4
@@ -1558,7 +1563,7 @@ fun PostMediaGrid(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(130.dp)
-                                    .clip(MM.radius.card)
+                                    .clip(tileShape)
                             ) {
                                 if (!a.isVideo && !a.isPdf) {
                                     MediaImage(
@@ -1637,7 +1642,10 @@ fun VoiceNotePlayer(
     circleId: String,
     a: MediaAttachment,
     tint: androidx.compose.ui.graphics.Color = CirclesPalette.Accent,
-    onAccent: Boolean = false
+    onAccent: Boolean = false,
+    /** Inside a chat bubble: the bubble's text colour and fill, so the player matches the bubble in light and dark. */
+    bubbleInk: androidx.compose.ui.graphics.Color? = null,
+    bubbleFill: androidx.compose.ui.graphics.Color? = null
 ) {
     VoiceBubble(circleId, a, tint, onAccent)
 }
@@ -1648,7 +1656,10 @@ fun AudioBubble(
     circleId: String,
     a: MediaAttachment,
     tint: androidx.compose.ui.graphics.Color = CirclesPalette.Accent,
-    onAccent: Boolean = false
+    onAccent: Boolean = false,
+    /** Inside a chat bubble: the bubble's text colour and fill, so the player matches the bubble in light and dark. */
+    bubbleInk: androidx.compose.ui.graphics.Color? = null,
+    bubbleFill: androidx.compose.ui.graphics.Color? = null
 ) {
     VoiceBubble(circleId, a, tint, onAccent)
 }
@@ -1744,7 +1755,10 @@ fun VoiceBubble(
     circleId: String,
     a: MediaAttachment,
     tint: androidx.compose.ui.graphics.Color = CirclesPalette.Accent,
-    onAccent: Boolean = false
+    onAccent: Boolean = false,
+    /** Inside a chat bubble: the bubble's text colour and fill, so the player matches the bubble in light and dark. */
+    bubbleInk: androidx.compose.ui.graphics.Color? = null,
+    bubbleFill: androidx.compose.ui.graphics.Color? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1801,11 +1815,11 @@ fun VoiceBubble(
     val total = if (durationMs > 0) durationMs else (a.durationMs ?: 0L)
     val progress = if (total > 0) (currentPositionMs.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
 
-    val buttonBg = if (onAccent) MM.colors.onAccent else tint
-    val buttonFg = if (onAccent) tint else FixedWhite
-    val inactiveBarColor = if (onAccent) MM.colors.onAccent.copy(alpha = 0.35f) else MM.colors.line
-    val activeBarColor = if (onAccent) MM.colors.onAccent else MM.colors.accent
-    val textColor = if (onAccent) MM.colors.onAccent.copy(alpha = 0.85f) else MM.colors.inkSecondary
+    val buttonBg = bubbleInk ?: if (onAccent) MM.colors.onAccent else tint
+    val buttonFg = bubbleFill ?: if (onAccent) tint else FixedWhite
+    val inactiveBarColor = bubbleInk?.copy(alpha = 0.3f) ?: if (onAccent) MM.colors.onAccent.copy(alpha = 0.35f) else MM.colors.line
+    val activeBarColor = bubbleInk ?: if (onAccent) MM.colors.onAccent else MM.colors.accent
+    val textColor = bubbleInk?.copy(alpha = 0.75f) ?: if (onAccent) MM.colors.onAccent.copy(alpha = 0.85f) else MM.colors.inkSecondary
 
     val speedLabel = when (speed) {
         1.5f -> "1.5x"
@@ -1928,7 +1942,7 @@ fun VoiceBubble(
         Box(
             modifier = Modifier
                 .clip(MM.radius.pill)
-                .background(if (onAccent) MM.colors.onAccent.copy(alpha = 0.2f) else MM.colors.surfaceSunk)
+                .background(bubbleInk?.copy(alpha = 0.12f) ?: if (onAccent) MM.colors.onAccent.copy(alpha = 0.2f) else MM.colors.surfaceSunk)
                 .clickable {
                     val nextSpeed = when (speed) {
                         1f -> 1.5f

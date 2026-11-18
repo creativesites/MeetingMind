@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -132,7 +133,8 @@ fun CircleSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Un
         containerColor = MM.colors.surfaceRaised, shape = MM.radius.sheet
     ) {
         Column(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = MM.space.l).padding(bottom = MM.space.xl),
+            // Clears the navigation bar (3-button or gesture) and rides the keyboard when a field is focused.
+            Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = MM.space.l).padding(bottom = MM.space.xl),
             verticalArrangement = Arrangement.spacedBy(MM.space.m), content = content
         )
     }
