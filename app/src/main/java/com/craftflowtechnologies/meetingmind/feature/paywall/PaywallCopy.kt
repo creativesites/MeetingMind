@@ -4,6 +4,8 @@ import com.craftflowtechnologies.meetingmind.core.billing.Capability
 import com.craftflowtechnologies.meetingmind.core.billing.Entitlements
 import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 /** The outcome the first paywall page leads with, chosen from what the person said they want. */
 data class OutcomeCopy(val headline: String, val line: String)
@@ -93,5 +95,76 @@ object PaywallCopy {
         offer.trialDays != null && offer.trialDays > 0 ->
             PaywallCta("Start ${offer.trialDays}-day free trial", PaywallCtaKind.BUY, enabled = true)
         else -> PaywallCta("Start ${offer.plan.label}", PaywallCtaKind.BUY, enabled = true)
+    }
+
+    /** The paid rows the paywall's hero lists as benefits: the first four things a plan adds. Each is a gated capability. */
+    val benefits: List<IncludedRow> get() = includedRows.filter { !it.free }.take(4)
+
+    /** The number in a store price ("\$79.99" is 79.99, "1.234,56 €" is 1234.56), or null when there is none. */
+    fun priceValue(priceText: String): BigDecimal? = StorePrice.parse(priceText)?.value
+
+    /**
+     * A yearly price spread over twelve months, written the way the store wrote the price ("\$79.99" gives "\$6.67",
+     * "79,99 €" gives "6,67 €"). Null when the price can't be read, so nothing is ever guessed.
+     */
+    fun perMonth(yearlyPriceText: String): String? {
+        val price = StorePrice.parse(yearlyPriceText) ?: return null
+        if (price.value.signum() <= 0) return null
+        return price.write(price.value.divide(BigDecimal(12), 6, RoundingMode.HALF_UP), yearlyPriceText)
+    }
+
+    /** What a year saves against twelve monthly payments, in whole percent; null when it saves nothing or can't be read. */
+    fun yearlySavingPercent(yearlyPriceText: String, monthlyPriceText: String): Int? {
+        val yearly = priceValue(yearlyPriceText) ?: return null
+        val monthly = priceValue(monthlyPriceText) ?: return null
+        val twelve = monthly * BigDecimal(12)
+        if (twelve.signum() <= 0 || yearly >= twelve) return null
+        val percent = (twelve - yearly).multiply(BigDecimal(100)).divide(twelve, 0, RoundingMode.DOWN).toInt()
+        return percent.takeIf { it > 0 }
+    }
+
+    /**
+     * "Best value" goes on a yearly plan only when it is: cheaper than twelve months of the same plan, or when there
+     * is no monthly price to compare with (launch audit §8).
+     */
+    fun showBestValue(offer: PlanOffer, monthly: PlanOffer?): Boolean {
+        if (!offer.isYearly) return false
+        val yearly = priceValue(offer.priceText) ?: return true
+        val month = monthly?.let { priceValue(it.priceText) } ?: return true
+        return yearly < month * BigDecimal(12)
+    }
+}
+
+/** The number inside a store's formatted price, and how the store wrote it, so a new amount can be written the same way. */
+private class StorePrice(
+    val range: IntRange,
+    val value: BigDecimal,
+    val decimals: Int,
+    val decimalMark: Char?,
+    val groupMark: Char?
+) {
+    fun write(amount: BigDecimal, original: String): String {
+        val plain = amount.setScale(decimals, RoundingMode.HALF_UP).toPlainString()
+        val whole = plain.substringBefore('.')
+        val grouped = if (groupMark != null) whole.reversed().chunked(3).joinToString(groupMark.toString()).reversed() else whole
+        val number = if (decimals > 0) grouped + (decimalMark ?: '.') + plain.substringAfter('.', "") else grouped
+        return original.replaceRange(range, number)
+    }
+
+    companion object {
+        private val number = Regex("""\d(?:[\d.,'\u00A0\u202F ]*\d)?""")
+
+        fun parse(text: String): StorePrice? {
+            val match = number.find(text) ?: return null
+            val raw = match.value
+            val lastSeparator = raw.indexOfLast { !it.isDigit() }
+            val tail = if (lastSeparator >= 0) raw.length - lastSeparator - 1 else 0
+            // A final "." or "," followed by one or two digits is the decimal mark; anything else groups thousands.
+            val decimalMark = if (lastSeparator >= 0 && (raw[lastSeparator] == '.' || raw[lastSeparator] == ',') && tail in 1..2) raw[lastSeparator] else null
+            val decimals = if (decimalMark != null) tail else 0
+            val groupMark = raw.withIndex().firstOrNull { (i, ch) -> !ch.isDigit() && !(decimalMark != null && i == lastSeparator) }?.value
+            val value = raw.filter { it.isDigit() }.toBigDecimalOrNull()?.movePointLeft(decimals) ?: return null
+            return StorePrice(match.range, value, decimals, decimalMark, groupMark)
+        }
     }
 }

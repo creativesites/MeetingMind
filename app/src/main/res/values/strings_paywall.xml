@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The plans page (feature/paywall/PaywallScreen.kt). Prices, periods and trial lengths always come from the store
+  and are passed in as arguments; never write a price here.
+-->
+<resources>
+    <!-- Under the headline: the free app stays free. -->
+    <string name="paywall_free_stays_free">You can keep using MeetingMind free. This just adds more.</string>
+    <string name="paywall_choose_plan">Choose your plan</string>
+    <string name="paywall_show_fewer">Show fewer plans</string>
+    <string name="paywall_view_all">View all plans (including BYOK and Church)</string>
+    <string name="paywall_what_next">What happens next</string>
+    <!-- %1$s: the store's billing period, e.g. "month" or "year". -->
+    <string name="paywall_billed_every">Billed every %1$s</string>
+    <string name="paywall_one_payment">One payment, never renews</string>
+    <!-- %1$d: the store's free-trial length in days. -->
+    <string name="paywall_trial_days">%1$d-day free trial</string>
+    <!-- %1$s: the store's price text; %2$s: the billing period, e.g. "month". -->
+    <string name="paywall_price_per_period">%1$s / %2$s</string>
+    <string name="paywall_best_value">Best value</string>
+    <string name="paywall_col_free">Free</string>
+    <string name="paywall_col_plan">Plan</string>
+    <string name="paywall_included">Included</string>
+    <string name="paywall_not_included">Not included</string>
+    <string name="paywall_yours_always">Your notes and recordings are yours on every plan, and stay yours if a plan ends.</string>
+
+    <!-- %1$s: the plan's name, e.g. "Pro". -->
+    <string name="paywall_current_plan">You\'re on %1$s</string>
+    <string name="paywall_no_commitment">No commitment. Cancel any time in Google Play.</string>
+    <string name="paywall_change_any_time">Change or cancel any time in Google Play.</string>
+    <string name="paywall_continue_free">Continue free</string>
+    <string name="paywall_restore">Restore purchases</string>
+    <string name="paywall_manage">Manage</string>
+    <string name="paywall_reset_test_store">Reset test store</string>
+    <string name="paywall_terms">Terms</string>
+    <string name="paywall_privacy">Privacy</string>
+
+    <!-- Offered once when someone leaves with a yearly plan selected. -->
+    <string name="paywall_exit_title">Not ready for a year?</string>
+    <!-- %1$s: the store's monthly price. -->
+    <string name="paywall_exit_body_price">You can pay monthly instead (%1$s a month), and cancel any time.</string>
+    <string name="paywall_exit_body">You can pay monthly instead, and cancel any time.</string>
+    <string name="paywall_exit_see_monthly">See monthly</string>
+    <string name="paywall_exit_no_thanks">No thanks</string>
+
+    <!-- When billing is off in this build. -->
+    <string name="paywall_unavailable_title">Plans aren\'t available in this build</string>
+    <string name="paywall_unavailable_body">You can keep using MeetingMind free. Nothing you have is locked.</string>
+    <string name="paywall_unavailable_continue">Continue</string>
+
+    <!-- The short dialog in front of a paid feature or a limit. -->
+    <string name="paywall_upgrade_see_plans">See plans</string>
+    <string name="paywall_upgrade_not_now">Not now</string>
+</resources>

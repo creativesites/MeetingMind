@@ -75,10 +75,10 @@ data class FirstKeepNote(val title: String, val meta: String, val keyPoints: Lis
  * The First Keep (§2): a full-screen overlay composed **over the already-rendered note screen**. The note is
  * underneath from frame 0; "Open note" just dismisses this overlay ([onOpen]) and plays nothing more.
  *
- * Every string comes from the caller (Z-35 `strings_moments.xml`): the headline ("Your first note is
+ * Every string comes from the caller (Z-35 `strings_moments.xml`): the headline ("Your note is
  * ready." / with the user's name / the sermon line), the sub line ("Everything you said, kept." or the real
  * action-item count), the optional companion line ("I kept every word.", none in Faith), the action labels,
- * and the one polite [announcement] ("Your first note is ready. {title}.").
+ * and the one polite [announcement] ("Your note is ready. {title}.").
  *
  * ```
  * if (plan is MomentPlan.FirstKeep && showOverlay) FirstKeepOverlay(

@@ -12,6 +12,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -97,9 +98,7 @@ private fun rememberHiddenExpiryTick(hiddenUntilMs: Long?): Long {
     return tick
 }
 
-/** A tap earns a small nod, at most once every 10 s (§5.3). It never navigates. */
-private const val NodGapMs = 10_000L
-private const val NodMs = 600L
+// A tap plays: every tap gets a reaction ([CompanionTapPlay]), and quick taps build up. It never navigates.
 
 /**
  * What app screens use (§10.2): reads the settings, applies the presence filter and the hide-until
@@ -139,9 +138,15 @@ fun ZuriSlot(
     val name = settings.displayName(form)
     val haptic = LocalHapticFeedback.current
     var sheet by remember { mutableStateOf(false) }
-    var nodAt by remember { mutableLongStateOf(0L) }
-    var nodding by remember { mutableStateOf(false) }
-    LaunchedEffect(nodAt) { if (nodAt != 0L) { nodding = true; delay(NodMs); nodding = false } }
+    var taps by remember { mutableIntStateOf(0) }
+    var streak by remember { mutableIntStateOf(0) }
+    var lastTapAt by remember { mutableLongStateOf(0L) }
+    var reaction by remember { mutableStateOf<CompanionTapPlay.Reaction?>(null) }
+    LaunchedEffect(taps) {
+        val playing = reaction ?: return@LaunchedEffect
+        delay(playing.durationMs)
+        reaction = null
+    }
     val optionsLabel = stringResource(R.string.companion_quick_options, name)
     val optionsAction = stringResource(R.string.companion_quick_options_action, name)
 
@@ -158,13 +163,19 @@ fun ZuriSlot(
                     onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); sheet = true },
                     onClick = {
                         val t = System.currentTimeMillis()
-                        if (t - nodAt >= NodGapMs) nodAt = t
+                        streak = CompanionTapPlay.streakAfter(lastTapAt, streak, t)
+                        lastTapAt = t
+                        reaction = CompanionTapPlay.reactionFor(taps, streak)
+                        taps++
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     }
                 )
         ) {
+            val playing = reaction
             Companion(
-                form = form, state = state, size = size,
-                variant = if (nodding) CompanionVariant.Nod else CompanionVariant.Normal,
+                form = form, state = playing?.visual ?: state, size = size,
+                mode = playing?.mode,
+                variant = playing?.variant ?: CompanionVariant.Normal,
                 level = level
             )
         }

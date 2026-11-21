@@ -10,6 +10,7 @@ import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -115,5 +116,29 @@ class PaywallCopyTest {
         )
         assertEquals("yearly", defaultOffer(offers)?.id)
         assertEquals("monthly", defaultOffer(listOf(offers[0]))?.id)
+    }
+
+    @Test fun `a yearly price is spread over a month in the store format`() {
+        assertEquals("\$6.67", PaywallCopy.perMonth("\$79.99"))
+        assertEquals("6,67 €", PaywallCopy.perMonth("79,99 €"))
+        assertEquals("€102,88", PaywallCopy.perMonth("€1.234,56"))
+        assertEquals("¥817", PaywallCopy.perMonth("¥9,800"))
+        assertNull(PaywallCopy.perMonth("Free"))
+    }
+
+    @Test fun `best value and the saving only show when a year really costs less`() {
+        val monthly = PlanOffer("monthly", Plan.PRO, "\$9.99", OfferKind.MONTHLY)
+        assertEquals(33, PaywallCopy.yearlySavingPercent("\$79.99", "\$9.99"))
+        assertTrue(PaywallCopy.showBestValue(yearly, monthly))
+        assertTrue("no monthly price to compare keeps the pill", PaywallCopy.showBestValue(yearly, null))
+        val dear = PlanOffer("yearly", Plan.PRO, "\$129.99", OfferKind.YEARLY)
+        assertNull(PaywallCopy.yearlySavingPercent(dear.priceText, monthly.priceText))
+        assertFalse(PaywallCopy.showBestValue(dear, monthly))
+        assertFalse(PaywallCopy.showBestValue(monthly, null))
+    }
+
+    @Test fun `the hero benefits are four paid rows the code enforces`() {
+        assertEquals(4, PaywallCopy.benefits.size)
+        assertTrue(PaywallCopy.benefits.all { !it.free && it.paid && it.capability != null })
     }
 }

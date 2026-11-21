@@ -236,7 +236,8 @@ fun NoteEditorScreen(
     val momentCard = recordings[momentSubject]
     val noteMoment = com.craftflowtechnologies.meetingmind.feature.moments.rememberNoteMoment(
         momentSubject,
-        refreshKey = momentCard?.status
+        refreshKey = momentCard?.status,
+        openReveal = true
     )
     val momentForm = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings().value.form
     val createController = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
@@ -681,25 +682,31 @@ fun NoteEditorScreen(
                             .padding(top = 8.dp)
                             .testTag("note_learning_studio_strip")
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                        // Text on its own line, actions below: side by side, the buttons squeezed the text to
+                        // one word per line on a phone.
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Icon(Icons.Rounded.School, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))
                                 Text(
-                                    text = if (hasCourse) "Course: ${currentNotebook?.name}" else "Turn this lesson into a Course or study it",
+                                    text = if (hasCourse) "Course: ${currentNotebook?.name}" else "Turn this lesson into a Course, or study it",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = Ink
+                                    color = Ink,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 if (!hasCourse) {
                                     Surface(
                                         onClick = { viewModel.createCourseFromNote() },
@@ -712,7 +719,7 @@ fun NoteEditorScreen(
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Accent,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
                                         )
                                     }
                                 }
@@ -727,7 +734,7 @@ fun NoteEditorScreen(
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = com.craftflowtechnologies.meetingmind.ui.theme.MM.colors.onAccent,
-                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
                                     )
                                 }
                             }
