@@ -2,6 +2,29 @@
 
 Updated: 2026-11-21. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
+## Release v51 for closed testing (2026-11-21)
+- **Bundle:** built at `6694dc6` from a clean tree and copied to the founder's `~/Downloads/meetingmind-v51.aab` (141.6 MB, sha256 `c2599ebc5c813139…`).
+  - Contents match v50 folder by folder (all four ABIs, assets, resources); the file is smaller only because the zip compresses differently.
+  - Verified: signed with the upload key (SHA-1 A5:DC:…:7C:D5); versionName 1.0-v51 (code 51); screen.portrait is optional; CLOSED_TESTING_ALL_ACCESS is true; the diarization callback keeps `invoke(IIJ)Ljava/lang/Integer;`; the new speaker-model sha is in the dex.
+  - No raw API keys. The one key-scan match, `TAQ.TSQ.q`, is an R8 name.
+  - Not pushed; uploading is the founder's.
+- **In v51, by commit:**
+  - Tasks board and Work task fix: `00e6b4a`.
+  - Model, Retry and processing fixes, plus the speaker-model pin: `ef634d3`.
+  - Learning practice and home: `7e50256`.
+  - Onboarding: `89b2c7a`.
+  - Companion, opening reveal and paywall: `54468a2`.
+  - Work home: `e08871e`, `ba385ca`.
+  - Homes companion line: `d5a3ab7`.
+  - Milestones: `945490f`.
+  - First recording: `f1c1dad`.
+  - Version and portrait-optional manifest: `6694dc6`.
+- **Tests:** 371 run. All pass except DesignSystemGuardTest on `AiCraft.kt`, which predates this release. Screenshots were re-recorded for processing, Work, companion moments, paywall and onboarding Ready.
+- **Build notes:**
+  - `processMeeting`'s coroutine hit the JVM's 64 KB method limit. The cloud route and the analysis-and-save steps now run in local suspend functions; keep new steps out of the inline body.
+  - The build runner's scripts and test lists live in `~/.meetingmind-build`, because the session scratchpad dies when the Claude app restarts.
+- **Open:** a check on the phone of the debug build (`app/build/outputs/apk/debug`); upgrading existing installs of the old speaker model; summaries still go to Gemini after a switch to the phone.
+
 ## Onboarding: "You're all set", Google sign-in, installed models kept (2026-11-21, `89b2c7a`)
 - **Joint commit** with the build runner's always-light onboarding (`LightSurfaces.kt`). Not pushed.
 - **"You're all set"** (`ReadyStep.kt`, `ReadyModel.kt`, `strings_onboarding_ready.xml`) is the last step of the example route. It shows:
