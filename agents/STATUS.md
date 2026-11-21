@@ -1,6 +1,28 @@
 # Status
 
-Updated: 2026-11-18. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+Updated: 2026-11-21. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+
+## Onboarding: "You're all set", Google sign-in, installed models kept (2026-11-21, `89b2c7a`)
+- **Joint commit** with the build runner's always-light onboarding (`LightSurfaces.kt`). Not pushed.
+- **"You're all set"** (`ReadyStep.kt`, `ReadyModel.kt`, `strings_onboarding_ready.xml`) is the last step of the example route. It shows:
+  - the companion celebrating and the person's name;
+  - one card summing up their spaces, Internet or On this phone, and their companion;
+  - first actions, one tap each. Internet: Record, Notes from a YouTube video, Look around. On this phone: Set up on this phone, Record, Look around. If everything is already installed: Record first, with no download.
+- **Optional Sign in with Google** for Circles, through the Circles `AccountViewModel` and its switch-account dialog. It's hidden when the Circles repository can't be built. Skipping it changes nothing.
+- **The on-phone download, sized honestly:** `SetupGuide.compute` with the installed models and the recording language, so only what's missing is counted. The Setup and Ready steps show the room it leaves, or a warning when space is short.
+- **Founder's rule: no screen pushes Parakeet over an installed model.**
+  - Onboarding keeps an installed speech model: `onboardingSpeechModelId` uses `AsrModelResolver`.
+  - It also keeps an installed language model: `onboardingThinkerModelId` uses `LlmModelResolver`.
+  - Only a phone with no model gets the recommendation.
+- **Founder decision (2026-11-19):** the recording language matches the app language ("Yes, match it"). For example, someone reading the app in Bemba is set up for Omnilingual.
+- **Fix:** `completeOnboarding` stalled before finishing, which broke three `OnboardingTest` cases. The saved choices are now read first, and the model checks run off the main thread. A `finishStage` marker in the view model reports in test failure messages which step stalled.
+- **Tests (build-runner run, 2026-11-21):** all of `feature.onboarding.*` passes: `ReadyModelTest`, `OnboardingModelTest`, `OnboardingTest`, `CompanionPickStepTest`, `OnboardingReadyScreenshotTest`. The `onboarding_ready_*` screenshots are recorded; I haven't reviewed them.
+- **Open:**
+  - not checked on a phone;
+  - the new strings are English only (for the i18n session);
+  - not built: your own YouTube link or audio during onboarding, and the fade from light into the chosen theme;
+  - `PlanStep.kt` and `PlanStepTest` are dead code to delete;
+  - `UserPreferencesManager.setSelectedLanguage` still switches the speech model by itself (Omnilingual, Whisper) when the language changes in Settings. Onboarding overrides it, but the Settings path isn't installed-aware yet. That fix belongs to the models owner.
 
 ## Companion milestones, calm rhythms and paywall polish (2026-11-21)
 - **Proud milestones** (ZURI_EXPERIENCE §3.1, task Z-21): `CompanionMachine` could already play Proud, but nothing in the app ever triggered a milestone.
