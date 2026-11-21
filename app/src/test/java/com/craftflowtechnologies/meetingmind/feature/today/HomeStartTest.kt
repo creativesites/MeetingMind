@@ -4,6 +4,8 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.room.Room
@@ -84,14 +86,18 @@ class HomeStartTest {
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/home_tour_new.png")
         compose.onNodeWithTag("coach_skip").performClick()
         settle()
+        // Skipping closes the tour at once; if it is still up, the tap never reached "Skip tour".
+        compose.onAllNodesWithTag("coach_overlay").assertCountEquals(0)
         // The skip is saved on Dispatchers.IO and posts back to the paused looper; idle it until the save lands.
         runBlocking {
-            repeat(100) {
-                if (UserPreferencesManager(app).preferencesFlow.first().tourCompleted) return@repeat
+            var saved = false
+            for (i in 0 until 100) {
+                saved = UserPreferencesManager(app).preferencesFlow.first().tourCompleted
+                if (saved) break
                 org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS)
                 Thread.sleep(50)
             }
-            assertTrue(UserPreferencesManager(app).preferencesFlow.first().tourCompleted)
+            assertTrue("the tour closed but its completion was never saved (view model says ${vm.tourCompleted.value})", saved)
         }
     }
 }

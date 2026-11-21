@@ -342,6 +342,14 @@ fun TodayScreen(
                     modifier = Modifier.padding(top = 12.dp)
                 )
             }
+            // The companion's line: what it has to say right now (the hero already shows the companion).
+            item(key = "companion_line") {
+                com.craftflowtechnologies.meetingmind.feature.today.companion.HomeCompanionLine(
+                    space = null, onRecord = onRecord, onOpenNote = onOpenNote, onOpenRecording = onOpenProcessing,
+                    onSearch = onSearch, firstRun = false, showCompanion = false, showProcessing = false,
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp)
+                )
+            }
             // Notes from a YouTube video: always one tap from Today, and a copied link offers itself.
             item(key = "youtube") {
                 Column(Modifier.padding(horizontal = 16.dp).padding(top = 12.dp)) {

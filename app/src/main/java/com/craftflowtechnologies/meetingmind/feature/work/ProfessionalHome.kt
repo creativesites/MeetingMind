@@ -127,7 +127,7 @@ fun ProfessionalHome(
     val identity by today.identity.collectAsState()
     val now by today.now.collectAsState()
     val todayItems by today.today.collectAsState()
-    val jobs by today.activeJobs.collectAsState()
+    val recentWork by work.recentWork.collectAsState()
     val stories by today.stories.collectAsState()
     val devotional by today.devotional.collectAsState()
     val stats by today.stats.collectAsState()
@@ -311,16 +311,30 @@ fun ProfessionalHome(
                 )
             }
 
-            if (jobs.isNotEmpty()) item {
-                val j = jobs.first()
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp).clip(RoundedCornerShape(16.dp)).background(AccentWash)
-                        .clickable { onOpenProcessing(j.meetingId) }.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Processing · ${j.progressPercent}%", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold)
-                    Text(j.meetingTitle, fontSize = 14.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 10.dp).weight(1f))
-                }
+            // Recent: every Work recording from the moment it exists (recording, writing notes, saved, ready, to
+            // review, didn't finish), shared with the Work page so both homes show a new meeting the same way.
+            if (recentWork.isNotEmpty()) item(key = "work_recent") {
+                WorkRecentSection(
+                    recentWork,
+                    onOpen = { r ->
+                        when (WorkRecent.targetOf(r)) {
+                            WorkRecent.Target.WRAP_UP -> onOpenWrapUp(r.meetingId, false)
+                            WorkRecent.Target.PROCESSING -> onOpenProcessing(r.meetingId)
+                        }
+                    },
+                    onAll = onOpenWork,
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)
+                )
+            }
+
+            // The companion's line: what it has to say right now, or the week's quiet rhythm.
+            item(key = "companion_line") {
+                com.craftflowtechnologies.meetingmind.feature.today.companion.HomeCompanionLine(
+                    space = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK,
+                    onRecord = onRecord, onOpenNote = onOpenNote, onOpenRecording = onOpenProcessing, onSearch = onSearch,
+                    showProcessing = false, // recordings in progress show in the list above
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)
+                )
             }
 
             // Notes from a YouTube video (a talk, a webinar, a recorded meeting): the same shared card as every home.

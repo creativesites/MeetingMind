@@ -150,6 +150,14 @@ fun CalmHome(
                 )
             }
 
+            // The companion's line: what it has to say right now, or the week's quiet rhythm.
+            item(key = "companion_line") {
+                com.craftflowtechnologies.meetingmind.feature.today.companion.HomeCompanionLine(
+                    space = null, onRecord = onRecord, onOpenNote = onOpenNote, onOpenRecording = onOpenProcessing,
+                    onSearch = onSearch, modifier = Modifier.padding(horizontal = 24.dp).padding(top = 20.dp)
+                )
+            }
+
             // Notes from a YouTube video: the same shared card as every home.
             item(key = "youtube") {
                 val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
