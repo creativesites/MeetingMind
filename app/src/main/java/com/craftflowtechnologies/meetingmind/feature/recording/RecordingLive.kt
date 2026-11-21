@@ -124,7 +124,9 @@ internal fun LiveRecordingSurface(
     /** A button was used. [text] is what was typed for it, already checked; null for a one-tap marker. */
     onAction: (RecordingAction, String?) -> Unit = { _, _ -> },
     onUndoMark: () -> Unit = {},
-    consentReminder: Boolean = false
+    consentReminder: Boolean = false,
+    /** The first-recording coach (FirstRecordingCoach). Off by default; the real screen turns it on. */
+    firstRecordingCoach: Boolean = false
 ) {
     val c = MM.colors
     val recording = state == RecordingState.RECORDING
@@ -169,6 +171,8 @@ internal fun LiveRecordingSurface(
                     StatusLine(StatusKind.Warning, it, Modifier.padding(top = MM.space.s).testTag("record_capacity_warning"))
                 }
                 if (consentReminder) ConsentLine()
+                SilenceCue(recording = recording, level = companionLevel)
+                if (firstRecordingCoach) FirstRecordingCoach(recordedMs = durationMs, paused = !recording)
                 LevelLine(history, recording, Modifier.padding(top = MM.space.l))
             }
 

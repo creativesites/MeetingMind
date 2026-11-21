@@ -375,7 +375,8 @@ fun RecordingScreen(
         marks = marks,
         onAction = { action, text -> viewModel.mark(action.kind, text) },
         onUndoMark = viewModel::undoMark,
-        consentReminder = isWork && workSettings.consentReminder && selectedSpeakerCount != 1
+        consentReminder = isWork && workSettings.consentReminder && selectedSpeakerCount != 1,
+        firstRecordingCoach = true
     )
 
     if (showDiscardDialog) {
