@@ -124,7 +124,7 @@ fun SetupCard(state: SetupState, onSetUp: () -> Unit, onDetails: () -> Unit, onL
                 if (!state.downloading) {
                     Surface(onClick = onSetUp, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag("setup_one_tap")) {
                         Box(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 18.dp, vertical = 11.dp)) {
-                            Text("Set up in one tap · ${SetupGuide.formatBytes(state.remainingBytes)}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Get the speech model · ${SetupGuide.formatBytes(state.essentialBytes)}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 } else {
@@ -178,7 +178,7 @@ fun SetupBanner(state: SetupState, onClick: () -> Unit, modifier: Modifier = Mod
                 },
                 color = Color.White, fontSize = 13.5.sp, fontWeight = FontWeight.Medium
             )
-            if (!state.downloading) Text("Tap to finish setup · ${SetupGuide.formatBytes(state.remainingBytes)}", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+            if (!state.downloading) Text("Tap to get the speech model · ${SetupGuide.formatBytes(state.essentialBytes)}", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
         }
     }
 }

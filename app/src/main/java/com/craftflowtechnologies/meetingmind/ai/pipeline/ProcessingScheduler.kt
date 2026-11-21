@@ -8,7 +8,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.database.MeetingEntity
 import com.craftflowtechnologies.meetingmind.core.database.ProcessingJobEntity
@@ -66,21 +65,24 @@ object ProcessingScheduler {
         val duration = durationMs?.takeIf { it > 0 } ?: meeting.durationMs.takeIf { it > 0 } ?: probeDurationMs(path)
         val speakers = expectedSpeakerCount ?: meeting.speakerCountPreference
         val prefs = UserPreferencesManager(context).preferencesFlow.first()
-        val asrModelId = if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(meeting.language)) {
-            if (prefs.selectedAsrModelId == ModelCatalog.omnilingualAsr1bInt8.id || prefs.selectedAsrModelId == ModelCatalog.omnilingualAsr300mInt8.id) {
-                prefs.selectedAsrModelId
-            } else {
-                com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.defaultModelIdForLanguage(meeting.language)
-            }
-        } else if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isWhisperPreferredLanguage(meeting.language)) {
-            if (prefs.selectedAsrModelId == ModelCatalog.whisperLargeV3Int8.id || prefs.selectedAsrModelId == ModelCatalog.whisperTurboInt8.id) {
-                prefs.selectedAsrModelId
-            } else {
-                com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.defaultModelIdForLanguage(meeting.language)
-            }
-        } else {
-            prefs.selectedAsrModelId
-        }
+        // The speech model actually installed for this language, not just the saved choice: a
+        // person with Whisper or Omnilingual on the phone must never be told to download Parakeet.
+        // When nothing installed can do it, the recommended model's id is passed on, so the run
+        // ends as MODEL_REQUIRED naming the model worth getting.
+        val asrRamMb = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.ramMbOf(
+            com.craftflowtechnologies.meetingmind.core.common.DeviceCapabilityDetector.detect(context).totalRamGb
+        )
+        val installedAsr = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.installedIds(
+            com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(context)
+        )
+        val asrModelId = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
+            .resolve(installedAsr, prefs.selectedAsrModelId, meeting.language, asrRamMb)?.id
+            ?: com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.recommended(asrRamMb, meeting.language).id
+        // A saved choice whose model isn't on the phone follows what is, so the AI engine screen
+        // and processing name the same model.
+        com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
+            .selectionToSave(installedAsr, prefs.selectedAsrModelId, meeting.language, asrRamMb)
+            ?.let { runCatching { UserPreferencesManager(context).setSelectedAsrModel(it) } }
 
         val input = workDataOf(
             MeetingProcessingWorker.KEY_MEETING_ID to meetingId,

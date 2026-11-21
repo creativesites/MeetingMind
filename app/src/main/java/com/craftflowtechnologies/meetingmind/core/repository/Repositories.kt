@@ -1051,7 +1051,14 @@ class ModelRepository(
         userPreferencesManager?.let { prefsMgr ->
             val prefs = prefsMgr.preferencesFlow.first()
             if (prefs.selectedAsrModelId == modelId) {
-                prefsMgr.setSelectedAsrModel(ModelCatalog.parakeetTdtV3Int8.id)
+                // Another speech model still on the phone takes over; only with none left does the
+                // selection go back to the default.
+                val remaining = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.installedIds(modelStorage) - modelId
+                val next = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
+                    .resolve(remaining, null, prefs.selectedLanguage)?.id
+                    ?: com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.resolve(remaining, null, null)?.id
+                    ?: ModelCatalog.parakeetTdtV3Int8.id
+                prefsMgr.setSelectedAsrModel(next)
             }
             if (prefs.selectedLlmModelId == modelId) {
                 prefsMgr.setSelectedLlmModel(ModelCatalog.qwen25_1_5bInstruct.id)

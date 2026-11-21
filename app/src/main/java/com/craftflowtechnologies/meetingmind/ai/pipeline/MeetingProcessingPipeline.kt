@@ -215,6 +215,14 @@ class MeetingProcessingPipeline(
         val existingMeeting = meetingDao.getMeetingById(meetingId)
             ?: throw IllegalArgumentException("Meeting $meetingId not found")
         val effectiveLanguage = language ?: existingMeeting.language ?: "en"
+        // A speech model id this app doesn't know (an old preference, a removed model) must not
+        // quietly run Parakeet: it becomes what is installed for the language, else the model
+        // worth downloading — whose recogniser then reports itself missing (MODEL_REQUIRED).
+        val asrModelId = if (com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.isSpeechModel(modelId)) modelId
+            else com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.resolve(modelStorage, null, effectiveLanguage)?.id
+                ?: com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.recommended(null, effectiveLanguage).id
+        // The model the phone actually transcribed with, for the transcript's record.
+        var localAsrModelId = asrModelId
 
         // If the app/process was killed mid-run (e.g. by the OS while backgrounded), WorkManager
         // restarts this same worker from scratch — it has no way to resume partway through. Every
@@ -294,6 +302,8 @@ class MeetingProcessingPipeline(
             var localRunWords: List<CanonicalWord>? = null
             var cloudChunkCount = 1
             var cloudDegradedReason: String? = null
+            // Set when the cloud route needed the phone and the phone has no speech model.
+            var phoneModelMissing = false
             var effectiveProfile = if (youtubeParsed != null) ProcessingProfile.INTERNET else processingProfile
             var vadCache: List<com.craftflowtechnologies.meetingmind.ai.transcript.SpeechRegion>? = null
             // Internet mode only means cloud when a key (or the managed route) is actually configured.
@@ -327,6 +337,9 @@ class MeetingProcessingPipeline(
             if (cloudReady && youtubeParsed == null) {
                 updateJob("Transcribing with Google's AI...", 30, ProcessingStage.TRANSCRIBING)
                 val cloudStart = System.currentTimeMillis()
+                // Its own function, not inline: processMeeting's coroutine body is near the JVM's 64 KB
+                // method limit, and this block (the runner, its callbacks and the partial saves) tipped it over.
+                suspend fun runCloudTranscription(): com.craftflowtechnologies.meetingmind.ai.transcription.RunOutcome {
                 // The length the importer guessed can be wrong (it falls back to a minute); the
                 // container's own figure decides how the recording is split for Gemini.
                 val measuredMs = com.craftflowtechnologies.meetingmind.core.audio.CloudAudio.durationMs(audioFile)
@@ -338,10 +351,17 @@ class MeetingProcessingPipeline(
                 )
                 // Gemini first, the phone behind it — and either can take over from the other:
                 // what's finished is saved region by region, so a switch (yours, or a dropped
-                // connection) continues from there instead of starting again.
+                // connection) continues from there instead of starting again. The phone is only a
+                // route when it has a speech model for this language; a recogniser injected for a
+                // test stands in for one.
+                val phoneModelId = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
+                    .resolve(modelStorage, asrModelId, effectiveLanguage)?.id
+                val phoneAvailable = phoneModelId != null || speechRecognizer !is SherpaParakeetSpeechRecognizer
+                if (phoneModelId != null) localAsrModelId = phoneModelId
                 val runner = com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRunner(
                     store = com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionCheckpoints(transcriptionRegionsDir(context)),
                     gemini = cloudTranscriptionEngine,
+                    localAvailable = phoneAvailable,
                     local = { gaps, onRegion, onProg ->
                         val speech = vadCache ?: run {
                             updateJob("Detecting speech intervals (VAD)...", 20, ProcessingStage.DETECTING_SPEECH)
@@ -351,16 +371,16 @@ class MeetingProcessingPipeline(
                         if (speech.isNotEmpty() && restricted.isEmpty()) AiResult.Success(emptyList())
                         else {
                             updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
-                            recognizerFor(modelId).transcribe(
+                            recognizerFor(localAsrModelId).transcribe(
                                 audioFile = audioFile, totalDurationMs = totalDurationMs, meetingId = meetingId,
                                 speechRegions = restricted,
-                                options = TranscriptionOptions(modelId = modelId, language = effectiveLanguage, vocabularyHints = vocabularyHints, onWindowDone = onRegion),
+                                options = TranscriptionOptions(modelId = localAsrModelId, language = effectiveLanguage, vocabularyHints = vocabularyHints, onWindowDone = onRegion),
                                 onProgress = { prog, status -> onProg(prog, status); emit(status, ProcessingProgress.asr(prog.toFloat()), ProcessingStage.TRANSCRIBING) }
                             )
                         }
                     }
                 )
-                val outcome = try {
+                return try {
                     runner.run(
                         meetingId = meetingId, audioFile = audioFile, totalMs = measuredMs ?: totalDurationMs,
                         start = com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoute.GEMINI, vocabularyHints = vocabularyHints,
@@ -389,9 +409,13 @@ class MeetingProcessingPipeline(
                         }
                     )
                 } finally {
-                    com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoutes.publish(meetingId, null)
+                    // Nothing about this run's route, or a switch asked for during it, outlives it.
+                    com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoutes.clear(meetingId)
                 }
+                }
+                val outcome = runCloudTranscription()
                 cloudDegradedReason = outcome.geminiFailure
+                phoneModelMissing = outcome.localModelMissing
                 if (outcome.complete && outcome.usedGemini) {
                     cloudWords = outcome.words()
                     cloudChunkCount = outcome.regions.count { it.route == com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoute.GEMINI }.coerceAtLeast(1)
@@ -400,8 +424,13 @@ class MeetingProcessingPipeline(
                 } else if (outcome.complete) {
                     localRunWords = outcome.words()
                     effectiveProfile = ProcessingProfile.OFFLINE
-                    Breadcrumbs.log("asr", "Google's AI did not finish: ${cloudDegradedReason ?: "no reason given"}")
-                    updateJob("Google's AI didn't finish — the rest is on this phone", 45, ProcessingStage.TRANSCRIBING)
+                    if (outcome.switchedToPhoneByUser && outcome.geminiFailure == null) {
+                        Breadcrumbs.log("asr", "Continued on this phone at the person's request")
+                        updateJob("Continued on this phone, as you asked", 45, ProcessingStage.TRANSCRIBING)
+                    } else {
+                        Breadcrumbs.log("asr", "Google's AI did not finish: ${cloudDegradedReason ?: "no reason given"}")
+                        updateJob("Google's AI didn't finish — the rest is on this phone", 45, ProcessingStage.TRANSCRIBING)
+                    }
                 } else {
                     cloudDegradedReason = outcome.failure ?: outcome.geminiFailure
                     Log.d(PERF_TAG, "Transcription incomplete: $cloudDegradedReason")
@@ -435,12 +464,12 @@ class MeetingProcessingPipeline(
                 AiResult.Failed(cloudDegradedReason ?: "Transcription didn't finish.")
             } else {
                 updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
-                recognizerFor(modelId).transcribe(
+                recognizerFor(asrModelId).transcribe(
                     audioFile = audioFile,
                     totalDurationMs = totalDurationMs,
                     meetingId = meetingId,
                     speechRegions = speechRegions,
-                    options = TranscriptionOptions(modelId = modelId, language = effectiveLanguage, vocabularyHints = vocabularyHints),
+                    options = TranscriptionOptions(modelId = asrModelId, language = effectiveLanguage, vocabularyHints = vocabularyHints),
                     onProgress = { prog, status ->
                         emit(status, ProcessingProgress.asr(prog.toFloat()), ProcessingStage.TRANSCRIBING)
                     }
@@ -460,11 +489,18 @@ class MeetingProcessingPipeline(
                     // The audio recording itself is untouched and remains fully accessible.
                     // In Internet mode the cloud is what failed; the missing offline model is only
                     // why there was nothing to fall back on. Say what actually went wrong.
-                    val cloudFailed = (cloudReady || youtubeParsed != null) && cloudWords == null
-                    val message = if (cloudFailed) {
+                    // Google's AI stopped and the phone has no speech model to finish with: that is
+                    // a missing model ("Get the model"), not a crash — the recording can be
+                    // transcribed as soon as one is downloaded.
+                    val needsPhoneModel = phoneModelMissing && youtubeParsed == null
+                    val cloudFailed = (cloudReady || youtubeParsed != null) && cloudWords == null && !needsPhoneModel
+                    val message = if (needsPhoneModel) {
+                        "Google's AI couldn't finish this recording${cloudDegradedReason?.let { " ($it)" } ?: ""}. " +
+                            "Download an offline speech model to transcribe it on this phone."
+                    } else if (cloudFailed) {
                         "Google's AI couldn't transcribe this ${if (youtubeParsed != null) "YouTube video" else "recording"}. ${cloudDegradedReason ?: "No reason was given."}"
                     } else asrResult.describeFailure() ?: "Local speech recognition is unavailable."
-                    val isCrash = asrResult is AiResult.Failed || cloudFailed
+                    val isCrash = !needsPhoneModel && (asrResult is AiResult.Failed || cloudFailed)
                     updateJob(
                         step = if (isCrash) "Failed" else "Speech recognition model required",
                         percent = 100,
@@ -628,20 +664,12 @@ class MeetingProcessingPipeline(
                         youtubeExtraction.modelId
                     } else if (cloudWords != null) {
                         com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
-                    } else if (modelId == ModelCatalog.omnilingualAsr300mInt8.id) {
-                        "omnilingual-asr-300m-ctc"
-                    } else if (modelId == ModelCatalog.omnilingualAsr1bInt8.id) {
-                        "omnilingual-asr-1b-ctc"
-                    } else if (modelId == ModelCatalog.whisperLargeV3Int8.id) {
-                        "whisper-large-v3-int8"
-                    } else if (modelId == ModelCatalog.whisperTurboInt8.id) {
-                        "whisper-turbo-int8"
-                    } else LOCAL_TRANSCRIPTION_ENGINE,
+                    } else com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.engineName(localAsrModelId),
                     transcriptionModelId = if (youtubeExtraction != null) {
                         youtubeExtraction.modelId
                     } else if (cloudWords != null) {
                         com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
-                    } else modelId,
+                    } else localAsrModelId,
                     audioDurationMs = effectiveDurationMs,
                     chunkCount = cloudChunkCount,
                     stageDurationsMs = mapOf("vad" to vadDurationMs, "asr" to asrDurationMs, "diarization" to diarizationDurationMs)
@@ -713,6 +741,9 @@ class MeetingProcessingPipeline(
                 customContext = existingMeeting.customContext
             )
 
+            // Analysis and saving run in their own function: processMeeting's coroutine body sits at the
+            // JVM's 64 KB method limit, and one more step inline would not compile.
+            suspend fun analyseAndSave(): MeetingEntity {
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
             val intelligenceProfile = recordingType.intelligenceProfile()
             // What this step is actually doing depends on what this recording type actually
@@ -1046,7 +1077,9 @@ class MeetingProcessingPipeline(
                 }
             )
 
-            updatedMeeting
+                return updatedMeeting
+            }
+            analyseAndSave()
         } catch (e: CancellationException) {
             // The recording is gone: there is nothing to record a cancellation against.
             if (e is RecordingDeletedException) throw e
@@ -1658,7 +1691,6 @@ class MeetingProcessingPipeline(
         const val QUALITY_TAG = "MeetMindTranscriptQuality"
         /** Speaker id used when the user confirmed the recording is solo — no clustering ran. */
         const val SOLO_SPEAKER_ID = "speaker_0"
-        const val LOCAL_TRANSCRIPTION_ENGINE = "parakeet-tdt-0.6b-v3"
         const val MAX_VOCABULARY_HINTS = 120
         const val MIN_HINT_LENGTH = 3
         val WORD_SPLIT_REGEX = Regex("[^\\p{L}\\p{N}'-]+")

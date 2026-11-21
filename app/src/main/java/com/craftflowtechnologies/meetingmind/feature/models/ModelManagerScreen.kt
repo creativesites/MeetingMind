@@ -139,8 +139,21 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
 
     val availableStorageMb: Long get() = DeviceCapabilityDetector.getAvailableStorageMb()
 
+    /** This phone's memory in MB, for the speech-model resolver. */
+    val ramMb: Int = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.ramMbOf(deviceCapabilities.totalRamGb)
+
     init {
         viewModelScope.launch { runCatching { modelRepository.ensureCatalogSeeded() } }
+        // A saved speech model that isn't on the phone follows the one that is, so "Active" here
+        // and the model processing uses are the same one.
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(modelRepository.models, userPrefs.preferencesFlow) { _, prefs -> prefs }.collect { prefs ->
+                val installed = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.installedIds(LocalModelStorage(getApplication()))
+                com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
+                    .selectionToSave(installed, prefs.selectedAsrModelId, prefs.selectedLanguage, ramMb)
+                    ?.let { runCatching { userPrefs.setSelectedAsrModel(it) } }
+            }
+        }
         // A partial download left from before (paused, or the phone restarted) shows as paused.
         viewModelScope.launch {
             downloadingModelIds.collect { active ->
@@ -374,10 +387,24 @@ fun ModelManagerScreen(
                     // Only SUMMARIZATION has more than one real model to choose between (Phase 3C
                     // model tiers); every other capability still has exactly one, so its "active"
                     // selection is moot but harmless to thread through the same way.
+                    val isSpeech = group.capability == ModelCapability.TRANSCRIPTION
                     val (activeModelId, onSelectActive, recommendedModelId) = when (group.capability) {
                         ModelCapability.SUMMARIZATION -> Triple(prefs.selectedLlmModelId, { id: String -> viewModel.selectActiveLlmModel(id) }, caps.recommendedLlmModelId)
+                        // Speech: the suggestion follows the language the person records in, not just the phone.
+                        ModelCapability.TRANSCRIPTION -> Triple(
+                            prefs.selectedAsrModelId,
+                            { id: String -> viewModel.selectActiveAsrModel(id) },
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.recommended(viewModel.ramMb, prefs.selectedLanguage).id
+                        )
                         else -> Triple(prefs.selectedAsrModelId, { id: String -> viewModel.selectActiveAsrModel(id) }, caps.recommendedAsrModelId)
                     }
+                    // For speech, "Active" is exactly what processing will use (the same resolver).
+                    val speechActiveId = if (isSpeech) {
+                        com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.resolve(
+                            groupModels.filter { it.isInstalled }.map { it.id }.toSet(),
+                            prefs.selectedAsrModelId, prefs.selectedLanguage, viewModel.ramMb
+                        )?.id
+                    } else null
                     item(key = "group_${group.capability}") {
                         CapabilityGroupSection(
                             group = group,
@@ -392,6 +419,7 @@ fun ModelManagerScreen(
                             pausedModelIds = pausedModelIds,
                             activeModelId = activeModelId,
                             recommendedModelId = recommendedModelId,
+                            speech = if (isSpeech) SpeechGroupState(speechActiveId, prefs.selectedLanguage) else null,
                             onSelectActive = onSelectActive,
                             onInstall = { viewModel.installModel(it) },
                             onPause = { viewModel.pauseDownload(it) },
@@ -453,7 +481,12 @@ private enum class CapabilityStatus(val label: String) {
         }
 }
 
-private fun statusFor(models: List<AiModelInfo>, pausedModelIds: Set<String>): CapabilityStatus = when {
+/** What the speech group needs beyond the generic one: the model processing will really use, and the language. */
+private data class SpeechGroupState(val activeId: String?, val language: String)
+
+/** [anyIsEnough]: the group works with one installed model (speech), rather than needing every one. */
+private fun statusFor(models: List<AiModelInfo>, pausedModelIds: Set<String>, anyIsEnough: Boolean = false): CapabilityStatus = when {
+    anyIsEnough && models.any { it.isInstalled } -> CapabilityStatus.READY
     models.any { it.isDownloading } -> CapabilityStatus.DOWNLOADING
     models.any { it.id in pausedModelIds } -> CapabilityStatus.PAUSED
     models.all { it.isInstalled } -> CapabilityStatus.READY
@@ -468,6 +501,7 @@ private fun CapabilityGroupSection(
     pausedModelIds: Set<String>,
     activeModelId: String,
     recommendedModelId: String? = null,
+    speech: SpeechGroupState? = null,
     onSelectActive: (String) -> Unit,
     onInstall: (String) -> Unit,
     onPause: (String) -> Unit,
@@ -476,7 +510,7 @@ private fun CapabilityGroupSection(
 ) {
     // Always expanded — the old screen's accordion collapse hid whether a group even had a
     // choice worth making; a capability group is small enough (1-3 models) to stay flat.
-    val status = statusFor(models, pausedModelIds)
+    val status = statusFor(models, pausedModelIds, anyIsEnough = speech != null)
 
     Column(modifier = Modifier.padding(top = 24.dp)) {
         Row(
@@ -499,16 +533,24 @@ private fun CapabilityGroupSection(
         // Mirrors LlmModelResolver: the model that will really be used is the selected one when
         // it's installed, otherwise the best one that is. Showing "Active" on a model whose files
         // the user already deleted would be a lie.
-        val effectiveActiveId = remember(models, activeModelId) {
+        val effectiveActiveId = if (speech != null) speech.activeId else remember(models, activeModelId) {
             models.find { it.id == activeModelId && it.isInstalled }?.id
                 ?: models.filter { it.isInstalled }.maxByOrNull { it.tier.ordinal }?.id
         }
         if (isSelectable) {
+            val languageName = speech?.let { com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(it.language) }
+            val chosen = models.find { it.id == activeModelId && it.isInstalled }
             Text(
-                text = if (effectiveActiveId == null) {
-                    "Download one of these to turn this on. You can switch at any time."
-                } else {
-                    "Pick the one that suits your phone — whichever is marked Active is the one being used."
+                text = when {
+                    speech != null && effectiveActiveId == null && models.any { it.isInstalled } ->
+                        "None of your speech models handles $languageName. Download the one marked Recommended to transcribe it on this phone."
+                    speech != null && effectiveActiveId == null ->
+                        "Download one to transcribe on this phone. The one marked Recommended suits your phone and $languageName."
+                    speech != null && chosen != null && chosen.id != effectiveActiveId ->
+                        "${chosen.name} doesn't handle $languageName, so ${models.find { it.id == effectiveActiveId }?.name ?: "another model"} is used for your recordings."
+                    speech != null -> "Tap Use this to switch. The one marked Active transcribes your recordings."
+                    effectiveActiveId == null -> "Download one of these to turn this on. You can switch at any time."
+                    else -> "Pick the one that suits your phone — whichever is marked Active is the one being used."
                 },
                 fontSize = 12.5.sp,
                 color = InkMuted,
@@ -522,6 +564,7 @@ private fun CapabilityGroupSection(
                 isPaused = model.id in pausedModelIds,
                 isSelectable = isSelectable,
                 isRecommendedForDevice = recommendedModelId != null && recommendedModelId == model.id && isSelectable,
+                speechGuide = if (speech != null) com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.guide(model.id) else null,
                 onSelectActive = { onSelectActive(model.id) },
                 onInstall = { onInstall(model.id) },
                 onPause = { onPause(model.id) },
@@ -539,6 +582,8 @@ fun ModelRow(
     isPaused: Boolean = false,
     isSelectable: Boolean = model.capability.contains(ModelCapability.TRANSCRIPTION),
     isRecommendedForDevice: Boolean = false,
+    /** Plain guidance for a speech model; replaces the summary-model tier text, which doesn't fit speech. */
+    speechGuide: com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.Guide? = null,
     onSelectActive: () -> Unit,
     onInstall: () -> Unit,
     onPause: () -> Unit = {},
@@ -658,7 +703,31 @@ fun ModelRow(
 
         // Tier chip + on-device recommendation — only shown when there's an actual choice
         // to make (isSelectable), so it never implies a comparison that doesn't exist.
-        if (isSelectable) {
+        if (isSelectable && speechGuide != null) {
+            // Speech models: what languages, how fast, and whether it suits this phone — in plain words.
+            if (isRecommendedForDevice) {
+                Text(
+                    text = "Recommended for your phone",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = OnInk,
+                    modifier = Modifier
+                        .padding(top = 6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Accent)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .testTag("model_recommended_${model.id}")
+                )
+            }
+            Text(text = speechGuide.tradeoff, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Accent, modifier = Modifier.padding(top = 6.dp))
+            Text(
+                text = speechGuide.languages,
+                fontSize = 12.5.sp,
+                color = InkSecondary,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        } else if (isSelectable) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
                 Text(text = model.tier.displayName, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Accent)
                 if (isRecommendedForDevice) {
@@ -674,13 +743,16 @@ fun ModelRow(
             )
         }
 
-        Text(
-            text = model.description,
-            fontSize = 12.5.sp,
-            color = InkSecondary,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(top = 6.dp)
-        )
+        // A speech model's long technical description lives under "Technical details" instead.
+        if (speechGuide == null) {
+            Text(
+                text = model.description,
+                fontSize = 12.5.sp,
+                color = InkSecondary,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
 
         // Storage cost, visible without expanding "Technical details" — while downloading or
         // paused the progress line below already states the size, so this would be redundant.
@@ -738,6 +810,7 @@ fun ModelRow(
                     color = InkMuted
                 )
                 Text(text = model.version, fontSize = 11.sp, color = InkMuted)
+                if (speechGuide != null) Text(text = model.description, fontSize = 11.sp, color = InkMuted, lineHeight = 16.sp)
                 Text(text = "Stored on-device only, deletable at any time", fontSize = 11.sp, color = InkMuted)
             }
         }

@@ -629,7 +629,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onImport = { navController.navigate(Routes.IMPORT) },
                 setup = setupState,
                 setupSnoozed = setupSnoozedUntil > System.currentTimeMillis(),
-                onSetUp = { setupVm.setUp() },
+                // Home's one tap gets what transcription needs; the extras stay on the setup page.
+                onSetUp = { setupVm.setUp(listOf(com.craftflowtechnologies.meetingmind.core.setup.SetupPart.HEAR)) },
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
                 onSnoozeSetup = { setupVm.snooze() },
                 tourEnabled = true
@@ -672,7 +673,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 setupNotice = {
                     val setupVm: com.craftflowtechnologies.meetingmind.feature.setup.SetupViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
                     val setup by setupVm.state.collectAsState()
-                    setup?.takeIf { !it.offlineReady && (!it.internetReady || it.thinkingOnly) }?.let { st ->
+                    setup?.takeIf { it.needsAttention }?.let { st ->
                         com.craftflowtechnologies.meetingmind.feature.setup.SetupBanner(st, onClick = { navController.navigate(Routes.SETUP) })
                     }
                 }

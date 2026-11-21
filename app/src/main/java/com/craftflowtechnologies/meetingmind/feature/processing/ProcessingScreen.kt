@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -267,6 +268,16 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                             modelRequired = true,
                             modelRequiredMessage = "Download the offline speech recognition model to transcribe this recording on your device."
                         )
+                    } else if (status == MeetingStatus.ERROR.name) {
+                        // The work finishes "successfully" even when the recording failed (so the
+                        // recordings queued behind it still run); the recording's own status says
+                        // it failed, and the job row says why.
+                        val job = database.processingJobDao().getJobForMeeting(meetingId).first()
+                        _uiState.value = _uiState.value.copy(
+                            stepTitle = "Processing failed",
+                            error = job?.errorMessage ?: "Processing didn't finish.",
+                            isQueued = false
+                        )
                     } else {
                         _uiState.value = ProcessingUiState(
                             stepTitle = "All AI tasks completed successfully!",
@@ -462,6 +473,7 @@ fun ProcessingScreen(
         profile = profile,
         rows = com.craftflowtechnologies.meetingmind.core.model.Workflows.processingStageRows(recordingType, selectedSpeakerCount),
         space = com.craftflowtechnologies.meetingmind.core.model.Workflows.space(recordingType),
+        audioDurationMs = durationMs,
         onMinimise = onNavigateBack,
         onStop = { viewModel.cancelPipeline(); onNavigateBack() },
         onRetry = { viewModel.retry(audioPath, durationMs, selectedSpeakerCount) { finishedId -> onProcessingComplete(finishedId) } },
@@ -487,7 +499,9 @@ internal fun ProcessingRunning(
     route: com.craftflowtechnologies.meetingmind.ai.transcription.RouteInfo? = null,
     onSwitchRoute: (com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoute) -> Unit = {},
     /** The recording's space, for the companion's per-space stage captions. */
-    space: com.craftflowtechnologies.meetingmind.core.model.NotebookSpace? = null
+    space: com.craftflowtechnologies.meetingmind.core.model.NotebookSpace? = null,
+    /** The recording's length, for the time-left estimate (ProcessingEstimate). 0 when unknown. */
+    audioDurationMs: Long = 0L
 ) {
     var confirmStop by remember { mutableStateOf(false) }
     // One primary action: when the companion's StatusLine carries the fix, the card keeps only its info and secondary.
@@ -505,7 +519,11 @@ internal fun ProcessingRunning(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 24.dp),
+            // Scrolls: with the timeline, the first-words card and the notification question, a phone-height
+            // screen can hold more than fits, and the bottom (Continue in background, Stop) must stay reachable.
+            modifier = Modifier.fillMaxSize().padding(innerPadding)
+                .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Header: minimise (never cancel), then what this is and who is doing the work.
@@ -526,9 +544,9 @@ internal fun ProcessingRunning(
                 }
             }
 
-            Spacer(Modifier.weight(0.3f))
+            Spacer(Modifier.height(12.dp))
             ProcessingCompanionBlock(state = state, space = space, onRetry = onRetry, onGetModel = onGetModel)
-            Spacer(Modifier.weight(0.3f))
+            Spacer(Modifier.height(12.dp))
 
             // The one number that matters, in a ring.
             ProgressRing(
@@ -550,7 +568,9 @@ internal fun ProcessingRunning(
             )
             if (!failed && !state.isComplete) {
                 Text(
-                    formatElapsed(elapsedMs) + " · you can leave this screen",
+                    // Time left, not just time spent (ProcessingEstimate). A queue wait says nothing about this run.
+                    if (state.isQueued) formatElapsed(elapsedMs) + " · you can leave this screen"
+                    else rememberTimeLeftLine(audioDurationMs, profile, elapsedMs, state.progressPercent),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -610,15 +630,21 @@ internal fun ProcessingRunning(
                     )
                 }
             }
+            // One plain sentence for this stage and where it runs, for anyone wondering (ProcessingExplainer).
+            if (!failed && !state.isComplete && !state.isQueued) {
+                WhatsHappening(state.stage, profile, Modifier.padding(top = com.craftflowtechnologies.meetingmind.ui.theme.MM.space.m))
+            }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(20.dp))
 
             when {
                 state.modelRequired -> OutcomeCard(
                     title = "The recording is saved",
                     message = state.modelRequiredMessage ?: "Transcribing on this phone needs the offline speech model. Download it, or switch to Internet mode in Settings.",
-                    primary = ("Get the model" to onGetModel).takeUnless { companionFix },
-                    secondary = "View recording" to onViewRecording
+                    // Always a way to run it again (Internet mode may be on, or a model may have landed).
+                    // Shown even when the companion's line carries a fix: that fix is the download, never the retry.
+                    primary = "Try again" to onRetry,
+                    secondary = "Get a speech model" to onGetModel
                 )
                 state.error != null -> OutcomeCard(
                     title = "The recording is saved",

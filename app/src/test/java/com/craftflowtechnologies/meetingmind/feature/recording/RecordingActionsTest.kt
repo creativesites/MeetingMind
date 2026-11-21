@@ -22,8 +22,9 @@ class RecordingActionsTest {
     }
 
     @Test fun lecturesAndStudyMarkWhatIsImportant() {
-        assertEquals(listOf("Important", "Question", "Note"), labels(RecordingType.LECTURE))
-        assertEquals(labels(RecordingType.LECTURE), labels(RecordingType.BIBLE_STUDY))
+        // Lectures also mark what will be on the exam and where they lost the thread (Learning).
+        assertEquals(listOf("Exam hint", "Lost me", "Important", "Question", "Note"), labels(RecordingType.LECTURE))
+        assertEquals(listOf("Important", "Question", "Note"), labels(RecordingType.BIBLE_STUDY))
     }
 
     @Test fun everythingElseGetsHighlightAndNote() {

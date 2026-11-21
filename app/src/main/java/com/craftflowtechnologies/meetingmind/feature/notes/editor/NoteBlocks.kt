@@ -113,6 +113,9 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Speaker3
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.filled.Refresh
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -682,6 +685,55 @@ internal fun RecordingBlock(
                 }
                 IconButtonSmall(Icons.AutoMirrored.Filled.OpenInNew, "Open full recording") { onOpen(card) }
             }
+            // Every recording that didn't become notes can be run again from here: failed, waiting for a
+            // speech model, or saved but never processed. The scheduler picks the right engine (an installed
+            // speech model or Internet mode); the badge turns to "Transcribing…" and the notification shows progress.
+            if (card.status in RetryableStatuses && card.audioPath != null && video == null) {
+                val retryScope = androidx.compose.runtime.rememberCoroutineScope()
+                var retrying by remember(card.meetingId, card.status) { mutableStateOf(false) }
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        when (card.status) {
+                            "MODEL_REQUIRED" -> "Get a speech model or use Internet mode, then try again."
+                            "SAVED" -> "The audio is safe. Make notes from it now."
+                            else -> "Processing stopped. The audio is safe."
+                        },
+                        fontSize = 12.5.sp,
+                        color = InkSecondary,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    )
+                    Surface(
+                        onClick = {
+                            if (!retrying) {
+                                retrying = true
+                                retryScope.launch {
+                                    runCatching {
+                                        com.craftflowtechnologies.meetingmind.ai.pipeline.ProcessingScheduler.enqueue(
+                                            context.applicationContext, card.meetingId, card.audioPath, card.durationMs.takeIf { it > 0 }
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !retrying,
+                        shape = RoundedCornerShape(50),
+                        color = Accent,
+                        modifier = Modifier.heightIn(min = 40.dp).testTag("recording_retry")
+                    ) {
+                        Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Refresh, contentDescription = null, tint = OnInk, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (retrying) "Starting…" else if (card.status == "SAVED") "Make notes" else "Try again",
+                                fontSize = 13.sp, color = OnInk, fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
             if (video != null) {
                 Surface(
                     onClick = { com.craftflowtechnologies.meetingmind.core.youtube.YouTubeSource.open(context, video) },
@@ -1087,3 +1139,5 @@ internal val blockPlaceholderTypes = mapOf(
     NoteBlockType.QUOTE to "Quote"
 )
 
+/** Recording statuses whose card offers Try again (or Make notes): nothing usable was made from the audio. */
+private val RetryableStatuses = setOf("ERROR", "MODEL_REQUIRED", "SAVED")

@@ -347,10 +347,12 @@ class MeetingDetailViewModel(
         PlaybackController.playAt(getApplication(), meetingId, meeting.value?.title ?: "Recording", File(path), positionMs)
     }
 
-    private val _asrModelInstalled = MutableStateFlow(
-        modelStorage.isInstalled(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8.id)
-    )
-    val asrModelInstalled: StateFlow<Boolean> = _asrModelInstalled.asStateFlow()
+    /** Bumped to re-read what is on disk; see [refreshModelAvailability]. */
+    private val _modelCheck = MutableStateFlow(0)
+
+    /** True when an installed speech model (any of them, not just Parakeet) can transcribe this recording's language. */
+    private fun asrUsableFor(language: String?): Boolean =
+        com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.resolve(modelStorage, null, language) != null
 
     private val _llmModelInstalled = MutableStateFlow(anySummarizationModelInstalled())
     /** Whether *any* Meeting Intelligence model is really on disk. Needed so a finished recording
@@ -367,7 +369,7 @@ class MeetingDetailViewModel(
     /** Re-checks real on-disk install state — call when the screen becomes visible again
      * (e.g. returning from the Model Manager), since a download may have finished meanwhile. */
     fun refreshModelAvailability() {
-        _asrModelInstalled.value = modelStorage.isInstalled(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8.id)
+        _modelCheck.value = _modelCheck.value + 1
         _llmModelInstalled.value = anySummarizationModelInstalled()
     }
 
@@ -376,6 +378,10 @@ class MeetingDetailViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = null
     )
+
+    /** Whether "Transcribe" can work now: decided by the same resolver processing uses, for this recording's language. */
+    val asrModelInstalled: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(meeting, _modelCheck) { m, _ -> asrUsableFor(m?.language) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), asrUsableFor(null))
 
     val transcript: StateFlow<Transcript> = transcriptRepository.getTranscript(meetingId).stateIn(
         scope = viewModelScope,
@@ -1335,9 +1341,9 @@ fun MeetingDetailScreen(
                             )
                             Text(
                                 text = if (asrModelInstalled) {
-                                    "The speech recognition model is now installed — transcribe this meeting on your device."
+                                    "A speech model is installed now. Transcribe this meeting on your device."
                                 } else {
-                                    "Download the offline speech recognition model to transcribe this meeting on your device."
+                                    "Get a speech model, or switch to Internet mode, then try again. The audio is safe."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -1356,8 +1362,19 @@ fun MeetingDetailScreen(
                                 Text("Transcribe")
                             }
                         } else {
-                            TextButton(onClick = onNavigateToModels) {
-                                Text("Manage Models")
+                            // Always a way to run it again (Internet mode may be on now), with the models one tap away.
+                            val currentMeeting = meeting
+                            Column(horizontalAlignment = Alignment.End) {
+                                TextButton(
+                                    onClick = {
+                                        val audioPath = currentMeeting?.audioFilePath
+                                        if (currentMeeting != null && audioPath != null) {
+                                            onTranscribe(currentMeeting.id, audioPath, currentMeeting.durationMs)
+                                        }
+                                    },
+                                    modifier = Modifier.testTag("meeting_model_retry")
+                                ) { Text("Try again") }
+                                TextButton(onClick = onNavigateToModels) { Text("Models") }
                             }
                         }
                     }

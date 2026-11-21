@@ -127,4 +127,20 @@ class ModelRepositoryTest {
         val afterLlm = prefs.preferencesFlow.first()
         assertEquals(ModelCatalog.qwen25_1_5bInstruct.id, afterLlm.selectedLlmModelId)
     }
+
+    @Test
+    fun `deleting the selected speech model hands the selection to another installed speech model`() = runBlocking {
+        val storage = LocalModelStorage(context)
+        storage.markInstalled(ModelCatalog.whisperTurboInt8.id)
+        val prefs = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context)
+        prefs.setSelectedAsrModel(ModelCatalog.omnilingualAsr300mInt8.id)
+        try {
+            val repository = ModelRepository(database = database, modelStorage = storage, userPreferencesManager = prefs)
+
+            assertTrue(repository.deleteModel(ModelCatalog.omnilingualAsr300mInt8.id) is AiResult.Success)
+            assertEquals(ModelCatalog.whisperTurboInt8.id, prefs.preferencesFlow.first().selectedAsrModelId)
+        } finally {
+            storage.delete(ModelCatalog.whisperTurboInt8.id)
+        }
+    }
 }

@@ -39,4 +39,11 @@ class DeviceCapabilityDetectorTest {
             DeviceCapabilityDetector.recommendedLlmModelId(totalRamGb = thresholdGb - 0.1f)
         )
     }
+
+    @Test
+    fun `the speech model suggestion follows the language and the phone's memory`() {
+        assertEquals(ModelCatalog.parakeetTdtV3Int8.id, DeviceCapabilityDetector.recommendedAsrModelId(8.0f, "en"))
+        assertEquals(ModelCatalog.omnilingualAsr300mInt8.id, DeviceCapabilityDetector.recommendedAsrModelId(8.0f, "sn"))
+        assertEquals(ModelCatalog.whisperTurboInt8.id, DeviceCapabilityDetector.recommendedAsrModelId(8.0f, "ja"))
+    }
 }

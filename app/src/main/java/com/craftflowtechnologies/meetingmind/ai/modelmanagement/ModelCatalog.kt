@@ -249,8 +249,11 @@ object ModelCatalog {
             ModelFileSpec(
                 fileName = "embedding.onnx",
                 downloadUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
-                sha256 = "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
-                sizeBytes = 29_596_978L
+                // Upstream replaced this file at the same URL on 2026-11-19 (k2-fsa/sherpa-onnx#4201, #4237): the old
+                // export gave embeddings that changed with clip length, splitting one speaker into several. The pin
+                // follows the fixed file; with the old pin every new download failed verification.
+                sha256 = "98daf9bcf1c8abf3db374fec4c27a5eda7c58705bb3f180d057b085a72a88bb5",
+                sizeBytes = 29_596_979L
             )
         ),
         minimumRamMb = 512,

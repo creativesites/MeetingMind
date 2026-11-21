@@ -14,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -133,5 +134,76 @@ class TranscriptionRunnerTest {
         assertTrue(out.complete)
         assertFalse(out.usedGemini)
         assertEquals(listOf(0L until total), ran.take(1))
+    }
+
+    /** A phone with no speech model: the local engine can only report that, and records each call. */
+    private fun runnerWithoutPhoneModel(t: FakeGemini, localCalls: MutableList<List<LongRange>>): TranscriptionRunner {
+        val engine = GeminiTranscriptionEngine(t, chunkConfig = ChunkPlanConfig(maxChunkMs = 25 * 60_000L, overlapMs = 20_000L))
+        return TranscriptionRunner(TranscriptionCheckpoints(dir), engine, localAvailable = false) { gaps, _, _ ->
+            localCalls += gaps
+            AiResult.ModelUnavailable("asr", "No local speech recognition model is installed on this device.")
+        }
+    }
+
+    @Test fun withNoPhoneModelAGeminiFailureEndsAsModelMissingWithoutTryingThePhone() = runBlocking {
+        val calls = mutableListOf<List<LongRange>>()
+        val out = runnerWithoutPhoneModel(FakeGemini(failOnStartMs = 25 * 60_000L - 20_000L), calls)
+            .run("m", audio, total, TranscriptionRoute.GEMINI)
+        assertFalse(out.complete)
+        assertTrue(out.localModelMissing)
+        assertTrue(out.geminiFailure!!.contains("Network lost"))
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test fun withNoPhoneModelThePhoneIsNeverOffered() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val job = async { runnerWithoutPhoneModel(FakeGemini(gate = gate), mutableListOf()).run("m", audio, total, TranscriptionRoute.GEMINI) }
+        delay(300)
+        val info = TranscriptionRoutes.info.value["m"]
+        gate.complete(Unit)
+        assertTrue(job.await().complete)
+        assertEquals(TranscriptionRoute.GEMINI, info?.current)
+        assertNull(info?.canSwitchTo)
+    }
+
+    @Test fun aSwitchAskedForBeforeTheRunIsIgnored() = runBlocking {
+        TranscriptionRoutes.request("m", TranscriptionRoute.LOCAL)
+        val out = runner(FakeGemini()) { gaps -> gaps.map { Triple(it.first, it.last + 1, emptyList<CanonicalWord>()) } }
+            .run("m", audio, total, TranscriptionRoute.GEMINI)
+        assertTrue(out.complete && out.usedGemini && !out.usedLocal)
+        assertNull(TranscriptionRoutes.peek("m"))
+    }
+
+    @Test fun aSwitchToThePhoneIsTheirOwnAndNothingIsLeftOfItAfterwards() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val job = async {
+            runner(FakeGemini(gate = gate)) { gaps -> gaps.map { Triple(it.first, it.last + 1, listOf(w("local", it.first + 100, it.first + 400))) } }
+                .run("m", audio, total, TranscriptionRoute.GEMINI)
+        }
+        delay(300)
+        TranscriptionRoutes.request("m", TranscriptionRoute.LOCAL)
+        val out = job.await()
+        assertTrue(out.complete && out.switchedToPhoneByUser)
+        assertNull(TranscriptionRoutes.peek("m"))
+        assertNull(TranscriptionRoutes.info.value["m"])
+    }
+
+    @Test fun aGeminiFailureIsNotCountedAsTheirSwitch() = runBlocking {
+        val out = runner(FakeGemini(failOnStartMs = 25 * 60_000L - 20_000L)) { gaps ->
+            gaps.map { Triple(it.first, it.last + 1, listOf(w("local", it.first + 1000, it.first + 1500))) }
+        }.run("m", audio, total, TranscriptionRoute.GEMINI)
+        assertTrue(out.complete)
+        assertFalse(out.switchedToPhoneByUser)
+    }
+
+    @Test fun theShownPercentRisesAfterEachFinishedPart() = runBlocking {
+        val seen = mutableListOf<Int>()
+        runner(FakeGemini()) { emptyList() }.run(
+            "m", audio, total, TranscriptionRoute.GEMINI,
+            onPartial = { _, _, _ -> seen += TranscriptionRoutes.info.value["m"]?.percentDone ?: -1 }
+        )
+        assertEquals(2, seen.size)
+        assertTrue("after part one: $seen", seen[0] > 0)
+        assertTrue("after part two: $seen", seen[1] > seen[0])
     }
 }
