@@ -81,7 +81,7 @@ class OnboardingTest {
                 }
             }
         }
-        val shots = listOf("welcome", "companion", "spaces", "sample", "setup")
+        val shots = listOf("welcome", "companion", "spaces", "sample", "setup", "ready")
         shots.forEachIndexed { i, name ->
             compose.waitForIdle()
             compose.mainClock.advanceTimeBy(600)
@@ -93,8 +93,16 @@ class OnboardingTest {
             }
             if (name == "setup") compose.onNodeWithTag("setup_choice_internet").performClick()
             compose.waitForIdle()
+            if (name == "ready") {
+                // You're set: the name, the summary and the optional Google sign-in, then the first actions.
+                compose.onNodeWithText("You're all set, Ana").assertExists()
+                compose.onNodeWithTag("onboarding_ready_summary").assertExists()
+                compose.onNodeWithTag("onboarding_ready_google").assertExists()
+                compose.onNodeWithTag("onboarding_ready_record").assertExists()
+                compose.onNodeWithTag("onboarding_ready_youtube").assertExists()
+            }
             compose.onRoot().captureRoboImage("build/outputs/roborazzi/onboarding_${i}_$name.png")
-            compose.onNodeWithTag("onboarding_next_btn").performClick()
+            compose.onNodeWithTag(if (name == "ready") "onboarding_ready_look_around" else "onboarding_next_btn").performClick()
             if (name == "sample") {
                 // Leaving the example early still plays Zuri's first reveal; closing it moves on.
                 waitFor { vm.hello.value != null }
@@ -108,7 +116,7 @@ class OnboardingTest {
         runBlocking {
             repeat(200) { if (!finished) { org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS); Thread.sleep(50); compose.waitForIdle() } }
             val prefs = awaitPrefs { it.onboardingCompleted }
-            assertTrue("finished=$finished completed=${prefs.onboardingCompleted} step=${vm.step.value}", finished && prefs.onboardingCompleted)
+            assertTrue("finished=$finished completed=${prefs.onboardingCompleted} step=${vm.step.value} stage=${vm.finishStage}", finished && prefs.onboardingCompleted)
             assertEquals("Ana", prefs.userName)
             assertEquals(ProcessingProfile.INTERNET, prefs.processingProfile)
             assertEquals(OnboardingSpaces.toSet() - com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL, prefs.identity.spaces)
@@ -123,7 +131,7 @@ class OnboardingTest {
         runBlocking {
             repeat(250) { if (!done) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(20) } }
             val prefs = awaitPrefs { it.onboardingCompleted }
-            assertTrue("done=$done completed=${prefs.onboardingCompleted}", done && prefs.onboardingCompleted)
+            assertTrue("done=$done completed=${prefs.onboardingCompleted} stage=${vm.finishStage}", done && prefs.onboardingCompleted)
             assertEquals(ProcessingProfile.OFFLINE, prefs.processingProfile)
             assertTrue(prefs.wifiOnlyDownload)
         }
@@ -162,7 +170,7 @@ class OnboardingTest {
         // No permissions step: the recorder asks for the microphone, the processing screen for notifications.
         compose.onNodeWithTag("onboarding_next_btn").performClick()
         repeat(200) { if (!recorded) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(25); compose.waitForIdle() } }
-        assertTrue("recorded=$recorded finished=$finished step=${vm.step.value} route=${vm.route.value}", recorded && !finished)
+        assertTrue("recorded=$recorded finished=$finished step=${vm.step.value} route=${vm.route.value} stage=${vm.finishStage}", recorded && !finished)
     }
 
     @Test fun `the sample is reachable offline and ends with notes and an answer`() {
@@ -203,7 +211,7 @@ class OnboardingTest {
     @Test fun `internet mode is the default, with the offline pack sized for this phone`() {
         val vm = OnboardingViewModel(app)
         assertEquals(SetupChoice.INTERNET, vm.setup.value)
-        assertTrue(vm.packBytes > 500_000_000L)
+        assertTrue(vm.phonePack.value.bytes > 500_000_000L)
     }
 
     /** The companion's idle loop never settles, so these draw it static on Canvas. */

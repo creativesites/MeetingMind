@@ -3,11 +3,8 @@ package com.craftflowtechnologies.meetingmind.feature.onboarding
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,13 +13,12 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Check
@@ -32,7 +28,6 @@ import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,17 +39,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.R
-import com.craftflowtechnologies.meetingmind.ui.theme.Brand
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import kotlinx.coroutines.delay
 
 /**
@@ -62,8 +54,10 @@ import kotlinx.coroutines.delay
  * and one question to ask. All of it is bundled and worked out in advance, so it runs offline and
  * sends nothing anywhere. It is labelled as an example throughout, and AI-made parts are marked.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SampleStep(kind: SampleKind, onKind: (SampleKind) -> Unit, onViewed: () -> Unit, onRecordInstead: () -> Unit) {
+    val c = MM.colors
     val sample = remember(kind) { SampleContent.of(kind) }
     var shown by remember(kind) { mutableIntStateOf(0) }
     var playing by remember(kind) { mutableStateOf(true) }
@@ -79,62 +73,77 @@ internal fun SampleStep(kind: SampleKind, onKind: (SampleKind) -> Unit, onViewed
     LaunchedEffect(kind, done) { if (done) onViewed() }
 
     StepTitle("See it work", "Watch an example recording become a transcript and notes. Nothing here is recorded or sent anywhere.")
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
-        SampleKind.entries.forEach { k -> Chip(k.label, selected = k == kind, tag = "sample_kind_${k.name}") { onKind(k) } }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+        modifier = Modifier.padding(bottom = MM.space.m)
+    ) {
+        SampleKind.entries.forEach { k ->
+            MMChip(k.label, selected = k == kind, onClick = { onKind(k) }, modifier = Modifier.testTag("sample_kind_${k.name}"))
+        }
     }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp).testTag("sample_transcript")
+        Modifier.fillMaxWidth().clip(MM.radius.card).background(c.surface)
+            .border(MMSize.hairline, c.line, MM.radius.card)
+            .padding(MM.space.l).testTag("sample_transcript")
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(sample.title, color = OnNavy, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Text("EXAMPLE", color = OnNavy, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp,
-                modifier = Modifier.clip(RoundedCornerShape(50)).background(Brush.horizontalGradient(listOf(Brand.Blue, Brand.Violet))).padding(horizontal = 9.dp, vertical = 3.dp))
+            Text(sample.title, style = MM.type.heading, color = c.ink, modifier = Modifier.weight(1f))
+            Text(
+                "EXAMPLE", style = MM.type.overline, color = c.accent,
+                modifier = Modifier.clip(MM.radius.pill).background(c.accentWash).padding(horizontal = MM.space.s, vertical = MM.space.xs)
+            )
         }
-        Text("${sample.length} · not your recording", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
+        Text(
+            "${sample.length} · not your recording", style = MM.type.caption, color = c.inkMuted,
+            modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.s)
+        )
         sample.lines.forEachIndexed { i, line ->
             AnimatedVisibility(visible = i < shown, enter = fadeIn() + slideInVertically { it / 3 }) {
-                Column(Modifier.padding(vertical = 5.dp)) {
-                    Text("${line.speaker} · ${line.time}", color = Brand.Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Text(line.text, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, lineHeight = 20.sp)
+                Column(Modifier.padding(vertical = MM.space.xs + 1.dp)) {
+                    Text("${line.speaker} · ${line.time}", style = MM.type.caption, color = c.accent)
+                    Text(line.text, style = MM.type.body, color = c.ink)
                 }
             }
         }
-        if (!done) Text(if (playing) "Transcribing…" else "Paused", color = Color.White.copy(alpha = 0.5f), fontSize = 12.5.sp, modifier = Modifier.padding(top = 6.dp))
+        if (!done) Text(if (playing) "Transcribing…" else "Paused", style = MM.type.caption, color = c.inkMuted, modifier = Modifier.padding(top = MM.space.s))
     }
-    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(Modifier.padding(top = MM.space.xs), horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
         if (!done) {
-            TextAction(if (playing) "Pause" else "Play", "sample_play_pause") { playing = !playing }
-            TextAction("Skip to notes", "sample_skip_to_notes") { shown = sample.lines.size }
+            SampleAction(if (playing) "Pause" else "Play", "sample_play_pause") { playing = !playing }
+            SampleAction("Skip to notes", "sample_skip_to_notes") { shown = sample.lines.size }
         }
-        TextAction("Replay", "sample_replay") { shown = 0; asked = false; playing = true }
+        SampleAction("Replay", "sample_replay") { shown = 0; asked = false; playing = true }
     }
 
     AnimatedVisibility(visible = done, enter = fadeIn() + slideInVertically { it / 4 }) {
-        Column(Modifier.padding(top = 8.dp)) {
+        Column(Modifier.padding(top = MM.space.s)) {
             ResultCard("Summary", "Made by AI from the transcript", "sample_summary") {
-                Text(sample.summary, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp, lineHeight = 20.sp)
+                Text(sample.summary, style = MM.type.body, color = c.ink)
             }
             ResultCard("Action items", "Found by AI", "sample_actions") {
                 sample.actions.forEach { a ->
-                    Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
-                        Box(Modifier.padding(top = 2.dp).size(18.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Filled.Check, contentDescription = null, tint = OnNavy, modifier = Modifier.size(11.dp))
+                    Row(Modifier.padding(vertical = MM.space.xs), verticalAlignment = Alignment.Top) {
+                        Box(
+                            Modifier.padding(top = 2.dp).size(18.dp).clip(CircleShape).background(c.accent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Check, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(11.dp))
                         }
-                        Spacer(Modifier.width(10.dp))
-                        Text(a, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp, lineHeight = 20.sp)
+                        Spacer(Modifier.width(MM.space.m))
+                        Text(a, style = MM.type.body, color = c.ink)
                     }
                 }
             }
             ResultCard("Ask about this recording", "Answers come from the transcript", "sample_ask") {
-                Chip(sample.question, selected = asked, tag = "sample_question") { asked = true }
+                MMChip(sample.question, selected = asked, onClick = { asked = true }, modifier = Modifier.testTag("sample_question"))
                 AnimatedVisibility(visible = asked, enter = fadeIn()) {
-                    Text(sample.answer, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = 10.dp).testTag("sample_answer"))
+                    Text(sample.answer, style = MM.type.body, color = c.ink, modifier = Modifier.padding(top = MM.space.m).testTag("sample_answer"))
                 }
             }
-            Text(
+            com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction(
                 "Rather record your own? Start now",
-                color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 8.dp, bottom = 12.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onRecordInstead).padding(vertical = 8.dp).testTag("sample_record_instead")
+                onClick = onRecordInstead,
+                modifier = Modifier.padding(top = MM.space.s, bottom = MM.space.m).testTag("sample_record_instead")
             )
         }
     }
@@ -149,8 +158,9 @@ internal fun SpacesStep(
     spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>,
     onToggle: (com.craftflowtechnologies.meetingmind.core.model.NotebookSpace) -> Unit
 ) {
+    val c = MM.colors
     StepTitle(stringResource(R.string.onboarding_spaces_title), stringResource(R.string.onboarding_spaces_line))
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
         OnboardingSpaces.forEach { space ->
             val on = space in spaces
             val (icon, title, line) = when (space) {
@@ -164,39 +174,32 @@ internal fun SpacesStep(
                     Triple(Icons.Filled.Person, R.string.onboarding_space_personal, R.string.onboarding_space_personal_line)
             }
             Row(
-                Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(18.dp))
-                    .background(SurfaceBase.copy(alpha = if (on) 0.1f else 0.04f))
-                    .border(
-                        if (on) 1.5.dp else 1.dp,
-                        if (on) Brush.linearGradient(Brand.sweep) else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.1f))),
-                        RoundedCornerShape(18.dp)
-                    )
+                Modifier.fillMaxWidth().heightIn(min = 72.dp)
+                    .choiceCard(c, MM.radius.card, on, MMSize.hairline * 4)
                     .toggleable(value = on, role = Role.Checkbox, onValueChange = { onToggle(space) })
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                    .padding(horizontal = MM.space.l, vertical = MM.space.m)
                     .testTag("space_${space.name}"),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = if (on) 0.14f else 0.06f)), contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, tint = if (on) Brand.Cyan else Color.White.copy(alpha = 0.55f), modifier = Modifier.size(22.dp))
-                }
-                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(stringResource(title), color = OnNavy, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Text(stringResource(line), color = Color.White.copy(alpha = 0.62f), fontSize = 13.sp, lineHeight = 18.sp)
+                IconTile(icon, on = on)
+                Column(Modifier.weight(1f).padding(horizontal = MM.space.m)) {
+                    Text(stringResource(title), style = MM.type.heading, color = c.ink)
+                    Text(stringResource(line), style = MM.type.secondary, color = c.inkSecondary)
                 }
                 Box(
-                    Modifier.size(24.dp).clip(CircleShape)
-                        .background(if (on) Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
-                        .border(if (on) 0.dp else 1.5.dp, Color.White.copy(alpha = 0.35f), CircleShape),
+                    Modifier.size(MMSize.icon).clip(CircleShape)
+                        .background(if (on) c.accent else c.surface)
+                        .border(if (on) 0.dp else 1.5.dp, if (on) c.accent else c.inkFaint, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (on) Icon(Icons.Filled.Check, contentDescription = null, tint = OnNavy, modifier = Modifier.size(15.dp))
+                    if (on) Icon(Icons.Filled.Check, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(15.dp))
                 }
             }
         }
     }
     Text(
-        stringResource(R.string.onboarding_spaces_footnote), color = Color.White.copy(alpha = 0.5f), fontSize = 12.5.sp, lineHeight = 17.sp,
-        modifier = Modifier.padding(top = 12.dp, bottom = 12.dp)
+        stringResource(R.string.onboarding_spaces_footnote), style = MM.type.caption, color = c.inkMuted,
+        modifier = Modifier.padding(top = MM.space.l, bottom = MM.space.l)
     )
 }
 
@@ -207,48 +210,52 @@ internal fun CompanionNameField(
     name: String,
     onName: (String) -> Unit
 ) {
+    val c = MM.colors
     val title = companion?.let {
         stringResource(R.string.companion_onboarding_step3_title, stringResource(com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster.displayName(it)))
     } ?: stringResource(R.string.onboarding_name_title_plain)
     Text(
-        stringResource(R.string.onboarding_name_optional, title), color = OnNavy, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 20.dp, bottom = 10.dp)
+        stringResource(R.string.onboarding_name_optional, title), style = MM.type.heading, color = c.ink,
+        modifier = Modifier.padding(top = MM.space.xl, bottom = MM.space.m)
     )
     OutlinedTextField(
         value = name, onValueChange = onName, singleLine = true,
-        placeholder = { Text(stringResource(R.string.onboarding_name_placeholder), color = Color.White.copy(alpha = 0.35f)) },
+        placeholder = { Text(stringResource(R.string.onboarding_name_placeholder), style = MM.type.heading, color = c.inkMuted) },
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Brand.Cyan, unfocusedBorderColor = Color.White.copy(alpha = 0.2f), cursorColor = Brand.Cyan,
-            focusedTextColor = OnNavy, unfocusedTextColor = OnNavy
+            focusedBorderColor = c.accent, unfocusedBorderColor = c.line, cursorColor = c.accent,
+            focusedTextColor = c.ink, unfocusedTextColor = c.ink,
+            focusedContainerColor = c.surface, unfocusedContainerColor = c.surface
         ),
-        shape = RoundedCornerShape(16.dp), textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp),
+        shape = MM.radius.card, textStyle = MM.type.heading,
         modifier = Modifier.fillMaxWidth().testTag("onboarding_name_field")
     )
-    Text(stringResource(R.string.onboarding_name_privacy), color = Color.White.copy(alpha = 0.5f), fontSize = 12.5.sp, modifier = Modifier.padding(top = 6.dp, bottom = 12.dp))
+    Text(
+        stringResource(R.string.onboarding_name_privacy), style = MM.type.caption, color = c.inkMuted,
+        modifier = Modifier.padding(top = MM.space.s, bottom = MM.space.l)
+    )
 }
 
+/** A text action under the example (Play, Skip, Replay): the accent, with a full touch target. */
 @Composable
-private fun Chip(label: String, selected: Boolean, tag: String, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = if (selected) OnNavy else Color.White.copy(alpha = 0.08f),
-        modifier = Modifier.clickable(onClick = onClick).testTag(tag)
-    ) {
-        Text(label, color = if (selected) Color.Black else Color.White.copy(alpha = 0.9f), fontSize = 13.5.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
-    }
+private fun SampleAction(label: String, tag: String, onClick: () -> Unit) {
+    com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction(label, onClick = onClick, modifier = Modifier.testTag(tag))
 }
 
-@Composable
-private fun TextAction(label: String, tag: String, onClick: () -> Unit) {
-    Text(label, color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 8.dp).testTag(tag))
-}
-
+/** One of the example's results. AI-made parts say so under their title. */
 @Composable
 private fun ResultCard(title: String, tagLine: String, tag: String, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp).testTag(tag)) {
-        Text(title, color = OnNavy, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Text(tagLine, color = Color.White.copy(alpha = 0.5f), fontSize = 11.5.sp, modifier = Modifier.padding(bottom = 8.dp))
+    val c = MM.colors
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = MM.space.s).clip(MM.radius.card).background(c.surface)
+            .border(MMSize.hairline, c.line, MM.radius.card)
+            .padding(MM.space.l).testTag(tag)
+    ) {
+        Text(title, style = MM.type.heading, color = c.ink)
+        Row(Modifier.padding(top = 2.dp, bottom = MM.space.m), verticalAlignment = Alignment.CenterVertically) {
+            Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = c.accent, modifier = Modifier.size(12.dp))
+            Spacer(Modifier.width(MM.space.xs))
+            Text(tagLine, style = MM.type.caption, color = c.inkMuted)
+        }
         content()
     }
 }

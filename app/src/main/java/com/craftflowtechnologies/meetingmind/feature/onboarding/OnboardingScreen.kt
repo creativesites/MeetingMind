@@ -1,42 +1,29 @@
 package com.craftflowtechnologies.meetingmind.feature.onboarding
 
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
-import android.Manifest
 import android.app.Application
-import android.app.Activity
-import android.content.ContextWrapper
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.provider.Settings
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -44,33 +31,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -78,20 +56,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.R
@@ -101,13 +73,13 @@ import com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionSettingsSource
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionSettingsStore
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
+import com.craftflowtechnologies.meetingmind.core.i18n.AppLanguage
+import com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager
 import com.craftflowtechnologies.meetingmind.core.model.DeviceCapabilities
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.core.setup.SetupGuide
-import com.craftflowtechnologies.meetingmind.core.setup.SetupPart
-import com.craftflowtechnologies.meetingmind.core.i18n.AppLanguage
-import com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager
-import com.craftflowtechnologies.meetingmind.ui.theme.Brand
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -300,8 +272,28 @@ class OnboardingViewModel(
     val setup: StateFlow<SetupChoice> = _setup.asStateFlow()
     fun setSetup(choice: SetupChoice) { _setup.value = choice }
 
-    /** The on-phone download for this phone, as the setup guide would fetch it. Shown as a size, never a catalogue. */
-    val packBytes: Long = SetupPart.entries.sumOf { part -> SetupGuide.modelsFor(part, deviceCapabilities.totalRamGb).sumOf { it.sizeBytes } }
+    /** The phone's free storage in bytes, or null when it can't be read. Read once: onboarding is short. */
+    private val freeBytes: Long? = runCatching { DeviceCapabilityDetector.getAvailableStorageMb() }.getOrNull()
+        ?.takeIf { it > 0 }?.let { it * 1_048_576L }
+
+    /**
+     * The models already on the phone (a reinstall can keep them). Read through the same storage the setup guide uses,
+     * so the pack never counts them again and the saved speech model never replaces one.
+     */
+    private val modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(application)
+    private fun isInstalled(id: String): Boolean = runCatching { modelStorage.isInstalled(id) }.getOrDefault(false)
+
+    /** The language recordings will most likely be in: the app language picked here, else the phone's. */
+    private fun startingRecordingLanguage(tag: String? = appLanguage.value): String? =
+        recordingLanguageFor(tag ?: java.util.Locale.getDefault().language)
+
+    /**
+     * The on-phone download for this phone and language, as the setup guide will fetch it. Shown as a size and the
+     * room it leaves, never a catalogue. Follows the language picked on the welcome.
+     */
+    val phonePack: StateFlow<PhonePack> = appLanguage
+        .map { tag -> phonePackFor(deviceCapabilities.totalRamGb, startingRecordingLanguage(tag), freeBytes, ::isInstalled) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, phonePackFor(deviceCapabilities.totalRamGb, startingRecordingLanguage(null), freeBytes, ::isInstalled))
 
     private fun lookFor(spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) =
         // Faith on its own (or with Personal) suggests the warm look; everything else the professional one.
@@ -310,15 +302,46 @@ class OnboardingViewModel(
             com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel.SANCTUARY
         else com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel.PROFESSIONAL
 
+    /** True once [completeOnboarding] has started: a second tap (two actions at once) must not finish twice. */
+    private var completing = false
+
+    /** How far [completeOnboarding] got, for tests: a save that never returns shows which one it was. */
+    @Volatile internal var finishStage: String = "not started"
+        private set
+
     fun completeOnboarding(onCompleted: () -> Unit) {
+        if (completing) return
+        completing = true
+        finishStage = "started"
         viewModelScope.launch {
             // A failed save (full or unreadable storage) must never crash or trap the person in onboarding:
             // they still go on, and anything not saved falls back to its default.
             runCatching {
+                finishStage = "companion"
                 companionSettings.setForm(_companion.value)
-                // The recommended models for this phone, so the on-device setup and the AI engine agree from the start.
-                prefs.setSelectedAsrModel(deviceCapabilities.recommendedAsrModelId)
-                prefs.setSelectedLlmModel(DeviceCapabilityDetector.recommendedLlmModelId(deviceCapabilities.totalRamGb))
+                // The person's saved choices, read before anything below changes them.
+                finishStage = "read saved"
+                val saved = prefs.preferencesFlow.first()
+                // Recordings start in the language the app is read in, when it's one we can record in, so the setup
+                // downloads the speech model that understands it (a Bemba reader gets Omnilingual, not Parakeet).
+                val language = startingRecordingLanguage()
+                finishStage = "language"
+                language?.let { prefs.setSelectedLanguage(it) }
+                // The models for this phone and language, so the on-device setup and the AI engine agree from the
+                // start. One already on the phone is kept: onboarding never pushes another model over it. The disk is
+                // checked off the main thread.
+                finishStage = "models"
+                val ramMb = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.ramMbOf(deviceCapabilities.totalRamGb)
+                val (speechId, thinkerId) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val installedSpeech = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.speechModels
+                        .map { it.id }.filter(::isInstalled).toSet()
+                    onboardingSpeechModelId(installedSpeech, saved.selectedAsrModelId, language ?: java.util.Locale.getDefault().language, ramMb) to
+                        onboardingThinkerModelId(modelStorage, saved.selectedLlmModelId, deviceCapabilities.totalRamGb)
+                }
+                finishStage = "save models"
+                prefs.setSelectedAsrModel(speechId)
+                prefs.setSelectedLlmModel(thinkerId)
+                finishStage = "profile"
                 prefs.setUserName(_userName.value)
                 prefs.setSpaces(_spaces.value)
                 prefs.setLook(lookFor(_spaces.value))
@@ -327,13 +350,17 @@ class OnboardingViewModel(
                     prefs.setWorkSettings(com.craftflowtechnologies.meetingmind.core.work.WorkSettings.forProfile(com.craftflowtechnologies.meetingmind.core.work.WorkProfile.GENERAL))
                 }
                 // The devotional and faith reminders follow the spaces just chosen.
+                finishStage = "schedules"
                 runCatching { com.craftflowtechnologies.meetingmind.core.navigation.SpaceSchedules.sync(getApplication()) }
+                finishStage = "mode"
                 // The choice is always saved, so the stored mode is never left at a default the person didn't pick.
                 prefs.setProcessingProfile(if (_setup.value == SetupChoice.ON_DEVICE) ProcessingProfile.OFFLINE else ProcessingProfile.INTERNET)
                 // Large on-phone downloads wait for Wi-Fi unless the person changes it (decision D7).
                 if (_setup.value == SetupChoice.ON_DEVICE) prefs.setWifiOnlyDownload(true)
             }
+            finishStage = "completed flag"
             runCatching { prefs.setOnboardingCompleted(true) }
+            finishStage = "done"
             onCompleted()
         }
     }
@@ -350,12 +377,16 @@ fun commitReading(profile: com.craftflowtechnologies.meetingmind.core.devotional
     if (choice == PlanChoice.AI) profile.copy(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI)
     else profile.copy(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.CLASSIC, planId = choice)
 
+
 /**
  * First run: a welcome that offers an example or the recorder, then step 1 of both routes, "Pick who keeps
  * you company" (ZURI_EXPERIENCE §5.1). On the example route come the example itself (with the hello First
  * Keep), what the person captures, how the AI runs, the Bible and reading steps for Faith, and the two
- * permissions that matter. The record route goes from the companion to the AI choice and then the
- * recorder. Every move is saved, so a killed app resumes where it was. Everything can be changed later.
+ * permissions that matter, then "You're all set" with the first thing to do. The record route goes from the
+ * companion to the AI choice and then the recorder. Every move is saved, so a killed app resumes where it was.
+ * Everything can be changed later.
+ *
+ * Always drawn in the light palette, whatever the app's dark or light setting (founder request, 2026-11-19).
  */
 @Composable
 fun OnboardingScreen(
@@ -365,6 +396,16 @@ fun OnboardingScreen(
     /** Picked "On this phone": onboarding ends on the guided on-device setup instead of Home. */
     onSetUpOnDevice: () -> Unit = onFinishOnboarding
 ) {
+    AlwaysLight { OnboardingContent(viewModel, onFinishOnboarding, onRecordNow, onSetUpOnDevice) }
+}
+
+@Composable
+private fun OnboardingContent(
+    viewModel: OnboardingViewModel,
+    onFinishOnboarding: () -> Unit,
+    onRecordNow: () -> Unit,
+    onSetUpOnDevice: () -> Unit
+) {
     val step by viewModel.step.collectAsState()
     val route by viewModel.route.collectAsState()
     var forward by remember { mutableStateOf(true) }
@@ -373,6 +414,8 @@ fun OnboardingScreen(
     val sampleKind by viewModel.sampleKind.collectAsState()
     val setup by viewModel.setup.collectAsState()
     val companion by viewModel.companion.collectAsState()
+    val pack by viewModel.phonePack.collectAsState()
+    val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
     val steps = stepsFor(route)
     val index = steps.indexOf(step).coerceAtLeast(0)
     val finish = when {
@@ -382,13 +425,12 @@ fun OnboardingScreen(
     }
     fun next() { forward = true; viewModel.next(steps, finish) }
     fun back() { forward = false; viewModel.back(steps) }
+    val c = MM.colors
+    val motion = MM.motion
 
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Brand.Navy, Brand.NavyLift, Brand.Navy))).testTag("onboarding")) {
-        // The icon's light, softly behind everything.
-        Box(Modifier.size(420.dp).align(Alignment.TopEnd).graphicsLayer { translationX = 160f; translationY = -120f }
-            .background(Brush.radialGradient(listOf(Brand.Violet.copy(alpha = 0.22f), Color.Transparent)), CircleShape))
-        Box(Modifier.size(380.dp).align(Alignment.BottomStart).graphicsLayer { translationX = -160f; translationY = 120f }
-            .background(Brush.radialGradient(listOf(Brand.Cyan.copy(alpha = 0.14f), Color.Transparent)), CircleShape))
+    Box(Modifier.fillMaxSize().testTag("onboarding")) {
+        // Paper, with the accent's soft light at the top; it runs under the transparent system bars.
+        LightBackdrop()
 
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
             if (step == OnboardingStep.WELCOME) {
@@ -398,27 +440,10 @@ fun OnboardingScreen(
                 val displayLabel = activeLang?.nativeName ?: stringResource(R.string.settings_language_follow_system)
 
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 10.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = MM.space.l, vertical = MM.space.s),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    Row(
-                        Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(Color.White.copy(alpha = 0.12f))
-                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(50))
-                            .clickable { showLanguagePicker = true }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "🌐 $displayLabel ▾",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    LanguagePill(displayLabel) { showLanguagePicker = true }
                 }
 
                 if (showLanguagePicker) {
@@ -432,11 +457,22 @@ fun OnboardingScreen(
                     )
                 }
             } else {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    repeat((steps.size - 1).coerceAtLeast(1)) { i ->
-                        Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp))
-                            .background(if (i < index) Brush.horizontalGradient(Brand.sweep) else Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.15f)))))
+                // Back, then the progress through the steps after the welcome.
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = MM.space.xs, vertical = MM.space.xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { back() }, modifier = Modifier.testTag("onboarding_back_btn")) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = c.ink)
                     }
+                    val total = (steps.size - 1).coerceAtLeast(1)
+                    StepProgress(
+                        done = index, total = total,
+                        description = stringResource(R.string.onboarding_progress_step, index.coerceIn(1, total), total),
+                        modifier = Modifier.weight(1f).padding(horizontal = MM.space.s)
+                    )
+                    // Balances the back button, so the progress sits in the middle.
+                    Spacer(Modifier.width(MMSize.minTouch))
                 }
                 val activeCompanion = companion
                 if (step != OnboardingStep.COMPANION && activeCompanion != null) {
@@ -446,14 +482,16 @@ fun OnboardingScreen(
             AnimatedContent(
                 targetState = step,
                 transitionSpec = {
+                    // A short slide in the direction of travel; a cut when animations are off (the motion tokens snap).
                     val dir = if (forward) 1 else -1
-                    (slideInHorizontally(tween(320)) { it / 5 * dir } + fadeIn(tween(320))) togetherWith (slideOutHorizontally(tween(220)) { -it / 5 * dir } + fadeOut(tween(180)))
+                    (slideInHorizontally(motion.enter()) { it / 6 * dir } + fadeIn(motion.enter())) togetherWith
+                        (slideOutHorizontally(motion.standard()) { -it / 6 * dir } + fadeOut(motion.quick()))
                 },
                 label = "step", modifier = Modifier.weight(1f)
             ) { s ->
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = MM.space.xl)) {
                     when (s) {
-                        OnboardingStep.WELCOME -> Welcome()
+                        OnboardingStep.WELCOME -> Welcome(companion)
                         OnboardingStep.COMPANION -> {
                             CompanionPickStep(companion, viewModel::setCompanion)
                             CompanionNameField(companion, userName, viewModel::setUserName)
@@ -464,24 +502,38 @@ fun OnboardingScreen(
                             onViewed = { viewModel.playHello(sampleKind) },
                             onRecordInstead = { forward = true; viewModel.startRecordNow() }
                         )
-                        OnboardingStep.SETUP -> SetupStep(viewModel.packBytes, setup, viewModel::setSetup)
+                        OnboardingStep.SETUP -> SetupStep(pack, setup, viewModel::setSetup)
+                        OnboardingStep.READY -> ReadyStepWithAccount(companion, userName, spaces, setup, pack)
                     }
                 }
             }
-            if (step == OnboardingStep.WELCOME) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    GradientButton(stringResource(R.string.onboarding_button_get_started), "onboarding_next_btn", Modifier.fillMaxWidth()) { forward = true; viewModel.startSample() }
-                    Text(
-                        stringResource(R.string.onboarding_button_record_now), color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).clickable { forward = true; viewModel.startRecordNow() }.padding(horizontal = 16.dp, vertical = 12.dp).testTag("onboarding_record_now_btn")
+            // One main action per step, pinned above the navigation bar.
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = MM.space.xl).padding(top = MM.space.m, bottom = MM.space.l),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (step == OnboardingStep.WELCOME) {
+                    GlowButton(stringResource(R.string.onboarding_button_get_started), "onboarding_next_btn", Modifier.fillMaxWidth()) {
+                        forward = true; viewModel.startSample()
+                    }
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction(
+                        stringResource(R.string.onboarding_button_record_now),
+                        onClick = { forward = true; viewModel.startRecordNow() },
+                        modifier = Modifier.padding(top = MM.space.s).testTag("onboarding_record_now_btn")
                     )
-                }
-            } else {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.action_back), color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
-                    Spacer(Modifier.weight(1f))
+                } else if (step == OnboardingStep.READY) {
+                    ReadyActions(readyActionsFor(setup, phoneReady = pack.ready)) { action ->
+                        when (action) {
+                            ReadyAction.RECORD -> viewModel.completeOnboarding(onRecordNow)
+                            // Home first, then the sheet over it: it lives above the navigation, so it survives the move.
+                            ReadyAction.YOUTUBE -> viewModel.completeOnboarding { onFinishOnboarding(); youTube.open() }
+                            ReadyAction.SET_UP_PHONE -> viewModel.completeOnboarding(onSetUpOnDevice)
+                            ReadyAction.LOOK_AROUND -> viewModel.completeOnboarding(onFinishOnboarding)
+                        }
+                    }
+                } else {
                     val last = index >= steps.lastIndex
-                    GradientButton(
+                    GlowButton(
                         when {
                             step == OnboardingStep.SAMPLE -> stringResource(R.string.onboarding_button_make_it_mine)
                             last && route == EntryRoute.RECORD -> stringResource(R.string.onboarding_button_start_recording)
@@ -489,7 +541,8 @@ fun OnboardingScreen(
                             last -> stringResource(R.string.onboarding_button_start_using)
                             else -> stringResource(R.string.onboarding_button_continue)
                         },
-                        "onboarding_next_btn"
+                        "onboarding_next_btn",
+                        Modifier.fillMaxWidth()
                     ) { next() }
                 }
             }
@@ -519,6 +572,7 @@ internal const val SampleNoteId = "onboarding.sample"
 
 @Composable
 private fun OnboardingCompanionGuideBar(step: OnboardingStep, form: CompanionForm, userName: String) {
+    val c = MM.colors
     val companionName = stringResource(CompanionRoster.displayName(form))
     val state = when (step) {
         OnboardingStep.SAMPLE -> com.craftflowtechnologies.meetingmind.core.companion.CompanionState.LISTENING
@@ -537,51 +591,62 @@ private fun OnboardingCompanionGuideBar(step: OnboardingStep, form: CompanionFor
     }
     if (line.isEmpty()) return
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(16.dp)).background(SurfaceBase.copy(alpha = 0.08f))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp).testTag("onboarding_companion_guide"),
+        Modifier.fillMaxWidth().padding(horizontal = MM.space.xl, vertical = MM.space.xs)
+            .clip(MM.radius.card).background(c.surface)
+            .border(MMSize.hairline, c.lineSoft, MM.radius.card)
+            .padding(horizontal = MM.space.m, vertical = MM.space.s).testTag("onboarding_companion_guide"),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.Companion(form = form, state = state, size = 34.dp, variant = variant)
-        Spacer(Modifier.width(10.dp))
-        Text(line, color = Color.White.copy(alpha = 0.88f), fontSize = 13.sp, lineHeight = 18.sp)
+        Box(Modifier.size(MMSize.minTouch).clip(MM.radius.pill).background(c.accentWash), contentAlignment = Alignment.Center) {
+            com.craftflowtechnologies.meetingmind.core.ui.mm.companion.Companion(form = form, state = state, size = 34.dp, variant = variant)
+        }
+        Spacer(Modifier.width(MM.space.m))
+        Text(line, style = MM.type.secondary, color = c.inkSecondary)
     }
 }
 
 @Composable
-private fun GradientButton(label: String, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = modifier.testTag(tag)) {
-        Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            Text(label, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-            Spacer(Modifier.width(8.dp))
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+private fun LanguagePill(label: String, onClick: () -> Unit) {
+    val c = MM.colors
+    Surface(
+        onClick = onClick, shape = MM.radius.pill, color = c.surface, border = BorderStroke(MMSize.hairline, c.line),
+        modifier = Modifier.heightIn(min = MMSize.minTouch).testTag("onboarding_language_btn")
+    ) {
+        Row(Modifier.padding(horizontal = MM.space.m, vertical = MM.space.s), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Language, contentDescription = stringResource(R.string.onboarding_language_selector_hint), tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
+            Spacer(Modifier.width(MM.space.s))
+            Text(label, style = MM.type.bodyStrong, color = c.ink, maxLines = 1)
+            Spacer(Modifier.width(MM.space.xs))
+            Icon(Icons.Filled.ExpandMore, contentDescription = null, tint = c.inkMuted, modifier = Modifier.size(MMSize.iconSmall))
         }
     }
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Welcome() {
-    val t = rememberInfiniteTransition(label = "glow")
-    val glow by t.animateFloat(0.85f, 1.12f, infiniteRepeatable(tween(2600), RepeatMode.Reverse), label = "g")
-    Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        // The launcher icon on the brand's soft light.
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(160.dp)) {
-            Box(Modifier.size(160.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
-            com.craftflowtechnologies.meetingmind.core.ui.AppIconTile(size = 104.dp)
-        }
-        Text("MeetingMind", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 4.dp))
-        Text(stringResource(R.string.onboarding_headline), color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 32.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
+private fun Welcome(companion: CompanionForm?) {
+    val c = MM.colors
+    // Shorter phones get a smaller hero, so the promise and its pills stay in view above the buttons.
+    val compact = LocalConfiguration.current.screenHeightDp < 720
+    Column(Modifier.fillMaxWidth().padding(top = if (compact) MM.space.xs else MM.space.xl), horizontalAlignment = Alignment.CenterHorizontally) {
+        CompanionHalo(
+            form = companion, size = if (compact) 148.dp else 208.dp,
+            contentDescription = companion?.let { stringResource(CompanionRoster.displayName(it)) }
+        )
+        Text("MeetingMind", style = MM.type.overline, color = c.accent, modifier = Modifier.padding(top = MM.space.m))
         Text(
-            stringResource(R.string.onboarding_body),
-            color = Color.White.copy(alpha = 0.72f), fontSize = 15.sp, lineHeight = 21.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp)
+            stringResource(R.string.onboarding_headline), style = MM.type.display, color = c.ink,
+            textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.s)
+        )
+        Text(
+            stringResource(R.string.onboarding_body), style = MM.type.body, color = c.inkSecondary,
+            textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.m, start = MM.space.s, end = MM.space.s)
         )
         // Wraps to a second line on narrow screens instead of squeezing a pill into a column of letters.
-        androidx.compose.foundation.layout.FlowRow(
-            Modifier.padding(top = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        FlowRow(
+            Modifier.padding(top = MM.space.xl, bottom = MM.space.l),
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(MM.space.s)
         ) {
             Pill(Icons.Filled.Lock, stringResource(R.string.onboarding_pill_private), "welcome_pill_private")
             Pill(Icons.Filled.PhoneAndroid, stringResource(R.string.onboarding_pill_offline), "welcome_pill_offline")
@@ -596,135 +661,92 @@ private fun OnboardingLanguageDialog(
     onSelect: (String?) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val c = MM.colors
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(SurfaceBase)
-                .padding(20.dp)
+                .clip(MM.radius.card)
+                .background(c.surface)
+                .padding(MM.space.xl)
         ) {
-            Text(
-                text = stringResource(R.string.settings_language_title),
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = stringResource(R.string.settings_language_asr_notice),
-                fontSize = 12.5.sp,
-                color = com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary,
-                lineHeight = 17.sp
-            )
-            Spacer(Modifier.height(14.dp))
+            Text(stringResource(R.string.settings_language_title), style = MM.type.title, color = c.ink)
+            Spacer(Modifier.height(MM.space.xs))
+            Text(stringResource(R.string.settings_language_asr_notice), style = MM.type.secondary, color = c.inkSecondary)
+            Spacer(Modifier.height(MM.space.l))
 
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
+                    .selectableGroup()
             ) {
                 // System default option
                 val isDefault = currentTag.isNullOrBlank()
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isDefault) com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised else Color.Transparent)
-                        .clickable { onSelect(null) }
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.settings_language_follow_system),
-                            fontSize = 15.sp,
-                            fontWeight = if (isDefault) FontWeight.SemiBold else FontWeight.Normal,
-                            color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
-                        )
-                        Text(
-                            text = stringResource(R.string.settings_language_follow_system_summary),
-                            fontSize = 12.sp,
-                            color = com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
-                        )
-                    }
-                    if (isDefault) {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = null,
-                            tint = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
+                LanguageRow(
+                    title = stringResource(R.string.settings_language_follow_system),
+                    subtitle = stringResource(R.string.settings_language_follow_system_summary),
+                    selected = isDefault
+                ) { onSelect(null) }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(MM.space.xs))
 
                 AppLanguage.SUPPORTED.forEach { lang ->
                     val isSelected = !isDefault && currentTag.equals(lang.tag, ignoreCase = true)
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised else Color.Transparent)
-                            .clickable { onSelect(lang.tag) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = lang.nativeName,
-                                fontSize = 15.sp,
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
-                            )
-                            Text(
-                                text = lang.englishName,
-                                fontSize = 12.sp,
-                                color = com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
-                            )
-                        }
-                        if (isSelected) {
-                            Icon(
-                                Icons.Filled.Check,
-                                contentDescription = null,
-                                tint = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
+                    LanguageRow(title = lang.nativeName, subtitle = lang.englishName, selected = isSelected) { onSelect(lang.tag) }
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(MM.space.m))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                androidx.compose.material3.TextButton(onClick = onDismiss) {
-                    Text(
-                        stringResource(R.string.action_done),
-                        color = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction(stringResource(R.string.action_done), onClick = onDismiss)
             }
         }
     }
 }
 
 @Composable
-private fun Pill(icon: ImageVector, label: String, tag: String) {
-    Row(Modifier.testTag(tag).clip(RoundedCornerShape(50)).background(SurfaceBase.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = Brand.Cyan, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.5.sp, maxLines = 1, softWrap = false)
+private fun LanguageRow(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
+    val c = MM.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = MMSize.minTouch)
+            .clip(MM.radius.small)
+            .background(if (selected) c.accentWash else Color.Transparent)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = MM.space.m, vertical = MM.space.s),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = if (selected) MM.type.bodyStrong else MM.type.body, color = c.ink)
+            Text(subtitle, style = MM.type.caption, color = c.inkMuted)
+        }
+        if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
     }
 }
 
 @Composable
+private fun Pill(icon: ImageVector, label: String, tag: String) {
+    val c = MM.colors
+    Row(
+        Modifier.testTag(tag).clip(MM.radius.pill).background(c.surface)
+            .border(MMSize.hairline, c.line, MM.radius.pill)
+            .padding(horizontal = MM.space.m, vertical = MM.space.s),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = c.accent, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(MM.space.s))
+        Text(label, style = MM.type.caption, color = c.inkSecondary, maxLines = 1, softWrap = false)
+    }
+}
+
+/** A step's title and its one-line explanation: the display face, then the body in the secondary ink. */
+@Composable
 internal fun StepTitle(title: String, line: String) {
-    Text(title, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.6).sp, lineHeight = 34.sp, modifier = Modifier.padding(top = 12.dp))
-    Text(line, color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+    Text(title, style = MM.type.display, color = MM.colors.ink, modifier = Modifier.padding(top = MM.space.l))
+    Text(line, style = MM.type.body, color = MM.colors.inkSecondary, modifier = Modifier.padding(top = MM.space.s, bottom = MM.space.xl))
 }
 
 /**
@@ -733,65 +755,91 @@ internal fun StepTitle(title: String, line: String) {
  * The backup text provider is disclosed (decision D10): text, never audio, and only in Internet mode.
  */
 @Composable
-private fun SetupStep(packBytes: Long, choice: SetupChoice, onChoice: (SetupChoice) -> Unit) {
+private fun SetupStep(pack: PhonePack, choice: SetupChoice, onChoice: (SetupChoice) -> Unit) {
+    val c = MM.colors
+    val motion = MM.motion
     var compare by rememberSaveable { mutableStateOf(false) }
     StepTitle(stringResource(R.string.onboarding_setup_title), stringResource(R.string.onboarding_setup_line))
-    ChoiceCard(
-        selected = choice == SetupChoice.INTERNET, onClick = { onChoice(SetupChoice.INTERNET) },
-        icon = Icons.Filled.Cloud, title = stringResource(R.string.onboarding_setup_internet),
-        badge = stringResource(R.string.onboarding_setup_internet_badge),
-        line = stringResource(R.string.onboarding_setup_internet_line),
-        tag = "setup_choice_internet", alwaysShowExtra = true
-    ) {
-        SetupFacts(
-            stringResource(R.string.onboarding_setup_internet_fact_1),
-            stringResource(R.string.onboarding_setup_internet_fact_2),
-            stringResource(R.string.onboarding_setup_internet_fact_3)
-        )
-    }
-    ChoiceCard(
-        selected = choice == SetupChoice.ON_DEVICE, onClick = { onChoice(SetupChoice.ON_DEVICE) },
-        icon = Icons.Filled.PhoneAndroid, title = stringResource(R.string.onboarding_setup_device),
-        badge = stringResource(R.string.onboarding_setup_device_badge),
-        line = stringResource(R.string.onboarding_setup_device_line),
-        tag = "setup_choice_device", alwaysShowExtra = true
-    ) {
-        SetupFacts(
-            stringResource(R.string.onboarding_setup_device_fact_1),
-            stringResource(R.string.onboarding_setup_device_fact_2, SetupGuide.formatBytes(packBytes)),
-            stringResource(R.string.onboarding_setup_device_fact_3)
-        )
-    }
-    Text(
-        stringResource(if (compare) R.string.onboarding_setup_compare_hide else R.string.onboarding_setup_compare),
-        color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 4.dp).heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
-            .clickable { compare = !compare }.padding(vertical = 12.dp).testTag("setup_compare")
-    )
-    androidx.compose.animation.AnimatedVisibility(visible = compare) {
-        Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    Column(Modifier.selectableGroup()) {
+        ChoiceCard(
+            selected = choice == SetupChoice.INTERNET, onClick = { onChoice(SetupChoice.INTERNET) },
+            icon = Icons.Filled.Cloud, title = stringResource(R.string.onboarding_setup_internet),
+            badge = stringResource(R.string.onboarding_setup_internet_badge),
+            line = stringResource(R.string.onboarding_setup_internet_line),
+            tag = "setup_choice_internet", alwaysShowExtra = true
         ) {
-            Text(stringResource(R.string.onboarding_setup_always_online), color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, lineHeight = 18.sp)
-            Text(stringResource(R.string.onboarding_setup_backup_disclosure), color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, lineHeight = 18.sp)
-            Text(stringResource(R.string.onboarding_setup_confidential), color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, lineHeight = 18.sp)
+            SetupFacts(
+                stringResource(R.string.onboarding_setup_internet_fact_1),
+                stringResource(R.string.onboarding_setup_internet_fact_2),
+                stringResource(R.string.onboarding_setup_internet_fact_3)
+            )
+        }
+        ChoiceCard(
+            selected = choice == SetupChoice.ON_DEVICE, onClick = { onChoice(SetupChoice.ON_DEVICE) },
+            icon = Icons.Filled.PhoneAndroid, title = stringResource(R.string.onboarding_setup_device),
+            badge = stringResource(R.string.onboarding_setup_device_badge),
+            line = stringResource(R.string.onboarding_setup_device_line),
+            tag = "setup_choice_device", alwaysShowExtra = true
+        ) {
+            SetupFacts(
+                stringResource(R.string.onboarding_setup_device_fact_1),
+                if (pack.ready) stringResource(R.string.onboarding_setup_device_fact_ready)
+                else stringResource(R.string.onboarding_setup_device_fact_2, SetupGuide.formatBytes(pack.bytes)),
+                stringResource(R.string.onboarding_setup_device_fact_3)
+            )
+            // The room the download leaves, or a plain warning when this phone is short of space. Nothing when it's
+            // all on the phone already.
+            if (!pack.ready) when (pack.fits) {
+                true -> pack.freeAfterBytes?.let {
+                    Text(
+                        stringResource(R.string.onboarding_setup_device_fits, SetupGuide.formatBytes(it)),
+                        style = MM.type.caption, color = c.inkMuted,
+                        modifier = Modifier.padding(top = MM.space.s).testTag("setup_pack_fits")
+                    )
+                }
+                false -> com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine(
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind.Warning,
+                    stringResource(R.string.onboarding_setup_device_tight, SetupGuide.formatBytes(pack.freeBytes ?: 0L)),
+                    modifier = Modifier.padding(top = MM.space.s).testTag("setup_pack_tight")
+                )
+                null -> Unit
+            }
+        }
+    }
+    com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction(
+        stringResource(if (compare) R.string.onboarding_setup_compare_hide else R.string.onboarding_setup_compare),
+        onClick = { compare = !compare },
+        modifier = Modifier.padding(top = MM.space.xs).testTag("setup_compare")
+    )
+    AnimatedVisibility(
+        visible = compare,
+        enter = fadeIn(motion.standard()) + expandVertically(motion.standard()),
+        exit = fadeOut(motion.quick()) + shrinkVertically(motion.standard())
+    ) {
+        Column(
+            Modifier.fillMaxWidth().clip(MM.radius.card).background(c.surfaceSunk).padding(MM.space.l),
+            verticalArrangement = Arrangement.spacedBy(MM.space.s)
+        ) {
+            Text(stringResource(R.string.onboarding_setup_always_online), style = MM.type.secondary, color = c.inkSecondary)
+            Text(stringResource(R.string.onboarding_setup_backup_disclosure), style = MM.type.secondary, color = c.inkSecondary)
+            Text(stringResource(R.string.onboarding_setup_confidential), style = MM.type.secondary, color = c.inkSecondary)
         }
     }
     Text(
-        stringResource(R.string.onboarding_setup_change_later), color = Color.White.copy(alpha = 0.5f), fontSize = 12.5.sp,
-        modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
+        stringResource(R.string.onboarding_setup_change_later), style = MM.type.caption, color = c.inkMuted,
+        modifier = Modifier.padding(top = MM.space.s, bottom = MM.space.l)
     )
 }
 
 @Composable
 private fun SetupFacts(vararg facts: String) {
-    Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val c = MM.colors
+    Column(Modifier.padding(top = MM.space.m), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
         facts.forEach { fact ->
             Row(verticalAlignment = Alignment.Top) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = Brand.Cyan, modifier = Modifier.padding(top = 2.dp).size(14.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(fact, color = Color.White.copy(alpha = 0.82f), fontSize = 13.sp, lineHeight = 18.sp)
+                Icon(Icons.Filled.Check, contentDescription = null, tint = c.accent, modifier = Modifier.padding(top = 2.dp).size(14.dp))
+                Spacer(Modifier.width(MM.space.s))
+                Text(fact, style = MM.type.secondary, color = c.inkSecondary)
             }
         }
     }
@@ -799,22 +847,56 @@ private fun SetupFacts(vararg facts: String) {
 
 @Composable
 private fun ChoiceCard(selected: Boolean, onClick: () -> Unit, icon: ImageVector, title: String, badge: String?, line: String, tag: String, alwaysShowExtra: Boolean = false, extra: @Composable () -> Unit = {}) {
+    val c = MM.colors
     Column(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(20.dp))
-            .background(SurfaceBase.copy(alpha = if (selected) 0.1f else 0.05f))
-            .border(if (selected) 1.5.dp else 1.dp, if (selected) Brush.linearGradient(Brand.sweep) else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.1f))), RoundedCornerShape(20.dp))
-            .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick).padding(16.dp).testTag(tag)
+        Modifier.fillMaxWidth().padding(vertical = MM.space.s)
+            .choiceCard(c, MM.radius.card, selected, MM.elevation.floating)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(MM.space.l).testTag(tag)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = if (selected) Brand.Cyan else Color.White.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            badge?.let { Text(it, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Brush.horizontalGradient(listOf(Brand.Blue, Brand.Violet))).padding(horizontal = 9.dp, vertical = 3.dp)) }
+            IconTile(icon, on = selected)
+            Spacer(Modifier.width(MM.space.m))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MM.type.heading, color = c.ink)
+                badge?.let {
+                    Text(
+                        it, style = MM.type.caption, color = c.accent,
+                        modifier = Modifier.padding(top = MM.space.xs).clip(MM.radius.pill).background(c.accentWash)
+                            .padding(horizontal = MM.space.s, vertical = 2.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(MM.space.s))
+            ChoiceMark(selected)
         }
-        Text(line, color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 6.dp))
+        Text(line, style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.padding(top = MM.space.m))
         if (selected || alwaysShowExtra) extra()
     }
 }
 
-/** Text on the onboarding's navy: always white, whatever the app theme. */
-internal val OnNavy = Color.White.copy(alpha = 1f)
+/**
+ * The "You're all set" step with the Circles account behind its Sign in with Google. The account comes from the
+ * Circles repository; if that can't be built (no Firebase in this build or a test), the step still shows, signed out.
+ */
+@Composable
+private fun ReadyStepWithAccount(
+    companion: CompanionForm?,
+    userName: String,
+    spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>,
+    setup: SetupChoice,
+    pack: PhonePack
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repo = remember { runCatching { com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context) }.getOrNull() }
+    val account: com.craftflowtechnologies.meetingmind.feature.circles2.AccountViewModel? = repo?.let {
+        androidx.lifecycle.viewmodel.compose.viewModel(factory = com.craftflowtechnologies.meetingmind.feature.circles2.AccountViewModel.Factory(it))
+    }
+    val state = account?.state?.collectAsState()?.value ?: com.craftflowtechnologies.meetingmind.feature.circles2.AccountUiState()
+    ReadyStep(
+        companion = companion, userName = userName, spaces = spaces, setup = setup, pack = pack, account = state,
+        onLink = { ctx -> account?.link(ctx) },
+        onSwitchAccount = { account?.switchAccount() },
+        onDismissConflict = { account?.dismissConflict() }
+    )
+}

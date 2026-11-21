@@ -7,9 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OnboardingModelTest {
-    @Test fun `the example route is welcome, companion, spaces, the example and how MeetingMind thinks`() {
+    @Test fun `the example route is welcome, companion, spaces, the example, how MeetingMind thinks and you're set`() {
         assertEquals(
-            listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SPACES, OnboardingStep.SAMPLE, OnboardingStep.SETUP),
+            listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SPACES, OnboardingStep.SAMPLE, OnboardingStep.SETUP, OnboardingStep.READY),
             stepsFor(EntryRoute.SAMPLE)
         )
     }

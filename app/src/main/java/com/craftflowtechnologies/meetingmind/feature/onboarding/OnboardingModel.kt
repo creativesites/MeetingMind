@@ -13,23 +13,27 @@ const val ONBOARDING_VERSION = 4
  * - [SPACES]: the four spaces, all selected by default; one question instead of goals, outcomes and a work profile.
  * - [SAMPLE]: the example becoming notes, ending in Zuri's First Keep reveal (the hello moment).
  * - [SETUP]: how MeetingMind thinks, Internet or on this phone. Always saved; no model catalogue here.
+ * - [READY]: "You're all set": what was chosen, an optional Sign in with Google for Circles, and the first thing to
+ *   do (record, a YouTube video's notes, or the on-phone download), one tap away.
  *
  * Permissions are asked where they are used (the recorder asks for the microphone, the processing screen for
  * notifications), and the Bible and reading plan are set up in Faith, so neither is an onboarding step.
  */
-enum class OnboardingStep { WELCOME, COMPANION, SPACES, SAMPLE, SETUP }
+enum class OnboardingStep { WELCOME, COMPANION, SPACES, SAMPLE, SETUP, READY }
 
 /** How the person chose to start. */
 enum class EntryRoute { SAMPLE, RECORD }
 
 /**
  * The steps for a route. Both start with the companion. The example route then asks which spaces to keep, shows
- * the example (with the hello First Keep) and sets how the AI runs. The record route goes from the companion
- * straight to the AI choice, because a first recording that can't be transcribed would miss the point.
+ * the example (with the hello First Keep), sets how the AI runs and ends on "You're all set". The record route goes
+ * from the companion straight to the AI choice and then the recorder, because a first recording that can't be
+ * transcribed would miss the point. Adding [OnboardingStep.READY] at the end leaves saved progress valid, so
+ * [ONBOARDING_VERSION] stays.
  */
 fun stepsFor(route: EntryRoute): List<OnboardingStep> = when (route) {
     EntryRoute.RECORD -> listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SETUP)
-    EntryRoute.SAMPLE -> listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SPACES, OnboardingStep.SAMPLE, OnboardingStep.SETUP)
+    EntryRoute.SAMPLE -> listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SPACES, OnboardingStep.SAMPLE, OnboardingStep.SETUP, OnboardingStep.READY)
 }
 
 /** The spaces onboarding offers, in the order they are shown. All four start selected. */
