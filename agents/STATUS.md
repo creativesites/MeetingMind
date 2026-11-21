@@ -2,6 +2,24 @@
 
 Updated: 2026-11-18. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
+## Companion milestones, calm rhythms and paywall polish (2026-11-21)
+- **Proud milestones** (ZURI_EXPERIENCE §3.1, task Z-21): `CompanionMachine` could already play Proud, but nothing in the app ever triggered a milestone.
+  - The pure `MilestoneDetector` covers the tenth note, all cards cleared, seven devotional days in a month and a finished reading plan.
+  - `MilestoneCard` and `MilestoneHost` show a private card once ever per milestone, through the ledger. It never shows with Presence OFF or while the companion is hidden; with "No companion" it uses the glyph.
+  - Wired: the tenth note, in `NoteMomentHost` after an arrival First Keep; Faith reading plan and devotionals, on the Faith home (Home session).
+  - Not wired: all cards cleared. It needs a one-line call in Learning's study screens.
+- **Calm rhythms** (§5.7): the pure `CompanionRhythm` (this week, at least two, never a streak) and `RhythmLine`. Placed by the Home session: Faith shows days with the Word; Today, Calm, Work and Learn show notes kept. Learn should switch to review days once study has a review-times query.
+- **Paywall polish**, on the build runner's light redesign:
+  - every string moved to `strings_paywall.xml`;
+  - no companion on the paywall (§9); the halo holds the app tile, 96 dp on phones under 800 dp tall;
+  - the "what happens next" label is no longer a fixed width;
+  - the "—" cell has a "Not included" description.
+- **Tests:**
+  - Green (build-runner run, 2026-11-21): `MilestoneDetectorTest`, `CompanionRhythmTest`, `MilestoneHostRulesTest`, `NoteMomentHostTest`, `OpenRevealTest`, `CompanionTapPlayTest`, `PaywallCopyTest`.
+  - Screenshots `companion_moments_*` (light and dark) were recorded and reviewed.
+  - `PaywallPremiumScreenshotTest` is waiting on a re-record after the halo fix.
+- **Open:** not checked on the S20+.
+
 ## Release v50 for closed testing (2026-11-18)
 - **Bundle:** built at `7f7e68e`, copied to the founder's `~/Downloads/meetingmind-v50.aab` (216 MB, both ABIs). Verified: upload-key signed (SHA-1 A5:DC:…:7C:D5), versionName 1.0-v50, closed testing all-access on, no raw API keys in the dex, and the diarization callback keeps `invoke(IIJ)Ljava/lang/Integer;` after R8. Not pushed. Upload to closed testing is the founder's (the file is too large for the browser upload tool).
 - **Release blocker fixed (`5cb8f2d`):** v46 on Play aborted at the speakers step. sherpa-onnx's JNI looks up `invoke(IIJ)Ljava/lang/Integer;` on the progress callback, and an invokedynamic Kotlin lambda doesn't have it. The callback is now `DiarizationProgressCallback`, kept by R8, guarded by `DiarizationProgressCallbackTest` (the test is written but not yet run).
