@@ -9,6 +9,27 @@ import com.craftflowtechnologies.meetingmind.core.navigation.MenuIcon
 import com.craftflowtechnologies.meetingmind.core.navigation.MenuSection
 import com.craftflowtechnologies.meetingmind.core.navigation.MenuTarget
 import androidx.activity.compose.BackHandler
+import android.text.format.DateUtils
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Quiz
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.School
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import com.craftflowtechnologies.meetingmind.core.ui.mm.HomeHeader
+import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -86,8 +107,6 @@ import com.craftflowtechnologies.meetingmind.feature.learning.components.Mastery
 import com.craftflowtechnologies.meetingmind.feature.learning.components.MasteryGlyph
 import com.craftflowtechnologies.meetingmind.feature.learning.components.MasteryLegend
 import com.craftflowtechnologies.meetingmind.feature.learning.components.plainReason
-import com.craftflowtechnologies.meetingmind.ui.theme.LearningAccent
-import com.craftflowtechnologies.meetingmind.ui.theme.LearningTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import java.text.SimpleDateFormat
@@ -119,6 +138,8 @@ data class LearningSpaceActions(
  * own bar. When Learning is the chosen Home style ([onNavigateBottomNav] is set), Home shows the
  * Learn pane with the app's global bar and an entry into the space; Home never hosts the space bar
  * (decision D2).
+ *
+ * Learning wears the app's own colours and accent, like Today, Notes and Work (founder, 2026-11-21).
  */
 @Composable
 fun LearningSpaceScreen(
@@ -126,85 +147,93 @@ fun LearningSpaceScreen(
     actions: LearningSpaceActions,
     onNavigateBottomNav: ((BottomNavDestination) -> Unit)? = null
 ) {
-    LearningAccent {
-        val isHome = onNavigateBottomNav != null
-        var tab by rememberSaveable { mutableStateOf(SpaceTab.LEARN) }
-        var openCourseId by rememberSaveable { mutableStateOf<String?>(null) }
-        var creating by rememberSaveable { mutableStateOf(false) }
-        var createCourseId by rememberSaveable { mutableStateOf<String?>(null) }
-        var askOpen by rememberSaveable { mutableStateOf(false) }
-        val startCreate: (String?) -> Unit = { preset -> createCourseId = preset; creating = true }
-        val openAsk: () -> Unit = { viewModel.openAsk(null); askOpen = true }
-        // Learning's own menu, on the main app menu as its base (like Work's): read when the menu opens.
-        val menu: () -> MenuSection = {
-            learningMenu(
-                hasSessions = viewModel.sessions.value.isNotEmpty(),
-                onNewSession = { startCreate(null) },
-                onAsk = openAsk,
-                onDailyRecall = { viewModel.startDailyRecall(false) { actions.onStartPractice() } },
-                onLibrary = { openCourseId = null; tab = SpaceTab.LIBRARY },
-                onProgress = { openCourseId = null; tab = SpaceTab.PROGRESS }
-            )
-        }
+    val isHome = onNavigateBottomNav != null
+    var tab by rememberSaveable { mutableStateOf(SpaceTab.LEARN) }
+    var openCourseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var creating by rememberSaveable { mutableStateOf(false) }
+    var createCourseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var askOpen by rememberSaveable { mutableStateOf(false) }
+    val startCreate: (String?) -> Unit = { preset -> createCourseId = preset; creating = true }
+    val openAsk: () -> Unit = { viewModel.openAsk(null); askOpen = true }
+    // Learning's own menu, on the main app menu as its base (like Work's): read when the menu opens.
+    val menu: () -> MenuSection = {
+        learningMenu(
+            hasSessions = viewModel.sessions.value.isNotEmpty(),
+            onNewSession = { startCreate(null) },
+            onAsk = openAsk,
+            onDailyRecall = { viewModel.startDailyRecall(false) { actions.onStartPractice() } },
+            onLibrary = { openCourseId = null; tab = SpaceTab.LIBRARY },
+            onProgress = { openCourseId = null; tab = SpaceTab.PROGRESS }
+        )
+    }
+    // From the Learn pane: inside the space these switch tabs; on Home they open the space.
+    val openLibrary: () -> Unit = if (isHome) actions.onOpenSpace else ({ openCourseId = null; tab = SpaceTab.LIBRARY })
+    val openProgress: () -> Unit = if (isHome) actions.onOpenSpace else ({ openCourseId = null; tab = SpaceTab.PROGRESS })
 
-        if (creating) {
-            CreateSessionFlow(
-                viewModel = viewModel,
-                presetCourseId = createCourseId,
-                onClose = { creating = false },
-                onRecord = actions.onRecordLecture,
-                onImport = actions.onImport,
-                onOpenNote = actions.onOpenNote,
-                onOpenSession = actions.onOpenSession
-            )
-            return@LearningAccent
-        }
+    if (creating) {
+        CreateSessionFlow(
+            viewModel = viewModel,
+            presetCourseId = createCourseId,
+            onClose = { creating = false },
+            onRecord = actions.onRecordLecture,
+            onImport = actions.onImport,
+            onOpenNote = actions.onOpenNote,
+            onOpenSession = actions.onOpenSession
+        )
+        return
+    }
 
-        if (!isHome && openCourseId != null) BackHandler { openCourseId = null }
-        else if (!isHome && tab != SpaceTab.LEARN) BackHandler { tab = SpaceTab.LEARN }
+    // A course opened from the Learn pane (on Home too) closes with Back.
+    if (openCourseId != null) BackHandler { openCourseId = null }
+    else if (!isHome && tab != SpaceTab.LEARN) BackHandler { tab = SpaceTab.LEARN }
 
-        Scaffold(
-            modifier = Modifier.testTag("learn_space"),
-            containerColor = MM.colors.background,
-            // The header pads for the status bar and each bar pads for the navigation bar, so the
-            // scaffold itself adds no window insets (no double padding under edge-to-edge).
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            bottomBar = {
-                if (isHome) {
-                    AppBottomNavigationBar(
-                        current = BottomNavDestination.HOME,
-                        onNavigate = { if (it != BottomNavDestination.HOME) onNavigateBottomNav?.invoke(it) }
-                    )
-                } else if (openCourseId == null) {
-                    LearningSpaceBar(selected = tab, onSelect = { tab = it })
-                }
-            }
-        ) { padding ->
-            // Status bar padding sits outside the scrolling list, so content never slides under the clock.
-            Box(Modifier.fillMaxSize().padding(padding).statusBarsPadding()) {
-                val course = openCourseId?.let { id -> viewModel.courses.collectAsState().value.firstOrNull { it.notebook.id == id } }
-                when {
-                    isHome -> LearnPane(viewModel, actions, isHome = true, onAsk = openAsk, menu = menu)
-                    course != null -> CoursePane(course, viewModel, actions, onBack = { openCourseId = null }, onAddSession = { startCreate(course.notebook.id) })
-                    tab == SpaceTab.LEARN -> LearnPane(viewModel, actions, isHome = false, onAsk = openAsk, menu = menu)
-                    tab == SpaceTab.LIBRARY -> LibraryPane(viewModel, actions, onOpenCourse = { openCourseId = it }, onNewSession = { startCreate(null) }, menu = menu)
-                    else -> ProgressPane(viewModel, actions, menu = menu)
-                }
+    Scaffold(
+        modifier = Modifier.testTag("learn_space"),
+        containerColor = MM.colors.background,
+        // The header pads for the status bar and each bar pads for the navigation bar, so the
+        // scaffold itself adds no window insets (no double padding under edge-to-edge).
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            if (isHome) {
+                AppBottomNavigationBar(
+                    current = BottomNavDestination.HOME,
+                    onNavigate = { if (it != BottomNavDestination.HOME) onNavigateBottomNav?.invoke(it) }
+                )
+            } else if (openCourseId == null) {
+                LearningSpaceBar(selected = tab, onSelect = { tab = it })
             }
         }
-
-        if (askOpen) {
-            val concepts by viewModel.allConcepts.collectAsState()
-            AskLearningSheet(
-                viewModel = viewModel,
-                sessionId = null,
-                hasCourse = false,
-                concepts = concepts,
-                onDismiss = { askOpen = false },
-                onStartPractice = actions.onStartPractice,
-                onShowInTranscript = null
-            )
+    ) { padding ->
+        // Status bar padding sits outside the scrolling list, so content never slides under the clock.
+        Box(Modifier.fillMaxSize().padding(padding).statusBarsPadding()) {
+            val course = openCourseId?.let { id -> viewModel.courses.collectAsState().value.firstOrNull { it.notebook.id == id } }
+            val learn: @Composable () -> Unit = {
+                LearnPane(
+                    viewModel, actions, isHome = isHome, onAsk = openAsk, menu = menu,
+                    onOpenCourse = { openCourseId = it }, onOpenLibrary = openLibrary, onOpenProgress = openProgress
+                )
+            }
+            when {
+                course != null -> CoursePane(course, viewModel, actions, onBack = { openCourseId = null }, onAddSession = { startCreate(course.notebook.id) })
+                isHome -> learn()
+                tab == SpaceTab.LEARN -> learn()
+                tab == SpaceTab.LIBRARY -> LibraryPane(viewModel, actions, onOpenCourse = { openCourseId = it }, onNewSession = { startCreate(null) }, menu = menu)
+                else -> ProgressPane(viewModel, actions, menu = menu)
+            }
         }
+    }
+
+    if (askOpen) {
+        val concepts by viewModel.allConcepts.collectAsState()
+        AskLearningSheet(
+            viewModel = viewModel,
+            sessionId = null,
+            hasCourse = false,
+            concepts = concepts,
+            onDismiss = { askOpen = false },
+            onStartPractice = actions.onStartPractice,
+            onShowInTranscript = null
+        )
     }
 }
 
@@ -247,7 +276,7 @@ private fun LearningSpaceBar(selected: SpaceTab, onSelect: (SpaceTab) -> Unit) {
 private fun PaneList(content: LazyListScope.() -> Unit) {
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = LearningTheme.readingGutter, end = LearningTheme.readingGutter, top = MM.space.l, bottom = MM.space.xxl),
+        contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.l, bottom = MM.space.xxl),
         verticalArrangement = Arrangement.spacedBy(MM.space.xl),
         content = content
     )
@@ -271,17 +300,40 @@ private fun PaneHeader(title: String, subtitle: String?, onBack: (() -> Unit)?, 
 
 // ───────────────────────────── Learn ─────────────────────────────
 
+/** How long the opening reveal runs. Sections that scroll in after it appear without motion. */
+private const val RevealWindowMs = 900L
+private const val RevealStepMs = 60L
+
+/**
+ * The Learn home, built like the other homes: the greeting header, one hero (today's plan, or what
+ * to do first), the companion's line, then sections that each show only when there is real data:
+ * continue learning, the YouTube lecture card, your courses, what you know, and recent lectures.
+ */
 @Composable
-private fun LearnPane(viewModel: LearnViewModel, actions: LearningSpaceActions, isHome: Boolean, onAsk: () -> Unit, menu: () -> MenuSection) {
+private fun LearnPane(
+    viewModel: LearnViewModel,
+    actions: LearningSpaceActions,
+    isHome: Boolean,
+    onAsk: () -> Unit,
+    menu: () -> MenuSection,
+    onOpenCourse: (String) -> Unit,
+    onOpenLibrary: () -> Unit,
+    onOpenProgress: () -> Unit
+) {
     val brief by viewModel.dailyBrief.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val lectures by viewModel.lectureNotes.collectAsState()
+    val courses by viewModel.courses.collectAsState()
+    val concepts by viewModel.allConcepts.collectAsState()
     val practiceError by viewModel.practiceError.collectAsState()
     val busy by viewModel.isLoadingPractice.collectAsState()
     val activities by viewModel.practiceActivities.collectAsState()
     val index by viewModel.currentActivityIndex.collectAsState()
     val practiceTitle by viewModel.practiceTitle.collectAsState()
     var quick by rememberSaveable { mutableStateOf(false) }
+    // The opening reveal plays once, for what is on screen when the page opens.
+    var entered by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(RevealWindowMs); entered = true }
 
     val plan = remember(brief, sessions, lectures, quick) { buildTodayPlan(brief, sessions, lectures, quick) }
     val reviewedToday = brief?.sevenDayAttemptCounts?.lastOrNull() ?: 0
@@ -289,6 +341,19 @@ private fun LearnPane(viewModel: LearnViewModel, actions: LearningSpaceActions, 
     val greeting = greetingFor(now.get(Calendar.HOUR_OF_DAY))
     val date = remember { SimpleDateFormat("EEEE d MMMM", Locale.getDefault()).format(Date()) }
     val canResume = activities.isNotEmpty() && index in 1 until activities.size
+
+    // Continue learning: the session studied (or added) most recently.
+    val last = remember(sessions) { sessions.filter { !it.isPaused }.maxByOrNull { it.lastStudiedAt ?: it.updatedAt } }
+    val lastLecture = last?.let { s -> lectures.firstOrNull { it.noteId == s.noteId } }
+    val lastConcepts = remember(concepts, last) { last?.let { s -> concepts.filter { it.sessionId == s.id } }.orEmpty() }
+    // Courses with something due first; otherwise in the Library's order.
+    val homeCourses = remember(courses) { courses.sortedByDescending { it.dueReviewCount }.take(6) }
+    val counts = remember(concepts) { masteryCounts(concepts) }
+    val week = brief?.sevenDayActivity.orEmpty()
+    val weekCounts = brief?.sevenDayAttemptCounts.orEmpty()
+    val recent = remember(lectures, last) {
+        lectures.filter { it.noteId != last?.noteId }.sortedByDescending { it.updatedAt }.take(4)
+    }
 
     fun start(item: PlanItem) {
         when (item.kind) {
@@ -304,11 +369,17 @@ private fun LearnPane(viewModel: LearnViewModel, actions: LearningSpaceActions, 
 
     PaneList {
         item(key = "header") {
-            PaneHeader(
-                title = greeting,
-                subtitle = date,
-                onBack = if (isHome) null else actions.onBack,
-                trailing = {
+            val back: @Composable () -> Unit = {
+                IconButton(onClick = actions.onBack) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = MM.colors.ink)
+                }
+            }
+            Reveal(0, entered) {
+                HomeHeader(
+                    greeting = greeting,
+                    subtitle = date,
+                    leading = if (isHome) null else back
+                ) {
                     if (isHome) TextAction("Open Learning", onClick = actions.onOpenSpace, modifier = Modifier.testTag("learn_open_space"))
                     else {
                         if (sessions.isNotEmpty()) TextAction("Ask", onClick = onAsk, modifier = Modifier.testTag("learn_ask"))
@@ -316,7 +387,7 @@ private fun LearnPane(viewModel: LearnViewModel, actions: LearningSpaceActions, 
                         AppMenuButton(focus = NotebookSpace.LEARNING, local = menu)
                     }
                 }
-            )
+            }
         }
         if (practiceError != null) item(key = "error") { StatusLine(StatusKind.Error, practiceError!!) }
         if (canResume) item(key = "resume") {
@@ -327,52 +398,140 @@ private fun LearnPane(viewModel: LearnViewModel, actions: LearningSpaceActions, 
             }
         }
         when {
-            sessions.isEmpty() && lectures.isEmpty() -> item(key = "first") { FirstRun(actions) }
+            sessions.isEmpty() && lectures.isEmpty() -> item(key = "first") { Reveal(1, entered) { FirstRun(actions) } }
             !plan.isEmpty -> item(key = "plan") {
-                PlanHero(plan = plan, quick = quick, busy = busy, onStart = ::start, onToggleQuick = { quick = !quick })
+                Reveal(1, entered) {
+                    PlanHero(plan = plan, quick = quick, busy = busy, onStart = ::start, onToggleQuick = { quick = !quick })
+                }
             }
-            else -> item(key = "done") { DoneForToday(reviewedToday) }
+            else -> item(key = "done") { Reveal(1, entered) { DoneForToday(reviewedToday) } }
+        }
+        // The companion's line: what it has to say right now, or the week's quiet rhythm.
+        item(key = "companion_line") {
+            com.craftflowtechnologies.meetingmind.feature.today.companion.HomeCompanionLine(
+                space = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING,
+                onRecord = actions.onRecordLecture, onOpenNote = actions.onOpenNote, onOpenRecording = null,
+                firstRun = false // the Learn pane greets someone new with its own first-run card
+            )
+        }
+        if (last != null) item(key = "continue") {
+            Reveal(2, entered) {
+                ContinueCard(last, lastLecture, lastConcepts, onClick = { actions.onOpenSession(last.noteId) })
+            }
         }
         // Lecture notes from YouTube: the same shared card as every home, with Lecture preset.
         item(key = "youtube") {
-            val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
-            com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
-                onClick = { youTube.open(from = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING) },
-                modifier = Modifier.testTag("learn_youtube"),
-                title = "Lecture from a YouTube video",
-                benefit = "Paste a link, get lecture notes with timestamps"
-            )
+            Reveal(3, entered) {
+                val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
+                com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
+                    onClick = { youTube.open(from = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING) },
+                    modifier = Modifier.testTag("learn_youtube"),
+                    title = "Lecture from a YouTube video",
+                    benefit = "Paste a link, get lecture notes with timestamps"
+                )
+            }
         }
-        val recent = sessions.filter { !it.isPaused }.sortedByDescending { it.lastStudiedAt ?: it.updatedAt }.take(2)
-        if (recent.isNotEmpty()) {
-            item(key = "continue_h") { SectionHeader("Continue", count = null) }
-            items(recent, key = { "c_${it.id}" }) { s -> SessionRow(s, lectures, onClick = { actions.onOpenSession(s.noteId) }) }
+        if (homeCourses.isNotEmpty()) item(key = "courses") {
+            Reveal(4, entered) {
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    SectionHeader("Your courses", count = courses.size, actionLabel = "Library", onAction = onOpenLibrary)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
+                        items(homeCourses, key = { "hc_${it.notebook.id}" }) { c ->
+                            CourseTile(c, concepts.filter { it.sessionId in c.sessionIds }, onClick = { onOpenCourse(c.notebook.id) })
+                        }
+                    }
+                }
+            }
         }
-        val week = brief?.sevenDayActivity.orEmpty()
-        if (sessions.isNotEmpty() && week.size == 7) item(key = "week") { ThisWeek(week, brief?.sevenDayAttemptCounts.orEmpty()) }
+        val known = counts.values.sum()
+        val showWeek = sessions.isNotEmpty() && week.size == 7
+        if (known > 0 || showWeek) item(key = "mastery") {
+            Reveal(5, entered) {
+                MasterySnapshot(counts, week.takeIf { showWeek }, weekCounts, onOpenProgress = onOpenProgress)
+            }
+        }
+        if (recent.isNotEmpty()) item(key = "recent") {
+            Reveal(6, entered) {
+                RecentLectures(recent, onAll = onOpenLibrary, onOpen = { l ->
+                    if (l.sessionId != null) actions.onOpenSession(l.noteId) else actions.onOpenNote(l.noteId)
+                })
+            }
+        }
         if (sessions.isNotEmpty()) item(key = "create") {
             Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s), verticalAlignment = Alignment.CenterVertically) {
-                SecondaryButton(EntryPoints.learnRecordLecture.label, onClick = actions.onRecordLecture, modifier = Modifier.testTag("learn_record_lecture"))
+                SecondaryButton(EntryPoints.learnRecordLecture.label, onClick = actions.onRecordLecture, modifier = Modifier.testTag("learn_record_lecture"), leadingIcon = Icons.Rounded.Mic)
                 TextAction(EntryPoints.learnWriteStudyNote.label, onClick = actions.onWriteStudyNote, modifier = Modifier.testTag("learn_write_study_note"))
             }
         }
     }
 }
 
+/**
+ * Fades and lifts a section in, a step after the one above it. Nothing moves under reduced motion
+ * (MM.motion), or once the opening reveal has played ([entered]).
+ */
+@Composable
+private fun Reveal(index: Int, entered: Boolean, content: @Composable () -> Unit) {
+    val motion = MM.motion
+    val progress = remember { Animatable(if (motion.reduced || entered) 1f else 0f) }
+    val lift = with(LocalDensity.current) { MM.space.m.toPx() }
+    LaunchedEffect(Unit) {
+        if (progress.value < 1f) {
+            delay(index * RevealStepMs)
+            progress.animateTo(1f, motion.enter())
+        }
+    }
+    Box(
+        Modifier.fillMaxWidth().graphicsLayer {
+            alpha = progress.value
+            translationY = (1f - progress.value) * lift
+        }
+    ) { content() }
+}
+
+private fun PlanKind.icon(): ImageVector = when (this) {
+    PlanKind.RECALL -> Icons.Rounded.Replay
+    PlanKind.STRENGTHEN -> Icons.Rounded.FitnessCenter
+    PlanKind.DIAGNOSTIC -> Icons.Rounded.Quiz
+}
+
+/** The hero: today's plan, how long it takes, when it would be done, and one button to start. */
 @Composable
 private fun PlanHero(plan: TodayPlan, quick: Boolean, busy: Boolean, onStart: (PlanItem) -> Unit, onToggleQuick: () -> Unit) {
     val first = plan.items.first()
+    val context = LocalContext.current
+    val doneBy = remember(plan.minutes) {
+        android.text.format.DateFormat.getTimeFormat(context).format(Date(System.currentTimeMillis() + plan.minutes * 60_000L))
+    }
     HeroCard(Modifier.fillMaxWidth().testTag("learn_plan_hero")) {
-        Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
-            Text(if (quick) "THE FIVE-MINUTE VERSION" else "TODAY'S PLAN", style = MM.type.overline, color = MM.colors.accent)
-            Text(
-                "About ${plan.minutes} ${if (plan.minutes == 1) "minute" else "minutes"}",
-                style = MM.type.display.copy(fontSize = MM.type.title.fontSize, lineHeight = MM.type.title.lineHeight),
-                color = MM.colors.ink
-            )
+        Column(
+            Modifier.animateContentSize(MM.motion.standard()),
+            verticalArrangement = Arrangement.spacedBy(MM.space.m)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (quick) "THE FIVE-MINUTE VERSION" else "TODAY'S PLAN",
+                    style = MM.type.overline, color = MM.colors.accent, modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "${plan.items.size} ${if (plan.items.size == 1) "step" else "steps"}",
+                    style = MM.type.caption, color = MM.colors.inkSecondary
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                Text(
+                    "About ${plan.minutes} ${if (plan.minutes == 1) "minute" else "minutes"}",
+                    style = MM.type.display,
+                    color = MM.colors.ink
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                    Icon(Icons.Rounded.Schedule, contentDescription = null, tint = MM.colors.inkSecondary, modifier = Modifier.size(MMSize.iconSmall))
+                    Text("Done by $doneBy if you start now", style = MM.type.secondary, color = MM.colors.inkSecondary)
+                }
+            }
             if (plan.reason.isNotBlank()) Text(plan.reason, style = MM.type.secondary, color = MM.colors.inkSecondary)
             Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                plan.items.forEachIndexed { i, item -> PlanRow(i + 1, item, onClick = { onStart(item) }) }
+                plan.items.forEach { item -> PlanRow(item, onClick = { onStart(item) }) }
             }
             PrimaryButton(
                 text = if (busy) "Getting ready…" else when (first.kind) {
@@ -382,6 +541,7 @@ private fun PlanHero(plan: TodayPlan, quick: Boolean, busy: Boolean, onStart: (P
                 },
                 enabled = !busy,
                 onClick = { onStart(first) },
+                leadingIcon = Icons.Rounded.PlayArrow,
                 modifier = Modifier.fillMaxWidth().testTag("learn_plan_start")
             )
             TextAction(
@@ -394,7 +554,7 @@ private fun PlanHero(plan: TodayPlan, quick: Boolean, busy: Boolean, onStart: (P
 }
 
 @Composable
-private fun PlanRow(number: Int, item: PlanItem, onClick: () -> Unit) {
+private fun PlanRow(item: PlanItem, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -406,9 +566,9 @@ private fun PlanRow(number: Int, item: PlanItem, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
         Box(
-            Modifier.size(24.dp).clip(MM.radius.pill).background(MM.colors.surface),
+            Modifier.size(32.dp).clip(MM.radius.pill).background(MM.colors.surface),
             contentAlignment = Alignment.Center
-        ) { Text("$number", style = MM.type.caption, color = MM.colors.accent) }
+        ) { Icon(item.kind.icon(), contentDescription = null, tint = MM.colors.accent, modifier = Modifier.size(MMSize.iconSmall)) }
         Column(Modifier.weight(1f)) {
             Text(item.title, style = MM.type.bodyStrong, color = MM.colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(item.detail, style = MM.type.caption, color = MM.colors.inkSecondary)
@@ -417,15 +577,17 @@ private fun PlanRow(number: Int, item: PlanItem, onClick: () -> Unit) {
     }
 }
 
+/** The hero when nothing is due: what was done today, and that the next reviews are scheduled. */
 @Composable
 private fun DoneForToday(reviewedToday: Int) {
-    MMCard(Modifier.fillMaxWidth().testTag("learn_done_today")) {
+    HeroCard(Modifier.fillMaxWidth().testTag("learn_done_today")) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
-            Box(Modifier.size(36.dp).clip(MM.radius.pill).background(LearningTheme.colors.successWash), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(44.dp).clip(MM.radius.pill).background(MM.colors.surface), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Check, contentDescription = null, tint = MM.colors.success)
             }
-            Column(Modifier.weight(1f)) {
-                Text(if (reviewedToday > 0) "You're done for today" else "Nothing due today", style = MM.type.heading, color = MM.colors.ink)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                Text("TODAY'S PLAN", style = MM.type.overline, color = MM.colors.accent)
+                Text(if (reviewedToday > 0) "You're done for today" else "Nothing due today", style = MM.type.title, color = MM.colors.ink)
                 Text(
                     if (reviewedToday > 0) "$reviewedToday ${if (reviewedToday == 1) "item" else "items"} practised today. Your next reviews are scheduled."
                     else "Reviews are spaced out so they stick. Open a session if you'd like to practise ahead.",
@@ -437,34 +599,123 @@ private fun DoneForToday(reviewedToday: Int) {
     }
 }
 
+/** A square badge in the accent wash, for cards and rows. */
 @Composable
-private fun FirstRun(actions: LearningSpaceActions) {
-    Column(Modifier.testTag("learn_first_run"), verticalArrangement = Arrangement.spacedBy(MM.space.l)) {
-        EmptyState(
-            title = "Your study space",
-            body = "Record a lecture or write study notes. MeetingMind turns them into a study guide and practice, with every point linked to the moment it was said.",
-            action = { PrimaryButton(EntryPoints.learnRecordLecture.label, onClick = actions.onRecordLecture, modifier = Modifier.testTag("learn_record_lecture")) }
-        )
-        InsetPanel(Modifier.fillMaxWidth()) {
-            Text("HOW IT WORKS", style = MM.type.overline, color = MM.colors.inkMuted)
-            listOf(
-                "Record or write. Your recordings are saved on this phone.",
-                "Get a study guide with the key concepts and where they came from.",
-                "Practise a few minutes a day. Reviews are spaced so you remember."
-            ).forEachIndexed { i, line ->
-                Row(Modifier.padding(top = MM.space.s), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                    Text("${i + 1}", style = MM.type.bodyStrong, color = MM.colors.accent)
-                    Text(line, style = MM.type.secondary, color = MM.colors.ink)
+private fun IconBadge(icon: ImageVector, size: androidx.compose.ui.unit.Dp = 44.dp) {
+    Box(
+        Modifier.size(size).clip(MM.radius.small).background(MM.colors.accentWash),
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, contentDescription = null, tint = MM.colors.accent, modifier = Modifier.size(MMSize.iconSmall)) }
+}
+
+private fun relativeTime(then: Long): String =
+    DateUtils.getRelativeTimeSpanString(then, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
+
+private fun durationLabel(seconds: Long): String? = when {
+    seconds >= 3600 -> "${seconds / 3600} h ${(seconds % 3600) / 60} min"
+    seconds >= 60 -> "${seconds / 60} min"
+    else -> null
+}
+
+/** Continue learning: the last session, where it came from, and what you know of it so far. */
+@Composable
+private fun ContinueCard(
+    session: LearningSession,
+    lecture: LearningRepository.LectureNoteSummary?,
+    concepts: List<LearningConcept>,
+    onClick: () -> Unit
+) {
+    val studied = session.lastStudiedAt
+    val meta = listOfNotNull(
+        session.courseName?.takeIf { it.isNotBlank() },
+        concepts.size.takeIf { it > 0 }?.let { "$it ${if (it == 1) "concept" else "concepts"}" },
+        if (studied != null) "studied ${relativeTime(studied)}" else "added ${relativeTime(session.createdAt)}"
+    ).joinToString(" · ")
+    MMCard(Modifier.fillMaxWidth().testTag("learn_continue"), onClick = onClick) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
+                IconBadge(if (lecture?.hasRecording == true) Icons.Rounded.Mic else Icons.AutoMirrored.Rounded.MenuBook)
+                Column(Modifier.weight(1f)) {
+                    Text("CONTINUE LEARNING", style = MM.type.overline, color = MM.colors.accent)
+                    Text(session.title, style = MM.type.heading, color = MM.colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(meta, style = MM.type.caption, color = MM.colors.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            if (concepts.any { !it.isDismissed }) MasteryBar(masteryCounts(concepts))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                Text(EntryPoints.learnContinue.label, style = MM.type.bodyStrong, color = MM.colors.accent)
+                Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, tint = MM.colors.accent, modifier = Modifier.size(MMSize.iconSmall))
+            }
+        }
+    }
+}
+
+/** One course in the home's course row: name, size, what you know, and what is due. */
+@Composable
+private fun CourseTile(course: LearningRepository.LearningCourse, concepts: List<LearningConcept>, onClick: () -> Unit) {
+    val counts = masteryCounts(concepts)
+    MMCard(Modifier.width(232.dp).testTag("learn_home_course"), onClick = onClick, contentPadding = MM.space.m) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            IconBadge(Icons.Rounded.School, size = 36.dp)
+            Text(course.notebook.name, style = MM.type.bodyStrong, color = MM.colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull(
+                    "${course.sessionCount} ${if (course.sessionCount == 1) "session" else "sessions"}",
+                    counts.values.sum().takeIf { it > 0 }?.let { "$it concepts" }
+                ).joinToString(" · "),
+                style = MM.type.caption, color = MM.colors.inkSecondary, maxLines = 1
+            )
+            if (counts.values.sum() > 0) MasteryBar(counts)
+            Text(
+                if (course.dueReviewCount > 0) "${course.dueReviewCount} due for review" else "Nothing due",
+                style = MM.type.caption,
+                color = if (course.dueReviewCount > 0) MM.colors.accent else MM.colors.inkMuted
+            )
+        }
+    }
+}
+
+/** What you know across every concept, and the days studied this week. Counts, never a score. */
+@Composable
+private fun MasterySnapshot(
+    counts: Map<LearningMasteryState, Int>,
+    week: List<Boolean>?,
+    weekCounts: List<Int>,
+    onOpenProgress: () -> Unit
+) {
+    val total = counts.values.sum()
+    val review = counts[LearningMasteryState.NEEDS_REVIEW] ?: 0
+    val strong = counts[LearningMasteryState.STRONG] ?: 0
+    Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        SectionHeader("What you know", count = total.takeIf { it > 0 }, actionLabel = "Progress", onAction = onOpenProgress)
+        MMCard(Modifier.fillMaxWidth().testTag("learn_mastery_snapshot")) {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+                if (total > 0) {
+                    Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                        Text(
+                            when {
+                                review > 0 -> "$review ${if (review == 1) "concept needs" else "concepts need"} a little more practice."
+                                strong > 0 -> "$strong of $total ${if (total == 1) "concept is" else "concepts are"} strong."
+                                else -> "Each concept moves from New to Strong as you recall it."
+                            },
+                            style = MM.type.body, color = MM.colors.ink
+                        )
+                        MasteryBar(counts)
+                        MasteryLegend(counts)
+                    }
+                }
+                if (week != null) {
+                    if (total > 0) Box(Modifier.fillMaxWidth().height(MMSize.hairline).background(MM.colors.lineSoft))
+                    WeekDots(week, weekCounts)
                 }
             }
         }
-        TextAction(EntryPoints.learnWriteStudyNote.label, onClick = actions.onWriteStudyNote, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("learn_write_study_note"))
     }
 }
 
 /** Days studied this week. Momentum without streaks: a missed day is never a loss. */
 @Composable
-private fun ThisWeek(active: List<Boolean>, counts: List<Int>) {
+private fun WeekDots(active: List<Boolean>, counts: List<Int>) {
     val days = active.count { it }
     val labels = remember {
         val c = Calendar.getInstance()
@@ -475,7 +726,7 @@ private fun ThisWeek(active: List<Boolean>, counts: List<Int>) {
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-        SectionHeader("This week", count = null)
+        Text("THIS WEEK", style = MM.type.overline, color = MM.colors.inkMuted)
         Row(
             Modifier.fillMaxWidth().clearAndSetSemantics {
                 contentDescription = "You studied on $days of the last 7 days"
@@ -504,6 +755,60 @@ private fun ThisWeek(active: List<Boolean>, counts: List<Int>) {
             style = MM.type.secondary,
             color = MM.colors.inkSecondary
         )
+    }
+}
+
+/** The latest lectures and study notes, newest first, in one card. */
+@Composable
+private fun RecentLectures(
+    lectures: List<LearningRepository.LectureNoteSummary>,
+    onAll: () -> Unit,
+    onOpen: (LearningRepository.LectureNoteSummary) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        SectionHeader("Recent lectures and notes", actionLabel = "All", onAction = onAll)
+        MMCard(Modifier.fillMaxWidth(), contentPadding = MM.space.m) {
+            lectures.forEachIndexed { i, l ->
+                if (i > 0) Box(Modifier.fillMaxWidth().height(MMSize.hairline).background(MM.colors.lineSoft))
+                ListRow(
+                    title = l.title.ifBlank { "Untitled" },
+                    subtitle = listOfNotNull(
+                        l.courseName?.takeIf { it.isNotBlank() },
+                        durationLabel(l.durationSeconds),
+                        l.conceptCount.takeIf { it > 0 }?.let { "$it concepts" }
+                    ).joinToString(" · ").ifBlank { null },
+                    meta = relativeTime(l.updatedAt),
+                    leading = { IconBadge(if (l.hasRecording) Icons.Rounded.Mic else Icons.Rounded.Description, size = 36.dp) },
+                    onClick = { onOpen(l) },
+                    modifier = Modifier.testTag("learn_recent_lecture")
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FirstRun(actions: LearningSpaceActions) {
+    Column(Modifier.testTag("learn_first_run"), verticalArrangement = Arrangement.spacedBy(MM.space.l)) {
+        EmptyState(
+            title = "Your study space",
+            body = "Record a lecture or write study notes. MeetingMind turns them into a study guide and practice, with every point linked to the moment it was said.",
+            action = { PrimaryButton(EntryPoints.learnRecordLecture.label, onClick = actions.onRecordLecture, modifier = Modifier.testTag("learn_record_lecture")) }
+        )
+        InsetPanel(Modifier.fillMaxWidth()) {
+            Text("HOW IT WORKS", style = MM.type.overline, color = MM.colors.inkMuted)
+            listOf(
+                "Record or write. Your recordings are saved on this phone.",
+                "Get a study guide with the key concepts and where they came from.",
+                "Practise a few minutes a day. Reviews are spaced so you remember."
+            ).forEachIndexed { i, line ->
+                Row(Modifier.padding(top = MM.space.s), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    Text("${i + 1}", style = MM.type.bodyStrong, color = MM.colors.accent)
+                    Text(line, style = MM.type.secondary, color = MM.colors.ink)
+                }
+            }
+        }
+        TextAction(EntryPoints.learnWriteStudyNote.label, onClick = actions.onWriteStudyNote, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("learn_write_study_note"))
     }
 }
 

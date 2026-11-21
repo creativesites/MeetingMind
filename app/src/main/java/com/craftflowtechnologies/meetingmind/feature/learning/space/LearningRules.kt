@@ -68,8 +68,11 @@ data class TodayPlan(
     val isEmpty: Boolean get() = items.isEmpty()
 }
 
-/** At most this many review cards in one day's plan, so the plan never turns into a backlog. */
-const val MaxPlanCards = 15
+/**
+ * At most this many review cards in one day's plan, so the plan never turns into a backlog. It is
+ * also the length of one Daily Recall set: short and mixed (see PracticeVariety.kt).
+ */
+const val MaxPlanCards = PracticeSetSize
 const val QuickPlanCards = 5
 
 /**
@@ -85,9 +88,11 @@ fun buildTodayPlan(
     val items = mutableListOf<PlanItem>()
     val due = brief?.dueReviews.orEmpty().filter { it.activity.isRelease1Practice() }
     val cardCap = if (quick) QuickPlanCards else MaxPlanCards
-    val dueCards = due.take(cardCap).map { it.activity }
+    // The same fair pick Daily Recall makes: one lecture's backlog can't crowd out the others.
+    val picked = selectMixed(due, cardCap) { it.session.id }
+    val dueCards = picked.map { it.activity }
     if (dueCards.isNotEmpty()) {
-        val courses = due.take(cardCap).mapNotNull { it.session.courseName?.takeIf(String::isNotBlank) }.distinct()
+        val courses = picked.mapNotNull { it.session.courseName?.takeIf(String::isNotBlank) }.distinct()
         val from = when {
             courses.size == 1 -> "From ${courses.first()}"
             courses.size > 1 -> "From ${courses.size} courses"

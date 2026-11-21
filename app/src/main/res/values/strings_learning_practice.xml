@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Learning practice: varied formats, the four-stage ladder and the end-of-set summary
+  (feature/learning/space/PracticeVariety.kt, PracticeModeScreen.kt, PracticeFormatViews.kt).
+  Tone: calm and plain. Never "Wrong"; a missed answer is "Not quite".
+-->
+<resources>
+    <!-- Format names, shown in the overline above each question. -->
+    <string name="practice_format_recall">Recall</string>
+    <string name="practice_format_choice">Choose one</string>
+    <string name="practice_format_true_false">True or false</string>
+    <string name="practice_format_match">Match</string>
+    <string name="practice_format_cloze">Fill the gap</string>
+    <string name="practice_format_scenario">Apply it</string>
+    <string name="practice_format_order">Put in order</string>
+    <string name="practice_format_worked">Worked example</string>
+    <string name="practice_format_short">Short answer</string>
+    <string name="practice_format_explain">In your own words</string>
+
+    <!-- The four stages a concept climbs. -->
+    <string name="practice_stage_recognise">Recognise</string>
+    <string name="practice_stage_recall">Recall</string>
+    <string name="practice_stage_apply">Apply</string>
+    <string name="practice_stage_explain">Explain</string>
+    <!-- %1$s: stages shown so far, or "none yet". %2$s: the next stage, or "all four shown". -->
+    <string name="practice_stage_ladder_description">Stages shown: %1$s. Next: %2$s.</string>
+    <string name="practice_stage_none_yet">none yet</string>
+    <string name="practice_stage_all_shown">all four shown</string>
+    <string name="practice_stage_caption">Each concept climbs four stages: recognise it, recall it, apply it, explain it. A stage counts once you answer it correctly.</string>
+
+    <!-- Question stems. %1$s is a concept name. -->
+    <string name="practice_stem_which_describes">Which best describes %1$s?</string>
+    <string name="practice_stem_which_term">Which term matches this meaning?</string>
+    <string name="practice_stem_true_false">True or false?</string>
+    <string name="practice_stem_fill_gap_source">Fill the gap. From the lecture:</string>
+    <string name="practice_stem_fill_gap_definition">Fill the gap in this definition of %1$s.</string>
+    <string name="practice_stem_which_concept">Which concept is this passage about?</string>
+    <string name="practice_stem_put_in_order">Put the steps in order.</string>
+    <string name="practice_stem_put_in_order_of">Put the steps of %1$s in order.</string>
+    <string name="practice_stem_match">Match each term to its meaning.</string>
+    <string name="practice_stem_explain_0">Explain %1$s in your own words.</string>
+    <string name="practice_stem_explain_1">A classmate missed the lecture. How would you explain %1$s to them?</string>
+    <string name="practice_stem_explain_2">In two or three sentences, without notes: what is %1$s, and why does it matter?</string>
+    <string name="practice_stem_worked">Work it out first, then check the solution one step at a time.</string>
+
+    <!-- Shared actions and lines. -->
+    <string name="practice_check">Check answer</string>
+    <string name="practice_not_sure">Not sure, show me</string>
+    <string name="practice_your_answer">Your answer</string>
+    <string name="practice_next">Next</string>
+    <string name="practice_see_summary">See summary</string>
+    <!-- %1$s: the option that was right. -->
+    <string name="practice_answer_is">The answer is %1$s.</string>
+    <string name="practice_saved_tomorrow">Saved. This one comes back tomorrow.</string>
+    <!-- %1$s: "tomorrow", "in 3 days"… -->
+    <string name="practice_saved_next">Saved. Next review: %1$s.</string>
+
+    <!-- True or false, and fix the false statement. -->
+    <string name="practice_true">True</string>
+    <string name="practice_false">False</string>
+    <!-- %1$s: concept name. -->
+    <string name="practice_tf_fix_label">Fix it (optional): what is %1$s, really?</string>
+    <string name="practice_tf_true_right">Yes. That is how the lecture puts it.</string>
+    <string name="practice_tf_true_missed">It is true. That is how the lecture puts it.</string>
+    <!-- %1$s: the concept whose meaning was swapped in. -->
+    <string name="practice_tf_belongs_to">That description belongs to %1$s.</string>
+    <string name="practice_tf_true_version">The true version</string>
+    <string name="practice_tf_your_fix">Your fix</string>
+
+    <!-- Fill the gap. -->
+    <string name="practice_cloze_hint">Type the missing word.</string>
+    <!-- %1$s: the missing word. -->
+    <string name="practice_cloze_missing">The missing word is “%1$s”.</string>
+    <string name="practice_cloze_in_full">In full</string>
+
+    <!-- Put in order. -->
+    <string name="practice_order_hint">Tap the steps in the order they happen. Tap a placed step to take it back.</string>
+    <string name="practice_order_your_order">Your order</string>
+    <string name="practice_order_start_over">Start over</string>
+    <string name="practice_order_all_right">All in order.</string>
+    <string name="practice_order_here_is">Here is the order:</string>
+    <string name="practice_order_in_place">In place</string>
+    <!-- %1$d: the step number it belongs at. -->
+    <string name="practice_order_belongs_at">Belongs at step %1$d</string>
+
+    <!-- Matching. -->
+    <string name="practice_match_hint">Tap a term, then the meaning that fits it.</string>
+    <string name="practice_match_tap_to_match">Tap to match</string>
+    <string name="practice_match_matched">Matched</string>
+    <!-- %1$s: the term the meaning belongs to. -->
+    <string name="practice_match_belongs_to">Belongs to %1$s</string>
+    <string name="practice_match_all_right">All matched.</string>
+    <!-- %1$d matched of %2$d. -->
+    <string name="practice_match_some">%1$d of %2$d matched. Here is how they pair up.</string>
+
+    <!-- Worked example. -->
+    <string name="practice_worked_show_first">Show the first step</string>
+    <string name="practice_worked_show_next">Show the next step</string>
+    <string name="practice_worked_show_all">Show the whole solution</string>
+    <!-- %1$d: step number. -->
+    <string name="practice_worked_step">Step %1$d</string>
+    <string name="practice_worked_how">Did you get there?</string>
+
+    <!-- Explain in your own words, and the three self-ratings it shares with worked examples. -->
+    <string name="practice_compare">Compare with the lecture</string>
+    <string name="practice_explain_how">How close was your explanation?</string>
+    <string name="practice_rate_not_yet">Not yet</string>
+    <string name="practice_rate_partly">Partly</string>
+    <string name="practice_rate_got_it">Got it</string>
+
+    <!-- Quiet momentum lines: only at these runs, never a score. -->
+    <string name="practice_momentum_3">Three in a row.</string>
+    <string name="practice_momentum_5">Five in a row. It is sticking.</string>
+    <string name="practice_momentum_8">Eight in a row. Steady work.</string>
+    <string name="practice_momentum_12">Twelve in a row.</string>
+
+    <!-- End-of-set summary. One headline is picked per set, so it does not read the same every day. -->
+    <string-array name="practice_summary_all_right">
+        <item>Every one landed.</item>
+        <item>A clean set.</item>
+        <item>All there today.</item>
+    </string-array>
+    <string-array name="practice_summary_mostly_right">
+        <item>Solid work.</item>
+        <item>Most of it stuck.</item>
+        <item>Good, steady practice.</item>
+    </string-array>
+    <string-array name="practice_summary_mixed">
+        <item>Useful practice.</item>
+        <item>Some stuck, some to revisit.</item>
+        <item>This is how memory gets built.</item>
+    </string-array>
+    <string-array name="practice_summary_tough">
+        <item>A hard set, and a useful one.</item>
+        <item>The misses show where to look next.</item>
+        <item>Hard now, easier next time.</item>
+    </string-array>
+    <string name="practice_summary_none">Nothing was answered this time. That is fine.</string>
+    <!-- %1$d answered, %2$d right first time. -->
+    <string name="practice_summary_counts">%1$d answered · %2$d right first time</string>
+    <!-- %1$d: longest run of right answers. -->
+    <string name="practice_summary_best_run">Longest run: %1$d in a row.</string>
+    <!-- %1$d: number of formats; %2$s: their names, joined. -->
+    <plurals name="practice_summary_ways">
+        <item quantity="one">Practised one way: %2$s.</item>
+        <item quantity="other">Practised %1$d ways: %2$s.</item>
+    </plurals>
+    <string name="practice_summary_stuck">What stuck</string>
+    <string name="practice_summary_revisit">Worth another look</string>
+    <string name="practice_summary_revisit_note">These come back soon, asked a different way.</string>
+</resources>

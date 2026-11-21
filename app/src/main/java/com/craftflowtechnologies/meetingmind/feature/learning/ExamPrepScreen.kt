@@ -82,7 +82,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.School
 import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
-import com.craftflowtechnologies.meetingmind.ui.theme.LearningFixedColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
@@ -520,9 +519,9 @@ private fun ExamReadinessDashboardCard(
     )
 
     val readinessColor = when {
-        readinessScore >= 75 -> LearningFixedColors.MasteryStrong
-        readinessScore >= 45 -> LearningFixedColors.MasteryDeveloping
-        else -> LearningFixedColors.MasteryNeedsReview
+        readinessScore >= 75 -> MM.colors.success
+        readinessScore >= 45 -> MM.colors.accent
+        else -> MM.colors.warning
     }
 
     MMCard(contentPadding = MM.space.l) {
@@ -569,7 +568,7 @@ private fun ExamReadinessDashboardCard(
                         modifier = Modifier
                             .weight(strongCount.toFloat())
                             .height(8.dp)
-                            .background(LearningFixedColors.MasteryStrong)
+                            .background(MM.colors.success)
                     )
                 }
                 if (developingCount > 0) {
@@ -577,7 +576,7 @@ private fun ExamReadinessDashboardCard(
                         modifier = Modifier
                             .weight(developingCount.toFloat())
                             .height(8.dp)
-                            .background(LearningFixedColors.MasteryDeveloping)
+                            .background(MM.colors.accent)
                     )
                 }
                 if (gapCount > 0) {
@@ -585,7 +584,7 @@ private fun ExamReadinessDashboardCard(
                         modifier = Modifier
                             .weight(gapCount.toFloat())
                             .height(8.dp)
-                            .background(LearningFixedColors.MasteryNeedsReview)
+                            .background(MM.colors.warning)
                     )
                 }
             }
@@ -783,17 +782,17 @@ private fun ExamPriorityRow(
     val c = MM.colors
 
     val importanceColor = when (item.concept.examImportance) {
-        ExamImportance.LECTURER_FLAGGED -> LearningFixedColors.MasteryNeedsReview
-        ExamImportance.HIGH_YIELD -> LearningFixedColors.MasteryDeveloping
+        ExamImportance.LECTURER_FLAGGED -> MM.colors.warning
+        ExamImportance.HIGH_YIELD -> MM.colors.accent
         ExamImportance.NORMAL -> c.inkSecondary
     }
 
     val masteryColor = when (item.mastery.state) {
-        LearningMasteryState.STRONG -> LearningFixedColors.MasteryStrong
-        LearningMasteryState.DEVELOPING -> LearningFixedColors.MasteryDeveloping
-        LearningMasteryState.LEARNING -> LearningFixedColors.MasteryLearning
-        LearningMasteryState.NEEDS_REVIEW -> LearningFixedColors.MasteryNeedsReview
-        LearningMasteryState.NEW -> LearningFixedColors.MasteryNew
+        LearningMasteryState.STRONG -> MM.colors.success
+        LearningMasteryState.DEVELOPING -> MM.colors.accent
+        LearningMasteryState.LEARNING -> MM.colors.accent
+        LearningMasteryState.NEEDS_REVIEW -> MM.colors.warning
+        LearningMasteryState.NEW -> MM.colors.inkMuted
     }
 
     MMCard(
@@ -1094,7 +1093,7 @@ private fun CramSheetPreviewDialog(
                 Box(
                     modifier = Modifier
                         .clip(MM.radius.pill)
-                        .background(if (copied) LearningFixedColors.MasteryStrong.copy(alpha = 0.16f) else c.accentWash)
+                        .background(if (copied) MM.colors.success.copy(alpha = 0.16f) else c.accentWash)
                         .clickable {
                             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
                             clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Exam Cram Sheet", markdown))
@@ -1105,7 +1104,7 @@ private fun CramSheetPreviewDialog(
                     Text(
                         text = if (copied) "✓ Copied" else "Copy",
                         style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
-                        color = if (copied) LearningFixedColors.MasteryStrong else c.accent
+                        color = if (copied) MM.colors.success else c.accent
                     )
                 }
             }

@@ -90,7 +90,7 @@ class LearningRulesTest {
         val recall = plan.items.first()
         assertEquals(PlanKind.RECALL, recall.kind)
         assertTrue(recall.detail.startsWith("$MaxPlanCards cards"))
-        assertTrue(recall.detail.contains("25 more tomorrow"))
+        assertTrue(recall.detail.contains("${40 - MaxPlanCards} more tomorrow"))
         assertTrue(plan.reason.contains("no penalty"))
     }
 

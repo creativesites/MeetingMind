@@ -50,7 +50,6 @@ import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.feature.circles2.CircleSheet
-import com.craftflowtechnologies.meetingmind.ui.theme.LearningFixedColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import kotlinx.coroutines.launch
@@ -237,7 +236,7 @@ fun ShareStudyPackToCircleSheet(
                         Text(
                             text = errorMessage!!,
                             style = MM.type.caption,
-                            color = LearningFixedColors.MasteryNeedsReview
+                            color = MM.colors.danger
                         )
                         Spacer(Modifier.height(MM.space.xs))
                     }

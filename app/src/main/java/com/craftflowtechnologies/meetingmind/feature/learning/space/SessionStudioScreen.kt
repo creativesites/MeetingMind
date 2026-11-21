@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.res.stringResource
+import com.craftflowtechnologies.meetingmind.R
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -611,8 +613,11 @@ private fun LazyListScope.practisePane(
             if (due > 0) {
                 PrimaryButton("Review $due due ${if (due == 1) "card" else "cards"}", onClick = { onPractiseAll(true) }, modifier = Modifier.fillMaxWidth())
             }
+            // A short mixed set, not the whole bank: formats vary and due items come first.
+            val setSize = practice.size.coerceAtMost(PracticeSetSize)
             SecondaryButton(
-                "Practise all ${practice.size} questions · about ${minutesFor(practice)} min",
+                if (setSize < practice.size) "Practise a mixed set · $setSize of ${practice.size} · about ${minutesFor(practice.take(setSize))} min"
+                else "Practise all ${practice.size} questions · about ${minutesFor(practice)} min",
                 onClick = { onPractiseAll(false) },
                 modifier = Modifier.fillMaxWidth()
             )
@@ -647,12 +652,19 @@ private fun LazyListScope.masteryPane(
 ) {
     val counts = masteryCounts(concepts)
     val last = lastAttemptByConcept(detail.attempts)
+    // Per-concept progress: which of recognise, recall, apply and explain each concept has shown.
+    val stages = stagesReached(detail.attempts, detail.activities.associate { it.id to it.type })
     item {
         Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
             MasteryBar(counts)
             MasteryLegend(counts)
             Text(
                 "States come from your answers over time, never from reading or from time spent.",
+                style = MM.type.caption,
+                color = MM.colors.inkSecondary
+            )
+            Text(
+                stringResource(R.string.practice_stage_caption),
                 style = MM.type.caption,
                 color = MM.colors.inkSecondary
             )
@@ -666,6 +678,9 @@ private fun LazyListScope.masteryPane(
                 MMCard(Modifier.fillMaxWidth(), onClick = { onOpenConcept(c) }, contentPadding = MM.space.m) {
                     Text(c.name, style = MM.type.bodyStrong, color = MM.colors.ink)
                     MasteryLabel(c.state, reason = reasonLine(c, last[c.id]))
+                    val reached = stages[c.id].orEmpty()
+                    Spacer(Modifier.height(MM.space.s))
+                    StageLadder(reached = reached, next = nextStageFor(c.state, reached))
                 }
             }
         }

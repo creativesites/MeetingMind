@@ -37,6 +37,15 @@ import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.work.Marks
 import com.craftflowtechnologies.meetingmind.feature.learning.space.MaxPlanCards
+import com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeFormat
+import com.craftflowtechnologies.meetingmind.feature.learning.space.PracticePlanItem
+import com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeSetSize
+import com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeStage
+import com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeVariant
+import com.craftflowtechnologies.meetingmind.feature.learning.space.QuizSetSize
+import com.craftflowtechnologies.meetingmind.feature.learning.space.buildPracticeDeck
+import com.craftflowtechnologies.meetingmind.feature.learning.space.nativeVariant
+import com.craftflowtechnologies.meetingmind.feature.learning.space.stagesReached
 import com.craftflowtechnologies.meetingmind.feature.learning.space.QuickPlanCards
 import com.craftflowtechnologies.meetingmind.feature.learning.space.Release1PracticeTypes
 import com.craftflowtechnologies.meetingmind.feature.learning.space.conceptSet
@@ -642,6 +651,8 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun startPracticeSession(activities: List<LearningActivity>) {
+        // A plain deck is asked as written; beginMode sets varied formats after this.
+        _practiceVariants.value = emptyMap()
         _practiceActivities.value = activities
         _currentActivityIndex.value = 0
         _isFlipped.value = false
@@ -797,7 +808,8 @@ class LearnViewModel @JvmOverloads constructor(
     fun recordRecallAttempt(
         userResponse: String,
         isCorrect: Boolean,
-        rating: RecallRating? = null
+        rating: RecallRating? = null,
+        format: PracticeFormat? = null
     ) {
         val activities = _practiceActivities.value
         val currentIndex = _currentActivityIndex.value
@@ -810,7 +822,9 @@ class LearnViewModel @JvmOverloads constructor(
                     activityId = activity.id,
                     userResponse = userResponse,
                     isCorrect = isCorrect,
-                    rating = rating
+                    rating = rating,
+                    // The format is remembered so the next session asks this item another way.
+                    feedback = format?.tag.orEmpty()
                 )
             } catch (e: Exception) {
                 // A failed save must never crash practice or pretend it worked.
@@ -824,8 +838,14 @@ class LearnViewModel @JvmOverloads constructor(
                 isCorrect = isCorrect,
                 newState = outcome.masteryEvaluation?.state,
                 reason = outcome.masteryEvaluation?.reason,
-                nextReviewDays = outcome.schedule.intervalDays
+                nextReviewDays = outcome.schedule.intervalDays,
+                format = format
             )
+            val conceptId = activity.conceptId
+            if (isCorrect && format != null && conceptId != null) {
+                val stages = _practiceStages.value
+                _practiceStages.value = stages + (conceptId to (stages[conceptId].orEmpty() + format.stage))
+            }
             val isMissed = !isCorrect || rating == RecallRating.AGAIN || rating == RecallRating.HARD
             if (isMissed) {
                 _missedActivityIds.value = _missedActivityIds.value + activity.id
@@ -1210,37 +1230,85 @@ class LearnViewModel @JvmOverloads constructor(
             return index in 1 until _practiceActivities.value.size
         }
 
-    private fun beginMode(
+    /** How each item in the open practice is asked today, by activity id (see PracticeVariety.kt). */
+    private val _practiceVariants = MutableStateFlow<Map<String, PracticeVariant>>(emptyMap())
+    val practiceVariants: StateFlow<Map<String, PracticeVariant>> = _practiceVariants.asStateFlow()
+
+    /** Stages each concept has shown with a correct answer, for the ladder in the summary. */
+    private val _practiceStages = MutableStateFlow<Map<String, Set<PracticeStage>>>(emptyMap())
+    val practiceStages: StateFlow<Map<String, Set<PracticeStage>>> = _practiceStages.asStateFlow()
+
+    /** How the item is asked: the planned variant, or the activity's own question. */
+    fun variantFor(activity: LearningActivity): PracticeVariant =
+        _practiceVariants.value[activity.id] ?: nativeVariant(activity)
+
+    /**
+     * Opens a practice: a short, mixed set (sources interleaved, formats rotated against each
+     * item's history, difficulty from each concept's state). If anything in the planning fails,
+     * the items are asked as written, so practice always opens.
+     */
+    private suspend fun beginMode(
         kind: PracticeKind,
         title: String,
         activities: List<LearningActivity>,
-        concepts: Collection<LearningConcept>
+        concepts: Collection<LearningConcept>,
+        maxItems: Int = PracticeSetSize,
+        interleave: Boolean = true,
+        rampUp: Boolean = false,
+        siblingActivities: List<LearningActivity> = activities
     ) {
+        val sessionIds = activities.map { it.sessionId }.distinct()
+        val attempts = runCatching {
+            withContext(Dispatchers.IO) {
+                if (sessionIds.isEmpty()) emptyList()
+                else database.activityAttemptDao().getBySessions(sessionIds).map { it.toDomain() }
+            }
+        }.getOrElse { e -> Log.w("LearnViewModel", "Practice history unavailable", e); emptyList() }
+        val known = runCatching { learningRepo.observeAllConcepts().first() }.getOrDefault(emptyList())
+        val conceptMap = (concepts + known).distinctBy { it.id }.associateBy { it.id }
+        val seed = System.currentTimeMillis() / com.craftflowtechnologies.meetingmind.core.model.DeterministicSpacedScheduler.DAY_MS * 31 + kind.ordinal
+        val deck = runCatching {
+            buildPracticeDeck(
+                activities = activities,
+                concepts = conceptMap,
+                attempts = attempts,
+                maxItems = maxItems,
+                seed = seed,
+                interleave = interleave,
+                rampUp = rampUp,
+                siblingActivities = siblingActivities
+            )
+        }.getOrElse { e ->
+            Log.w("LearnViewModel", "Practice planning failed; asking items as written", e)
+            activities.take(maxItems).map { PracticePlanItem(it, nativeVariant(it)) }
+        }
+        val types = (siblingActivities + activities).associate { it.id to it.type }
         _practiceKind.value = kind
         _practiceTitle.value = title
-        _practiceConcepts.value = concepts.associateBy { it.id }
+        _practiceConcepts.value = conceptMap
         _practiceError.value = null
-        startPracticeSession(activities)
+        startPracticeSession(deck.map { it.activity })
+        _practiceVariants.value = deck.associate { it.activity.id to it.variant }
+        _practiceStages.value = runCatching { stagesReached(attempts, types) }.getOrDefault(emptyMap())
     }
 
     /** Daily Recall: today's due cards, bounded like the plan. [quick] is the five-minute version. */
     fun startDailyRecall(quick: Boolean = false, onReady: () -> Unit) {
+        val cap = if (quick) QuickPlanCards else MaxPlanCards
         val due = dailyBrief.value?.dueReviews.orEmpty()
             .filter { it.activity.isRelease1Practice() }
-            .take(if (quick) QuickPlanCards else MaxPlanCards)
-        if (due.isNotEmpty()) {
-            beginMode(
-                PracticeKind.RECALL, "Daily Recall", due.map { it.activity }, due.mapNotNull { it.concept }
-            )
-            onReady()
-            return
-        }
         viewModelScope.launch(crashGuard) {
             _isLoadingPractice.value = true
             try {
-                val deck = learningRepo.getPracticeDeck(activityTypes = Release1PracticeTypes, onlyDue = true)
-                    .take(if (quick) QuickPlanCards else MaxPlanCards)
-                beginMode(PracticeKind.RECALL, "Daily Recall", deck, emptyList())
+                if (due.isNotEmpty()) {
+                    beginMode(
+                        PracticeKind.RECALL, "Daily Recall", due.map { it.activity }, due.mapNotNull { it.concept },
+                        maxItems = cap
+                    )
+                } else {
+                    val deck = learningRepo.getPracticeDeck(activityTypes = Release1PracticeTypes, onlyDue = true)
+                    beginMode(PracticeKind.RECALL, "Daily Recall", deck, emptyList(), maxItems = cap)
+                }
                 onReady()
             } catch (e: Exception) {
                 Log.e("LearnViewModel", "Failed to load Daily Recall", e)
@@ -1254,12 +1322,16 @@ class LearnViewModel @JvmOverloads constructor(
     /** The session's ungraded diagnostic (5 to 8 questions). */
     fun startDiagnostic(sessionIdOrNoteId: String, onReady: () -> Unit) {
         withSessionDetail(sessionIdOrNoteId) { detail ->
-            beginMode(PracticeKind.DIAGNOSTIC, "Quick check", diagnosticSet(detail), detail.concepts)
+            val set = diagnosticSet(detail)
+            beginMode(
+                PracticeKind.DIAGNOSTIC, "Quick check", set, detail.concepts,
+                maxItems = set.size, siblingActivities = detail.activities
+            )
             onReady()
         }
     }
 
-    /** Up to three questions that strengthen one concept. */
+    /** Up to three questions that strengthen one concept, climbing from recognition to explanation. */
     fun startConceptPractice(sessionIdOrNoteId: String, conceptId: String, onReady: () -> Unit) {
         withSessionDetail(sessionIdOrNoteId) { detail ->
             val concept = detail.concepts.firstOrNull { it.id == conceptId }
@@ -1267,26 +1339,35 @@ class LearnViewModel @JvmOverloads constructor(
                 PracticeKind.CONCEPT,
                 concept?.let { "Strengthen ${it.name}" } ?: "Strengthen",
                 conceptSet(detail, conceptId),
-                detail.concepts
+                detail.concepts,
+                interleave = false,
+                rampUp = true,
+                siblingActivities = detail.activities
             )
             onReady()
         }
     }
 
-    /** Every Release 1 question in a session. */
+    /** A short mixed set from a session's Release 1 questions (due ones only when [dueOnly]). */
     fun startSessionPractice(sessionIdOrNoteId: String, dueOnly: Boolean, onReady: () -> Unit) {
         withSessionDetail(sessionIdOrNoteId) { detail ->
             val now = System.currentTimeMillis()
             val dueIds = detail.schedules.filter { !it.isPaused && it.dueAt <= now }.map { it.activityId }.toSet()
-            val set = practiceItems(detail).filter { !dueOnly || it.id in dueIds }
-            beginMode(PracticeKind.SET, if (dueOnly) "Due reviews" else detail.session.title, set, detail.concepts)
+            val all = practiceItems(detail)
+            // Due items first, so a capped set reviews what the scheduler asked for before anything else.
+            val notDue: List<LearningActivity> = if (dueOnly) emptyList() else all.filter { it.id !in dueIds }
+            val set = all.filter { it.id in dueIds } + notDue
+            beginMode(
+                PracticeKind.SET, if (dueOnly) "Due reviews" else detail.session.title, set, detail.concepts,
+                siblingActivities = detail.activities
+            )
             onReady()
         }
     }
 
     private fun withSessionDetail(
         sessionIdOrNoteId: String,
-        block: (LearningRepository.LearningSessionDetail) -> Unit
+        block: suspend (LearningRepository.LearningSessionDetail) -> Unit
     ) {
         viewModelScope.launch(crashGuard) {
             _isLoadingPractice.value = true
@@ -1345,6 +1426,7 @@ class LearnViewModel @JvmOverloads constructor(
 
     /** Ends the practice. Answers are already saved, one by one, as they were given. */
     fun closePractice() {
+        _practiceVariants.value = emptyMap()
         _practiceActivities.value = emptyList()
         _currentActivityIndex.value = 0
         _isFlipped.value = false
@@ -1528,7 +1610,7 @@ class LearnViewModel @JvmOverloads constructor(
                 if (items.isEmpty()) {
                     _practiceError.value = "There are no practice questions on this yet."
                 } else {
-                    beginMode(PracticeKind.SET, "Quiz: ${turn.question.take(40)}", items.distinctBy { it.id }.take(6), concepts)
+                    beginMode(PracticeKind.SET, "Quiz: ${turn.question.take(40)}", items.distinctBy { it.id }, concepts, maxItems = QuizSetSize)
                     onReady()
                 }
             } catch (e: Exception) {
@@ -1653,7 +1735,9 @@ data class PracticeResult(
     val isCorrect: Boolean,
     val newState: LearningMasteryState?,
     val reason: String?,
-    val nextReviewDays: Int
+    val nextReviewDays: Int,
+    /** How the item was asked (null for items asked outside the Learning space's practice mode). */
+    val format: PracticeFormat? = null
 )
 
 /** How widely Ask Learning searches. Session is the default; it never searches the web. */
