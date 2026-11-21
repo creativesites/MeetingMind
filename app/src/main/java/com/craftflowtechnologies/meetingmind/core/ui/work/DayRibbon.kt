@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.ui.theme.Briefing
@@ -107,6 +109,8 @@ fun DayRibbon(
                     .width(blockWidth)
                     .height(TouchSize)
                     .clickable(onClick = block.onClick)
+                    // The time and title are always read out, even when the block is too narrow to print them.
+                    .semantics { contentDescription = "${block.start.clockLabel()} ${block.title}" }
             ) {
                 Box(
                     Modifier
@@ -118,7 +122,8 @@ fun DayRibbon(
                         .background(blockBrush)
                         .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
-                    Column {
+                    // A short meeting is too narrow for its labels: they would clip to one character, so it shows as a plain block.
+                    if (blockWidth >= MinLabelledBlock) Column {
                         Text(
                             text = block.start.clockLabel(),
                             style = MM.type.overline,
@@ -190,6 +195,8 @@ fun DayRibbon(
 }
 
 private val RibbonHeight: Dp = 74.dp
+/** Narrower than this, a block draws no time or title (they would clip to a character or two). */
+private val MinLabelledBlock: Dp = 56.dp
 private val TouchSize: Dp = 48.dp
 private val BlockHeight: Dp = 40.dp
 private val AxisY: Dp = 30.dp
