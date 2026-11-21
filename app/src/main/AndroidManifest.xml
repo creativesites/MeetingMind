@@ -28,6 +28,11 @@
          offline transcriptions aren't paused with the screen off. The user decides. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- ML Kit's document scanner locks its own activity to portrait, which Play reads as a required
+         portrait screen and hides the app from tablets, desktops and XR. The app works in any
+         orientation, so portrait is optional. -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+
     <!-- Create: see whether WhatsApp or Instagram is installed, to offer direct sharing. -->
     <queries>
         <package android:name="com.whatsapp" />
