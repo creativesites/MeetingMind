@@ -65,7 +65,8 @@ import java.util.Locale
 
 /** The sheets the Tasks feature can open. A screen holds at most one at a time. */
 sealed interface TaskSheet {
-    data class QuickAdd(val listId: String? = null) : TaskSheet
+    /** [space] files the new task in a space; [defaultDay] dates it when the line names no date. */
+    data class QuickAdd(val listId: String? = null, val space: String? = null, val defaultDay: LocalDate? = null) : TaskSheet
     /** [planPick]: the date goes to the Plan my day card on screen, and the plan moves on. */
     data class Date(val ids: List<String>, val planPick: Boolean = false) : TaskSheet
     data class Priority(val ids: List<String>) : TaskSheet
@@ -85,7 +86,7 @@ fun TaskSheetHost(
 ) {
     when (sheet) {
         null -> Unit
-        is TaskSheet.QuickAdd -> QuickAddSheet(vm, sheet.listId, onDismiss)
+        is TaskSheet.QuickAdd -> QuickAddSheet(vm, sheet.listId, sheet.space, sheet.defaultDay, onDismiss)
         is TaskSheet.Date -> DateSheet(vm, ctx, sheet.ids, sheet.planPick, onDismiss)
         is TaskSheet.Priority -> PrioritySheet(vm, sheet.ids, onDismiss)
         is TaskSheet.Move -> MoveSheet(vm, ctx, sheet.ids, onDismiss)
@@ -119,7 +120,7 @@ internal fun highlightQuickAdd(text: String, parsed: QuickAddResult, colors: MMC
 }
 
 @Composable
-private fun QuickAddSheet(vm: TasksViewModel, listId: String?, onDismiss: () -> Unit) {
+private fun QuickAddSheet(vm: TasksViewModel, listId: String?, space: String?, defaultDay: LocalDate?, onDismiss: () -> Unit) {
     val colors = MM.colors
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
@@ -157,7 +158,7 @@ private fun QuickAddSheet(vm: TasksViewModel, listId: String?, onDismiss: () -> 
                 val day = TaskViews.dayOf(due, zone)
                 val label = TaskViews.dayLabel(day, today) + if (parsed.hasTime) " ${TaskViews.timeOf(due, zone)}" else ""
                 MMChip(label, selected = true, onClick = {})
-            }
+            } ?: defaultDay?.let { MMChip(TaskViews.dayLabel(it, today), selected = true, onClick = {}) }
             parsed.listName?.let { MMChip("#$it", selected = true, onClick = {}) }
             if (parsed.priority < 4) MMChip("P${parsed.priority}", selected = true, onClick = {})
             parsed.labels.forEach { MMChip("@$it", selected = true, onClick = {}) }
@@ -176,7 +177,7 @@ private fun QuickAddSheet(vm: TasksViewModel, listId: String?, onDismiss: () -> 
                 enabled = parsed.title.isNotBlank(),
                 onClick = {
                     scope.launch {
-                        val saved = vm.quickAdd(text)
+                        val saved = vm.quickAdd(text, space, defaultDay)
                         // A list screen adds into its own list, unless the line named another.
                         if (saved != null && listId != null && saved.listId == null) vm.moveTo(listOf(saved.id), listId)
                         onDismiss()

@@ -255,6 +255,95 @@ class TasksViewModelTest {
         assertEquals(listOf<LocalDate?>(today.plusDays(1), null), groups.map { it.first })
     }
 
+    @Test
+    fun quickAddFromWorkFilesTheTaskInWorkSoWorkShowsIt() = runBlocking {
+        val home = repo.createList("Home", "PERSONAL")!!
+
+        val fromWork = vm.quickAdd("Send the deck", space = "WORK")!!
+        assertEquals("WORK", fromWork.space)
+        val lists = vm.snapshotLists()
+        assertEquals(listOf(fromWork.id), TaskViews.scoped(vm.snapshotTasks(), TaskScope.WORK, lists).map { it.id })
+
+        // A #list's own space wins over the screen's.
+        val named = vm.quickAdd("Buy milk #Home", space = "WORK")!!
+        assertEquals(home.id, named.listId)
+        assertEquals("PERSONAL", named.space)
+    }
+
+    @Test
+    fun quickAddDatesTheTaskForTheColumnUnlessTheLineNamesADate() = runBlocking {
+        val plain = vm.quickAdd("Call Ann", defaultDay = today)!!
+        assertEquals(today, dayOf(plain.dueAt!!))
+        assertFalse(plain.hasTime)
+
+        val dated = vm.quickAdd("Call Bob tomorrow", defaultDay = today)!!
+        assertEquals(today.plusDays(1), dayOf(dated.dueAt!!))
+    }
+
+    @Test
+    fun theBoardPutsEveryTaskInOneColumn() = runBlocking {
+        val undated = make("Someday idea")
+        val late = make("Late report", today.minusDays(2))
+        val now = make("Today call", today)
+        val later = make("Next week review", today.plusDays(5))
+        val waiting = make("Contract back from legal", today, waiting = true)
+        val finished = make("Old chore")
+        vm.toggleDone(finished)
+
+        val columns = TaskBoard.columns(vm.snapshotTasks(), today, zone, clockMs).toMap()
+
+        assertEquals(BoardColumn.entries.toList(), TaskBoard.columns(emptyList(), today, zone, clockMs).map { it.first })
+        assertEquals(listOf(undated.id), columns.getValue(BoardColumn.NO_DATE).map { it.id })
+        assertEquals(listOf(late.id, now.id), columns.getValue(BoardColumn.TODAY).map { it.id })
+        assertEquals(listOf(later.id), columns.getValue(BoardColumn.UPCOMING).map { it.id })
+        assertEquals(listOf(waiting.id), columns.getValue(BoardColumn.WAITING).map { it.id })
+        assertEquals(listOf(finished.id), columns.getValue(BoardColumn.DONE).map { it.id })
+    }
+
+    @Test
+    fun finishedTasksLeaveTheBoardAfterAWeek() = runBlocking {
+        val old = make("Finished long ago")
+        vm.toggleDone(old)
+        clockMs += TaskBoard.DONE_WINDOW_MS + 1
+
+        val columns = TaskBoard.columns(vm.snapshotTasks(), today, zone, clockMs).toMap()
+
+        assertTrue(columns.getValue(BoardColumn.DONE).isEmpty())
+    }
+
+    @Test
+    fun movingACardChangesItsDateOrStatus() = runBlocking {
+        val t = make("Move me")
+        fun column() = runBlocking { TaskBoard.columnOf(repo.get(t.id)!!, today, zone) }
+
+        vm.moveToColumn(repo.get(t.id)!!, BoardColumn.TODAY)
+        assertEquals(BoardColumn.TODAY, column())
+
+        vm.moveToColumn(repo.get(t.id)!!, BoardColumn.UPCOMING)
+        assertEquals(today.plusDays(1), dayOf(repo.get(t.id)!!.dueAt!!))
+
+        vm.moveToColumn(repo.get(t.id)!!, BoardColumn.DONE)
+        assertEquals(BoardColumn.DONE, column())
+
+        // Leaving Done reopens the task.
+        vm.moveToColumn(repo.get(t.id)!!, BoardColumn.TODAY)
+        assertFalse(repo.get(t.id)!!.done)
+        assertEquals(BoardColumn.TODAY, column())
+
+        vm.moveToColumn(repo.get(t.id)!!, BoardColumn.NO_DATE)
+        assertNull(repo.get(t.id)!!.dueAt)
+    }
+
+    @Test
+    fun movingAWaitingCardOutTakesItBack() = runBlocking {
+        val t = make("Waiting on Sam", today, waiting = true)
+
+        vm.moveToColumn(repo.get(t.id)!!, BoardColumn.TODAY)
+
+        assertFalse(repo.get(t.id)!!.waitingOn)
+        assertEquals(BoardColumn.TODAY, TaskBoard.columnOf(repo.get(t.id)!!, today, zone))
+    }
+
     private object NoCalendar : TodayCalendar {
         override fun allowed(): Boolean = false
         override suspend fun between(from: Long, to: Long): List<CalendarEvent> = emptyList()

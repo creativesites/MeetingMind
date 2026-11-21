@@ -146,6 +146,9 @@ class TasksViewModel(
 
     fun today(): LocalDate = Instant.ofEpochMilli(clock()).atZone(zone).toLocalDate()
 
+    /** The ViewModel's clock, for screens that need "now" (the board's Done window). */
+    fun now(): Long = clock()
+
     fun sectionsOf(listId: String): Flow<List<TaskSection>> = repo.observeSections(listId)
 
     suspend fun snapshotTasks(): List<Task> = repo.observeTasks().first()
@@ -316,17 +319,25 @@ class TasksViewModel(
     fun parseQuickAdd(text: String): QuickAddResult =
         QuickAddParser.parse(text, clock(), lists.value.map { QuickAddList(it.id, it.name) })
 
-    /** Creates the task a quick-add line describes. The Inbox when no #list matched. Null for a blank line. */
-    suspend fun quickAdd(text: String): Task? {
+    /**
+     * Creates the task a quick-add line describes. The Inbox when no #list matched. Null for a blank line.
+     * [space] files it in a space (Work's Tasks passes WORK, so the task shows there); a #list's own
+     * space wins. [defaultDay] dates it when the line names no date (a board column's add button).
+     */
+    suspend fun quickAdd(text: String, space: String? = null, defaultDay: LocalDate? = null): Task? {
         if (text.isBlank()) return null
-        val parsed = QuickAddParser.parse(text, clock(), snapshotLists().map { QuickAddList(it.id, it.name) })
+        val allLists = snapshotLists()
+        val parsed = QuickAddParser.parse(text, clock(), allLists.map { QuickAddList(it.id, it.name) })
         if (parsed.title.isBlank()) return null
+        val listSpace = parsed.listId?.let { id -> allLists.firstOrNull { it.id == id }?.space }
+        val dueAt = parsed.dueAt ?: defaultDay?.atStartOfDay(zone)?.toInstant()?.toEpochMilli()
         val saved = repo.save(
             Task(
                 id = "",
                 title = parsed.title,
-                dueAt = parsed.dueAt,
-                hasTime = parsed.hasTime,
+                dueAt = dueAt,
+                hasTime = parsed.hasTime && parsed.dueAt != null,
+                space = listSpace ?: space,
                 listId = parsed.listId,
                 priority = parsed.priority,
                 repeatRule = parsed.repeatRule,
@@ -338,6 +349,32 @@ class TasksViewModel(
             labelRevision.value++
         }
         return saved
+    }
+
+    // ---- Board ----
+
+    /**
+     * Moves a board card to [column]: Done ticks it, No date clears the date, Today and Upcoming date it
+     * today or tomorrow (keeping its clock time). Leaving Done reopens it; leaving Waiting on takes it back.
+     * Waiting on itself needs a name, so the board opens the Assign sheet instead of calling this.
+     */
+    suspend fun moveToColumn(task: Task, column: BoardColumn) {
+        val today = today()
+        val from = TaskBoard.columnOf(task, today, zone)
+        if (from == column) return
+        if (column == BoardColumn.DONE) {
+            if (!task.done) toggleDone(task)
+            return
+        }
+        if (task.done) repo.toggleDone(task.id)
+        if (task.waitingOn && column != BoardColumn.WAITING) setWaitingOn(listOf(task.id), null)
+        val current = repo.get(task.id) ?: return
+        when (column) {
+            BoardColumn.NO_DATE -> repo.reschedule(current.id, null, false)
+            BoardColumn.TODAY -> repo.reschedule(current.id, onDay(current.dueAt, current.hasTime, today), current.hasTime)
+            BoardColumn.UPCOMING -> repo.reschedule(current.id, onDay(current.dueAt, current.hasTime, today.plusDays(1)), current.hasTime)
+            BoardColumn.WAITING, BoardColumn.DONE -> Unit
+        }
     }
 
     // ---- Plan my day ----
