@@ -10,9 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddTask
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.EventNote
+import androidx.compose.material.icons.rounded.Today
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.rounded.Check
@@ -64,15 +65,10 @@ import com.craftflowtechnologies.meetingmind.core.work.WorkTask
 import com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel
 import com.craftflowtechnologies.meetingmind.feature.today.UpNextTile
 import com.craftflowtechnologies.meetingmind.feature.today.timeFormat
-import com.craftflowtechnologies.meetingmind.feature.today.timeLabel
-import com.craftflowtechnologies.meetingmind.feature.work.hub.PulseFacts
 import com.craftflowtechnologies.meetingmind.feature.work.hub.NeedCandidate
 import com.craftflowtechnologies.meetingmind.feature.work.hub.NeedRank
-import com.craftflowtechnologies.meetingmind.feature.work.hub.PulseMoment
 import com.craftflowtechnologies.meetingmind.feature.work.hub.WorkSearchPane
-import com.craftflowtechnologies.meetingmind.feature.work.hub.pulseMoment
 import com.craftflowtechnologies.meetingmind.feature.work.hub.rankNeeds
-import com.craftflowtechnologies.meetingmind.feature.work.hub.weeklyReviewDue
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import java.time.Instant
 import java.time.LocalTime
@@ -135,6 +131,12 @@ fun WorkPageScreen(
     val upNext by today.upNext.collectAsState()
     val now by today.now.collectAsState()
     val todayItems by today.today.collectAsState()
+    val myTasks by viewModel.myTasks.collectAsState()
+    val waitingOn by viewModel.waitingOn.collectAsState()
+    val followUps by viewModel.followUps.collectAsState()
+    val titles by viewModel.titles.collectAsState()
+    val people by viewModel.everyone.collectAsState()
+    val recentRows by viewModel.recentWork.collectAsState()
     val terms = settings.terms
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -191,19 +193,6 @@ fun WorkPageScreen(
     val heroEvent = upNext as? UpNextTile.Event
     val nextEvent: CalendarEvent? = heroEvent?.event ?: calEvents.filter { it.end >= now }.minByOrNull { it.begin }
 
-    val moment = pulseMoment(
-        PulseFacts(
-            now = now,
-            meetingsToday = calEvents.size,
-            meetingsEndedToday = calEvents.count { it.end < now },
-            nextMeetingStart = calEvents.filter { it.end >= now }.minOfOrNull { it.begin },
-            prepLeadMs = settings.prepLeadMinutes * 60_000L,
-            unreviewed = toReview.size,
-            weeklyReviewDue = weeklyReviewDue(settings, now),
-            coldStart = pulse.coldStart
-        )
-    )
-
     fun openTask(id: String) {
         onOpenTaskPage?.invoke(id) ?: viewModel.tasks.value.firstOrNull { it.id == id }?.let { editing = it }
     }
@@ -224,49 +213,42 @@ fun WorkPageScreen(
         }
     }
 
-    fun countLine(n: Int, one: String, many: String): String = if (n <= 0) "None" else "$n ${if (n == 1) one else many}"
-
-    val hero: PulseHero? = when (moment) {
-        PulseMoment.BEFORE_MEETING -> nextEvent?.let { e ->
-            val line = pulse.today.firstOrNull { it.event.key == e.key }
-            val others = e.otherPeople
-            PulseHero.Next(
-                whenLabel = UpNext.whenLabel(e, now, java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)),
-                title = e.title,
-                withLine = if (others.isEmpty()) null else "With " + others.take(3).joinToString(", ") + if (others.size > 3) " +${others.size - 3}" else "",
-                lines = listOf(
-                    "You owe" to countLine(line?.youOwe ?: 0, "item", "items"),
-                    "They owe" to countLine(line?.theyOwe ?: 0, "item", "items"),
-                    "Still open" to countLine((line?.questions ?: 0) + (line?.decisionsNeeded ?: 0), "item", "items")
-                ),
-                blocks = calEvents.map { ev ->
-                    RibbonBlock(
-                        start = localTimeOf(ev.begin), end = localTimeOf(ev.end), title = ev.title,
-                        onClick = { today.noteForEvent(ev) { id, _ -> onOpenNote(id) } }, past = ev.end < now
-                    )
-                },
-                now = localTimeOf(now),
-                onPrepare = { preparing = PrepTarget.Event(pulseEventOf(e)) },
-                onRecord = { today.noteForEvent(e) { id, type -> onRecordEvent(id, type, e.title, UpNext.speakerCount(e)) } }
-            )
+    fun openRecent(row: WorkRecent.Row) {
+        when (WorkRecent.targetOf(row)) {
+            WorkRecent.Target.WRAP_UP -> onOpenWrapUp(row.meetingId, false)
+            WorkRecent.Target.PROCESSING -> onOpenProcessing(row.meetingId)
         }
-        PulseMoment.AFTER_MEETINGS -> toReview.firstOrNull()?.let { r ->
-            PulseHero.ToReview(
-                headline = "To review · ${r.title}",
-                sub = "${r.type.displayName} · ${dayLabel(r.at, now)} · check the findings, then the follow-up is ready",
-                onReview = { onOpenWrapUp(r.meetingId, false) }
-            )
-        }
-        PulseMoment.WEEKLY_REVIEW -> PulseHero.Weekly(onStart = onOpenWeeklyReview)
-        PulseMoment.FIRST_DAY -> PulseHero.FirstDay(
-            calendarLine = calEvents.filter { it.begin >= now }.minByOrNull { it.begin }
-                ?.let { e -> "${e.title} · ${fmt.format(Date(e.begin))}" },
-            onRecord = { recordPicker = true },
-            onWrite = { writePicker = true },
-            onInbox = onOpenInbox
-        )
-        PulseMoment.QUIET -> null
     }
+
+    // ---------------------------------------------------------------- now: the next meeting, or a free day
+    val upcoming = calEvents.filter { it.end >= now }.sortedBy { it.begin }
+    val workNow: WorkNow = nextEvent?.let { e ->
+        val others = e.otherPeople
+        val then = upcoming.firstOrNull { it.key != e.key && it.begin >= e.begin }
+        WorkNow.Next(
+            whenLabel = UpNext.whenLabel(e, now, java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)),
+            title = e.title.ifBlank { "Untitled" },
+            withLine = if (others.isNotEmpty()) {
+                "With " + others.take(3).joinToString(", ") + (if (others.size > 3) " +${others.size - 3}" else "")
+            } else {
+                e.location?.takeIf { it.isNotBlank() }
+            },
+            blocks = calEvents.map { ev ->
+                RibbonBlock(
+                    start = localTimeOf(ev.begin), end = localTimeOf(ev.end), title = ev.title,
+                    onClick = { today.noteForEvent(ev) { id, _ -> onOpenNote(id) } }, past = ev.end < now
+                )
+            },
+            now = localTimeOf(now),
+            thenLine = then?.let { "Then: ${it.title.ifBlank { "Untitled" }} · ${fmt.format(Date(it.begin))}" },
+            onRecord = { today.noteForEvent(e) { id, type -> onRecordEvent(id, type, e.title, UpNext.speakerCount(e)) } },
+            onPrepare = { preparing = PrepTarget.Event(pulseEventOf(e)) }
+        )
+    } ?: WorkNow.Free(
+        doneLine = WorkHomeRules.doneLine(calEvents.count { it.end < now }),
+        onRecord = { recordPicker = true },
+        onWrite = { writePicker = true }
+    )
 
     // ---------------------------------------------------------------- needs you
     val needCandidates = buildList<NeedCandidate<PulseNeed>> {
@@ -275,24 +257,39 @@ fun WorkPageScreen(
                 key = "x-${r.meetingId}", kind = "Didn't finish processing", title = r.title,
                 line = "${r.type.displayName} · ${dayLabel(r.at, now)} · the audio is safe",
                 verb = "Try again", tone = AttentionTone.DANGER, icon = Icons.Filled.Warning,
-                onVerb = { onOpenProcessing(r.meetingId) }, onOpen = { onOpenMeeting(r.meetingId, null) }
+                onVerb = { onOpenProcessing(r.meetingId) }, onOpen = { onOpenProcessing(r.meetingId) }
+            )))
+        }
+        // A finished recording whose tasks and decisions nobody has checked yet: the Wrap-up.
+        toReview.forEach { r ->
+            add(NeedCandidate(NeedRank.YOU_OWE_DUE, PulseNeed(
+                key = "r-${r.meetingId}", kind = "To review", title = r.title,
+                line = "${r.type.displayName} · ${dayLabel(r.at, now)} · check its tasks and decisions",
+                verb = "Review", tone = AttentionTone.ACCENT, icon = Icons.Filled.CheckCircle,
+                onVerb = { onOpenWrapUp(r.meetingId, false) }, onOpen = { onOpenWrapUp(r.meetingId, false) }
+            )))
+        }
+        followUps.forEach { r ->
+            add(NeedCandidate(NeedRank.DECISION, PulseNeed(
+                key = "f-${r.meetingId}", kind = "Follow-up to send", title = r.title,
+                line = "${dayLabel(r.at, now)} · the recap is drafted",
+                verb = "Send", tone = AttentionTone.ACCENT, icon = Icons.AutoMirrored.Filled.Send,
+                onVerb = { onOpenWrapUp(r.meetingId, true) }, onOpen = { onOpenWrapUp(r.meetingId, true) }
             )))
         }
         pulse.attention.forEach { row ->
             val past = (row.dueAt ?: Long.MAX_VALUE) < startOfToday
             when (row.kind) {
-                AttentionKind.YOU_OWE -> add(NeedCandidate(NeedRank.YOU_OWE_DUE, PulseNeed(
-                    key = "o-${row.itemId ?: row.taskId}", kind = "You owe", title = row.title, line = row.detail,
-                    verb = if (row.taskId != null) "Done" else "Open", tone = AttentionTone.ACCENT, icon = Icons.Filled.AddTask,
-                    onVerb = {
-                        if (row.taskId != null) scope.launch { viewModel.toggle(viewModel.asTask(row)) } else openAttention(row)
-                    },
-                    onOpen = { openAttention(row) }
+                // Your own tasks are listed under Tasks, so only a promise with no task of its own is a need.
+                AttentionKind.YOU_OWE -> if (row.taskId == null) add(NeedCandidate(NeedRank.YOU_OWE_DUE, PulseNeed(
+                    key = "o-${row.itemId}", kind = "You promised", title = row.title, line = row.detail,
+                    verb = "Open", tone = AttentionTone.ACCENT, icon = Icons.Filled.AddTask,
+                    onVerb = { openAttention(row) }, onOpen = { openAttention(row) }
                 )))
-                AttentionKind.THEY_OWE -> {
+                AttentionKind.THEY_OWE -> if (past) {
                     val nudge = AttentionAction.NUDGE in row.actions
-                    add(NeedCandidate(if (past) NeedRank.THEY_OWE_PAST else NeedRank.THEY_OWE_OPEN, PulseNeed(
-                        key = "w-${row.itemId ?: row.taskId}", kind = "Waiting on", title = row.title, line = row.detail,
+                    add(NeedCandidate(NeedRank.THEY_OWE_PAST, PulseNeed(
+                        key = "w-${row.itemId ?: row.taskId}", kind = "Overdue from someone", title = row.title, line = row.detail,
                         verb = if (nudge) "Nudge" else "Open", tone = AttentionTone.WARNING, icon = Icons.Filled.Groups,
                         onVerb = { if (nudge) scope.launch { nudging = viewModel.asTask(row) } else openAttention(row) },
                         onOpen = { openAttention(row) }
@@ -303,11 +300,8 @@ fun WorkPageScreen(
                     verb = "Review", tone = AttentionTone.ACCENT, icon = Icons.Filled.CheckCircle,
                     onVerb = { openAttention(row) }, onOpen = { openAttention(row) }
                 )))
-                AttentionKind.QUIET -> add(NeedCandidate(NeedRank.QUIET, PulseNeed(
-                    key = "q-${row.entityId}", kind = "Gone quiet", title = row.title, line = row.detail,
-                    verb = "Open", tone = AttentionTone.NEUTRAL, icon = Icons.Filled.EventNote,
-                    onVerb = { openEntity(row) }, onOpen = { openEntity(row) }
-                )))
+                // "Gone quiet" was a guess, not a need; projects show their own state.
+                AttentionKind.QUIET -> Unit
             }
         }
         if (inboxCount > 0) add(NeedCandidate(NeedRank.INBOX, PulseNeed(
@@ -317,48 +311,69 @@ fun WorkPageScreen(
             onVerb = onOpenInbox, onOpen = onOpenInbox
         )))
     }
-    val ranked = rankNeeds(needCandidates, limit = 4)
-    val needs = ranked.map { it.value }
+    val needs = rankNeeds(needCandidates, limit = WorkHomeRules.NEEDS_SHOWN).map { it.value }
 
-    // Since yesterday: the changes the Pulse measured, each one a sentence that opens its evidence.
-    val changes = pulse.changes.flatMap { group ->
-        group.lines.map { line ->
-            PulseChange(line.text) {
-                line.itemId?.let { id -> scope.launch { viewModel.evidenceOf(id)?.let { (m, at) -> onOpenMeeting(m, at) } } }
+    // ---------------------------------------------------------------- tasks, projects, people
+    val endOfToday = startOfToday + 86_400_000L
+    val dueTasks = WorkHomeRules.todayTasks(myTasks, now, endOfToday)
+    val homeModel = WorkHomeModel(
+        now = workNow,
+        needs = needs,
+        needsTotal = needCandidates.size,
+        tasks = dueTasks.take(WorkHomeRules.TASKS_SHOWN).map { t ->
+            val overdue = t.isOverdue(now)
+            val due = t.dueAt ?: now
+            val whenLine = when {
+                overdue -> "Overdue · " + dayLabel(due, now)
+                com.craftflowtechnologies.meetingmind.feature.work.home.WorkTodayTaskFormat.isTimed(due) -> "Due " + fmt.format(Date(due))
+                else -> "Due today"
             }
-        }
-    }
-
-    fun scheduleRow(item: com.craftflowtechnologies.meetingmind.core.timeline.TimelineItem): ScheduleRow {
-        val e = (item.target as DeepTarget.Event).event
-        return ScheduleRow(item.id, item.title, e.otherPeople.take(3).joinToString(", ").ifEmpty { e.location }, timeLabel(item, fmt)) {
-            today.noteForEvent(e) { id, _ -> onOpenNote(id) }
-        }
-    }
-    val upcomingRows = meetings.filter { (it.end ?: it.start) >= now }.map { scheduleRow(it) }
-    val earlierRows = meetings.filter { (it.end ?: it.start) < now }.map { scheduleRow(it) }
-    val pulseModel = run {
-        val firstName = self?.name?.trim()?.substringBefore(' ')?.takeIf { it.isNotEmpty() }
-        val hour = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
-        val greeting = (when { hour < 12 -> "Good morning"; hour < 17 -> "Good afternoon"; else -> "Good evening" }) + (firstName?.let { ", $it" } ?: "")
-        val quiet = needs.isEmpty() && hero == null
-        PulseModel(
-            headline = if (quiet) "Nothing needs you today" else greeting,
-            sentence = when {
-                needs.isNotEmpty() -> "${needs.first().title} is the one to look at first."
-                moment == PulseMoment.FIRST_DAY -> "Record a meeting, and tomorrow's Pulse knows what was said."
-                else -> null
+            WorkHomeTask(
+                id = t.id, title = t.title.ifBlank { "Untitled" },
+                line = listOfNotNull(whenLine, t.meetingId?.let { titles[it] }).joinToString(" · "),
+                overdue = overdue,
+                onToggle = { viewModel.toggle(t) },
+                onOpen = { openTask(t.id) }
+            )
+        },
+        tasksTotal = dueTasks.size,
+        waitingLine = WorkHomeRules.waitingLine(waitingOn),
+        onAllTasks = { page.select(WorkSegment.TASKS) },
+        onWaiting = { onOpenAll(WorkTab.WAITING) },
+        projectsTitle = terms.projects,
+        projects = projects.filter { it.notebook.isProject }
+            .sortedByDescending { it.lastActivity ?: 0L }.take(WorkHomeRules.PROJECTS_SHOWN).map { p ->
+                WorkHomeLink(
+                    id = p.notebook.id, name = p.notebook.name.ifBlank { "Untitled" },
+                    line = listOfNotNull(
+                        p.org,
+                        if (p.openTasks > 0) "${p.openTasks} open ${if (p.openTasks == 1) "task" else "tasks"}" else null,
+                        p.lastActivity?.let { "Active " + dayLabel(it, now) }
+                    ).joinToString(" · ").ifBlank { null },
+                    onOpen = { onOpenProject(p.notebook.id) }
+                )
             },
-            hero = hero,
-            needs = needs,
-            needsTotal = needCandidates.size,
-            sinceLabel = pulse.sinceLabel,
-            changes = changes,
-            today = upcomingRows,
-            earlier = earlierRows,
-            onAsk = { asking = true }
-        )
-    }
+        onAllProjects = { page.select(WorkSegment.PROJECTS) },
+        peopleTitle = if (terms.person == "Contact") "People" else terms.people,
+        people = run {
+            val owedToMe = waitingOn.mapNotNull { it.personId }.toSet()
+            val iOwe = myTasks.mapNotNull { it.personId }.toSet()
+            // People you owe or who owe you come first: they are the ones worth a tap today.
+            people.sortedByDescending { (it.id in owedToMe || it.id in iOwe) }.take(WorkHomeRules.PEOPLE_SHOWN).map { person ->
+                WorkHomeLink(
+                    id = person.id, name = person.name.trim().substringBefore(' ').ifBlank { person.name },
+                    line = when {
+                        person.id in owedToMe -> "owes you"
+                        person.id in iOwe -> "you owe"
+                        else -> null
+                    },
+                    onOpen = { onOpenPerson(person.id) }
+                )
+            }
+        },
+        onAllPeople = { onOpenAll(WorkTab.PEOPLE) },
+        onAsk = { asking = true }
+    )
 
     // ---------------------------------------------------------------- actions
     val selecting = selectedIds.isNotEmpty()
@@ -442,7 +457,10 @@ fun WorkPageScreen(
                         onClose = { searching = false }
                     )
                     else -> when (segment) {
-                        WorkSegment.PULSE -> PulsePane(pulseModel, pulseList)
+                        WorkSegment.PULSE -> WorkHomePane(homeModel, pulseList, hasRecent = recentRows.isNotEmpty()) {
+                            // Every Work recording in every state, so the one just recorded is here straight away.
+                            WorkRecentSection(recentRows, onOpen = ::openRecent, onAll = { page.select(WorkSegment.NOTES) })
+                        }
                         WorkSegment.TASKS -> WorkTasksPane(
                             onOpenTask = ::openTask,
                             onOpenList = { id -> onOpenTaskList?.invoke(id) ?: onOpenProject(id) }
@@ -514,7 +532,7 @@ fun WorkPageScreen(
 
 /** A pane's bar icon. */
 private fun WorkSegment.barIcon(): ImageVector = when (this) {
-    WorkSegment.PULSE -> Icons.Filled.EventNote
+    WorkSegment.PULSE -> Icons.Rounded.Today
     WorkSegment.TASKS -> Icons.Rounded.Check
     WorkSegment.NOTES -> Icons.Rounded.Notes
     WorkSegment.PROJECTS -> Icons.Rounded.FolderOpen

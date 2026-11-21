@@ -120,6 +120,17 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     val decisionLog: StateFlow<List<FindingRow>> = work.observeDecisionLog().state(emptyList())
     val openQuestions: StateFlow<List<FindingRow>> = work.observeOpenQuestions().state(emptyList())
     val recent: StateFlow<List<MeetingRow>> = work.observeRecentWork(12).state(emptyList())
+    /**
+     * Recent Work recordings in every state, with live progress: the Recent section of the Work page's home and of the
+     * Work Home. A recording shows from the moment its row exists, so the meeting just recorded is always there.
+     */
+    val recentWork: StateFlow<List<WorkRecent.Row>> = combine(
+        database.workDao().observeRecentWorkMeetings(WorkRecent.types, System.currentTimeMillis() - WorkRecent.DAYS * 86_400_000L, WorkRecent.READ),
+        database.processingJobDao().getActiveJobs(),
+        toReview
+    ) { meetings, jobs, review ->
+        WorkRecent.rows(meetings, jobs.associate { it.meetingId to it.progressPercent }, review.map { it.meetingId }.toSet(), System.currentTimeMillis())
+    }.state(emptyList())
     val everyone: StateFlow<List<WorkPerson>> = people.observePeople().state(emptyList())
     val organisations: StateFlow<List<WorkPerson>> = people.observeOrganisations().state(emptyList())
     val workNotes: StateFlow<List<Note>> = work.observeWorkNotes(30).map { l -> l.map { with(NoteCodec) { it.toDomain() } } }.state(emptyList())

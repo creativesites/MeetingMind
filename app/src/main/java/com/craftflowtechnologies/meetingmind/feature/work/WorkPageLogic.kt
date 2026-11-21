@@ -22,7 +22,7 @@ import java.util.Locale
  * The panes of Work, in the order of the in-vertical bottom bar (after Home). Work always opens on [PULSE]; the
  * pane is remembered only for the life of the screen, never across launches.
  */
-enum class WorkSegment(val label: String) { PULSE("Pulse"), TASKS("Tasks"), NOTES("Notes"), PROJECTS("Projects"), DECISIONS("Decisions") }
+enum class WorkSegment(val label: String) { PULSE("Today"), TASKS("Tasks"), NOTES("Notes"), PROJECTS("Projects"), DECISIONS("Decisions") }
 
 /** The key a pane is known by in [com.craftflowtechnologies.meetingmind.core.ui.work.VerticalBar] and its test tags. */
 val WorkSegment.barKey: String get() = name.lowercase()

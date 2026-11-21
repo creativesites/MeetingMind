@@ -54,13 +54,13 @@ class WorkPageScreenshotTest {
                         Box(Modifier.weight(1f)) { content() }
                         VerticalBar(
                             items = listOf(
-                                VerticalBarItem("pulse", "Pulse", Icons.Filled.Warning),
+                                VerticalBarItem("pulse", "Today", Icons.Filled.Warning),
                                 VerticalBarItem("tasks", "Tasks", Icons.Filled.Warning),
                                 VerticalBarItem("notes", "Notes", Icons.Filled.Warning),
                                 VerticalBarItem("projects", "Projects", Icons.Filled.Warning),
                                 VerticalBarItem("decisions", "Decisions", Icons.Filled.Warning)
                             ),
-                            selected = name.substringBefore('_').let { if (it == "pulse") "pulse" else "notes" },
+                            selected = name.substringBefore('_').let { if (it == "home") "pulse" else "notes" },
                             onSelect = {},
                             homeItem = {}
                         )
@@ -88,32 +88,46 @@ class WorkPageScreenshotTest {
     private fun needRow(key: String, title: String, line: String, verb: String, tone: AttentionTone) =
         PulseNeed(key, "Needs you", title, line, verb, tone, Icons.Filled.Warning, {}, {})
 
-    private fun pulseModel(hero: PulseHero? = null, needs: List<PulseNeed> = emptyList(), headline: String = "Good morning, Ana") = PulseModel(
-        headline = headline,
-        sentence = if (needs.isNotEmpty()) "${needs.first().title} is the one to look at first." else null,
-        hero = hero,
+    private fun task(id: String, title: String, line: String, overdue: Boolean = false) = WorkHomeTask(id, title, line, overdue, {}, {})
+
+    private fun homeModel(now: WorkNow, needs: List<PulseNeed> = emptyList(), tasks: List<WorkHomeTask> = emptyList(), full: Boolean = true) = WorkHomeModel(
+        now = now,
         needs = needs,
         needsTotal = needs.size,
-        sinceLabel = "Since yesterday",
-        changes = listOf(PulseChange("Sarah moved the credentials to Thu 19 Nov (was Fri 13 Nov).") {}),
-        today = listOf(ScheduleRow("a", "Acme design review", "Priya, Sam", "11:30 – 12:00") {}, ScheduleRow("b", "Board prep", "Alex", "15:00 – 15:45") {}),
-        earlier = listOf(ScheduleRow("c", "Standup", null, "09:30 – 09:45") {}),
+        tasks = tasks,
+        tasksTotal = tasks.size,
+        waitingLine = if (full) "Waiting on 2 people" else null,
+        onAllTasks = {}, onWaiting = {},
+        projectsTitle = "Projects",
+        projects = if (full) listOf(WorkHomeLink("p1", "Acme launch", "Acme · 4 open tasks · Active Today") {}, WorkHomeLink("p2", "Hiring", "2 open tasks") {}) else emptyList(),
+        onAllProjects = {},
+        peopleTitle = "People",
+        people = if (full) listOf(WorkHomeLink("a", "Priya", "owes you") {}, WorkHomeLink("b", "Sam", "you owe") {}, WorkHomeLink("c", "Alex", null) {}) else emptyList(),
+        onAllPeople = {},
         onAsk = {}
     )
 
-    private val nextHero = PulseHero.Next(
+    private val next = WorkNow.Next(
         whenLabel = "in 25 min",
         title = "Acme design review",
         withLine = "With Priya, Sam +1",
-        lines = listOf("You owe" to "1 item", "They owe" to "2 items", "Still open" to "None"),
         blocks = listOf(
             RibbonBlock(LocalTime.of(9, 30), LocalTime.of(10, 0), "Standup", {}, past = true),
             RibbonBlock(LocalTime.of(11, 30), LocalTime.of(12, 0), "Acme design review", {})
         ),
         now = LocalTime.of(11, 0),
-        onPrepare = {},
-        onRecord = {}
+        thenLine = "Then: Board prep · 15:00",
+        onRecord = {},
+        onPrepare = {}
     )
+
+    private val recentRows = listOf(
+        WorkRecent.Row("m1", null, "Weekly sync with Priya", WorkRecent.Kind.WRITING, "Writing your notes · 42%"),
+        WorkRecent.Row("m2", "n2", "Acme kickoff", WorkRecent.Kind.READY, "Today · 38 min"),
+        WorkRecent.Row("m3", null, "Client call", WorkRecent.Kind.SAVED, "Notes not made yet · tap to make them")
+    )
+
+    @Composable private fun RecentCase() = WorkRecentSection(recentRows, onOpen = {}, onAll = {})
 
     private val needs = listOf(
         needRow("1", "Commercial follow-up · 38 min", "Recording is safe. Transcription stopped at 61%.", "Try again", AttentionTone.DANGER),
@@ -123,20 +137,17 @@ class WorkPageScreenshotTest {
 
     // ---------------------------------------------------------------- tests
 
-    @Composable private fun PulseCase(m: PulseModel) = PulsePane(m, rememberLazyListState())
+    @Composable private fun HomeCase(m: WorkHomeModel, recent: Boolean = true) =
+        WorkHomePane(m, rememberLazyListState(), hasRecent = recent) { RecentCase() }
     @Composable private fun NotesCase(q: NotesQuery, s: PagedState<WorkNoteItem>) =
         NotesContent(q, s, now, emptyList(), emptySet(), rememberLazyListState(), NotesActions())
 
-    @Test fun pulse_populated_light() = shoot("pulse_populated", false) { PulseCase(pulseModel(nextHero, needs)) }
-    @Test fun pulse_populated_dark() = shoot("pulse_populated", true) { PulseCase(pulseModel(nextHero, needs)) }
-    @Test fun pulse_quiet_light() = shoot("pulse_quiet", false) { PulseCase(pulseModel(null, emptyList(), "Nothing needs you today")) }
-    @Test fun pulse_quiet_dark() = shoot("pulse_quiet", true) { PulseCase(pulseModel(null, emptyList(), "Nothing needs you today")) }
-    @Test fun pulse_day_one_light() = shoot("pulse_day_one", false) {
-        PulseCase(pulseModel(PulseHero.FirstDay("Project Review · 10:00", {}, {}, {}), emptyList(), "Work, in one place"))
-    }
-    @Test fun pulse_day_one_dark() = shoot("pulse_day_one", true) {
-        PulseCase(pulseModel(PulseHero.FirstDay("Project Review · 10:00", {}, {}, {}), emptyList(), "Work, in one place"))
-    }
+    @Test fun home_populated_light() = shoot("home_populated", false) { HomeCase(homeModel(next, needs, listOf(task("t1", "Send the revised quote to Acme", "Overdue · Yesterday · Acme kickoff", overdue = true), task("t2", "SSO change-request estimate", "Due 15:00")))) }
+    @Test fun home_populated_dark() = shoot("home_populated", true) { HomeCase(homeModel(next, needs, listOf(task("t1", "Send the revised quote to Acme", "Overdue · Yesterday · Acme kickoff", overdue = true), task("t2", "SSO change-request estimate", "Due 15:00")))) }
+    @Test fun home_free_day_light() = shoot("home_free_day", false) { HomeCase(homeModel(WorkNow.Free("2 meetings earlier today", {}, {}), emptyList(), listOf(task("t1", "Send the revised quote to Acme", "Overdue · Yesterday · Acme kickoff", overdue = true), task("t2", "SSO change-request estimate", "Due 15:00")))) }
+    @Test fun home_free_day_dark() = shoot("home_free_day", true) { HomeCase(homeModel(WorkNow.Free("2 meetings earlier today", {}, {}), emptyList(), listOf(task("t1", "Send the revised quote to Acme", "Overdue · Yesterday · Acme kickoff", overdue = true), task("t2", "SSO change-request estimate", "Due 15:00")))) }
+    @Test fun home_first_day_light() = shoot("home_first_day", false) { HomeCase(homeModel(WorkNow.Free(null, {}, {}), full = false), recent = false) }
+    @Test fun home_first_day_dark() = shoot("home_first_day", true) { HomeCase(homeModel(WorkNow.Free(null, {}, {}), full = false), recent = false) }
 
     @Test fun notes_populated_light() = shoot("notes_populated", false) { NotesCase(NotesQuery(), PagedState(notes, endReached = true)) }
     @Test fun notes_populated_dark() = shoot("notes_populated", true) { NotesCase(NotesQuery(), PagedState(notes, endReached = true)) }

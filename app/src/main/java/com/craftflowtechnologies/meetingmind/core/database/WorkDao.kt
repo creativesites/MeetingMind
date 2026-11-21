@@ -88,6 +88,15 @@ interface WorkDao {
     @Query("SELECT * FROM meetings WHERE recordingType IN (:types) ORDER BY createdAt DESC LIMIT :limit")
     fun observeByTypes(types: List<String>, limit: Int): Flow<List<MeetingEntity>>
 
+    /**
+     * The latest Work recordings in every state (recording, processing, saved, ready, failed), from the moment the
+     * row exists: a Work recording type, or a recording whose note is filed in a Work space or project notebook.
+     */
+    @Query("""SELECT * FROM meetings WHERE createdAt >= :since AND (recordingType IN (:types)
+        OR noteId IN (SELECT id FROM notes WHERE deletedAt IS NULL AND notebookId IN (SELECT id FROM notebooks WHERE kind = 'PROJECT' OR space = 'WORK')))
+        ORDER BY createdAt DESC LIMIT :limit""")
+    fun observeRecentWorkMeetings(types: List<String>, since: Long, limit: Int): Flow<List<MeetingEntity>>
+
     // Findings
 
     @Query("SELECT * FROM follow_ups WHERE meetingId = :meetingId")
