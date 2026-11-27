@@ -66,7 +66,7 @@ class EntryPointContractTest {
             EntryScreen.TODAY_QUICK_ROW to "feature/today/HomeQuickAccessRow.kt",
             EntryScreen.EVERYDAY_HOME to "feature/today/EverydayHome.kt",
             EntryScreen.BIBLE_HOME to "feature/bible/BibleHomeScreen.kt",
-            EntryScreen.LEARN_HOME to "feature/learning/space/LearningSpaceScreen.kt"
+            EntryScreen.LEARN_HOME to "feature/learn/ui/home/LearningHomeScreen.kt"
         )
         val problems = files.flatMap { (screen, path) ->
             val src = File(root, path).also { assertTrue("missing $path", it.exists()) }.readText()

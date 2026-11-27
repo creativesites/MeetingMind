@@ -17,7 +17,6 @@ class HomeYouTubeCardGuardTest {
     private val homes = mapOf(
         "feature/today/home/CalmHome.kt" to "calm_youtube",
         "feature/work/ProfessionalHome.kt" to "work_youtube",
-        "feature/learning/space/LearningSpaceScreen.kt" to "learn_youtube",
         "feature/faith/FaithHome.kt" to "faith_youtube_sermon"
     )
 
@@ -37,6 +36,16 @@ class HomeYouTubeCardGuardTest {
         val link = source("feature/importing/YouTubeLink.kt")
         val body = link.substringAfter("fun YouTubeHomeCard(").substringBefore("\n}\n")
         assertTrue("YouTubeHomeCard should draw the shared YouTubeNotesCard", "YouTubeNotesCard(" in body)
+    }
+
+    /**
+     * The Learning home (Study design) offers the video as a "From a video link" tile beside its
+     * other ways in, not the shared card, so the tile is the one way in and it is tagged.
+     */
+    @Test fun `the Learning home offers the video link as its tile`() {
+        val learn = source("feature/learn/ui/home/LearningHomeScreen.kt")
+        assertTrue("Learning home should draw the video tile", "learning_tile_video" in learn)
+        assertTrue("Learning home should open YouTube from its tile", "onClick = onOpenYouTube" in learn)
     }
 
     @Test fun `no home keeps an old YouTube row of its own`() {
