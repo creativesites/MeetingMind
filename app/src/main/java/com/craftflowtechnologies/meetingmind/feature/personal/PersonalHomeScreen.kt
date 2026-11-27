@@ -52,6 +52,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -63,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenScene
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.Plant
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.PlantLook
@@ -133,15 +136,15 @@ private fun Header(state: PersonalUiState, p: GardenPalette, onOpenSky: () -> Un
         Column(Modifier.weight(1f).padding(top = 4.dp)) {
             Text(state.whenLine, color = p.inkSoft, fontFamily = InterFamily, fontSize = 13.sp)
             Text(
-                "Your garden", color = p.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold,
+                stringResource(R.string.garden_title), color = p.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold,
                 fontSize = 34.sp, lineHeight = 40.sp, modifier = Modifier.semantics { heading() }
             )
         }
         Box(
             Modifier.size(48.dp).clip(CircleShape).background(p.glass).border(1.dp, p.glassLine, CircleShape)
-                .clickable(role = Role.Button, onClickLabel = "Open your sky", onClick = onOpenSky).testTag("personal_open_sky"),
+                .clickable(role = Role.Button, onClickLabel = stringResource(R.string.garden_sky_open_label), onClick = onOpenSky).testTag("personal_open_sky"),
             contentAlignment = Alignment.Center
-        ) { Icon(Icons.Outlined.AutoAwesome, contentDescription = "Your sky: patterns in your reflections", tint = p.ink, modifier = Modifier.size(22.dp)) }
+        ) { Icon(Icons.Outlined.AutoAwesome, contentDescription = stringResource(R.string.garden_sky_description), tint = p.ink, modifier = Modifier.size(22.dp)) }
         Spacer(Modifier.width(8.dp))
         Box(Modifier.size(48.dp).clip(CircleShape).background(p.glass).border(1.dp, p.glassLine, CircleShape), contentAlignment = Alignment.Center) {
             menuButton(p.ink)
@@ -165,17 +168,17 @@ private fun LanternCard(state: PersonalUiState, p: GardenPalette, animate: Boole
             LanternButton(animate, onAnswer)
             Box(
                 Modifier.size(52.dp).clip(CircleShape).border(1.dp, p.glassLine, CircleShape)
-                    .clickable(role = Role.Button, onClickLabel = "Write your answer instead", onClick = onWrite),
+                    .clickable(role = Role.Button, onClickLabel = stringResource(R.string.garden_write_answer), onClick = onWrite),
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.Outlined.Edit, contentDescription = "Write your answer instead", tint = p.ink, modifier = Modifier.size(20.dp)) }
+            ) { Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.garden_write_answer), tint = p.ink, modifier = Modifier.size(20.dp)) }
             Spacer(Modifier.weight(1f))
             Column(
                 horizontalAlignment = Alignment.End,
-                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClickLabel = "Open your sky", onClick = onOpenSky)
+                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClickLabel = stringResource(R.string.garden_sky_open_label), onClick = onOpenSky)
                     .padding(4.dp).semantics(mergeDescendants = true) {}.testTag("personal_lights")
             ) {
                 Text("${state.lights}", color = p.ink, fontFamily = GardenSerif, fontSize = 22.sp, lineHeight = 24.sp)
-                Text(if (state.lights == 1) "light\nthis week" else "lights\nthis week", color = p.inkSoft, fontFamily = InterFamily, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2, textAlign = TextAlign.End)
+                Text(pluralStringResource(R.plurals.garden_lights_this_week, state.lights), color = p.inkSoft, fontFamily = InterFamily, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2, textAlign = TextAlign.End)
             }
         }
     }
@@ -207,7 +210,7 @@ private fun LanternButton(animate: Boolean, onClick: () -> Unit) {
             Icon(Icons.Outlined.Mic, contentDescription = null, tint = GardenColors.Gold, modifier = Modifier.size(18.dp))
         }
         Spacer(Modifier.width(10.dp))
-        Text("Light the lantern", color = GardenColors.OnGold, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Text(stringResource(R.string.garden_lantern_light), color = GardenColors.OnGold, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
     }
 }
 
@@ -246,10 +249,12 @@ private fun GardenBed(
 private fun PlantSpot(plant: GardenPlantUi, p: GardenPalette, animate: Boolean, index: Int, onOpen: (String) -> Unit) {
     // The box hugs the drawing, so the label sits just above the plant whatever its stage.
     val height: Dp = (PLANT_WIDTH.value * plant.look.boardHeight / 96f).dp
+    val openLabel = stringResource(R.string.garden_plant_open_label, plant.title)
+    val description = stringResource(R.string.garden_plant_description, plant.title, plant.tag)
     Column(
         Modifier.width(118.dp).clip(RoundedCornerShape(18.dp))
-            .clickable(role = Role.Button, onClickLabel = "Open ${plant.title}") { onOpen(plant.id) }
-            .semantics(mergeDescendants = true) { contentDescription = "${plant.title}, ${plant.tag}" }
+            .clickable(role = Role.Button, onClickLabel = openLabel) { onOpen(plant.id) }
+            .semantics(mergeDescendants = true) { contentDescription = description }
             .testTag("personal_plant_${plant.id}"),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -303,7 +308,7 @@ internal fun WeekDots(week: List<DayDotUi>, ring: Color, dot: Dp, gap: Dp) {
 private fun SeedSpot(first: Boolean, palette: GardenPalette, onClick: () -> Unit) {
     Column(
         Modifier.width(if (first) 160.dp else 88.dp).clip(RoundedCornerShape(18.dp))
-            .clickable(role = Role.Button, onClickLabel = "Plant something new", onClick = onClick)
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.garden_plant_new_label), onClick = onClick)
             .testTag("personal_plant_new"),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -314,7 +319,7 @@ private fun SeedSpot(first: Boolean, palette: GardenPalette, onClick: () -> Unit
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Icon(Icons.Outlined.Add, contentDescription = null, tint = palette.ink, modifier = Modifier.size(14.dp))
-            Text(if (first) "Plant your first seed" else "Plant", color = palette.ink, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+            Text(stringResource(if (first) R.string.garden_plant_first else R.string.garden_plant), color = palette.ink, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
         }
         Spacer(Modifier.height(4.dp))
         Plant(PlantLook(leaves = 0), animate = false, modifier = Modifier.width(80.dp).height(44.dp))
@@ -328,15 +333,17 @@ private fun SoilPanel(state: PersonalUiState, onSeedJar: () -> Unit, onPractices
     Column(Modifier.fillMaxWidth().background(GardenColors.palette(state.phase, MM.colors.isDark).soil).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SoilTile(
-                title = "Seed jar", line = when (state.ideas) { 0 -> "Your ideas, kept"; 1 -> "1 idea"; else -> "${state.ideas} ideas" },
+                title = stringResource(R.string.garden_seed_jar),
+                line = if (state.ideas == 0) stringResource(R.string.garden_seed_jar_empty) else pluralStringResource(R.plurals.garden_ideas, state.ideas, state.ideas),
                 onClick = onSeedJar, tag = "personal_seed_jar", modifier = Modifier.weight(1f)
             ) { JarGlyph(Modifier.width(40.dp).height(60.dp), filled = state.ideas.coerceAtMost(5)) }
             SoilTile(
-                title = "Practices", line = when (growing) { 0 -> "Plant something"; 1 -> "1 growing"; else -> "$growing growing" },
+                title = stringResource(R.string.garden_practices),
+                line = if (growing == 0) stringResource(R.string.garden_practices_empty) else pluralStringResource(R.plurals.garden_growing, growing, growing),
                 onClick = onPractices, tag = "personal_practices_tile", modifier = Modifier.weight(1f)
             ) { Plant(PlantLook(leaves = 2), animate = false, modifier = Modifier.width(40.dp).height(60.dp)) }
         }
-        SoilRow(Icons.Outlined.Mic, "Drop an idea in the jar", "personal_capture_idea", onCaptureIdea)
+        SoilRow(Icons.Outlined.Mic, stringResource(R.string.garden_drop_idea), "personal_capture_idea", onCaptureIdea)
     }
 }
 
@@ -358,11 +365,11 @@ private fun SoilRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text:
 private fun PacketsSection(packets: List<SeedPacketUi>, soil: Color, onOpenNote: (String) -> Unit, onPlant: (String, String, String) -> Unit) {
     Column(Modifier.fillMaxWidth().background(soil).padding(top = 16.dp, bottom = 8.dp).testTag("personal_packets")) {
         Text(
-            "From what you're learning", color = GardenColors.SoilInk, fontFamily = GardenSerif, fontSize = 20.sp,
+            stringResource(R.string.garden_packets_title), color = GardenColors.SoilInk, fontFamily = GardenSerif, fontSize = 20.sp,
             modifier = Modifier.padding(horizontal = 20.dp).semantics { heading() }
         )
         Text(
-            "Things to try from your talk and how-to notes. Plant one to practise it.", color = GardenColors.SoilInkSoft,
+            stringResource(R.string.garden_packets_intro), color = GardenColors.SoilInkSoft,
             fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 10.dp)
         )
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -378,7 +385,7 @@ private fun Packet(packet: SeedPacketUi, onOpenNote: (String) -> Unit, onPlant: 
             .background(GardenColors.Packet).testTag("personal_packet_${packet.noteId}")
     ) {
         Row(
-            Modifier.fillMaxWidth().background(GardenColors.PacketBand).clickable(role = Role.Button, onClickLabel = "Open the note") { onOpenNote(packet.noteId) }
+            Modifier.fillMaxWidth().background(GardenColors.PacketBand).clickable(role = Role.Button, onClickLabel = stringResource(R.string.garden_packet_open_note)) { onOpenNote(packet.noteId) }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -393,14 +400,14 @@ private fun Packet(packet: SeedPacketUi, onOpenNote: (String) -> Unit, onPlant: 
                     Text(seed.text, color = GardenColors.PacketInk, fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     Box(
                         Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(22.dp)).background(GardenColors.PacketButton)
-                            .clickable(role = Role.Button, onClickLabel = "Plant “${seed.text}”") { onPlant(packet.noteId, packet.title, seed.text) }
+                            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.garden_seed_plant_label, seed.text)) { onPlant(packet.noteId, packet.title, seed.text) }
                             .padding(horizontal = 12.dp).testTag("personal_seed_${packet.noteId}_$i"),
                         contentAlignment = Alignment.Center
-                    ) { Text("Plant", color = GardenColors.PacketButtonInk, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                    ) { Text(stringResource(R.string.garden_plant), color = GardenColors.PacketButtonInk, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
                 }
             }
             val more = packet.unplanted - 3
-            if (more > 0) Text("+$more more in the note", color = GardenColors.PacketInkSoft, fontFamily = InterFamily, fontSize = 12.sp)
+            if (more > 0) Text(stringResource(R.string.garden_packet_more, more), color = GardenColors.PacketInkSoft, fontFamily = InterFamily, fontSize = 12.sp)
         }
     }
 }
@@ -409,7 +416,7 @@ private fun Packet(packet: SeedPacketUi, onOpenNote: (String) -> Unit, onPlant: 
 @Composable
 private fun TalkNotesRow(soil: Color, onTalkNotes: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(soil).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp)) {
-        SoilRow(Icons.Outlined.PlayCircle, "Notes from a talk or video", "personal_talk_notes", onTalkNotes)
+        SoilRow(Icons.Outlined.PlayCircle, stringResource(R.string.garden_talk_notes), "personal_talk_notes", onTalkNotes)
     }
 }
 

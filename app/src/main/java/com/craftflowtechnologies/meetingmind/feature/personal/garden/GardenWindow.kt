@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.ui.theme.GardenColors
 import com.craftflowtechnologies.meetingmind.ui.theme.GardenPhase
 import com.craftflowtechnologies.meetingmind.ui.theme.InterFamily
@@ -52,12 +54,17 @@ fun GardenWindowTile(
     val phase = GardenTime.phase(at.toLocalTime())
     val palette = GardenColors.palette(phase, MM.colors.isDark)
     val question = GardenQuestions.forDay(at.toLocalDate(), at.toLocalTime())
-    val label = if (phase == GardenPhase.DUSK || phase == GardenPhase.NIGHT) "A question is waiting by the lantern" else "Today's question is waiting"
+    val label = if (phase == GardenPhase.DUSK || phase == GardenPhase.NIGHT) {
+        stringResource(R.string.window_waiting_evening)
+    } else {
+        stringResource(R.string.window_waiting_day)
+    }
+    val description = stringResource(R.string.window_description, label, question)
     val shape = RoundedCornerShape(topStartPercent = 50, topEndPercent = 50, bottomStartPercent = 12, bottomEndPercent = 12)
     Box(
         modifier.fillMaxWidth().height(height).clip(shape)
-            .clickable(role = Role.Button, onClickLabel = "Open your garden", onClick = onClick)
-            .semantics(mergeDescendants = true) { contentDescription = "Your garden. $label: $question" }
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.window_open_label), onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = description }
             .testTag("garden_window")
     ) {
         GardenScene(palette, fireflies = 3, animate = false, modifier = Modifier.fillMaxSize())
@@ -77,12 +84,12 @@ fun GardenWindowTile(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text("YOUR GARDEN", color = palette.inkSoft, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
+            Text(stringResource(R.string.window_title), color = palette.inkSoft, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
             Text(question, color = palette.ink, fontFamily = FontFamily.Serif, fontSize = 19.sp, lineHeight = 24.sp, textAlign = TextAlign.Center, maxLines = 3)
             Box(
                 Modifier.padding(top = 4.dp).heightIn(min = 34.dp).clip(RoundedCornerShape(17.dp)).background(GardenColors.Gold).padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center
-            ) { Text("Step outside", color = GardenColors.OnGold, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+            ) { Text(stringResource(R.string.window_step_outside), color = GardenColors.OnGold, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
         }
     }
 }

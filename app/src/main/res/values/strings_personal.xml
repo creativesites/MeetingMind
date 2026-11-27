@@ -25,4 +25,101 @@
     <string name="lantern_discard_confirm">Let it go</string>
     <string name="lantern_discard_cancel">Keep talking</string>
     <string name="lantern_elapsed">%1$d:%2$02d</string>
+
+    <!-- Your garden: the home screen. -->
+    <string name="garden_title">Your garden</string>
+    <string name="garden_sky_open_label">Open your sky</string>
+    <string name="garden_sky_description">Your sky: patterns in your reflections</string>
+    <string name="garden_seed_jar">Seed jar</string>
+    <string name="garden_seed_jar_empty">Your ideas, kept</string>
+    <plurals name="garden_ideas">
+        <item quantity="one">%1$d idea</item>
+        <item quantity="other">%1$d ideas</item>
+    </plurals>
+    <string name="garden_practices">Practices</string>
+    <string name="garden_practices_empty">Plant something</string>
+    <plurals name="garden_growing">
+        <item quantity="one">%1$d growing</item>
+        <item quantity="other">%1$d growing</item>
+    </plurals>
+    <string name="garden_drop_idea">Drop an idea in the jar</string>
+    <string name="garden_talk_notes">Notes from a talk or video</string>
+    <string name="garden_lantern_light">Light the lantern</string>
+    <string name="garden_write_answer">Write your answer instead</string>
+    <plurals name="garden_lights_this_week">
+        <item quantity="one">light\nthis week</item>
+        <item quantity="other">lights\nthis week</item>
+    </plurals>
+    <string name="garden_plant_open_label">Open %1$s</string>
+    <string name="garden_plant_description">%1$s, %2$s</string>
+    <string name="garden_plant_first">Plant your first seed</string>
+    <string name="garden_plant_new_label">Plant something new</string>
+    <string name="garden_plant">Plant</string>
+    <string name="garden_packets_title">From what you\'re learning</string>
+    <string name="garden_packets_intro">Things to try from your talk and how-to notes. Plant one to practise it.</string>
+    <string name="garden_packet_open_note">Open the note</string>
+    <string name="garden_seed_plant_label">Plant “%1$s”</string>
+    <string name="garden_packet_more">+%1$d more in the note</string>
+
+    <!-- Your garden: the window on Today. -->
+    <string name="window_title">YOUR GARDEN</string>
+    <string name="window_open_label">Open your garden</string>
+    <string name="window_description">Your garden. %1$s: %2$s</string>
+    <string name="window_waiting_evening">A question is waiting by the lantern</string>
+    <string name="window_waiting_day">Today\'s question is waiting</string>
+    <string name="window_step_outside">Step outside</string>
+
+    <!-- "Plant it": a new practice. -->
+    <string name="plant_sheet_title">Plant it</string>
+    <string name="plant_sheet_from">From “%1$s”</string>
+    <string name="plant_sheet_name_label">What will you practise?</string>
+    <string name="plant_sheet_name_placeholder">Write tomorrow\'s three before closing the laptop</string>
+    <string name="plant_sheet_how_often">How often</string>
+    <string name="plant_sheet_nudge">Nudge me</string>
+    <string name="plant_sheet_check_in">Check in with me after</string>
+    <string name="plant_sheet_no_end">No end</string>
+    <plurals name="plant_sheet_weeks">
+        <item quantity="one">%1$d week</item>
+        <item quantity="other">%1$d weeks</item>
+    </plurals>
+    <string name="plant_sheet_confirm">Plant it in my garden</string>
+
+    <!-- One practice, opened. -->
+    <string name="practice_sheet_in_bloom">%1$s · in bloom</string>
+    <string name="practice_sheet_resting">%1$s · resting</string>
+    <string name="practice_sheet_schedule">%1$s · %2$s</string>
+    <string name="practice_sheet_tended">Tended today</string>
+    <string name="practice_sheet_tend">I did it today</string>
+    <string name="practice_sheet_root_question">It has taken root. What would you like to do?</string>
+    <string name="practice_sheet_keep_tending">Keep tending</string>
+    <string name="practice_sheet_bloom">It\'s part of me</string>
+    <string name="practice_sheet_adjust">Adjust how often or the nudge</string>
+    <string name="practice_sheet_let_go_question">Let it go? It leaves the garden and Tasks. The days you kept stay with your notes.</string>
+    <string name="practice_sheet_let_go">Let it go</string>
+    <string name="practice_sheet_keep">Keep it</string>
+    <string name="practice_sheet_take_out">Take it out of the garden</string>
+
+    <!-- Adjust a growing practice. -->
+    <string name="adjust_sheet_kept">The days you\'ve kept stay as they are.</string>
+    <string name="adjust_sheet_save">Save</string>
+
+    <!-- Practices: every practice in one list. -->
+    <string name="practices_title">Practices</string>
+    <string name="practices_back">Back to your garden</string>
+    <string name="practices_plant">Plant</string>
+    <string name="practices_empty_title">Nothing planted yet</string>
+    <string name="practices_empty_body">A practice is something small you want to keep doing: from a talk you took notes on, or your own idea. It grows each day you tend it, and nothing withers when you miss one.</string>
+    <string name="practices_growing_header">Growing · %1$d</string>
+    <string name="practices_bloomed_header">Part of you now · %1$d</string>
+    <string name="practices_let_go_header">Let go · %1$d</string>
+    <string name="practices_show">Show</string>
+    <string name="practices_hide">Hide</string>
+    <string name="practices_open">Open</string>
+    <string name="practices_row_description">%1$s, %2$s, %3$s</string>
+    <string name="practices_row_meta">%1$s · %2$s</string>
+    <string name="practices_plant_again">Plant again</string>
+    <plurals name="practices_days_kept">
+        <item quantity="one">%1$d day kept</item>
+        <item quantity="other">%1$d days kept</item>
+    </plurals>
 </resources>

@@ -42,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -49,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.Plant
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.PlantLook
 import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
@@ -75,29 +78,31 @@ fun PlantSheet(initialTitle: String, onDismiss: () -> Unit, onPlant: (PlantReque
         ) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Plant(PlantLook(leaves = 2), animate = false, modifier = Modifier.width(44.dp).height(56.dp))
-                Text("Plant it", color = colors.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold, fontSize = 26.sp)
+                Text(stringResource(R.string.plant_sheet_title), color = colors.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold, fontSize = 26.sp)
             }
-            source?.let { Text("From “${it.title}”", color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 14.sp, modifier = Modifier.testTag("personal_plant_source")) }
+            source?.let { Text(stringResource(R.string.plant_sheet_from, it.title), color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 14.sp, modifier = Modifier.testTag("personal_plant_source")) }
             OutlinedTextField(
                 value = title, onValueChange = { title = it.take(80) },
-                label = { Text("What will you practise?") },
-                placeholder = { Text("Write tomorrow's three before closing the laptop") },
+                label = { Text(stringResource(R.string.plant_sheet_name_label)) },
+                placeholder = { Text(stringResource(R.string.plant_sheet_name_placeholder)) },
                 singleLine = false, maxLines = 3,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.ink, cursorColor = colors.ink),
                 modifier = Modifier.fillMaxWidth().testTag("personal_plant_title")
             )
-            Section("How often") {
+            Section(stringResource(R.string.plant_sheet_how_often)) {
                 ChipRow(PlantRhythm.entries, rhythm, { it.label }) { rhythm = it }
             }
-            Section("Nudge me") {
+            Section(stringResource(R.string.plant_sheet_nudge)) {
                 ChipRow(PlantNudge.entries, nudge, { it.label }) { nudge = it }
             }
-            Section("Check in with me after") {
-                ChipRow(listOf(1, 2, 0), weeks, { if (it == 0) "No end" else if (it == 1) "1 week" else "$it weeks" }) { weeks = it }
+            Section(stringResource(R.string.plant_sheet_check_in)) {
+                ChipRow(listOf(1, 2, 0), weeks, { n ->
+                    if (n == 0) stringResource(R.string.plant_sheet_no_end) else pluralStringResource(R.plurals.plant_sheet_weeks, n, n)
+                }) { weeks = it }
             }
             Text(PlantSummary.line(rhythm, weeks), color = colors.inkSecondary, fontFamily = GardenSerif, fontSize = 16.sp, lineHeight = 23.sp)
-            GoldButton("Plant it in my garden", enabled = title.isNotBlank(), tag = "personal_plant_confirm") {
+            GoldButton(stringResource(R.string.plant_sheet_confirm), enabled = title.isNotBlank(), tag = "personal_plant_confirm") {
                 onPlant(PlantRequest(title.trim(), rhythm, nudge, weeks, source?.noteId, source?.title))
             }
         }
@@ -131,7 +136,12 @@ fun PracticeSheet(
                 Plant(plant.look, animate = false, modifier = Modifier.width(64.dp).height(96.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(plant.title, color = colors.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 27.sp)
-                    Text(plant.rhythmLabel + if (plant.bloomed) " · in bloom" else if (plant.resting) " · resting" else "", color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 13.sp)
+                    val statusLine = when {
+                        plant.bloomed -> stringResource(R.string.practice_sheet_in_bloom, plant.rhythmLabel)
+                        plant.resting -> stringResource(R.string.practice_sheet_resting, plant.rhythmLabel)
+                        else -> plant.rhythmLabel
+                    }
+                    Text(statusLine, color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 13.sp)
                 }
             }
             if (!plant.bloomed) {
@@ -139,7 +149,7 @@ fun PracticeSheet(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         plant.week.forEach { d -> DayChip(d) }
                     }
-                    Text(plant.rhythmLine + " · " + plant.windowLine, color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 13.sp)
+                    Text(stringResource(R.string.practice_sheet_schedule, plant.rhythmLine, plant.windowLine), color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 13.sp)
                 }
             } else {
                 Text(plant.windowLine, color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 13.sp)
@@ -156,34 +166,37 @@ fun PracticeSheet(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(colors.goldWash).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("It has taken root. What would you like to do?", color = colors.ink, fontFamily = GardenSerif, fontSize = 18.sp, lineHeight = 24.sp)
+                    Text(stringResource(R.string.practice_sheet_root_question), color = colors.ink, fontFamily = GardenSerif, fontSize = 18.sp, lineHeight = 24.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuietPill("Keep tending", Modifier.weight(1f), "personal_keep", onKeepGoing)
-                        QuietPill("It's part of me", Modifier.weight(1f), "personal_bloom", onBloom)
+                        QuietPill(stringResource(R.string.practice_sheet_keep_tending), Modifier.weight(1f), "personal_keep", onKeepGoing)
+                        QuietPill(stringResource(R.string.practice_sheet_bloom), Modifier.weight(1f), "personal_bloom", onBloom)
                     }
                 }
             } else if (!plant.bloomed) {
                 GoldButton(
-                    if (plant.tendedToday) "Tended today" else "I did it today",
+                    stringResource(if (plant.tendedToday) R.string.practice_sheet_tended else R.string.practice_sheet_tend),
                     enabled = true, tag = "personal_tend", checked = plant.tendedToday
                 ) { onTend(!plant.tendedToday) }
             }
             if (!plant.bloomed && !confirmLetGo) {
                 TextButton(onClick = onAdjust, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("personal_adjust")) {
-                    Text("Adjust how often or the nudge", color = colors.ink, fontFamily = InterFamily, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.practice_sheet_adjust), color = colors.ink, fontFamily = InterFamily, fontWeight = FontWeight.Medium)
                 }
             }
             if (confirmLetGo) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(colors.surfaceSunk).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Let it go? It leaves the garden and Tasks. The days you kept stay with your notes.", color = colors.ink, fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 20.sp)
+                    Text(stringResource(R.string.practice_sheet_let_go_question), color = colors.ink, fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 20.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuietPill("Let it go", Modifier.weight(1f), "personal_let_go_confirm", onLetGo)
-                        QuietPill("Keep it", Modifier.weight(1f), "personal_let_go_cancel") { confirmLetGo = false }
+                        QuietPill(stringResource(R.string.practice_sheet_let_go), Modifier.weight(1f), "personal_let_go_confirm", onLetGo)
+                        QuietPill(stringResource(R.string.practice_sheet_keep), Modifier.weight(1f), "personal_let_go_cancel") { confirmLetGo = false }
                     }
                 }
             } else {
                 TextButton(onClick = { confirmLetGo = true }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("personal_let_go")) {
-                    Text(if (plant.bloomed) "Take it out of the garden" else "Let it go", color = colors.inkSecondary, fontFamily = InterFamily)
+                    Text(
+                        stringResource(if (plant.bloomed) R.string.practice_sheet_take_out else R.string.practice_sheet_let_go),
+                        color = colors.inkSecondary, fontFamily = InterFamily
+                    )
                 }
             }
         }
@@ -203,10 +216,10 @@ fun AdjustSheet(plant: GardenPlantUi, onDismiss: () -> Unit, onSave: (PlantRhyth
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Text(plant.title, color = colors.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 27.sp)
-            Section("How often") { ChipRow(PlantRhythm.entries, rhythm, { it.label }) { rhythm = it } }
-            Section("Nudge me") { ChipRow(PlantNudge.entries, nudge, { it.label }) { nudge = it } }
-            Text("The days you've kept stay as they are.", color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 14.sp)
-            GoldButton("Save", enabled = rhythm != plant.rhythm || nudge != plant.nudge, tag = "personal_adjust_save") { onSave(rhythm, nudge) }
+            Section(stringResource(R.string.plant_sheet_how_often)) { ChipRow(PlantRhythm.entries, rhythm, { it.label }) { rhythm = it } }
+            Section(stringResource(R.string.plant_sheet_nudge)) { ChipRow(PlantNudge.entries, nudge, { it.label }) { nudge = it } }
+            Text(stringResource(R.string.adjust_sheet_kept), color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 14.sp)
+            GoldButton(stringResource(R.string.adjust_sheet_save), enabled = rhythm != plant.rhythm || nudge != plant.nudge, tag = "personal_adjust_save") { onSave(rhythm, nudge) }
         }
     }
 }
@@ -237,7 +250,7 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> String, onPick: (T) -> Unit) {
+private fun <T> ChipRow(options: List<T>, selected: T, label: @Composable (T) -> String, onPick: (T) -> Unit) {
     val colors = MM.colors
     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { o ->
