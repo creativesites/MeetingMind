@@ -61,6 +61,8 @@ class MMRadius internal constructor() {
     val pill: Shape = CircleShape
     /** Bottom sheets and menus: top corners only. */
     val sheet: Shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    /** Study's night-sky hero (RoundDone): bottom corners only, 36 dp as in the approved mockup. */
+    val heroBottom: Shape = RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp)
 }
 
 val LocalMMRadius = staticCompositionLocalOf { MMRadius() }
