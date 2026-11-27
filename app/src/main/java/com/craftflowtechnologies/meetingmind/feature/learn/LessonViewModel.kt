@@ -65,6 +65,33 @@ class LessonViewModel(
 
     init {
         reload()
+        // The playhead and play state follow the app's player while it holds this lecture.
+        viewModelScope.launch {
+            com.craftflowtechnologies.meetingmind.core.audio.PlaybackController.state.collect { ps ->
+                val mine = ps.recordingId != null && ps.recordingId == lecture?.meetingId
+                _state.update {
+                    if (mine) it.copy(playheadMs = ps.positionMs, isPlaying = ps.isPlaying)
+                    else if (it.isPlaying) it.copy(isPlaying = false) else it
+                }
+            }
+        }
+    }
+
+    /** Plays the lecture recording from [ms]: a stressed moment, a quote, a seek on the ribbon. */
+    fun playFrom(ms: Long) {
+        val open = lecture ?: return
+        val file = open.meeting?.audioFilePath?.let { java.io.File(it) }?.takeIf { it.exists() } ?: return
+        com.craftflowtechnologies.meetingmind.core.audio.PlaybackController.playAt(getApplication(), open.meetingId ?: return, open.title, file, ms)
+    }
+
+    /** Play or pause the lecture from the playhead. */
+    fun togglePlay() {
+        val ps = com.craftflowtechnologies.meetingmind.core.audio.PlaybackController.state.value
+        if (ps.recordingId != null && ps.recordingId == lecture?.meetingId) {
+            com.craftflowtechnologies.meetingmind.core.audio.PlaybackController.togglePlayPause()
+        } else {
+            playFrom(_state.value.playheadMs)
+        }
     }
 
     /** Reads the lecture again, and starts generation when it has a transcript and no kit yet. */

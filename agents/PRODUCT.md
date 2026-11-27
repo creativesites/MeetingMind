@@ -5,7 +5,7 @@
 
 ## Scope
 - MVP: transcription (offline and online), workflows, the Work vertical, the Faith vertical.
-- Learning is cut from the MVP and out of the first Play release.
+- Study (Learning) is back in scope (founder, 2026-11-27; reverses the 2026-10-11 cut). Design: `design/study/`, rules: `docs/mvp/STUDY_AUDIT.md`.
 - Circles: Firebase plus the Worker. Circle content lives on the server. Personal notes stay local. End-to-end encryption dropped for Circles. Cap of 10 members per circle. First increment: creation, membership, invitations, text chat. Resource sharing later.
 
 ## Devotionals

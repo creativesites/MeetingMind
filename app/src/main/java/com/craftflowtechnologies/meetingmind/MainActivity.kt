@@ -912,6 +912,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
 
+        // STUDY (docs/mvp/STUDY_AUDIT.md)
+        com.craftflowtechnologies.meetingmind.feature.learn.learnGraph(navController, onSearch = openSearch)
+
         // WORK (docs/PLAN_PROFESSIONAL.md §6–7)
         composable(Routes.WORK) {
             val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)

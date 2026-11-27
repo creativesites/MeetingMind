@@ -36,7 +36,7 @@ Full list: `agents/PRODUCT.md`. The short version:
 - A devotional is never empty. The bundled reading is always the fallback.
 - Every note gets its moment every time it is opened, including notes with no speech, typed notes, failed notes and sacred notes (founder decision, 2026-10-14). See `agents/PRODUCT.md`.
 - Circle content lives on the server. Personal notes stay local.
-- Learning is out of the MVP.
+- Study (Learning) is back in scope (founder, 2026-11-27): rebuilt as lesson, practice and companion. Rules: `docs/mvp/STUDY_AUDIT.md`.
 
 ## Reporting
 

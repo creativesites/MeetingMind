@@ -117,6 +117,22 @@ class PracticeViewModel(
     }
 
     /** Multiple choice: the learner picked option [i]. */
+    /** "Hear your lecturer": plays the item's source clip, then pauses at its end. */
+    fun playSource(item: PracticeItem) {
+        val meetingId = item.meetingId ?: return
+        val start = item.sourceStartMs ?: return
+        viewModelScope.launch {
+            val meeting = services.meetings.getMeetingByIdDirect(meetingId) ?: return@launch
+            val file = meeting.audioFilePath?.let { java.io.File(it) }?.takeIf { it.exists() } ?: return@launch
+            val controller = com.craftflowtechnologies.meetingmind.core.audio.PlaybackController
+            controller.playAt(getApplication(), meetingId, meeting.title, file, start)
+            val end = item.sourceEndMs ?: (start + DEFAULT_CLIP_MS)
+            kotlinx.coroutines.delay((end - start).coerceIn(2_000L, 30_000L))
+            val ps = controller.state.value
+            if (ps.recordingId == meetingId && ps.isPlaying) controller.pause()
+        }
+    }
+
     fun answerChoice(i: Int) {
         val item = current() as? PracticeItem.Choice ?: return
         if (!canAnswer()) return
@@ -321,5 +337,10 @@ class PracticeViewModel(
     private fun emptyMessageFor(): String = when (scope) {
         PracticeScope.AllDue -> "All caught up. Nice work."
         is PracticeScope.OneSession, is PracticeScope.OneConcept -> "There is nothing to practise here yet."
+    }
+
+    private companion object {
+        /** Clip length when an item has no end time. */
+        const val DEFAULT_CLIP_MS = 8_000L
     }
 }
