@@ -144,7 +144,7 @@ fun PersonalSpaceScreen(
     onOpenNote: (String) -> Unit,
     onOpenYouTube: () -> Unit,
     onHome: () -> Unit,
-    onOpenPaywall: () -> Unit = {}
+    openTools: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -192,6 +192,7 @@ fun PersonalSpaceScreen(
     var showLifeChapterDialog by remember { mutableStateOf(false) }
     var showAddPersonDialog by remember { mutableStateOf(false) }
     var showSanctuaryToolsSheet by remember { mutableStateOf(false) }
+    LaunchedEffect(openTools) { if (openTools) showSanctuaryToolsSheet = true }
     var chapterDetailTarget by remember { mutableStateOf<LifeChapter?>(null) }
     var enrollmentDetailTarget by remember { mutableStateOf<GrowthEnrollment?>(null) }
     var showLettingGoSheet by remember { mutableStateOf(false) }
@@ -642,7 +643,6 @@ fun PersonalSpaceScreen(
             recentsShieldEnabled = recentsShieldEnabled,
             obsidianVaultLabel = ui.obsidianVaultLabel,
             lastSyncLabel = lastSyncLabel,
-            autopilotUnlocked = AutopilotWorkspace.isUnlocked(context),
             isAutopilotRunning = ui.isAutopilotRunning,
             onToggleLock = { enabled ->
                 lockEnabled = enabled
@@ -665,10 +665,6 @@ fun PersonalSpaceScreen(
                     showSanctuaryToolsSheet = false
                     onOpenNote(noteId)
                 }
-            },
-            onOpenPaywall = {
-                showSanctuaryToolsSheet = false
-                onOpenPaywall()
             },
             onDismiss = { showSanctuaryToolsSheet = false }
         )

@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.personal
 
 import com.craftflowtechnologies.meetingmind.core.model.Note
+import com.craftflowtechnologies.meetingmind.core.model.NoteStatus
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.personal.PersonalGrowthIntelligence
 import org.junit.Assert.assertEquals
@@ -36,9 +37,9 @@ class PersonalPolishTest {
 
     @Test
     fun ideaCollisionRespectsExcludedPairsOrderIndependently() {
-        val n1 = Note(id = "a", workflow = RecordingType.IDEA, title = "Podcast studio", plainText = "Build a quiet acoustic podcast studio for founders", createdAt = 1L, updatedAt = 1L)
-        val n2 = Note(id = "b", workflow = RecordingType.IDEA, title = "Acoustic room", plainText = "Design a quiet acoustic studio for founder podcast interviews", createdAt = 2L, updatedAt = 2L)
-        val n3 = Note(id = "c", workflow = RecordingType.IDEA, title = "Garden beds", plainText = "Plant autumn herbs and tomatoes in raised cedar beds", createdAt = 3L, updatedAt = 3L)
+        val n1 = Note(id = "a", workflow = RecordingType.IDEA, title = "Podcast studio", plainText = "Build a quiet acoustic podcast studio for founders", createdAt = 1L, updatedAt = 1L, notebookId = null, eventDate = null, pinned = false, isPrivate = false, status = NoteStatus.OPEN, answeredAt = null, metadata = emptyMap())
+        val n2 = Note(id = "b", workflow = RecordingType.IDEA, title = "Acoustic room", plainText = "Design a quiet acoustic studio for founder podcast interviews", createdAt = 2L, updatedAt = 2L, notebookId = null, eventDate = null, pinned = false, isPrivate = false, status = NoteStatus.OPEN, answeredAt = null, metadata = emptyMap())
+        val n3 = Note(id = "c", workflow = RecordingType.IDEA, title = "Garden beds", plainText = "Plant autumn herbs and tomatoes in raised cedar beds", createdAt = 3L, updatedAt = 3L, notebookId = null, eventDate = null, pinned = false, isPrivate = false, status = NoteStatus.OPEN, answeredAt = null, metadata = emptyMap())
 
         val first = PersonalGrowthIntelligence.findBestIdeaCollision(listOf(n1, n2, n3))
         assertNotNull(first)

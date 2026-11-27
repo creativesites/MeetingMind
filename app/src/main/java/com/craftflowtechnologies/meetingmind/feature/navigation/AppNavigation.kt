@@ -90,8 +90,11 @@ object Routes {
     // Work (docs/PLAN_PROFESSIONAL.md §6–7).
     const val WORK = "work"
     /** Personal's routines, journeys, living journal, ideas and vault (the release's Sanctuary), opened from the garden and the menu. */
-    const val PERSONAL_TAB = "personal_sanctuary?tab={tab}"
-    fun personalRoute(tab: String? = null) = "personal_sanctuary" + (tab?.let { "?tab=$it" } ?: "")
+    const val PERSONAL_TAB = "personal_sanctuary?tab={tab}&tools={tools}"
+    fun personalRoute(tab: String? = null, tools: Boolean = false): String {
+        val query = listOfNotNull(tab?.let { "tab=$it" }, tools.takeIf { it }?.let { "tools=true" })
+        return "personal_sanctuary" + if (query.isEmpty()) "" else "?" + query.joinToString("&")
+    }
     const val PERSONAL_ROUTINE_PLAYER = "personal/routine/{routineId}?minEffort={minEffort}"
     fun personalRoutinePlayerRoute(routineId: String, minEffort: Boolean = false) =
         "personal/routine/$routineId?minEffort=$minEffort"
