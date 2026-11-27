@@ -96,6 +96,12 @@ object GardenColors {
     val Mound = Color(0x33FFFFFF)
     val Star = Color(0xFFFFFFFF)
 
+    // Your sky: one tint per constellation, cycled in order (gold, blue, rose, mint). Fixed like the rest of the garden.
+    val SkyBlue = Color(0xFF9FC7FF)
+    val SkyRose = Color(0xFFF2A7C9)
+    val SkyMint = Color(0xFF9FE3C2)
+    val SkyTints: List<Color> = listOf(Gold, SkyBlue, SkyRose, SkyMint)
+
     fun palette(phase: GardenPhase, darkTheme: Boolean): GardenPalette = if (darkTheme) dark(phase) else light(phase)
 
     /** The lantern: a warm, lamplit room in the light theme and a night garden in the dark. */

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sky_back">Back to your garden</string>
+    <string name="sky_title">Your sky</string>
+    <string name="sky_previous_month">Previous month</string>
+    <string name="sky_next_month">Next month</string>
+    <string name="sky_month_line">%1$s · %2$s</string>
+    <plurals name="sky_reflections_count">
+        <item quantity="one">%d reflection</item>
+        <item quantity="other">%d reflections</item>
+    </plurals>
+    <string name="sky_empty">Your sky fills as you answer the day\'s question. Each answer becomes a star.</string>
+    <string name="sky_no_patterns">Patterns appear once a theme comes up twice.</string>
+    <string name="sky_stars_description">%1$s: %2$d reflections</string>
+    <string name="sky_stars_ungrouped">%1$d reflections this month</string>
+    <string name="sky_chip_label">%1$s · %2$d</string>
+    <string name="sky_kicker">A PATTERN</string>
+    <string name="sky_read_them">Read them</string>
+    <string name="sky_zuri">Zuri\'s read</string>
+    <string name="sky_zuri_reading">Zuri is reading…</string>
+    <string name="sky_source_device">Read on this phone</string>
+    <string name="sky_setup_needed">Zuri\'s read runs on this phone, so your reflections never leave it. Download the on-phone model in Setup to use it.</string>
+    <string name="sky_setup">Set up</string>
+    <string name="sky_locked">Zuri\'s read across your reflections comes with MeetingMind Pro or BYOK.</string>
+    <string name="sky_see_plans">See plans</string>
+    <string name="sky_sheet_title">Reflections in %1$s</string>
+    <string name="sky_sheet_empty">Nothing here yet.</string>
+</resources>
