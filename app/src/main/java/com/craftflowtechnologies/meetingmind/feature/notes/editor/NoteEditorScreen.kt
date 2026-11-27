@@ -516,14 +516,6 @@ fun NoteEditorScreen(
                                 viewModel.createCourseFromNote()
                             }
                         )
-                        DropdownMenuItem(
-                            text = { Text("Open in Study Studio") },
-                            leadingIcon = { Icon(Icons.Rounded.School, null) },
-                            onClick = {
-                                showMenu = false
-                                note?.id?.let(onOpenStudyStudio)
-                            }
-                        )
                         DropdownMenuItem(text = { Text("Tags") }, leadingIcon = { Icon(Icons.Outlined.Tag, null) }, onClick = { showMenu = false; showTags = true })
                         DropdownMenuItem(
                             text = { Text(if (note?.isPrivate == true) "Make not private" else "Make private") },
@@ -668,83 +660,8 @@ fun NoteEditorScreen(
                 )
             }
             val currentNotebook = notebooks.firstOrNull { it.id == currentNote.notebookId }
-            val isLearningNote = currentNote.workflow in setOf(
-                com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE,
-                com.craftflowtechnologies.meetingmind.core.model.RecordingType.RESEARCH
-            ) || currentNotebook?.space == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING
-            if (isLearningNote) {
-                item(key = "learning-course-strip") {
-                    val hasCourse = currentNotebook?.space == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Accent.copy(alpha = 0.08f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                            .padding(top = 8.dp)
-                            .testTag("note_learning_studio_strip")
-                    ) {
-                        // Text on its own line, actions below: side by side, the buttons squeezed the text to
-                        // one word per line on a phone.
-                        Column(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(Icons.Rounded.School, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))
-                                Text(
-                                    text = if (hasCourse) "Course: ${currentNotebook?.name}" else "Turn this lesson into a Course, or study it",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Ink,
-                                    maxLines = 2,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
-                            }
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                if (!hasCourse) {
-                                    Surface(
-                                        onClick = { viewModel.createCourseFromNote() },
-                                        shape = RoundedCornerShape(999.dp),
-                                        color = Accent.copy(alpha = 0.16f),
-                                        modifier = Modifier.testTag("note_create_course_button")
-                                    ) {
-                                        Text(
-                                            "+ Create Course",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Accent,
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
-                                        )
-                                    }
-                                }
-                                Surface(
-                                    onClick = { onOpenStudyStudio(currentNote.id) },
-                                    shape = RoundedCornerShape(999.dp),
-                                    color = Accent,
-                                    modifier = Modifier.testTag("note_open_study_studio_button")
-                                ) {
-                                    Text(
-                                        "Study Studio",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = com.craftflowtechnologies.meetingmind.ui.theme.MM.colors.onAccent,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (onOpenLesson != null && com.craftflowtechnologies.meetingmind.feature.learn.LessonEntry.isLesson(currentNote.workflow)) item(key = "lesson") {
+            // The one lesson entry: Lecture and Research notes, and notes in a Learning notebook.
+            if (onOpenLesson != null && com.craftflowtechnologies.meetingmind.feature.learn.LessonEntry.shows(currentNote.workflow, currentNotebook?.space)) item(key = "lesson") {
                 com.craftflowtechnologies.meetingmind.feature.learn.LessonEntryBanner(
                     onOpenLesson = { onOpenLesson(currentNote.id) },
                     modifier = Modifier.padding(horizontal = 20.dp).padding(top = 12.dp)
