@@ -180,9 +180,11 @@ class LearningAiEngine(
         }
 
         val res = generateText(prompt, TEACHBACK_SCHEMA)
+        // Read straight after the call: the typed outcome travels on the evaluation so the screen can show the allowance panel.
+        val callStatus = lastStatus
         if (res != null) {
             val eval = runCatching { parseTeachBackJson(stripMarkdownCodeFences(res), rubric) }.getOrNull()
-            if (eval != null) return eval
+            if (eval != null) return eval.copy(status = callStatus)
         }
 
         // Deterministic offline rubric evaluation
@@ -215,6 +217,7 @@ class LearningAiEngine(
         val missing = evaluations.filter { it.status == TeachBackStatus.UNMET }.map { it.criterion.claim }
 
         return TeachBackEvaluation(
+            status = callStatus,
             overallCoverage = coverage,
             scorePercent = score,
             summary = when (coverage) {
