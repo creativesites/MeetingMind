@@ -143,3 +143,30 @@ object CirclesFixedColors {
     )
 }
 
+
+/**
+ * Fixed palette for Study's night sky (Study home "Your sky", Round complete hero). The sky is dark
+ * in both Paper and Midnight, so these do not follow the theme. Mockups: design/study/.
+ */
+object StudyFixedColors {
+    /** The sky itself. */
+    val Night = Color(0xFF0F1622)
+    /** A shining star, its halo (draw at 18% alpha) and the lines between related ideas (40% alpha). */
+    val Star = Color(0xFF5CC8DD)
+    /** The bright core of a star that just lit up. */
+    val StarCore = Color(0xFFE8FAFD)
+    /** A "worth a look" sparkle. */
+    val Gold = Color(0xFFE0B25A)
+    /** Star labels on the sky (passes 4.5:1 on [Night]). */
+    val Label = Color(0xFFC9D3E0)
+    /** Dashed ring of a new idea and secondary text on the sky. */
+    val Faint = Color(0xFF8995A8)
+    /** Headline text on the sky. */
+    val Ink = Color(0xFFF0F3F8)
+    /** Body text on the sky. */
+    val InkSoft = Color(0xFFB7C0CF)
+    /** Zuri's orb in Study, light to deep. */
+    val OrbLight = Color(0xFFA8E6F1)
+    val OrbMid = Color(0xFF1F9AB5)
+    val OrbDeep = Color(0xFF0B5568)
+}
