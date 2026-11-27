@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind
 
+import com.craftflowtechnologies.meetingmind.feature.learn.learnGraph
 import androidx.compose.ui.unit.dp
 
 import androidx.compose.foundation.layout.padding
@@ -913,7 +914,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         }
 
         // STUDY (docs/mvp/STUDY_AUDIT.md)
-        com.craftflowtechnologies.meetingmind.feature.learn.learnGraph(navController, onSearch = openSearch)
+        learnGraph(navController, onSearch = openSearch)
 
         // WORK (docs/PLAN_PROFESSIONAL.md §6–7)
         composable(Routes.WORK) {
