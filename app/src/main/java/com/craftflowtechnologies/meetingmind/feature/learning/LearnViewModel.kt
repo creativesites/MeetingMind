@@ -16,6 +16,8 @@ import com.craftflowtechnologies.meetingmind.ai.learning.SimpleExplanation
 import com.craftflowtechnologies.meetingmind.ai.learning.TeachBackEvaluation
 import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingCoordinator
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus
+import com.craftflowtechnologies.meetingmind.core.learning.StudyAiAnalytics
 import com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain
 import com.craftflowtechnologies.meetingmind.core.model.ActivityAttempt
 import com.craftflowtechnologies.meetingmind.core.model.CourseProperties
@@ -1520,10 +1522,15 @@ class LearnViewModel @JvmOverloads constructor(
                 Log.e("LearnViewModel", "Ask Learning failed", e)
                 null
             }
+            val status = aiEngine.lastStatus
+            val madeOnPhone = aiEngine.lastMadeLocally
+            StudyAiAnalytics.track(StudyAiAnalytics.FEATURE_HOME_ASK, status, madeOnPhone)
             updateTurn(turn.id) {
                 it.copy(
                     pending = false,
                     answer = answer,
+                    allowance = status as? LearningAiStatus.AllowanceUsedUp,
+                    madeOnPhone = madeOnPhone,
                     error = if (answer == null) "Something went wrong while searching. Try asking again." else null
                 )
             }
@@ -1536,11 +1543,17 @@ class LearnViewModel @JvmOverloads constructor(
         updateTurn(turnId) { it.copy(generalPending = true) }
         viewModelScope.launch(crashGuard) {
             val general = runCatching { aiEngine.answerGenerally(turn.question) }.getOrNull()
+            val status = aiEngine.lastStatus
+            val madeOnPhone = aiEngine.lastMadeLocally
+            StudyAiAnalytics.track(StudyAiAnalytics.FEATURE_HOME_ASK, status, madeOnPhone)
+            val allowance = status as? LearningAiStatus.AllowanceUsedUp
             updateTurn(turnId) {
                 it.copy(
                     generalPending = false,
                     general = general,
-                    error = if (general == null) "A general answer needs an AI model, and none is available right now." else null
+                    allowance = allowance ?: it.allowance,
+                    madeOnPhone = madeOnPhone,
+                    error = if (general == null && allowance == null) "A general answer needs an AI model, and none is available right now." else null
                 )
             }
         }
@@ -1752,7 +1765,11 @@ data class AskTurn(
     val answer: LearningAnswer? = null,
     val generalPending: Boolean = false,
     val general: LearningAnswer? = null,
-    val error: String? = null
+    val error: String? = null,
+    /** Set when the managed allowance ran out. The answer above (if any) is still the lecture's own words. */
+    val allowance: LearningAiStatus.AllowanceUsedUp? = null,
+    /** True when the answer was made on this phone after the cloud route ran out. Said quietly. */
+    val madeOnPhone: Boolean = false
 )
 
 /** Step 2 of creating a session. */

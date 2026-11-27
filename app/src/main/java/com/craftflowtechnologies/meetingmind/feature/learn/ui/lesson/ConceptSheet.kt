@@ -111,7 +111,9 @@ fun ConceptSheet(
     onToggleHidden: () -> Unit = {},
     onToggleReported: () -> Unit = {},
     /** The AI-written definition to report. Null once the learner has edited the concept. */
-    aiSource: (() -> AiReportSource)? = null
+    aiSource: (() -> AiReportSource)? = null,
+    /** Opens Plans from the allowance panel. Null when this build cannot sell plans. */
+    onSeePlans: (() -> Unit)? = null
 ) {
     StudyTheme {
         val c = MM.colors
@@ -147,7 +149,7 @@ fun ConceptSheet(
                 }
                 Text("Explain it another way", style = MM.type.bodyStrong, color = c.ink)
                 ExplainModes(selected = explain.mode, onExplain = onExplain)
-                ExplainResult(explain)
+                ExplainResult(explain, onSeePlans)
                 if (flags.hidden || flags.reported) {
                     Text(
                         listOfNotNull(
@@ -324,15 +326,19 @@ private fun ExplainModes(selected: ExplainMode?, onExplain: (ExplainMode) -> Uni
 }
 
 @Composable
-private fun ExplainResult(explain: ExplainState) {
+private fun ExplainResult(explain: ExplainState, onSeePlans: (() -> Unit)?) {
     val c = MM.colors
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
         if (explain.loading) {
             if (MM.motion.reduced) StaticSkeleton() else ShimmerSkeleton()
         } else {
+            explain.allowance?.let { AllowanceUsedUpPanel(it.resetsAtMs, onSeePlans) }
             explain.error?.let { StatusLine(kind = StatusKind.Error, text = it) }
             explain.diagram?.let { DiagramView(it) }
             explain.text?.let { Text(it, style = MM.type.body, color = c.ink) }
+            if (explain.madeOnPhone && (explain.text != null || explain.diagram != null)) {
+                Text("Made on this phone", style = MM.type.caption, color = c.inkMuted)
+            }
             if ((explain.text != null || explain.diagram != null) && explain.sourceLabel != null) {
                 AiBadge(explain.sourceLabel)
             }

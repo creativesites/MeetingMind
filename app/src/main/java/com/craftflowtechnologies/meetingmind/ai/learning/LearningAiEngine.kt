@@ -8,6 +8,7 @@ import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
+import com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus
 import com.craftflowtechnologies.meetingmind.core.learning.SpokenNotationNormalizer
 import com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain
 import com.craftflowtechnologies.meetingmind.core.model.BlockSource
@@ -58,9 +59,23 @@ class LearningAiEngine(
 
     private suspend fun shouldPreferLocal(): Boolean = preferLocal?.invoke() == true
 
+    /**
+     * How the last model call on this engine ended: [LearningAiStatus.Ready] when an answer came back,
+     * otherwise the typed reason (allowance used up, no AI, or a failure). Screens read it right after
+     * the call they made. One engine serves one screen's calls, so it is not a per-call record.
+     */
+    @Volatile var lastStatus: LearningAiStatus = LearningAiStatus.Ready
+        private set
+
+    /** True when the last answer was made on this phone because the cloud route did not answer. */
+    @Volatile var lastMadeLocally: Boolean = false
+        private set
+
     private suspend fun generateText(prompt: String, responseSchema: String? = null): String? {
+        lastMadeLocally = false
         val forceLocal = shouldPreferLocal()
         val t = transport
+        var cloudStatus: LearningAiStatus? = null
         if (!forceLocal && t != null && t.refreshConfigured()) {
             val req = GeminiRequest(
                 modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
@@ -71,11 +86,19 @@ class LearningAiEngine(
                 thinkingLevel = com.craftflowtechnologies.meetingmind.ai.cloud.ThinkingLevel.MEDIUM
             )
             when (val res = t.execute(req)) {
-                is AiResult.Success -> return res.value
-                else -> {}
+                is AiResult.Success -> {
+                    lastStatus = LearningAiStatus.Ready
+                    return res.value
+                }
+                else -> cloudStatus = LearningAiStatus.of(res)
             }
         }
-        val model = fallbackModel ?: fallbackModelProvider?.invoke() ?: return null
+        // The cloud route did not answer (allowance used up, failure, or offline): try the on-device model once.
+        val model = fallbackModel ?: fallbackModelProvider?.invoke()
+        if (model == null) {
+            lastStatus = cloudStatus ?: LearningAiStatus.NoAi(LearningAiStatus.NO_AI_MESSAGE)
+            return null
+        }
         return try {
             val res = if (responseSchema != null) {
                 model.generateStructured(prompt, responseSchema, maxOutputTokens = 1500)
@@ -83,8 +106,15 @@ class LearningAiEngine(
                 model.generate(prompt, maxOutputTokens = 1500)
             }
             when (res) {
-                is AiResult.Success -> res.value
-                else -> null
+                is AiResult.Success -> {
+                    lastStatus = LearningAiStatus.Ready
+                    lastMadeLocally = cloudStatus != null
+                    res.value
+                }
+                else -> {
+                    lastStatus = cloudStatus ?: LearningAiStatus.of(res)
+                    null
+                }
             }
         } finally {
             if (fallbackModel == null) onLocalFinished?.invoke()
@@ -627,6 +657,9 @@ class LearningAiEngine(
      * passages when no model answers, and never returns an uncited claim as "from your lecture".
      */
     suspend fun answerFromSources(question: String, ranked: List<Pair<AskPassage, Double>>): LearningAnswer {
+        // No model call is made when there is nothing to ground an answer in, so the status is reset first.
+        lastStatus = LearningAiStatus.Ready
+        lastMadeLocally = false
         val passages = ranked.map { it.first }
         val extractive = LearningAsk.extractiveAnswer(question, ranked)
         if (passages.isEmpty()) return extractive
@@ -651,6 +684,8 @@ class LearningAiEngine(
 
     /** General knowledge, only when the student asks for it. Null when no model is available. */
     suspend fun answerGenerally(question: String): LearningAnswer? {
+        lastStatus = LearningAiStatus.Ready
+        lastMadeLocally = false
         val raw = runCatching { generateText(LearningAsk.generalPrompt(question), LearningAsk.ANSWER_SCHEMA) }.getOrNull() ?: return null
         val text = runCatching { JSONObject(stripMarkdownCodeFences(raw)).optString("answer").trim() }.getOrNull()
         if (text.isNullOrBlank()) return null

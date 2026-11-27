@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.feature.learn
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus
 import com.craftflowtechnologies.meetingmind.core.model.RecallRating
 import com.craftflowtechnologies.meetingmind.ui.theme.LocalMMColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MMAccent
@@ -175,6 +176,11 @@ sealed interface LessonKitStatus {
     /** No AI available (offline and no local model, or not set up). */
     data class NeedsAi(val message: String) : LessonKitStatus
     data class Failed(val message: String) : LessonKitStatus
+    /**
+     * The managed allowance is used up and no on-device model could make the lesson. The page says so calmly,
+     * that the lecture's notes, practice and listening still work, and offers plans when this build can sell them.
+     */
+    data class AllowanceUsedUp(val resetsAtMs: Long) : LessonKitStatus
     /** The lecture has no transcript yet (still processing, or no words). */
     data object NoTranscript : LessonKitStatus
 }
@@ -219,8 +225,19 @@ data class ExplainState(
     val diagram: DiagramSpec? = null,
     /** Lecture timestamps the explanation came from, e.g. "14:02 and 16:40". */
     val sourceLabel: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    /** Set when the managed allowance is used up: the sheet shows the calm panel with plans, not [error]. */
+    val allowance: LearningAiStatus.AllowanceUsedUp? = null,
+    /** True when the text was made on this phone after the cloud route ran out. Said quietly. */
+    val madeOnPhone: Boolean = false
 )
+
+/** The outcome of an explanation, for analytics. */
+fun ExplainState.toStatus(): LearningAiStatus = when {
+    allowance != null -> allowance
+    error != null -> LearningAiStatus.Failed(error, retryable = true)
+    else -> LearningAiStatus.Ready
+}
 
 // ---------------------------------------------------------------------------------------------
 // Listen (lecture replay with read-along)

@@ -111,7 +111,9 @@ fun LessonAskSheet(
     onQuiz: () -> Unit,
     onPlayFrom: (Long) -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Opens Plans from the allowance panel. Null when this build cannot sell plans. */
+    onSeePlans: (() -> Unit)? = null
 ) {
     StudyTheme {
         val c = MM.colors
@@ -200,7 +202,8 @@ fun LessonAskSheet(
                             ask = ask,
                             onGeneral = { onGeneral(turn.id) },
                             onQuiz = onQuiz,
-                            onPlayFrom = onPlayFrom
+                            onPlayFrom = onPlayFrom,
+                            onSeePlans = onSeePlans
                         )
                     }
                 }
@@ -253,7 +256,8 @@ private fun AskTurnView(
     ask: LessonAskUi,
     onGeneral: () -> Unit,
     onQuiz: () -> Unit,
-    onPlayFrom: (Long) -> Unit
+    onPlayFrom: (Long) -> Unit,
+    onSeePlans: (() -> Unit)?
 ) {
     val c = MM.colors
     // Hidden after the learner reported it (the AI-content policy); "Show" brings it back.
@@ -284,7 +288,12 @@ private fun AskTurnView(
             answer != null -> AnswerView(answer, onPlayFrom)
         }
         if (hidden) return@Column
+        // The allowance panel sits above the answer that was still found in the lecture's own words.
+        turn.allowance?.let { AllowanceUsedUpPanel(it.resetsAtMs, onSeePlans) }
         turn.error?.let { StatusLine(StatusKind.Info, it) }
+        if (turn.madeOnPhone && answer != null) {
+            Text("Made on this phone", style = MM.type.caption, color = c.inkMuted)
+        }
         if (answer != null && answer.kind == AnswerKind.NOT_IN_SOURCE && turn.general == null) {
             if (turn.generalPending) {
                 Text("Writing a general answer…", style = MM.type.caption, color = c.inkSecondary)

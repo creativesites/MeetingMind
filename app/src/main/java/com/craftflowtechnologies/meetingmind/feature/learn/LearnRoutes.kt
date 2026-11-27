@@ -69,7 +69,8 @@ fun NavGraphBuilder.learnGraph(
                 onListen = { navController.navigate(Routes.learnListenRoute(it)) },
                 onPractise = { sessionId -> navController.navigate(Routes.learnPracticeRoute(sessionId = sessionId)) },
                 onQuizConcept = { sessionId, conceptId -> navController.navigate(Routes.learnPracticeRoute(sessionId = sessionId, conceptId = conceptId)) },
-                onOpenRecording = { meetingId, at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) }
+                onOpenRecording = { meetingId, at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) },
+                onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
             )
         )
     }
@@ -142,5 +143,6 @@ fun learningHomeActions(navController: NavController) = LearningHomeActions(
     onRecordLecture = { navController.navigate(Routes.recordTypeRoute(RecordingType.LECTURE)) },
     onImportFile = { navController.navigate(Routes.IMPORT) },
     onOpenAllIdeas = { navController.navigate(Routes.learnPracticeRoute()) },
-    onOpenSettings = { navController.navigate(Routes.SETTINGS) }
+    onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+    onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
 )
