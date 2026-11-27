@@ -143,6 +143,7 @@ fun TodayScreen(
     /** Opens Study; its tile shows only when the person uses the Learning space. */
     onOpenStudy: () -> Unit = {},
     onOpenLearn: () -> Unit = {},
+    onOpenPersonal: () -> Unit = {},
     /** The Tasks card in "Your spaces". */
     onOpenTasks: () -> Unit = {},
     onOpenCircles: () -> Unit = {},
@@ -328,12 +329,15 @@ fun TodayScreen(
             // right under the hero so every vertical is visible in the first seconds on Home.
             item(key = "spaces") {
                 val (tasksDue, learnDue) = com.craftflowtechnologies.meetingmind.feature.today.home.rememberSpaceCounts()
+                val personalLine = com.craftflowtechnologies.meetingmind.feature.today.home.rememberPersonalGlanceLine()
                 com.craftflowtechnologies.meetingmind.feature.today.home.SpacesRow(
                     glance = com.craftflowtechnologies.meetingmind.feature.today.home.SpaceGlance(
                         nextTitle = todayItems.firstOrNull { it.start >= now }?.title,
                         todayCount = todayItems.size,
                         devotionalTitle = devotional?.devotional?.title,
-                        learnDue = learnDue, tasksDue = tasksDue
+                        learnDue = learnDue,
+                        tasksDue = tasksDue,
+                        personalLine = personalLine
                     ),
                     onOpen = { space ->
                         when (space) {

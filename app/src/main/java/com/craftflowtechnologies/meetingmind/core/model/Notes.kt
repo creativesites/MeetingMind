@@ -47,6 +47,8 @@ object NotebookKind {
     const val PROJECT = "PROJECT"
     /** A list in the Tasks manager (schema 31). Its space is PERSONAL, LEARNING or WORK. */
     const val TASK_LIST = "TASK_LIST"
+    /** A personal Life Chapter (e.g. "Moving to Cape Town", "Marathon Prep") in the Personal space. */
+    const val LIFE_CHAPTER = "LIFE_CHAPTER"
 }
 
 /**
@@ -209,7 +211,11 @@ enum class NoteLinkKind {
     /** An answered prayer pointing at its request. */
     ANSWERS,
     /** A testimony pointing at the answered prayer it tells. */
-    TESTIMONY_OF
+    TESTIMONY_OF,
+    /** A private personal journal reflection referencing a Work, Learning, Faith or YouTube note. */
+    PERSONAL_REFLECTION,
+    /** A multi-day story thread connecting one journal entry or idea to its continuation. */
+    STORY_THREAD
 }
 
 data class NoteLink(

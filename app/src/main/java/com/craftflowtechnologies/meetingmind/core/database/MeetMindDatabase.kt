@@ -66,7 +66,13 @@ import androidx.room.migration.Migration
         DocumentPageEntity::class,
         DocumentPageFtsEntity::class,
         PracticeEntity::class,
-        PracticeDayEntity::class
+        PracticeDayEntity::class,
+        PersonalRoutineEntity::class,
+        RoutineStepEntity::class,
+        RoutineCompletionEntity::class,
+        GrowthEnrollmentEntity::class,
+        GrowthStepProgressEntity::class,
+        PersonalDailyPlanEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -113,6 +119,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun reviewScheduleDao(): ReviewScheduleDao
     abstract fun learningGoalDao(): LearningGoalDao
     abstract fun practiceDao(): PracticeDao
+    abstract fun personalGrowthDao(): PersonalGrowthDao
 
     companion object {
         @Volatile
@@ -790,8 +797,44 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 33 → 34: the Personal growth and living-journal tables from `release/1.0-paid-launch`
+         * (routines, ordered steps, resumable completions, journey enrollments, step progress and the
+         * daily plan). That branch shipped them as its schema 32; a phone from it already has them and
+         * passes through 32 → 33 → 34 untouched, because every statement is IF NOT EXISTS.
+         */
+        val MIGRATION_33_34 = object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_33_34_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_33_34_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `personal_routines` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `whyDescription` TEXT NOT NULL DEFAULT '', `timeWindow` TEXT NOT NULL DEFAULT 'MORNING', `scheduledMinuteOfDay` INTEGER, `daysOfWeekMask` INTEGER NOT NULL DEFAULT 127, `reminderEnabled` INTEGER NOT NULL DEFAULT 0, `anchorCue` TEXT NOT NULL DEFAULT '', `soundscapeId` TEXT NOT NULL DEFAULT 'NONE', `linkedJourneyId` TEXT, `lifeChapterNotebookId` TEXT, `isArchived` INTEGER NOT NULL DEFAULT 0, `sortOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_personal_routines_timeWindow_sortOrder` ON `personal_routines` (`timeWindow`, `sortOrder`)",
+            "CREATE INDEX IF NOT EXISTS `index_personal_routines_isArchived` ON `personal_routines` (`isArchived`)",
+            "CREATE TABLE IF NOT EXISTS `routine_steps` (`id` TEXT NOT NULL, `routineId` TEXT NOT NULL, `position` INTEGER NOT NULL, `kind` TEXT NOT NULL DEFAULT 'CHECK', `title` TEXT NOT NULL, `minEffortTitle` TEXT NOT NULL DEFAULT '', `durationSeconds` INTEGER NOT NULL DEFAULT 120, `minEffortDurationSeconds` INTEGER NOT NULL DEFAULT 45, `promptText` TEXT NOT NULL DEFAULT '', `guidedActivityId` TEXT, `companionState` TEXT NOT NULL DEFAULT 'IDLE', `isEnabled` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`id`), FOREIGN KEY(`routineId`) REFERENCES `personal_routines`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_routine_steps_routineId_position` ON `routine_steps` (`routineId`, `position`)",
+            "CREATE TABLE IF NOT EXISTS `routine_completions` (`id` TEXT NOT NULL, `routineId` TEXT NOT NULL, `epochDay` INTEGER NOT NULL, `status` TEXT NOT NULL DEFAULT 'IN_PROGRESS', `currentStepIndex` INTEGER NOT NULL DEFAULT 0, `completedStepIdsJson` TEXT NOT NULL DEFAULT '[]', `usedMinEffortMode` INTEGER NOT NULL DEFAULT 0, `actualDurationSeconds` INTEGER NOT NULL DEFAULT 0, `reflectionNoteId` TEXT, `startedAt` INTEGER NOT NULL, `completedAt` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`routineId`) REFERENCES `personal_routines`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`reflectionNoteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_routine_completions_routineId_epochDay` ON `routine_completions` (`routineId`, `epochDay`)",
+            "CREATE INDEX IF NOT EXISTS `index_routine_completions_epochDay` ON `routine_completions` (`epochDay`)",
+            "CREATE INDEX IF NOT EXISTS `index_routine_completions_reflectionNoteId` ON `routine_completions` (`reflectionNoteId`)",
+            "CREATE TABLE IF NOT EXISTS `growth_enrollments` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `catalogId` TEXT NOT NULL, `title` TEXT NOT NULL, `customConfigJson` TEXT NOT NULL DEFAULT '{}', `status` TEXT NOT NULL DEFAULT 'ACTIVE', `startedEpochDay` INTEGER NOT NULL, `currentStepOrDay` INTEGER NOT NULL DEFAULT 0, `targetStepsOrDays` INTEGER NOT NULL, `anchorWhyNoteId` TEXT, `finaleNoteId` TEXT, `lifeChapterNotebookId` TEXT, `catalogVersion` INTEGER NOT NULL DEFAULT 1, `lastActivityAt` INTEGER NOT NULL, `completedAt` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`anchorWhyNoteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`finaleNoteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`lifeChapterNotebookId`) REFERENCES `notebooks`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_growth_enrollments_kind_status` ON `growth_enrollments` (`kind`, `status`)",
+            "CREATE INDEX IF NOT EXISTS `index_growth_enrollments_catalogId` ON `growth_enrollments` (`catalogId`)",
+            "CREATE INDEX IF NOT EXISTS `index_growth_enrollments_anchorWhyNoteId` ON `growth_enrollments` (`anchorWhyNoteId`)",
+            "CREATE INDEX IF NOT EXISTS `index_growth_enrollments_finaleNoteId` ON `growth_enrollments` (`finaleNoteId`)",
+            "CREATE INDEX IF NOT EXISTS `index_growth_enrollments_lifeChapterNotebookId` ON `growth_enrollments` (`lifeChapterNotebookId`)",
+            "CREATE TABLE IF NOT EXISTS `growth_step_progress` (`id` TEXT NOT NULL, `enrollmentId` TEXT NOT NULL, `stepIndex` INTEGER NOT NULL, `completedEpochDay` INTEGER NOT NULL, `usedMinEffort` INTEGER NOT NULL DEFAULT 0, `reflectionNoteId` TEXT, `reflectionBlockId` TEXT, `completedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`enrollmentId`) REFERENCES `growth_enrollments`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`reflectionNoteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_growth_step_progress_enrollmentId_stepIndex` ON `growth_step_progress` (`enrollmentId`, `stepIndex`)",
+            "CREATE INDEX IF NOT EXISTS `index_growth_step_progress_completedEpochDay` ON `growth_step_progress` (`completedEpochDay`)",
+            "CREATE INDEX IF NOT EXISTS `index_growth_step_progress_reflectionNoteId` ON `growth_step_progress` (`reflectionNoteId`)",
+            "CREATE TABLE IF NOT EXISTS `personal_daily_plans` (`epochDay` INTEGER NOT NULL, `intentionText` TEXT NOT NULL DEFAULT '', `intentionNoteBlockId` TEXT, `committedItemIdsJson` TEXT NOT NULL DEFAULT '[]', `dismissedItemIdsJson` TEXT NOT NULL DEFAULT '[]', `isMinEffortDay` INTEGER NOT NULL DEFAULT 0, `moodVibe` TEXT, `dayPageNoteId` TEXT, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`epochDay`), FOREIGN KEY(`dayPageNoteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_personal_daily_plans_dayPageNoteId` ON `personal_daily_plans` (`dayPageNoteId`)"
+        )
+
         /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
-        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33)
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
 
         internal val MIGRATION_21_22_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -955,7 +998,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 33
+        const val VERSION = 34
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {

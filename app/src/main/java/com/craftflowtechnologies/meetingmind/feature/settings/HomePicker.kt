@@ -108,6 +108,11 @@ private fun HomeThumbnail(style: HomeStyle) {
                 Block(c.surface, 14.dp)
                 Line(); Line()
             }
+            HomeStyle.PERSONAL -> {
+                Block(c.accentWash, 16.dp)
+                Line(); Line()
+                Row(horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) { repeat(2) { Dot() } }
+            }
             HomeStyle.FOCUS -> {
                 Block(c.surface, 16.dp)
                 Box(Modifier.align(Alignment.CenterHorizontally).size(20.dp).background(c.accent, MM.radius.pill))

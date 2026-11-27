@@ -18,7 +18,9 @@ object CompanionRhythm {
         /** Distinct days with at least one study review. */
         STUDY_DAYS,
         /** Notes kept (every finished note counts, several a day included). */
-        NOTES_KEPT
+        NOTES_KEPT,
+        /** Distinct days with a Personal routine, journal entry, or journey check-in. */
+        PERSONAL_DAYS
     }
 
     /** What the line says: a [kind] and the [count] this week, always at least [MinimumToShow]. */
@@ -32,7 +34,7 @@ object CompanionRhythm {
         val week = CivilDate.weekOf(clock.localDay)
         val inWeek = happenedAtMs.filter { it <= clock.nowMs && CivilDate.weekOf(clock.dayOf(it)) == week }
         val count = when (kind) {
-            Kind.FAITH_DAYS, Kind.STUDY_DAYS -> inWeek.map(clock::dayOf).toSet().size
+            Kind.FAITH_DAYS, Kind.STUDY_DAYS, Kind.PERSONAL_DAYS -> inWeek.map(clock::dayOf).toSet().size
             Kind.NOTES_KEPT -> inWeek.size
         }
         return if (count >= MinimumToShow) Line(kind, count) else null

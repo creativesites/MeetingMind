@@ -33,6 +33,12 @@ object SpaceSchedules {
         val spaces = prefs.preferencesFlow.first().identity.spaces
         DevotionalScheduler.sync(app, devotionalFor(prefs.devotionalProfile.first(), spaces))
         ReminderScheduler.sync(app, remindersFor(prefs.reminderSettings.first(), spaces))
+        runCatching {
+            com.craftflowtechnologies.meetingmind.core.personal.PersonalRhythmScheduler.sync(
+                app,
+                NotebookSpace.PERSONAL in spaces
+            )
+        }
     }
 
     /** Saves [spaces] and brings every background schedule in line with them. */

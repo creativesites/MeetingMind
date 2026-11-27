@@ -76,6 +76,10 @@ object AppMenuModel {
             "personal", "Personal", listOf(
                 go("personal.garden", "Your garden", MenuIcon.GARDEN, Routes.PERSONAL, "Today's question, practices and ideas"),
                 go("personal.journal", "Journal", MenuIcon.JOURNAL, Routes.recordTypeRoute(RecordingType.JOURNAL), "Say what's on your mind"),
+                go("personal.living_journal", "Living journal", MenuIcon.JOURNAL, Routes.personalRoute("JOURNAL"), "Day pages, volumes and reflections"),
+                go("personal.growth", "Routines, journeys & coaching", MenuIcon.PLANS, Routes.personalRoute("GROWTH"), "Morning/evening routines, guided journeys and challenges"),
+                go("personal.ideas", "Idea studio", MenuIcon.CREATE, Routes.personalRoute("IDEAS"), "Spark vault and idea incubator"),
+                go("personal.vault", "Memory vault & capsules", MenuIcon.ARCHIVE, Routes.personalRoute("VAULT"), "Time capsules, milestones and voice keepsakes"),
                 go("personal.idea", "Capture an idea", MenuIcon.RECORD, Routes.recordTypeRoute(RecordingType.IDEA))
             ), NotebookSpace.PERSONAL
         )

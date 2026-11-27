@@ -114,4 +114,12 @@ class PostSessionAutopilotTest {
         assertTrue(res is AiResult.Failed)
         assertTrue(!called)
     }
+
+    @Test fun `personal recipes are registered and mapped for personal workflows`() {
+        assertEquals(4, AutopilotRecipe.PERSONAL_RECIPES.size)
+        assertEquals(AutopilotRecipe.EVENING_STOIC_DEBRIEF, AutopilotRecipe.recommendedFor(RecordingType.JOURNAL))
+        assertEquals(AutopilotRecipe.IDEA_TO_ACTION_BLUEPRINT, AutopilotRecipe.recommendedFor(RecordingType.IDEA))
+        assertEquals(AutopilotRecipe.IDEA_TO_ACTION_BLUEPRINT, AutopilotRecipe.recommendedFor(RecordingType.BRAINSTORM))
+        assertEquals(AutopilotRecipe.EVENING_STOIC_DEBRIEF, AutopilotRecipe.recommendedFor(RecordingType.VOICE_MEMO))
+    }
 }

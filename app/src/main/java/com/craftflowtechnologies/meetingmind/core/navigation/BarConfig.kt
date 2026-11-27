@@ -25,6 +25,7 @@ object BarConfig {
     fun lead(home: HomeStyle, identity: AppIdentity): NotebookSpace? = when {
         home == HomeStyle.PROFESSIONAL -> NotebookSpace.WORK
         home == HomeStyle.LEARNING -> NotebookSpace.LEARNING
+        home == HomeStyle.PERSONAL -> NotebookSpace.PERSONAL
         identity.faithFirst -> NotebookSpace.FAITH
         else -> null
     }

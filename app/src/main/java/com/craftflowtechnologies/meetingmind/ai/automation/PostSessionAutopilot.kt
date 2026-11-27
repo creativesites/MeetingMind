@@ -74,11 +74,51 @@ enum class AutopilotRecipe(
         subtitle = "Big Idea, 4 discussion questions, Scripture refs & weekly steps",
         deliverableLabel = "Group Leader Guide",
         preferredTaskKind = TaskKind.APPLY
+    ),
+    EVENING_STOIC_DEBRIEF(
+        id = "evening_stoic_debrief",
+        label = "Evening Debrief",
+        badge = "Personal · Pro",
+        subtitle = "Distills a voice ramble into Wins, Drains, Lesson Kept & Tomorrow's First Step",
+        deliverableLabel = "Evening Reflection Card",
+        preferredTaskKind = TaskKind.TASK
+    ),
+    IDEA_TO_ACTION_BLUEPRINT(
+        id = "idea_to_action_blueprint",
+        label = "Idea to Blueprint",
+        badge = "Personal · Pro",
+        subtitle = "Turns a raw Spark into a 1-page pitch, 3 tiny experiments & open questions",
+        deliverableLabel = "1-Page Concept Blueprint",
+        preferredTaskKind = TaskKind.TASK
+    ),
+    THERAPY_OR_COACHING_PREP(
+        id = "therapy_or_coaching_prep",
+        label = "Session Prep Sheet",
+        badge = "Personal · Pro",
+        subtitle = "Synthesizes recent private journals into emotional themes & talking points",
+        deliverableLabel = "Coaching / Therapy Talking Points",
+        preferredTaskKind = TaskKind.TASK
+    ),
+    WEEKLY_LIFE_LETTER(
+        id = "weekly_life_letter",
+        label = "Weekly Life Letter",
+        badge = "Personal · Pro",
+        subtitle = "Warm Sunday narrative of your week's journals, routines & milestones",
+        deliverableLabel = "Weekly Personal Letter",
+        preferredTaskKind = TaskKind.TASK
     );
 
     companion object {
         /** The recipes offered inside Work (spec §10 Autopilot): the others stay in their own spaces. */
         val WORK_RECIPES: List<AutopilotRecipe> = listOf(EXECUTIVE_DEBRIEF, CLIENT_CRM_LOG)
+
+        /** The 4 Pro/BYOK recipes crafted specifically for Personal-only users. */
+        val PERSONAL_RECIPES: List<AutopilotRecipe> = listOf(
+            EVENING_STOIC_DEBRIEF,
+            IDEA_TO_ACTION_BLUEPRINT,
+            THERAPY_OR_COACHING_PREP,
+            WEEKLY_LIFE_LETTER
+        )
 
         fun recommendedFor(workflow: RecordingType): AutopilotRecipe = when (workflow) {
             RecordingType.SERMON,
@@ -89,6 +129,14 @@ enum class AutopilotRecipe(
 
             RecordingType.LECTURE,
             RecordingType.RESEARCH -> STUDY_FLASHCARD_DRILL
+
+            RecordingType.IDEA,
+            RecordingType.BRAINSTORM -> IDEA_TO_ACTION_BLUEPRINT
+
+            RecordingType.JOURNAL,
+            RecordingType.REFLECTION,
+            RecordingType.GRATITUDE,
+            RecordingType.VOICE_MEMO -> EVENING_STOIC_DEBRIEF
 
             RecordingType.MEETING,
             RecordingType.INTERVIEW -> CLIENT_CRM_LOG
@@ -276,6 +324,58 @@ class PostSessionAutopilotEngine(
                 - deliverable_title: Small Group Discussion Guide title
                 - deliverable_markdown: Small Group guide with 4 discussion questions, Scripture references, and 2 prayer focuses
                 - note_title: concise Small Group Pack title
+            """.trimIndent()
+
+            AutopilotRecipe.EVENING_STOIC_DEBRIEF -> """
+                Recipe: Personal Evening Debrief
+                Tone: warm, calm, grounded strictly in the person's own words. Never diagnose, preach, or invent emotions they did not express.
+                Produce:
+                - headline: 1 honest, grounded headline capturing the essence of their day
+                - summary: 2-3 sentence reflection summarizing what stood out today in their own voice
+                - key_outcomes: up to 5 concrete wins, energy drains, or lessons explicitly mentioned
+                - action_items: 1-3 gentle, concrete first steps for tomorrow mentioned by the user
+                - deliverable_title: Evening Reflection Summary
+                - deliverable_markdown: Clean Markdown with four short headings: ## What Went Well, ## What Drained Energy, ## One Lesson Kept, ## Tomorrow's First Step
+                - note_title: Evening Debrief title
+            """.trimIndent()
+
+            AutopilotRecipe.IDEA_TO_ACTION_BLUEPRINT -> """
+                Recipe: Idea to Action Blueprint
+                Tone: practical, encouraging, faithful to the raw spark. Never fabricate external metrics or claims not present in the note.
+                Produce:
+                - headline: 1 crisp pitch sentence capturing the core idea
+                - summary: 2-3 sentence concept summary explaining who or what this idea serves
+                - key_outcomes: up to 5 core assumptions, strengths, or open questions raised in the brainstorm
+                - action_items: 3 tiny, low-risk real-world experiments to test the idea this week
+                - deliverable_title: 1-Page Idea Blueprint
+                - deliverable_markdown: Clean Markdown with ## The Core Spark, ## First 3 Small Experiments, ## Open Questions to Answer
+                - note_title: Idea Blueprint title
+            """.trimIndent()
+
+            AutopilotRecipe.THERAPY_OR_COACHING_PREP -> """
+                Recipe: Personal Coaching & Therapy Prep Sheet
+                Tone: respectful, strictly observational, non-clinical. NEVER offer a medical or psychiatric diagnosis; only organize the person's own stated themes and questions.
+                Produce:
+                - headline: 1 calm headline capturing the central thread of these reflections
+                - summary: 2-3 sentence overview of what has been most present for the person recently
+                - key_outcomes: up to 5 recurring moments, energy shifts, or tensions explicitly stated in their notes
+                - action_items: 2-4 concrete questions the person may want to bring to their next coaching or therapy conversation
+                - deliverable_title: Session Talking Points
+                - deliverable_markdown: Clean Markdown with ## Recurring Themes (In My Words), ## Moments That Stood Out, ## Questions to Bring to My Session
+                - note_title: Session Prep title
+            """.trimIndent()
+
+            AutopilotRecipe.WEEKLY_LIFE_LETTER -> """
+                Recipe: Weekly Life Letter ("The Mirror")
+                Tone: warm, reflective, editorial. Quote the person's real phrases faithfully and never invent events.
+                Produce:
+                - headline: A chapter-like title for this week of their life
+                - summary: 3-4 sentence narrative letter reflecting back how this week unfolded
+                - key_outcomes: up to 5 meaningful moments, habits kept, or mindset shifts recorded this week
+                - action_items: 1-3 calm intentions to carry into next week based on what they wrote
+                - deliverable_title: Weekly Life Letter
+                - deliverable_markdown: A warm Markdown letter structured with ## Highlights Worth Keeping, ## Patterns Noticed, ## Carrying Into Next Week
+                - note_title: Weekly Life Letter title
             """.trimIndent()
         }
 

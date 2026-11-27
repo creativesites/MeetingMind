@@ -39,6 +39,8 @@ sealed interface DeepLink {
     data object WeeklyReview : DeepLink
     /** The Learning vertical. */
     data object Learn : DeepLink
+    /** The Personal vertical (Sanctuary Home & Routines). */
+    data object PersonalSpace : DeepLink
 }
 
 /**
@@ -74,6 +76,7 @@ object DeepLinks {
             "inbox" -> DeepLink.Inbox
             "work" -> DeepLink.WorkSpace
             "learn" -> DeepLink.Learn
+            "personal" -> DeepLink.PersonalSpace
             "review" -> DeepLink.WeeklyReview
             "prepare" -> DeepLink.Prepare(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getLongExtra("b", 0), intent.getLongExtra("e", 0), intent.getStringExtra("p").orEmpty(), intent.getStringExtra("m").orEmpty())
             "record_event" -> DeepLink.RecordEvent(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getStringExtra("w").orEmpty())
@@ -97,6 +100,7 @@ object DeepLinks {
             DeepLink.Inbox -> "inbox" to null
             DeepLink.WorkSpace -> "work" to null
             DeepLink.Learn -> "learn" to null
+            DeepLink.PersonalSpace -> "personal" to null
             DeepLink.WeeklyReview -> "review" to null
             is DeepLink.Prepare -> "prepare" to link.eventKey
             is DeepLink.RecordEvent -> "record_event" to link.eventKey
@@ -250,6 +254,33 @@ object AppNotifications {
 
     const val CHANNEL_REMINDERS = "meetmind_reminders"
     const val CHANNEL_WORK_RHYTHM = "meetmind_work_rhythm"
+    const val CHANNEL_PERSONAL_RHYTHM = "meetmind_personal_rhythm"
+
+    /**
+     * A calm Personal reminder (opt-in daily routines, unlocked time capsules).
+     * Dedicated channel so users can configure Personal notifications independently of Faith or Work.
+     */
+    fun personalReminder(context: Context, id: Int, title: String, text: String, link: DeepLink = DeepLink.PersonalSpace) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel(CHANNEL_PERSONAL_RHYTHM, "Personal routines & capsules", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "Gentle opt-in routine invitations and unlocked time capsules"
+                }
+            )
+        }
+        post(
+            context, 7000 + (id and 0x3FF),
+            NotificationCompat.Builder(context, CHANNEL_PERSONAL_RHYTHM)
+                .setSmallIcon(com.craftflowtechnologies.meetingmind.R.drawable.ic_zuri_glyph)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(DeepLinks.pendingIntent(context, link))
+                .build()
+        )
+    }
 
     /**
      * A Work nudge: the morning line, Prep, "Starting now" or the weekly review. The words come
