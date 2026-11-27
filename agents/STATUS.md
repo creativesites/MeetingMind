@@ -12,6 +12,15 @@ Updated: 2026-11-27. **Shipping branch: `release/1.0-paid-launch`** (Head: see `
 - **Not verified on a device:** lesson generation on a real lecture (Gemini and on-device), playback from moments, the round's next-day return.
 - **Build note:** Maven Central returns 429 through this proxy; builds here use a session-only init script that points at Google's Central mirror (`--init-script`).
 
+## Learning on the Study design (2026-11-27, branch `ccr-193c8c6b-bozoxb`, head `see git log`)
+- **Founder decision:** keep Learning's functionality, replace all its UI with the Study design; navigation must be easy; one Learning home for the space and the Learning home style.
+- **Routes (`feature/learn/LearnRoutes.kt`, `learnGraph`):** `learn` home, `learn_course/{id}`, `learning_session/{noteId}` lesson, `learning_listen/{noteId}`, `learn_practice?sessionId&activityId&course&concept`. `learn_study/*` retired. Exam prep (`learn_exam`) is still the old screen, reached from a course's "Exam plan".
+- **Removed:** LearnHomeScreen, LearningSessionScreen, SessionStudioScreen, PracticeArenaScreen (and LearnHomeUiTest). LearningSpaceScreen and PracticeModeScreen have no route; their tests still use them.
+- **Database:** schema 33 (`5e75b81b`). `release/1.0-paid-launch` shipped a different schema 32 (Personal tables); the 32→33 step accepts both. Merging that branch later needs its Personal tables in a 34. Never reuse a schema number another branch has shipped.
+- **Debug builds and online AI:** build with `GEMINI_PROXY_URL=https://meetingmind-gemini.meetingmind.workers.dev` (or a key in local.properties); without either, online transcription falls back to local models.
+- **Tests (full run, 4,359):** 21 failures arrived with `ccr-4eced482-bn5f1l` and are not Learning's: TodayHeroSun (6), ImportViewModel (2), AudioExtractor, GeminiHttpTransport, GeminiTranslationEngine, MomentStage, NoteEditorUnveilScreenshot, PrivacyNoCloudPath (2), ProcessingScheduler, ProcessingScreenshot, SermonTranscriptSection, TranscriptToolEngine, DesignSystemGuard (AiCraft.kt), Assistant (PaywallScreen.kt sparkles). The two Learning ones are fixed.
+- **Not verified on a device.**
+
 ## Personal becomes "Your garden" (2026-11-27, branch `ccr-4eced482-bn5f1l`)
 - **Design:** the founder chose the garden concept (design canvas "MeetingMind: Personal vertical redesign", page "Your garden (new)").
 - **Built:**

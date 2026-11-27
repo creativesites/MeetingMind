@@ -34,7 +34,7 @@ object LessonEntry {
 @Composable
 fun LessonEntryBanner(onOpenLesson: () -> Unit, modifier: Modifier = Modifier) {
     StudyTheme {
-        HeroCard(modifier = modifier.fillMaxWidth().testTag("note_open_lesson")) {
+        HeroCard(modifier = modifier.fillMaxWidth().testTag("note_open_lesson"), onClick = onOpenLesson) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                     Text("Study this lecture", style = MM.type.bodyStrong, color = MM.colors.ink)

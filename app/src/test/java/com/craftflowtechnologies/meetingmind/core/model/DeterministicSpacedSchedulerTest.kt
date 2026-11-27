@@ -119,8 +119,9 @@ class DeterministicSpacedSchedulerTest {
     @Test
     fun `previewInterval for a new card matches what the scheduler saves`() {
         // A card with no schedule starts from initialSchedule, whose first step is always 1 day.
-        // The old preview said "<1d" for AGAIN and "3d" for EASY, which the scheduler never saved.
-        assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.AGAIN, baseTime))
+        // A miss is due again the same day (PLAN_LEARNING §5.3; Study, 2026-11-27), and the preview
+        // says so: "<1d" is what the scheduler saves for AGAIN.
+        assertEquals("<1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.AGAIN, baseTime))
         assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.HARD, baseTime))
         assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.GOOD, baseTime))
         assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.EASY, baseTime))

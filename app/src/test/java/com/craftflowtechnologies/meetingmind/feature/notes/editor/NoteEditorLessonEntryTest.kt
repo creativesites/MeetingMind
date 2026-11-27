@@ -116,6 +116,9 @@ class NoteEditorLessonEntryTest {
         assertEquals(0, compose.onAllNodesWithTag("note_learning_studio_strip", useUnmergedTree = true).fetchSemanticsNodes().size)
         assertEquals(0, compose.onAllNodesWithTag("note_open_study_studio_button", useUnmergedTree = true).fetchSemanticsNodes().size)
 
+        // Every note opens with its moment (the Unveil), which holds input until it ends; let it finish first.
+        compose.mainClock.advanceTimeBy(8_000)
+        compose.waitForIdle()
         compose.onNodeWithText("Open lesson").performScrollTo().performClick()
         compose.waitForIdle()
         assertEquals(listOf(note.id), opened)
