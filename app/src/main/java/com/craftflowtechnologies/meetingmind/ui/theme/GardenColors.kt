@@ -102,6 +102,11 @@ object GardenColors {
     val SkyMint = Color(0xFF9FE3C2)
     val SkyTints: List<Color> = listOf(Gold, SkyBlue, SkyRose, SkyMint)
 
+    // The seed jar's glass: a faint fill, a hairline edge and a shine, drawn over the sky.
+    val JarGlass = Color(0x24FFFFFF)
+    val JarLine = Color(0x8CFFFFFF)
+    val JarShine = Color(0x59FFFFFF)
+
     fun palette(phase: GardenPhase, darkTheme: Boolean): GardenPalette = if (darkTheme) dark(phase) else light(phase)
 
     /** The lantern: a warm, lamplit room in the light theme and a night garden in the dark. */

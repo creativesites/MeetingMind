@@ -213,6 +213,9 @@ class NoteRepository(
 
     suspend fun setPinned(noteId: String, pinned: Boolean) = mutate(noteId) { it.copy(pinned = pinned) }
 
+    /** Sets one metadata key on a note, leaving the others as they are. */
+    suspend fun setMetadata(noteId: String, key: String, value: String) = mutate(noteId) { it.copy(metadata = it.metadata + (key to value)) }
+
     suspend fun setPrivate(noteId: String, isPrivate: Boolean) {
         mutate(noteId) { it.copy(isPrivate = isPrivate) }
         if (isPrivate) purgeCloudReadToMe(noteId)
