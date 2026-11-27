@@ -33,12 +33,12 @@ import kotlinx.coroutines.launch
  * - **Memory vault and time capsules are keepsakes.** Sealed notes and milestones open from "Keepsakes".
  * - **Daily plan and intention are today's question.** The question by the lantern is the day's intention.
  * - **Sanctuary lock and vault sync are settings.** "Privacy & sync" holds the lock, the screenshot shield,
- *   the Obsidian folder and the Day One import. The lock still covers every Personal screen.
+ *   the Obsidian folder and the Day One import. The lock still covers every Personal page.
  *
  * Calm and generic by default: no streaks, no nudges the person did not set, and no plan gates on
  * any capability (see `agents/PRODUCT.md`, "Paid plan scope for 1.0").
  *
- * The places still open the Sanctuary tab screen, which keeps its own look for now (see the STATUS note).
+ * Each place opens its own garden page ([GardenPlaceScreen]), styled by [GardenTheme]. There are no tabs.
  */
 @Composable
 fun PersonalHost(

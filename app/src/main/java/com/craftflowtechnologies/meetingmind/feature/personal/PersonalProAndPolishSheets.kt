@@ -57,6 +57,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.ai.automation.AutopilotRecipe
+import com.craftflowtechnologies.meetingmind.core.billing.Billing
+import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
 import com.craftflowtechnologies.meetingmind.core.database.PersonEntity
@@ -323,143 +325,186 @@ internal fun SanctuaryLockGate(
 }
 
 /**
- * Personal Privacy, Pro Autopilot & Vault Integrations Sheet (Tracks 1 & 3):
- * - Biometric Sanctuary Lock & Recents Privacy Shield (`FLAG_SECURE`)
- * - 4 Personal Pro Autopilot Recipes (Evening Debrief, Idea Blueprint, Session Prep, Weekly Life Letter)
- * - Obsidian Vault SAF Markdown Sync & Day One JSON Importer
+ * Privacy & sync: the sanctuary lock, the screenshot shield, the Obsidian vault and the Day One import.
+ * Free for everyone (vault sync is never gated).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun PersonalSanctuaryToolsSheet(
+internal fun PrivacySyncCards(
     lockEnabled: Boolean,
     recentsShieldEnabled: Boolean,
     obsidianVaultLabel: String?,
     lastSyncLabel: String?,
-    isAutopilotRunning: Boolean = false,
     onToggleLock: (Boolean) -> Unit,
     onToggleRecentsShield: (Boolean) -> Unit,
     onLockNow: () -> Unit,
     onPickObsidianFolder: () -> Unit,
     onSyncObsidianNow: () -> Unit,
-    onImportDayOneJson: () -> Unit,
-    onRunPersonalAutopilot: (AutopilotRecipe) -> Unit,
-    onDismiss: () -> Unit
+    onImportDayOneJson: () -> Unit
 ) {
     val c = MM.colors
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surfaceRaised) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = MM.space.l)
-                .padding(bottom = MM.space.xl),
-            verticalArrangement = Arrangement.spacedBy(MM.space.m)
-        ) {
-            Text("Sanctuary tools", style = MM.type.title, color = c.ink)
-
-            // 1. Privacy & Sanctuary Lock
-            MMCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Shield, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(MM.space.s))
-                    Text("PRIVACY & SANCTUARY LOCK", style = MM.type.overline, color = c.accent)
-                }
-                Spacer(Modifier.height(MM.space.s))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Require Biometrics / PIN for Personal", style = MM.type.bodyStrong, color = c.ink)
-                        Text("Locks journals & capsules separately from Work", style = MM.type.caption, color = c.inkSecondary)
-                    }
-                    Switch(checked = lockEnabled, onCheckedChange = onToggleLock)
-                }
-                Spacer(Modifier.height(MM.space.s))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Blur in Android Recents (FLAG_SECURE)", style = MM.type.bodyStrong, color = c.ink)
-                        Text("Prevents screenshots and app-switcher previews", style = MM.type.caption, color = c.inkSecondary)
-                    }
-                    Switch(checked = recentsShieldEnabled, onCheckedChange = onToggleRecentsShield)
-                }
-                if (lockEnabled) {
-                    Spacer(Modifier.height(MM.space.xs))
-                    TextAction("Lock Sanctuary now", onClick = onLockNow)
-                }
+    Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+        // 1. Privacy & Sanctuary Lock
+        MMCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Shield, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(MM.space.s))
+                Text("PRIVACY & SANCTUARY LOCK", style = MM.type.overline, color = c.accent)
             }
-
-            // 2. Personal Pro Autopilot Recipes
-            MMCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Bolt, contentDescription = null, tint = c.gold, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(MM.space.s))
-                    Text("PERSONAL AUTOPILOT", style = MM.type.overline, color = c.gold, modifier = Modifier.weight(1f))
-                    if (isAutopilotRunning) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = c.accent)
-                    }
+            Spacer(Modifier.height(MM.space.s))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Require Biometrics / PIN for Personal", style = MM.type.bodyStrong, color = c.ink)
+                    Text("Locks journals & capsules separately from Work", style = MM.type.caption, color = c.inkSecondary)
                 }
+                Switch(checked = lockEnabled, onCheckedChange = onToggleLock)
+            }
+            Spacer(Modifier.height(MM.space.s))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Blur in Android Recents (FLAG_SECURE)", style = MM.type.bodyStrong, color = c.ink)
+                    Text("Prevents screenshots and app-switcher previews", style = MM.type.caption, color = c.inkSecondary)
+                }
+                Switch(checked = recentsShieldEnabled, onCheckedChange = onToggleRecentsShield)
+            }
+            if (lockEnabled) {
                 Spacer(Modifier.height(MM.space.xs))
-                Text(
-                    "Synthesize your recent journals, voice rambles, or sparks into structured personal deliverables.",
-                    style = MM.type.secondary,
-                    color = c.inkSecondary
-                )
-                Spacer(Modifier.height(MM.space.m))
-                Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                    AutopilotRecipe.PERSONAL_RECIPES.forEach { recipe ->
-                        InsetPanel(onClick = {
-                            if (isAutopilotRunning) return@InsetPanel
-                            onRunPersonalAutopilot(recipe)
-                        }) {
-                            Text(recipe.label, style = MM.type.bodyStrong, color = c.ink)
-                            Text(recipe.subtitle, style = MM.type.caption, color = c.inkSecondary)
-                        }
-                    }
-                }
-            }
-
-            // 3. Obsidian Vault Sync & Day One Importer
-            MMCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.CloudSync, contentDescription = null, tint = c.speaker3, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(MM.space.s))
-                    Text("SECOND-BRAIN & JOURNAL MIGRATION", style = MM.type.overline, color = c.speaker3)
-                }
-                Spacer(Modifier.height(MM.space.s))
-                Text("Obsidian Markdown Vault Sync", style = MM.type.bodyStrong, color = c.ink)
-                Text(
-                    if (obsidianVaultLabel != null) {
-                        "Pinned to $obsidianVaultLabel" + (lastSyncLabel?.let { " · Last synced $it" }.orEmpty())
-                    } else {
-                        "Export Personal journals & ideas as clean .md files with YAML frontmatter and [[Backlinks]]."
-                    },
-                    style = MM.type.caption,
-                    color = c.inkSecondary
-                )
-                Spacer(Modifier.height(MM.space.s))
-                Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                    SecondaryButton(
-                        text = if (obsidianVaultLabel != null) "Change folder" else "Pin Obsidian Folder",
-                        onClick = onPickObsidianFolder
-                    )
-                    if (obsidianVaultLabel != null) {
-                        PrimaryButton(text = "Sync Now", onClick = onSyncObsidianNow)
-                    }
-                }
-                Spacer(Modifier.height(MM.space.m))
-                Text("Import Day One Journal (JSON)", style = MM.type.bodyStrong, color = c.ink)
-                Text(
-                    "Bring years of past Day One entries privately onto this phone so On This Day works immediately.",
-                    style = MM.type.caption,
-                    color = c.inkSecondary
-                )
-                Spacer(Modifier.height(MM.space.s))
-                SecondaryButton(
-                    text = "Pick Day One JSON File",
-                    onClick = onImportDayOneJson,
-                    leadingIcon = Icons.Rounded.FileUpload
-                )
+                TextAction("Lock Sanctuary now", onClick = onLockNow)
             }
         }
+        // 3. Obsidian Vault Sync & Day One Importer
+        MMCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.CloudSync, contentDescription = null, tint = c.speaker3, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(MM.space.s))
+                Text("SECOND-BRAIN & JOURNAL MIGRATION", style = MM.type.overline, color = c.speaker3)
+            }
+            Spacer(Modifier.height(MM.space.s))
+            Text("Obsidian Markdown Vault Sync", style = MM.type.bodyStrong, color = c.ink)
+            Text(
+                if (obsidianVaultLabel != null) {
+                    "Pinned to $obsidianVaultLabel" + (lastSyncLabel?.let { " · Last synced $it" }.orEmpty())
+                } else {
+                    "Export Personal journals & ideas as clean .md files with YAML frontmatter and [[Backlinks]]."
+                },
+                style = MM.type.caption,
+                color = c.inkSecondary
+            )
+            Spacer(Modifier.height(MM.space.s))
+            Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                SecondaryButton(
+                    text = if (obsidianVaultLabel != null) "Change folder" else "Pin Obsidian Folder",
+                    onClick = onPickObsidianFolder
+                )
+                if (obsidianVaultLabel != null) {
+                    PrimaryButton(text = "Sync Now", onClick = onSyncObsidianNow)
+                }
+            }
+            Spacer(Modifier.height(MM.space.m))
+            Text("Import Day One Journal (JSON)", style = MM.type.bodyStrong, color = c.ink)
+            Text(
+                "Bring years of past Day One entries privately onto this phone so On This Day works immediately.",
+                style = MM.type.caption,
+                color = c.inkSecondary
+            )
+            Spacer(Modifier.height(MM.space.s))
+            SecondaryButton(
+                text = "Pick Day One JSON File",
+                onClick = onImportDayOneJson,
+                leadingIcon = Icons.Rounded.FileUpload
+            )
+        }
+    }
+}
+
+/**
+ * The personal autopilot recipes. Part of the paid plans (the same gate as Work's autopilot, which honours
+ * closed testing). The "See plans" button only shows when billing is configured.
+ */
+@Composable
+internal fun PersonalAutopilotCard(
+    autopilotUnlocked: Boolean,
+    isAutopilotRunning: Boolean,
+    onRunPersonalAutopilot: (AutopilotRecipe) -> Unit,
+    onOpenPaywall: (PaywallTrigger) -> Unit
+) {
+    val c = MM.colors
+    val billingConfigured = Billing.gateway.configured
+    MMCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Bolt, contentDescription = null, tint = c.gold, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(MM.space.s))
+            Text("PERSONAL AUTOPILOT", style = MM.type.overline, color = c.gold, modifier = Modifier.weight(1f))
+            if (isAutopilotRunning) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = c.accent)
+            }
+        }
+        Spacer(Modifier.height(MM.space.xs))
+        Text(
+            "Synthesize your recent journals, voice rambles, or sparks into structured personal deliverables.",
+            style = MM.type.secondary,
+            color = c.inkSecondary
+        )
+        Spacer(Modifier.height(MM.space.m))
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            AutopilotRecipe.PERSONAL_RECIPES.forEach { recipe ->
+                InsetPanel(onClick = {
+                    if (isAutopilotRunning) return@InsetPanel
+                    if (autopilotUnlocked) {
+                        onRunPersonalAutopilot(recipe)
+                    } else if (billingConfigured) {
+                        onOpenPaywall(PaywallTrigger.PREMIUM_ACTION)
+                    }
+                }) {
+                    Text(recipe.label, style = MM.type.bodyStrong, color = c.ink)
+                    Text(recipe.subtitle, style = MM.type.caption, color = c.inkSecondary)
+                }
+            }
+        }
+        if (!autopilotUnlocked) {
+            Spacer(Modifier.height(MM.space.s))
+            Text("Part of the paid plans.", style = MM.type.caption, color = c.inkSecondary)
+            if (billingConfigured) {
+                TextAction("See plans", onClick = { onOpenPaywall(PaywallTrigger.PREMIUM_ACTION) })
+            }
+        }
+    }
+}
+
+/** The Privacy & sync page: the lock and vault sync cards in one scrolling column. */
+@Composable
+internal fun PrivacySyncPage(
+    lockEnabled: Boolean,
+    recentsShieldEnabled: Boolean,
+    obsidianVaultLabel: String?,
+    lastSyncLabel: String?,
+    onToggleLock: (Boolean) -> Unit,
+    onToggleRecentsShield: (Boolean) -> Unit,
+    onLockNow: () -> Unit,
+    onPickObsidianFolder: () -> Unit,
+    onSyncObsidianNow: () -> Unit,
+    onImportDayOneJson: () -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MM.colors.background)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = MM.space.l)
+            .padding(bottom = MM.space.xl)
+            .testTag("garden_privacy_page")
+    ) {
+        PrivacySyncCards(
+            lockEnabled = lockEnabled,
+            recentsShieldEnabled = recentsShieldEnabled,
+            obsidianVaultLabel = obsidianVaultLabel,
+            lastSyncLabel = lastSyncLabel,
+            onToggleLock = onToggleLock,
+            onToggleRecentsShield = onToggleRecentsShield,
+            onLockNow = onLockNow,
+            onPickObsidianFolder = onPickObsidianFolder,
+            onSyncObsidianNow = onSyncObsidianNow,
+            onImportDayOneJson = onImportDayOneJson
+        )
     }
 }
 
