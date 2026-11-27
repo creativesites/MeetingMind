@@ -775,8 +775,23 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_practice_days_practiceId` ON `practice_days` (`practiceId`)"
         )
 
+        /**
+         * 32 → 33: two different builds shipped a schema 32. This branch's 32 added `practices` and
+         * `practice_days`; `release/1.0-paid-launch` shipped a 32 with six Personal tables instead
+         * (routines, growth, daily plans) and no practices. Room cannot tell them apart by number,
+         * so a phone with the release's 32 refused to open (identity hash 214d8b9…). This step makes
+         * both arrive at the same 33: it creates whatever practices tables are missing and leaves
+         * every other table, the release's included, untouched. Never reuse a version number that
+         * another branch has shipped; check `app/schemas` on every branch before bumping.
+         */
+        val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_31_32_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
         /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
-        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32)
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33)
 
         internal val MIGRATION_21_22_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -940,7 +955,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 32
+        const val VERSION = 33
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {

@@ -90,7 +90,7 @@ class Migration30To31Test {
     @Test
     fun databaseOpensAtVersion31() {
         val db = openMigrated()
-        assertEquals(31, db.openHelper.readableDatabase.version)
+        assertEquals(MeetMindDatabase.VERSION, db.openHelper.readableDatabase.version)
     }
 
     @Test
