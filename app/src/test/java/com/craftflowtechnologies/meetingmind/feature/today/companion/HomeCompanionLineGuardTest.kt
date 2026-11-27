@@ -13,7 +13,6 @@ class HomeCompanionLineGuardTest {
         "feature/today/TodayScreen.kt",
         "feature/today/home/CalmHome.kt",
         "feature/work/ProfessionalHome.kt",
-        "feature/learning/space/LearningSpaceScreen.kt",
         "feature/faith/FaithHome.kt"
     )
 
@@ -29,6 +28,16 @@ class HomeCompanionLineGuardTest {
         val today = File(root, "feature/today/TodayScreen.kt").readText()
         val call = today.substringAfter("HomeCompanionLine(").substringBefore("\n            )")
         assertTrue("Today's line should pass showCompanion = false", "showCompanion = false" in call)
+    }
+
+    /**
+     * The Learning home (Study design) has no HomeCompanionLine: its companion line is Zuri in the
+     * round card (or the first-use card), so a second line would double it. One Zuri, never two.
+     */
+    @Test fun `the Learning home keeps one Zuri line and no HomeCompanionLine`() {
+        val learn = File(root, "feature/learn/ui/home/LearningHomeScreen.kt").readText()
+        assertTrue("the Learning home should not draw HomeCompanionLine", "HomeCompanionLine(" !in learn)
+        assertTrue("the Learning home should draw Zuri", "ZuriSlot(" in learn)
     }
 
     @Test fun `the Faith home shows its private milestones`() {
