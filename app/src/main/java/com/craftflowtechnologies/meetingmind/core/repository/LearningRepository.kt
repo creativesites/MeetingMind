@@ -1210,7 +1210,7 @@ class LearningRepository(
                     sessionId = sessionId,
                     name = rawName,
                     definition = rawDef,
-                    state = LearningMasteryState.DEVELOPING,
+                    state = LearningMasteryState.NEW,
                     examImportance = if (isHighYield) ExamImportance.HIGH_YIELD else ExamImportance.NORMAL,
                     formulaLatex = formulas.firstOrNull(),
                     createdAt = now,
@@ -1226,8 +1226,8 @@ class LearningRepository(
                 plainText.contains(term, ignoreCase = true) && results.none { it.name.equals(term, ignoreCase = true) }
             }
             for (term in matchedTerms.take(5 - results.size)) {
-                val sentence = sentences.firstOrNull { it.contains(term, ignoreCase = true) }
-                    ?: "Core ${domain.shortLabel} principle regarding $term in $sessionTitle."
+                // Only the learner's own text defines a term; with no sentence for it, it is not an idea yet.
+                val sentence = sentences.firstOrNull { it.contains(term, ignoreCase = true) } ?: continue
                 val formulas = SpokenNotationNormalizer.extractFormulas(sentence, domain)
                 results.add(
                     LearningConcept(
@@ -1235,7 +1235,7 @@ class LearningRepository(
                         sessionId = sessionId,
                         name = term.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
                         definition = sentence,
-                        state = LearningMasteryState.DEVELOPING,
+                        state = LearningMasteryState.NEW,
                         examImportance = if (results.isEmpty()) ExamImportance.HIGH_YIELD else ExamImportance.NORMAL,
                         formulaLatex = formulas.firstOrNull(),
                         createdAt = now,
@@ -1260,7 +1260,7 @@ class LearningRepository(
                         sessionId = sessionId,
                         name = if (words.length >= 4) words else "$sessionTitle Key Point ${idx + 1}",
                         definition = sentence,
-                        state = LearningMasteryState.DEVELOPING,
+                        state = LearningMasteryState.NEW,
                         examImportance = if (idx == 0) ExamImportance.HIGH_YIELD else ExamImportance.NORMAL,
                         formulaLatex = formulas.firstOrNull(),
                         createdAt = now,
@@ -1270,38 +1270,8 @@ class LearningRepository(
             }
         }
 
-        // 4. Domain fallback when session has no text yet
-        if (results.isEmpty()) {
-            val cleanTitle = sessionTitle.ifBlank { domain.displayName }
-            val vocab = domain.vocabularyHints().take(2)
-            results.add(
-                LearningConcept(
-                    id = "concept_${UUID.randomUUID()}",
-                    sessionId = sessionId,
-                    name = "$cleanTitle Core Principle",
-                    definition = "Fundamental mechanism, definition, and boundary conditions of $cleanTitle in ${domain.displayName}.",
-                    state = LearningMasteryState.DEVELOPING,
-                    examImportance = ExamImportance.HIGH_YIELD,
-                    createdAt = now,
-                    updatedAt = now
-                )
-            )
-            vocab.forEachIndexed { idx, term ->
-                val capTerm = term.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                results.add(
-                    LearningConcept(
-                        id = "concept_${UUID.randomUUID()}",
-                        sessionId = sessionId,
-                        name = "$capTerm in $cleanTitle",
-                        definition = "How $term applies to solving problems and analyzing systems in $cleanTitle.",
-                        state = LearningMasteryState.DEVELOPING,
-                        examImportance = if (idx == 0) ExamImportance.HIGH_YIELD else ExamImportance.NORMAL,
-                        createdAt = now,
-                        updatedAt = now
-                    )
-                )
-            }
-        }
+        // No text, no ideas: nothing is invented (source before synthesis, PLAN_LEARNING §4). The
+        // lesson says the lecture has no words yet instead of showing made-up definitions.
 
         return results
     }

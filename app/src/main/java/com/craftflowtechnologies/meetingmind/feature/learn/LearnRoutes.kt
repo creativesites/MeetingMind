@@ -112,13 +112,15 @@ fun NavGraphBuilder.learnGraph(
         var courseName by remember(course) { mutableStateOf<String?>(null) }
         if (course != null) LaunchedEffect(course) {
             val app = context.applicationContext as Application
-            courseName = NoteRepository(app, MeetMindDatabase.getInstance(app)).getNotebook(course)?.name ?: ""
+            // A deleted course (or a failed read) gives an empty name: practice then says there is nothing
+            // to practise here, instead of quietly switching to every due card.
+            courseName = runCatching { NoteRepository(app, MeetMindDatabase.getInstance(app)).getNotebook(course)?.name }.getOrNull() ?: ""
         }
         if (course != null && courseName == null) return@composable
         val scope = when {
             session != null && concept != null -> PracticeScope.OneConcept(session, concept)
             session != null -> PracticeScope.OneSession(session)
-            !courseName.isNullOrBlank() -> PracticeScope.OneCourse(courseName!!)
+            course != null -> PracticeScope.OneCourse(courseName.orEmpty())
             else -> PracticeScope.AllDue
         }
         val cs = rememberCoroutineScope()

@@ -151,6 +151,22 @@ object LearningAsk {
     }
 
     /** Numbers like [2] or [1, 3] in a model answer, resolved to passages. Unknown numbers are dropped. */
+    /**
+     * Whether an answer is carried by the passages it cites: at least [SupportOverlap] of its content
+     * words (longer than three letters, citation marks removed) appear in those passages. A paraphrase
+     * passes; a claim the passages don't make does not, so it is never shown as "from your lecture".
+     */
+    fun supportedBy(text: String, cited: List<AskPassage>): Boolean {
+        if (cited.isEmpty()) return false
+        fun words(s: String) = Regex("""[\p{L}\p{N}]+""").findAll(s.lowercase()).map { it.value }.filter { it.length > 3 }.toList()
+        val answer = words(text.replace(Regex("""\[[\d,\s]+]"""), " ")).distinct()
+        if (answer.isEmpty()) return false
+        val source = words(cited.joinToString(" ") { it.text }).toSet()
+        return answer.count { it in source }.toDouble() / answer.size >= SupportOverlap
+    }
+
+    const val SupportOverlap = 0.4
+
     fun citedIn(text: String, ranked: List<AskPassage>): List<AskPassage> {
         val nums = Regex("""\[(\d+(?:\s*,\s*\d+)*)]""").findAll(text)
             .flatMap { m -> m.groupValues[1].split(",").mapNotNull { it.trim().toIntOrNull() } }

@@ -400,7 +400,8 @@ class PracticeViewModel(
     private fun sessionsIn(all: List<SessionSnapshot>): List<SessionSnapshot> = when (val s = scope) {
         PracticeScope.AllDue -> all
         is PracticeScope.OneSession -> all.filter { it.session.id == s.sessionId }
-        is PracticeScope.OneCourse -> all.filter { it.session.courseName == s.courseName }
+        // A blank name is a course that no longer exists: nothing matches (never the lessons without a course).
+        is PracticeScope.OneCourse -> if (s.courseName.isBlank()) emptyList() else all.filter { it.session.courseName == s.courseName }
         is PracticeScope.OneConcept -> all.filter { it.session.id == s.sessionId }
     }
 

@@ -495,8 +495,14 @@ class PostSessionAutopilotEngine(
 /** Coordinates session gathering, plan gating, privacy routing, local/cloud execution, and app writes. */
 object AutopilotWorkspace {
 
+    /**
+     * One rule with Study's gates (StudyGate): open with the plan, in closed testing, or when there is
+     * nothing to buy (billing not configured, e.g. the store failed to start). Otherwise a switch could
+     * look on while every run is silently refused.
+     */
     fun isUnlocked(context: Context): Boolean =
-        FeatureGate.can(Capability.AUTOMATION_RECIPES) ||
+        !com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway.configured ||
+            FeatureGate.can(Capability.AUTOMATION_RECIPES) ||
             TieringModeStore.current(context) == TieringMode.CLOSED_TESTING
 
     suspend fun gatherForMeeting(context: Context, meetingId: String): AutopilotContext? = withContext(Dispatchers.IO) {

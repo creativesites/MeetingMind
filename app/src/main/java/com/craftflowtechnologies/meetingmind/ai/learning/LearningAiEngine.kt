@@ -687,11 +687,14 @@ class LearningAiEngine(
         if (text.isBlank()) return extractive
         val cited = LearningAsk.citedIn(text, passages)
         return when {
-            !obj.optBoolean("inSource", true) -> LearningAnswer(
+            // A reply that doesn't say it came from the lecture is not treated as if it did.
+            !obj.optBoolean("inSource", false) -> LearningAnswer(
                 text = text, kind = AnswerKind.NOT_IN_SOURCE, cited = emptyList(), closest = passages.firstOrNull()
             )
             // An answer that cites nothing can't be checked, so show the passages instead.
             cited.isEmpty() -> extractive
+            // Citations that exist but don't carry the claim: show the lecture's own words instead.
+            !LearningAsk.supportedBy(text, cited) -> extractive
             else -> LearningAnswer(
                 text = text, kind = AnswerKind.FROM_SOURCE, cited = cited,
                 unclearSource = cited.any { (it.confidence ?: 1f) < LearningAsk.UnclearConfidence }

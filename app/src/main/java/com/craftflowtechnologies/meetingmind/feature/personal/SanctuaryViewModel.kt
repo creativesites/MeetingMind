@@ -696,6 +696,11 @@ class SanctuaryViewModel(application: Application) : AndroidViewModel(applicatio
                         _statusBanner.value = "Not enough free storage to run ${recipe.label} right now."
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Gathering notes or writing the result can fail; say so instead of taking the app down.
+                _statusBanner.value = "Couldn't finish ${recipe.label} right now."
             } finally {
                 _isAutopilotRunning.value = false
             }

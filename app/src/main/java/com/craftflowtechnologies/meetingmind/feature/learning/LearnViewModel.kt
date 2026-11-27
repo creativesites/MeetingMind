@@ -458,7 +458,7 @@ class LearnViewModel @JvmOverloads constructor(
                 sessionId = sessionId,
                 name = name.trim(),
                 definition = definition.trim().ifBlank { "Key concept in this study session." },
-                state = LearningMasteryState.DEVELOPING,
+                state = LearningMasteryState.NEW,
                 examImportance = importance,
                 formulaLatex = formulaLatex?.trim()?.takeIf { it.isNotBlank() },
                 createdAt = now,
@@ -993,6 +993,12 @@ class LearnViewModel @JvmOverloads constructor(
     }
 
     fun generateCramSheet(sessionIds: List<String>, title: String, onGenerated: ((String) -> Unit)? = null) {
+        // The cram sheet across lectures is a paid extra (DEEP_SYNTHESIS, founder 2026-11-27); the gate holds
+        // here as well as in the UI.
+        if (!com.craftflowtechnologies.meetingmind.feature.learn.ui.gate.StudyGate.open(
+                com.craftflowtechnologies.meetingmind.core.billing.Capability.DEEP_SYNTHESIS
+            )
+        ) return
         viewModelScope.launch(crashGuard) {
             _isGeneratingCramSheet.value = true
             val resolvedIds = sessionIds.ifEmpty {
