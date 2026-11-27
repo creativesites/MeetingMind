@@ -185,6 +185,35 @@ class StudyViewModelsTest {
 
     private fun activitiesJson() = """{"activities": [{"type": "MULTIPLE_CHOICE", "conceptName": "Competitive inhibition", "prompt": "Which process do competitive inhibitors block?", "options": ["Substrate binding at the active site", "Enzyme denaturation by heat", "Allosteric activation", "Product release"], "correctIndex": 0, "rightWhy": "Inhibitors occupy the active site.", "wrongWhys": {"1": "Heat is not an inhibitor here."}, "startMs": 10000, "endMs": 20000, "quote": "$s2"}]}"""
 
+    /**
+     * Answers the current item correctly, whatever its format. The planner may ask a concept as a
+     * choice, a true or false, a recall card and so on, so the tests answer each one the right way.
+     */
+    private fun answerRight(vm: PracticeViewModel) {
+        when (val item = vm.state.value.current) {
+            is PracticeItem.Choice -> vm.answerChoice(item.correctIndex)
+            is PracticeItem.Recall -> { vm.reveal(); vm.rate(com.craftflowtechnologies.meetingmind.feature.learn.RecallButton.GOT_IT) }
+            is com.craftflowtechnologies.meetingmind.feature.learn.PracticeTrueFalse ->
+                vm.answer(com.craftflowtechnologies.meetingmind.feature.learn.PracticeAnswer.Pick(item.correctIndex))
+            is com.craftflowtechnologies.meetingmind.feature.learn.PracticeWhichIdea ->
+                vm.answer(com.craftflowtechnologies.meetingmind.feature.learn.PracticeAnswer.Pick(item.correctIndex))
+            is com.craftflowtechnologies.meetingmind.feature.learn.PracticeFillGap ->
+                vm.answer(com.craftflowtechnologies.meetingmind.feature.learn.PracticeAnswer.Fill(item.answer))
+            is com.craftflowtechnologies.meetingmind.feature.learn.PracticeMatch ->
+                vm.answer(com.craftflowtechnologies.meetingmind.feature.learn.PracticeAnswer.Match(item.terms.indices.associateWith { it }))
+            is com.craftflowtechnologies.meetingmind.feature.learn.PracticeOrder ->
+                vm.answer(com.craftflowtechnologies.meetingmind.feature.learn.PracticeAnswer.Order(item.steps.indices.toList()))
+            null -> Unit
+            else -> { vm.reveal(); vm.rate(com.craftflowtechnologies.meetingmind.feature.learn.RecallButton.GOT_IT) }
+        }
+    }
+
+    /** Answers the current item wrongly: a wrong option for a choice, otherwise "Not sure" (a miss). */
+    private fun answerWrong(vm: PracticeViewModel) {
+        val item = vm.state.value.current
+        if (item is PracticeItem.Choice) vm.answerChoice((item.correctIndex + 1) % 4) else vm.notSure()
+    }
+
     /** Polls [condition] for up to five seconds, letting background work finish. */
     private fun awaitTrue(condition: () -> Boolean) = runBlocking {
         repeat(250) {
@@ -305,8 +334,7 @@ class StudyViewModelsTest {
         val vm = PracticeViewModel(app, PracticeScope.AllDue, services)
         awaitTrue { vm.state.value.current != null }
 
-        val item = vm.state.value.current as PracticeItem.Choice
-        vm.answerChoice(item.correctIndex)
+        answerRight(vm)
         assertTrue(vm.state.value.feedback!!.correct)
         awaitTrue { runBlocking { services.learning.getAttemptsForSession(sessionId).size == 1 } }
 
@@ -327,8 +355,7 @@ class StudyViewModelsTest {
         val vm = PracticeViewModel(app, PracticeScope.OneSession(sessionId), services)
         awaitTrue { vm.state.value.current != null }
 
-        val item = vm.state.value.current as PracticeItem.Choice
-        vm.answerChoice((item.correctIndex + 1) % 4)
+        answerWrong(vm)
         assertEquals(false, vm.state.value.feedback!!.correct)
         assertEquals("This one comes back in 3 questions", vm.state.value.feedback!!.nextLine)
         awaitTrue { runBlocking { services.learning.getAttemptsForSession(sessionId).size == 1 } }
@@ -386,6 +413,78 @@ class StudyViewModelsTest {
         assertEquals(1, listen.state.value.currentLine)
         listen.seekBy(-15_000)
         assertEquals("Enzymes", listen.state.value.sectionLabel)
+    }
+
+    // ------------------------------------------------------------- practice engine
+
+    /** Three more activities under the due concept, of other types, so a round has variety. */
+    private suspend fun seedVariedRound(sessionId: String) {
+        val evidence = listOf(LearningEvidence(meetingId = MEET, segmentIds = listOf("seg-2"), startMs = 10_000, endMs = 20_000, quote = s2))
+        services.learning.saveActivities(
+            listOf(
+                LearningActivity(
+                    id = "act-2", sessionId = sessionId, conceptId = "concept-1", type = LearningActivityType.RECALL,
+                    prompt = "What does a competitive inhibitor do to the active site?",
+                    expectedAnswer = "It binds it and blocks substrate.", evidence = evidence, createdAt = now, updatedAt = now
+                ),
+                LearningActivity(
+                    id = "act-3", sessionId = sessionId, conceptId = "concept-1", type = LearningActivityType.APPLICATION,
+                    prompt = "A lab adds an inhibitor. Which value changes?", expectedAnswer = "Apparent Km",
+                    options = listOf("Apparent Km", "Vmax", "Enzyme mass", "pH"), evidence = evidence, createdAt = now, updatedAt = now
+                ),
+                LearningActivity(
+                    id = "act-4", sessionId = sessionId, conceptId = "concept-1", type = LearningActivityType.RECALL,
+                    prompt = "Define Vmax.", expectedAnswer = "The maximum rate when the enzyme is saturated.",
+                    evidence = evidence, createdAt = now, updatedAt = now
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `a round never asks the same format twice in a row, and draws only its own items`() {
+        runBlocking {
+            seedLecture()
+            seedVariedRound(seedDueConcept())
+        }
+        val sessionId = runBlocking { services.learning.getOrCreateSessionForNote(NOTE).id }
+        val vm = PracticeViewModel(app, PracticeScope.OneSession(sessionId), services)
+        awaitTrue { !vm.state.value.loading }
+
+        val formats = vm.roundFormats()
+        assertEquals(vm.roundItems().size, formats.size)
+        assertTrue(formats.size >= 3)
+        assertTrue("same format twice in a row: $formats", formats.zipWithNext().none { (a, b) -> a == b })
+        assertTrue(vm.roundItems().all { it.activityId in setOf("act-1", "act-2", "act-3", "act-4") })
+    }
+
+    @Test
+    fun `an answer is saved with the format it was asked in, so Learning sees it`() {
+        runBlocking {
+            seedLecture()
+            seedVariedRound(seedDueConcept())
+        }
+        val sessionId = runBlocking { services.learning.getOrCreateSessionForNote(NOTE).id }
+        val vm = PracticeViewModel(app, PracticeScope.OneSession(sessionId), services)
+        awaitTrue { vm.state.value.current != null }
+        val asked = vm.roundFormats().first()
+
+        vm.notSure()
+        awaitTrue { runBlocking { services.learning.getAttemptsForSession(sessionId).size == 1 } }
+        val saved = runBlocking { services.learning.getAttemptsForSession(sessionId).single() }
+        assertEquals(asked, com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeFormat.fromTag(saved.feedback))
+    }
+
+    @Test
+    fun `a course round draws on that course only`() {
+        runBlocking { seedLecture(courseName = "BIO 201 Biochemistry"); seedDueConcept() }
+        val inCourse = PracticeViewModel(app, PracticeScope.OneCourse("BIO 201 Biochemistry"), services)
+        awaitTrue { !inCourse.state.value.loading }
+        assertTrue(inCourse.state.value.total > 0)
+
+        val elsewhere = PracticeViewModel(app, PracticeScope.OneCourse("Chemistry 110"), services)
+        awaitTrue { !elsewhere.state.value.loading }
+        assertEquals("There is nothing to practise here yet.", elsewhere.state.value.emptyMessage)
     }
 }
 
