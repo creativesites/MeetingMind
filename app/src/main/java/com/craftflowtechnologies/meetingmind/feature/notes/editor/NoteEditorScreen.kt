@@ -136,7 +136,9 @@ fun NoteEditorScreen(
     /** Opens straight into the photo picker, for "New → Photo or video". */
     startWithMediaPicker: Boolean = false,
     onShareCard: (com.craftflowtechnologies.meetingmind.feature.share.ShareRequest) -> Unit = {},
-    onOpenTasks: () -> Unit = {}
+    onOpenTasks: () -> Unit = {},
+    /** Opens the Study lesson for a Lecture or Research note (docs/mvp/STUDY_AUDIT.md §3.1). */
+    onOpenLesson: ((noteId: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -520,6 +522,12 @@ fun NoteEditorScreen(
                         currentNote.metadata["location"]
                     ),
                     onDetails = { if (currentNote.workflow == com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON) showDetails = true }
+                )
+            }
+            if (onOpenLesson != null && com.craftflowtechnologies.meetingmind.feature.learn.LessonEntry.isLesson(currentNote.workflow)) item(key = "lesson") {
+                com.craftflowtechnologies.meetingmind.feature.learn.LessonEntryBanner(
+                    onOpenLesson = { onOpenLesson(currentNote.id) },
+                    modifier = Modifier.padding(horizontal = 20.dp).padding(top = 12.dp)
                 )
             }
             // A work meeting made from a calendar event: prepare for it from what's on record.

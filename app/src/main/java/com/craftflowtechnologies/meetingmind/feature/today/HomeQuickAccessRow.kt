@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Church
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +49,8 @@ fun HomeQuickAccessRow(
     onOpenWord: () -> Unit,
     onOpenTestimonies: (() -> Unit)? = null,
     onOpenCreate: (() -> Unit)? = null,
+    /** Opens Study; null hides it (the person does not use the Learning space). */
+    onOpenStudy: (() -> Unit)? = null,
     showWork: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -57,6 +60,7 @@ fun HomeQuickAccessRow(
         add(QuickAccessItem(EntryPoints.quickFaith.id, EntryPoints.quickFaith.label, Icons.Filled.Church, onOpenFaith))
         onOpenCreate?.let { add(QuickAccessItem(EntryPoints.quickCreate.id, EntryPoints.quickCreate.label, Icons.Filled.Palette, it)) }
         if (showWork) add(QuickAccessItem(EntryPoints.quickWork.id, EntryPoints.quickWork.label, Icons.Filled.Work, onOpenWork))
+        onOpenStudy?.let { add(QuickAccessItem("quick_study", "Study", Icons.Filled.School, it)) }
         add(QuickAccessItem(EntryPoints.quickPrayer.id, EntryPoints.quickPrayer.label, Icons.Filled.Favorite, onOpenPrayer))
         add(QuickAccessItem(EntryPoints.quickDevotional.id, EntryPoints.quickDevotional.label, Icons.AutoMirrored.Filled.MenuBook, onOpenWord))
         onOpenTestimonies?.let { add(QuickAccessItem(EntryPoints.quickTestimonies.id, EntryPoints.quickTestimonies.label, Icons.Filled.Celebration, it)) }

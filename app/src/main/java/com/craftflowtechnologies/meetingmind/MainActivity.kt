@@ -459,6 +459,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenStudy = { navController.navigate(Routes.LEARN) }.takeIf { com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING in com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current.spaces },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
@@ -491,6 +492,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenProcessing = openProcessing,
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenStudy = { navController.navigate(Routes.LEARN) }.takeIf { com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING in com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current.spaces },
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
@@ -525,6 +527,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenStudy = { navController.navigate(Routes.LEARN) },
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 homeCircles = homeCircles,
                 onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
@@ -1111,6 +1114,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onRecordHere = { navController.navigate(Routes.recordIntoNoteRoute(it)) },
                 onOpenTasks = { navController.navigate(Routes.TASKS) },
+                onOpenLesson = { navController.navigate(Routes.lessonRoute(it)) },
                 startWithMediaPicker = media
             )
         }
@@ -1193,6 +1197,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     else navController.navigate(Routes.noteRoute(noteId))
                 },
                 onStudy = { noteId, mId -> navController.navigate(Routes.studyRoute(noteId, meetingId = mId)) },
+                onOpenLesson = { navController.navigate(Routes.lessonRoute(it)) },
                 onCreateBrief = { mId -> navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.MEETING, mId)) }
             )
         }

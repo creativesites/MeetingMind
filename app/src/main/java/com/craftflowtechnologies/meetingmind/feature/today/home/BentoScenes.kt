@@ -263,3 +263,27 @@ val RuledPaperScene: Scene = { _ ->
     val fold = Path().apply { moveTo(w * 0.72f, 0f); lineTo(w, 0f); lineTo(w, h * 0.28f); close() }
     drawPath(fold, BentoArtColors.CornerFold.copy(alpha = 0.8f))
 }
+
+/** Study: a small night sky of linked ideas, one star gently brightening (design/study/Main.dc.html). */
+val StudySkyScene: Scene = { t ->
+    val w = size.width
+    val h = size.height
+    drawRect(com.craftflowtechnologies.meetingmind.ui.theme.StudyFixedColors.Night)
+    val star = com.craftflowtechnologies.meetingmind.ui.theme.StudyFixedColors.Star
+    val pts = listOf(0.56f to 0.30f, 0.66f to 0.18f, 0.76f to 0.42f, 0.88f to 0.26f, 0.82f to 0.70f, 0.64f to 0.62f)
+    val links = listOf(0 to 1, 1 to 2, 2 to 3, 2 to 4, 4 to 5, 5 to 0)
+    links.forEach { (a, b) ->
+        drawLine(star.copy(alpha = 0.35f), Offset(w * pts[a].first, h * pts[a].second), Offset(w * pts[b].first, h * pts[b].second), strokeWidth = 1.dp.toPx())
+    }
+    val pulse = 0.5f + 0.5f * sin(t * TwoPi)
+    pts.forEachIndexed { i, (fx, fy) ->
+        val c = Offset(w * fx, h * fy)
+        val r = 3.5.dp.toPx()
+        if (i % 3 == 2) {
+            drawCircle(star, radius = r, center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+        } else {
+            drawCircle(star.copy(alpha = if (i == 0) 0.12f + 0.2f * pulse else 0.18f), radius = r * 2.8f, center = c)
+            drawCircle(star, radius = r, center = c)
+        }
+    }
+}

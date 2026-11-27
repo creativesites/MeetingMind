@@ -53,7 +53,6 @@ private val tiles = listOf(
 @Composable
 fun SpacesPicker(selected: Set<NotebookSpace>, onChange: (Set<NotebookSpace>) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // LEARNING is hidden until the Learning vertical is rebuilt (MVP S-7); see OfferedNotebookSpaces.
         tiles.filter { it.space in OfferedNotebookSpaces }.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { t ->

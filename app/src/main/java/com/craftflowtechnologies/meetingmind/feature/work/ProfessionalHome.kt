@@ -115,6 +115,8 @@ fun ProfessionalHome(
     onRetryCircles: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit,
     onOpenWork: () -> Unit,
+    /** Opens Study; null hides its shortcut. */
+    onOpenStudy: (() -> Unit)? = null,
     onOpenFaith: () -> Unit = {},
     onOpenPrayer: () -> Unit = {},
     onOpenWord: () -> Unit = {},
@@ -237,6 +239,7 @@ fun ProfessionalHome(
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
                     onOpenCreate = { create.open() },
+                    onOpenStudy = onOpenStudy,
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }

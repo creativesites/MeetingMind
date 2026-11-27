@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.feature.meetingdetail
 
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.School
 
 import android.app.Application
 import android.content.ClipData
@@ -787,6 +788,8 @@ fun MeetingDetailScreen(
     onOpenNote: (noteId: String) -> Unit = {},
     /** "Study this sermon": the sermon's timeline, Scripture and transcript beside its note. */
     onStudy: (noteId: String, meetingId: String) -> Unit = { _, _ -> },
+    /** Opens the Study lesson for a lecture or research recording's note. */
+    onOpenLesson: ((noteId: String) -> Unit)? = null,
     /** "✨ Brief" on a work recording: its Intelligence Brief. */
     onCreateBrief: ((meetingId: String) -> Unit)? = null
 ) {
@@ -1028,6 +1031,16 @@ fun MeetingDetailScreen(
                             Surface(onClick = { meeting?.id?.let(onCreateBrief) }, shape = RoundedCornerShape(50), color = AccentWash, modifier = Modifier.testTag("meeting_brief_btn")) {
                                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text("✨ Brief", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                                }
+                            }
+                        }
+                        if (onOpenLesson != null && com.craftflowtechnologies.meetingmind.feature.learn.LessonEntry.isLesson(meeting?.recordingType) && meeting?.status == MeetingStatus.READY) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(onClick = { onOpenLesson(noteId) }, shape = RoundedCornerShape(50), color = AccentWash, modifier = Modifier.testTag("meeting_lesson_btn")) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.School, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Lesson", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
                                 }
                             }
                         }

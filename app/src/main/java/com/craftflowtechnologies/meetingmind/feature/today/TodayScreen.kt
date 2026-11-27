@@ -136,6 +136,8 @@ fun TodayScreen(
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit = {},
     onOpenFaith: () -> Unit = {},
     onOpenWork: () -> Unit = {},
+    /** Opens Study; its tile shows only when the person uses the Learning space. */
+    onOpenStudy: () -> Unit = {},
     onOpenCircles: () -> Unit = {},
     /** What the Circles tile shows; the caller loads it (see HomeCirclesViewModel). */
     homeCircles: HomeCircles = HomeCircles.Loading,
@@ -250,7 +252,8 @@ fun TodayScreen(
         onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
         onCreate = { create.open() }, onCircles = onOpenCircles, onWork = onOpenWork,
         onNextUp = tile.onClick, onJournal = onNewNote,
-        onOpenCircle = onOpenCircle, onStartCircle = onStartCircle, onRetryCircles = onRetryCircles
+        onOpenCircle = onOpenCircle, onStartCircle = onStartCircle, onRetryCircles = onRetryCircles,
+        onStudy = onOpenStudy.takeIf { com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING in identity.spaces }
     )
 
     // The setup card nags until setup is done; "thinking only" can't be snoozed — it's a real problem.

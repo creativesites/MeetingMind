@@ -42,6 +42,16 @@ object Routes {
     /** A saved devotional, opened as it was — never rewritten. */
     fun pastDevotionalRoute(noteId: String) = "devotional?note=$noteId"
     const val DEVOTIONAL_ARCHIVE = "devotional_archive"
+    /** Study (Learning) space: home, a lecture's lesson page, its replay, and a practice round. */
+    const val LEARN = "learn"
+    const val LESSON = "learn/lesson/{noteId}"
+    const val LISTEN = "learn/listen/{noteId}"
+    const val PRACTICE = "learn/practice?session={session}&concept={concept}"
+    fun lessonRoute(noteId: String) = "learn/lesson/$noteId"
+    fun listenRoute(noteId: String) = "learn/listen/$noteId"
+    fun practiceRoute(sessionId: String? = null, conceptId: String? = null) =
+        "learn/practice" + listOfNotNull(sessionId?.let { "session=$it" }, conceptId?.let { "concept=$it" })
+            .joinToString("&", prefix = "?").takeIf { sessionId != null || conceptId != null }.orEmpty()
     /** Study beside a note: a sermon's timeline and transcript, or a Bible passage. */
     const val STUDY = "study/{noteId}?meeting={meeting}&ref={ref}"
     fun studyRoute(noteId: String, meetingId: String? = null, passageId: String? = null) =

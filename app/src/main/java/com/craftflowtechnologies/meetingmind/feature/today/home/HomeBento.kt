@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Church
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -100,7 +101,9 @@ data class BentoActions(
     /** "Start a circle" from the Circles tile's empty state. */
     val onStartCircle: () -> Unit = {},
     /** "Try again" from the Circles tile's failed state. */
-    val onRetryCircles: () -> Unit = {}
+    val onRetryCircles: () -> Unit = {},
+    /** Opens Study. Null hides the tile (the person does not use the Learning space). */
+    val onStudy: (() -> Unit)? = null
 )
 
 private val Ink = BentoColors.Ink
@@ -148,6 +151,7 @@ fun HomeBento(
                 PlanCard(data.plan, index = 3)
             }
         }
+        actions.onStudy?.let { StudyTile(it, index = 5) }
     }
 }
 
@@ -286,6 +290,20 @@ private fun CircleLink(label: String, onClick: () -> Unit, tag: String, modifier
         label, color = BentoColors.TealInk, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
         modifier = modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick).padding(vertical = 6.dp).testTag(tag)
     )
+}
+
+@Composable
+private fun StudyTile(onClick: () -> Unit, index: Int) {
+    SceneTile(index, StudySkyScene, height = 150.dp, scrim = Color.Transparent, tag = "bento_study", onClick = onClick) {
+        TileHeader(Icons.Filled.School, "Study", com.craftflowtechnologies.meetingmind.ui.theme.StudyFixedColors.OrbDeep)
+        Spacer(Modifier.weight(1f))
+        Text("Your lessons", color = com.craftflowtechnologies.meetingmind.ui.theme.StudyFixedColors.Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
+        Text(
+            "Lectures, quick checks and practice",
+            color = com.craftflowtechnologies.meetingmind.ui.theme.StudyFixedColors.InkSoft, fontFamily = InterFamily, fontSize = 13.sp,
+            modifier = Modifier.padding(top = 2.dp).fillMaxWidth(0.55f)
+        )
+    }
 }
 
 @Composable

@@ -75,6 +75,8 @@ fun CalmHome(
     onOpenProcessing: (String) -> Unit,
     onOpenFaith: () -> Unit,
     onOpenWork: () -> Unit,
+    /** Opens Study; null hides its shortcut. */
+    onOpenStudy: (() -> Unit)? = null,
     onOpenDevotional: () -> Unit,
     onOpenPrayer: () -> Unit,
     onOpenWord: () -> Unit,
@@ -143,6 +145,7 @@ fun CalmHome(
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
                     onOpenCreate = { create.open() },
+                    onOpenStudy = onOpenStudy,
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
