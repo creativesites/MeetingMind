@@ -5,6 +5,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine
+import com.craftflowtechnologies.meetingmind.core.billing.Billing
+import com.craftflowtechnologies.meetingmind.core.billing.BillingGateway
+import com.craftflowtechnologies.meetingmind.core.billing.ClosedTesting
+import com.craftflowtechnologies.meetingmind.core.billing.Entitlements
+import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
+import com.craftflowtechnologies.meetingmind.core.billing.PurchaseResult
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
@@ -14,6 +20,8 @@ import com.craftflowtechnologies.meetingmind.core.model.RecallRating
 import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -46,8 +54,24 @@ class LearnViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private val testScope = TestScope(testDispatcher)
 
+    private lateinit var savedGateway: BillingGateway
+    private var savedAllAccess = false
+
+    /** Billing is set up and the learner holds no paid plan. */
+    private object UnpaidGateway : BillingGateway {
+        override val configured: Boolean = true
+        override val entitlements: StateFlow<Entitlements> = MutableStateFlow(Entitlements())
+        override suspend fun offers(): List<PlanOffer> = emptyList()
+        override suspend fun purchase(activity: android.app.Activity, offerId: String): PurchaseResult = PurchaseResult.Failed("test")
+        override suspend fun restore(): PurchaseResult = PurchaseResult.Failed("test")
+        override suspend fun refresh() = Unit
+        override fun appUserId(): String? = null
+    }
+
     @Before
     fun setUp() {
+        savedGateway = Billing.gateway
+        savedAllAccess = ClosedTesting.allAccess
         app = ApplicationProvider.getApplicationContext()
         db = Room.inMemoryDatabaseBuilder(app, MeetMindDatabase::class.java)
             .allowMainThreadQueries()
@@ -69,6 +93,8 @@ class LearnViewModelTest {
 
     @After
     fun tearDown() {
+        Billing.gateway = savedGateway
+        ClosedTesting.allAccess = savedAllAccess
         MeetMindDatabase.setInstanceForTest(null)
         db.close()
     }
@@ -212,6 +238,8 @@ class LearnViewModelTest {
 
     @Test
     fun `generateCramSheet synthesizes markdown with formulas`() = runTest {
+        // The cram sheet is a paid extra; closed testing opens every paid extra.
+        ClosedTesting.allAccess = true
         val note = noteRepo.createNote(title = "Accounting 101")
         val session = learningRepo.ensureSessionForNote(
             noteId = note.id,
@@ -371,5 +399,20 @@ class LearnViewModelTest {
     private fun assertNotNullId(id: String?): String {
         assertNotNull("the cram sheet was not saved", id)
         return id!!
+    }
+
+    @Test
+    fun `generateCramSheet does nothing for a learner without a paid plan`() = runTest {
+        Billing.gateway = UnpaidGateway
+        ClosedTesting.allAccess = false
+        val note = noteRepo.createNote(title = "Accounting 101")
+        val session = learningRepo.ensureSessionForNote(noteId = note.id, title = "Double Entry", domain = SubjectDomain.ACCOUNTING_FINANCE)
+
+        var resultMarkdown: String? = null
+        viewModel.generateCramSheet(listOf(session.id), "Midterm Cram Sheet") { md -> resultMarkdown = md }
+        testScheduler.advanceUntilIdle()
+        ShadowLooper.idleMainLooper(1, TimeUnit.SECONDS)
+
+        assertEquals(null, resultMarkdown)
     }
 }

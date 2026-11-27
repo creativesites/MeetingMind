@@ -1,33 +1,17 @@
 # Status
 
-Updated: 2026-11-27. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+Updated: 2026-11-27. **Shipping branch: `main`** (fast-forwarded from `ccr-193c8c6b-bozoxb`; head: see `git log -1`). Version 52 (`1.0-v52`), Room schema 34.
 
-## Personal: garden pages for the Sanctuary (P5, branch `wt-p5`, not pushed)
-- **Built:** the garden home lists every Sanctuary capability (Rituals, Journeys & challenges, Living journal, Seed jar, Keepsakes, Privacy & sync). Each opens its own garden page (`GardenPlaceScreen`, routes `garden/<place>`), styled by `GardenTheme` (garden palette as `MMColors`, serif page headers, `GardenPageHeader`). The tabbed Sanctuary screen and its dock are retired; the bodies and view model logic are unchanged.
-- **Privacy & sync** is a page of its own (`PrivacySyncPage`: lock, screenshot shield, Obsidian, Day One). Vault sync stays free.
-- **Personal autopilot** is a paid feature, as Work's is: `PersonalAutopilotCard` uses `AutopilotWorkspace.isUnlocked` (honours closed testing) and shows "Part of the paid plans" with "See plans" only when billing is configured. It sits at the top of the Living journal page.
-- **Routine player** runs under `GardenTheme` (restyled through the tokens; its own layout is unchanged).
-- **Tests:** `GardenPlacesTest` (every capability has a page, routes resolve), `GardenPagesScreenshotTest` (every place opens from the garden home; locked autopilot does not run; unlocked does; privacy page and autopilot shots in light and dark).
-- **Open:** `AutopilotWorkspace.runRecipe` (shared with Work) still refuses on free plans, which is the same gate as the card. Rituals, Journeys, Journal, Seed jar and Keepsakes use the existing bodies, restyled by tokens; their layouts were not redesigned. Screenshots of those bodies are not in the test set.
-
-## Study (Learning) rebuild (2026-11-27, branch `ccr-193c8c6b-bozoxb`)
-- **Decision:** the founder approved the Study redesign canvas (2026-11-27). After merging `ccr-4eced482-bn5f1l`, which has its own Learning vertical, the founder chose to keep both for now: Study runs on its own `learn_study` routes beside Learning. Audit and rules: `docs/mvp/STUDY_AUDIT.md`. Mockups: `design/study/`. Contract: `feature/learn/LearnContract.kt`.
-- **Built:** Study home (round card, "Your sky", continue, courses, weekly rhythm), Lesson (lecture ribbon with stressed moments, 30-second summary, stressed quotes that play the recording, sections with tappable terms, quick checks, hard-to-hear line), concept sheet (lecturer's words, Explain another way, Draw it diagrams, Quiz me), Listen (dark read-along replay), Practice round (tap-to-answer, recall cards, wrong answers come back, Hear your lecturer), Round complete (stars light up, one next step, study-win card).
-- **Data and AI:** shares `LearningRepository` with Learning; `StudyKitGenerator` (validated, cited, chunked), `ExplainEngine`, `StudyKitStore` (JSON per session), `SkyLayout`, `RoundComposer`. No schema change. A missed review is due again 10 minutes later.
-- **Entry points:** "Open lesson" on Lecture and Research notes and a "Lesson" pill on recording detail open the Study lesson; the Today bento's night-sky Study tile opens the Study home. Learning keeps its own bar place, menu and quick-access entries.
-- **Companion:** `CompanionPage.STUDY_HOME` and `PRACTICE`; Zuri curious on the home and questions, a short celebration on a right answer, calm on a wrong one, proud or celebrating on round complete, reading in Listen.
-- **Not done:** Explain it aloud (Teach-Back); Read to Me inside Listen (the Read to Me option opens the existing sheet); a NOD variant through `ZuriSlot`; dotted term underlines; a mono font token.
-- **Not verified on a device:** lesson generation on a real lecture (Gemini and on-device), playback from moments, the round's next-day return.
-- **Build note:** Maven Central returns 429 through this proxy; builds here use a session-only init script that points at Google's Central mirror (`--init-script`).
-
-## Learning on the Study design (2026-11-27, branch `ccr-193c8c6b-bozoxb`, head `see git log`)
-- **Founder decision:** keep Learning's functionality, replace all its UI with the Study design; navigation must be easy; one Learning home for the space and the Learning home style.
-- **Routes (`feature/learn/LearnRoutes.kt`, `learnGraph`):** `learn` home, `learn_course/{id}`, `learning_session/{noteId}` lesson, `learning_listen/{noteId}`, `learn_practice?sessionId&activityId&course&concept`. `learn_study/*` retired. Exam prep (`learn_exam`) is still the old screen, reached from a course's "Exam plan".
-- **Removed:** LearnHomeScreen, LearningSessionScreen, SessionStudioScreen, PracticeArenaScreen (and LearnHomeUiTest). LearningSpaceScreen and PracticeModeScreen have no route; their tests still use them.
-- **Database:** schema 33 (`5e75b81b`). `release/1.0-paid-launch` shipped a different schema 32 (Personal tables); the 32→33 step accepts both. Merging that branch later needs its Personal tables in a 34. Never reuse a schema number another branch has shipped.
-- **Debug builds and online AI:** build with `GEMINI_PROXY_URL=https://meetingmind-gemini.meetingmind.workers.dev` (or a key in local.properties); without either, online transcription falls back to local models.
-- **Tests (full run, 4,359):** 21 failures arrived with `ccr-4eced482-bn5f1l` and are not Learning's: TodayHeroSun (6), ImportViewModel (2), AudioExtractor, GeminiHttpTransport, GeminiTranslationEngine, MomentStage, NoteEditorUnveilScreenshot, PrivacyNoCloudPath (2), ProcessingScheduler, ProcessingScreenshot, SermonTranscriptSection, TranscriptToolEngine, DesignSystemGuard (AiCraft.kt), Assistant (PaywallScreen.kt sparkles). The two Learning ones are fixed.
-- **Not verified on a device.**
+## Learning, Personal and tiering: production pass (2026-11-27)
+- **One branch has everything:** Learning on the Study design, `ccr-4eced482-bn5f1l` (Learning v1, garden Personal), and `release/1.0-paid-launch` (Sanctuary Personal, schema 32 variant) are merged here.
+- **Learning (`feature/learn/`, `learnGraph`):** Learning home (also the "Learning" home style), course, lesson (lecture ribbon, summary, sections, quick checks, concept sheet), Listen, Practice in ten formats, Explain it aloud (on-device speech only; typing otherwise), exam plan and cram sheet, one Ask sheet, study pack share, video into a course. Old Learning screens and `learn_study` routes are retired. Audit: `docs/mvp/STUDY_AUDIT.md`. Mockups: `design/study/`.
+- **Personal:** the garden home; every Sanctuary capability has a garden page (`garden/<place>`). The tabbed Sanctuary screen is retired; its view model is `SanctuaryViewModel`.
+- **Tiering (founder, 2026-11-27, `agents/PRODUCT.md`):** core free. Paid: exam plan and cram sheet (DEEP_SYNTHESIS), study pack after every lecture and Personal autopilot (AUTOMATION_RECIPES), sharing to several Circles (CHURCH_ORG_WORKFLOWS). Locked extras show a calm card with "See plans" only when billing is configured; closed testing unlocks everything.
+- **Database:** 32→33 accepts both shipped schema-32 variants; 33→34 adds the Sanctuary tables (IF NOT EXISTS). Never reuse a schema number another branch shipped.
+- **AI answers:** Ask answers only from the lesson; an answer that its cited lines don't support falls back to the quoted lines. Concepts without a supporting sentence are not invented.
+- **Debug builds:** build with `GEMINI_PROXY_URL=https://meetingmind-gemini.meetingmind.workers.dev`, or online transcription falls back to local models. Cloud sessions: Maven Central answers 429; use an init script pointing at Google's Central mirror.
+- **Tests:** full run on this branch 2026-11-27: 4,506 tests, 22 failures, none in Learning or Personal. 21 arrived with `ccr-4eced482-bn5f1l` (TodayHeroSun 6, ImportViewModel 3, AudioExtractor, GeminiHttpTransport, GeminiTranslationEngine, MomentStage, NoteEditorUnveilScreenshot, PrivacyNoCloudPath 2, ProcessingScheduler, ProcessingScreenshot, SermonTranscriptSection, TranscriptToolEngine, DesignSystemGuard on AiCraft.kt, Assistant on PaywallScreen.kt sparkles). `NotesLibraryScreenshotTest.populated` fails only in the full run (an earlier test's uncaught exception) and passes alone. Under heavy machine load, Compose screenshot tests can time out as "did not get idle"; rerun before chasing them.
+- **Not verified on a device:** lesson generation on a real lecture, Explain it aloud on a phone with on-device recognition, playback from moments, the next-day review return. Garden page bodies (Rituals, Journeys, Journal, Seed jar, Keepsakes) are restyled by tokens, not redesigned.
 
 ## Personal becomes "Your garden" (2026-11-27, branch `ccr-4eced482-bn5f1l`)
 - **Design:** the founder chose the garden concept (design canvas "MeetingMind: Personal vertical redesign", page "Your garden (new)").
