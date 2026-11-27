@@ -143,7 +143,6 @@ fun TodayScreen(
     /** Opens Study; its tile shows only when the person uses the Learning space. */
     onOpenStudy: () -> Unit = {},
     onOpenLearn: () -> Unit = {},
-    onOpenPersonal: () -> Unit = {},
     /** The Tasks card in "Your spaces". */
     onOpenTasks: () -> Unit = {},
     onOpenCircles: () -> Unit = {},
