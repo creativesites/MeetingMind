@@ -569,15 +569,11 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 navController = navController,
                 onNavigateBottomNav = navigateToPrimary
             ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PERSONAL) {
-                val pvm: com.craftflowtechnologies.meetingmind.feature.personal.SanctuaryViewModel = viewModel()
-                com.craftflowtechnologies.meetingmind.feature.personal.PersonalSpaceScreen(
-                    viewModel = pvm,
-                    onStartRoutine = { rId, min -> navController.navigate(Routes.personalRoutinePlayerRoute(rId, min)) },
-                    onRecordJournal = { navController.navigate(Routes.recordTypeRoute(RecordingType.JOURNAL)) },
-                    onRecordIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) },
+                com.craftflowtechnologies.meetingmind.feature.personal.PersonalHost(
+                    onAnswerAloud = { question -> navController.navigate(Routes.recordTitledRoute(RecordingType.JOURNAL, question)) },
                     onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
-                    onOpenYouTube = { youTubeSheet.controller.open(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL) },
-                    onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) }
+                    onOpenRoute = { navController.navigate(it) { launchSingleTop = true } },
+                    onCaptureIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) }
                 )
             } else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM) com.craftflowtechnologies.meetingmind.feature.today.home.CalmHome(
                 today = vm,
@@ -1096,25 +1092,26 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         // STUDY (docs/mvp/STUDY_AUDIT.md)
         learnGraph(navController, onSearch = openSearch, onNavigateBottomNav = navigateToPrimary)
 
-        // PERSONAL (Sanctuary Home, Living Journal, Idea Studio, Growth & Routines, Memory Vault)
+        // GARDEN PLACES: one page per Sanctuary capability (feature/personal/garden/GardenPlace.kt).
         composable(
-            route = Routes.PERSONAL_TAB,
-            arguments = listOf(
-                navArgument("tab") { type = NavType.StringType; nullable = true; defaultValue = null },
-                navArgument("tools") { type = NavType.BoolType; defaultValue = false }
-            )
+            route = Routes.GARDEN_PLACE,
+            arguments = listOf(navArgument("place") { type = NavType.StringType })
         ) { entry ->
+            val place = com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenPlace.fromRouteName(entry.arguments?.getString("place"))
+                ?: com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenPlace.RITUALS
             val pvm: com.craftflowtechnologies.meetingmind.feature.personal.SanctuaryViewModel = viewModel()
-            com.craftflowtechnologies.meetingmind.feature.personal.PersonalSpaceScreen(
+            com.craftflowtechnologies.meetingmind.feature.personal.GardenPlaceScreen(
+                place = place,
                 viewModel = pvm,
-                initialTab = entry.arguments?.getString("tab"),
-                openTools = entry.arguments?.getBoolean("tools") ?: false,
                 onStartRoutine = { rId, min -> navController.navigate(Routes.personalRoutinePlayerRoute(rId, min)) },
                 onRecordJournal = { navController.navigate(Routes.recordTypeRoute(RecordingType.JOURNAL)) },
                 onRecordIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenYouTube = { youTubeSheet.controller.open(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL) },
-                onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) }
+                onOpenPlace = { navController.navigate(it.route) { launchSingleTop = true } },
+                onBack = { navController.popBackStack() },
+                onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) },
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
             )
         }
         composable(
@@ -1127,14 +1124,16 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val routineId = entry.arguments?.getString("routineId").orEmpty()
             val minEffort = entry.arguments?.getBoolean("minEffort") ?: false
             val rvm: com.craftflowtechnologies.meetingmind.feature.personal.RoutinePlayerViewModel = viewModel()
-            com.craftflowtechnologies.meetingmind.feature.personal.RoutinePlayerScreen(
-                routineId = routineId,
-                initialMinEffort = minEffort,
-                viewModel = rvm,
-                onClose = { navController.popBackStack() },
-                onOpenVoiceRecorderForJournal = { navController.navigate(Routes.recordTypeRoute(RecordingType.JOURNAL)) },
-                onOpenNote = { navController.navigate(Routes.noteRoute(it)) }
-            )
+            com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenTheme {
+                com.craftflowtechnologies.meetingmind.feature.personal.RoutinePlayerScreen(
+                    routineId = routineId,
+                    initialMinEffort = minEffort,
+                    viewModel = rvm,
+                    onClose = { navController.popBackStack() },
+                    onOpenVoiceRecorderForJournal = { navController.navigate(Routes.recordTypeRoute(RecordingType.JOURNAL)) },
+                    onOpenNote = { navController.navigate(Routes.noteRoute(it)) }
+                )
+            }
         }
 
         // WORK (docs/PLAN_PROFESSIONAL.md §6–7)

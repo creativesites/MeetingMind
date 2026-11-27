@@ -124,7 +124,12 @@ internal fun ChoiceItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Tap an answer. No submit button.", style = MM.type.secondary, color = c.inkSecondary)
+                    Text(
+                        "Tap an answer. No submit button.",
+                        style = MM.type.secondary,
+                        color = c.inkSecondary,
+                        modifier = Modifier.weight(1f)
+                    )
                     TextAction("Not sure", onNotSure)
                 }
             }

@@ -1,33 +1,29 @@
 package com.craftflowtechnologies.meetingmind.feature.personal.garden
 
-import com.craftflowtechnologies.meetingmind.feature.navigation.Routes
 import com.craftflowtechnologies.meetingmind.feature.personal.PersonalTab
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Every Sanctuary capability has a place in "Your garden", and every place opens a real Sanctuary
- * tab or sheet. If a capability is ever dropped from [GardenPlace], these tests fail.
+ * Every Sanctuary capability has its own garden page, and every page opens a real Sanctuary body or the
+ * privacy page. If a capability is dropped from [GardenPlace], these tests fail.
  */
 class GardenPlacesTest {
 
     @Test
     fun every_sanctuary_tab_is_reachable_from_the_garden() {
-        val reachableTabs = GardenPlace.entries.mapNotNull { it.tab }.toSet()
+        val bodies = GardenPlace.entries.mapNotNull { it.tab }.toSet()
         PersonalTab.entries.forEach { tab ->
-            assertTrue("No garden place opens ${tab.name}", tab.name in reachableTabs)
+            assertTrue("No garden page shows ${tab.name}", tab in bodies)
         }
     }
 
     @Test
-    fun every_place_names_a_real_tab_or_the_privacy_sheet() {
-        val tabNames = PersonalTab.entries.map { it.name }.toSet()
-        GardenPlace.entries.forEach { place ->
-            place.tab?.let { assertTrue("${place.name} names unknown tab $it", it in tabNames) }
-            assertTrue("${place.name} needs a tab or tools", place.tab != null || place.tools)
-        }
+    fun only_privacy_is_a_page_without_a_sanctuary_body() {
+        val withoutBody = GardenPlace.entries.filter { it.tab == null }
+        assertEquals(listOf(GardenPlace.PRIVACY), withoutBody)
     }
 
     @Test
@@ -37,17 +33,26 @@ class GardenPlacesTest {
     }
 
     @Test
-    fun routes_open_the_sanctuary_with_the_right_tab_and_sheet() {
-        assertEquals("personal_sanctuary?tab=GROWTH", GardenPlace.JOURNEYS.route)
-        assertEquals("personal_sanctuary?tab=VAULT", GardenPlace.KEEPSAKES.route)
-        assertEquals("personal_sanctuary?tab=SANCTUARY&tools=true", GardenPlace.PRIVACY.route)
-        assertFalse(GardenPlace.RITUALS.route.contains("tools"))
+    fun routes_are_one_page_per_place() {
+        assertEquals("garden/rituals", GardenPlace.RITUALS.route)
+        assertEquals("garden/journeys", GardenPlace.JOURNEYS.route)
+        assertEquals("garden/journal", GardenPlace.JOURNAL.route)
+        assertEquals("garden/seed_jar", GardenPlace.SEED_JAR.route)
+        assertEquals("garden/keepsakes", GardenPlace.KEEPSAKES.route)
+        assertEquals("garden/privacy", GardenPlace.PRIVACY.route)
     }
 
     @Test
-    fun route_builder_keeps_the_plain_forms_unchanged() {
-        assertEquals("personal_sanctuary", Routes.personalRoute())
-        assertEquals("personal_sanctuary?tab=IDEAS", Routes.personalRoute("IDEAS"))
-        assertEquals("personal_sanctuary?tab=SANCTUARY&tools=true", Routes.personalRoute("SANCTUARY", tools = true))
+    fun every_route_resolves_back_to_its_place() {
+        GardenPlace.entries.forEach { place ->
+            val segment = place.route.substringAfter("garden/")
+            assertEquals(place, GardenPlace.fromRouteName(segment))
+        }
+    }
+
+    @Test
+    fun unknown_or_missing_names_resolve_to_nothing() {
+        assertNull(GardenPlace.fromRouteName("growth"))
+        assertNull(GardenPlace.fromRouteName(null))
     }
 }
