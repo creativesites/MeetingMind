@@ -164,11 +164,15 @@ class LearningAiEngine(
         return fallbackSynthesis(sessionId, segments, domain, marks)
     }
 
-    suspend fun evaluateTeachBack(
+    /**
+     * The model's evaluation only. Null when no model answered (no AI set up, offline without a local model,
+     * allowance used up, or an unreadable reply), so callers can tell "AI said so" from "AI was not available".
+     */
+    suspend fun evaluateTeachBackWithAi(
         rubric: List<TeachBackCriterion>,
         spokenTranscript: String,
         concept: LearningConcept?
-    ): TeachBackEvaluation {
+    ): TeachBackEvaluation? {
         val prompt = buildString {
             appendLine("Evaluate a student's spoken Teach-Back explanation against the provided rubric.")
             appendLine("Concept: ${concept?.name ?: "Topic"} (${concept?.definition ?: ""})")
@@ -179,11 +183,16 @@ class LearningAiEngine(
             appendLine("Respond with JSON: {\"overall\": \"COVERED|PARTLY_COVERED|NOT_YET_DEMONSTRATED\", \"score\": 85, \"summary\": \"evaluation\", \"missing\": [\"points\"], \"socraticFollowUp\": \"question\", \"criteria\": [{\"claim\": \"c\", \"status\": \"MET|PARTIAL|UNMET\", \"feedback\": \"f\"}]}")
         }
 
-        val res = generateText(prompt, TEACHBACK_SCHEMA)
-        if (res != null) {
-            val eval = runCatching { parseTeachBackJson(stripMarkdownCodeFences(res), rubric) }.getOrNull()
-            if (eval != null) return eval
-        }
+        val res = generateText(prompt, TEACHBACK_SCHEMA) ?: return null
+        return runCatching { parseTeachBackJson(stripMarkdownCodeFences(res), rubric) }.getOrNull()
+    }
+
+    suspend fun evaluateTeachBack(
+        rubric: List<TeachBackCriterion>,
+        spokenTranscript: String,
+        concept: LearningConcept?
+    ): TeachBackEvaluation {
+        evaluateTeachBackWithAi(rubric, spokenTranscript, concept)?.let { return it }
 
         // Deterministic offline rubric evaluation
         val lowerTranscript = spokenTranscript.lowercase()
@@ -438,10 +447,12 @@ class LearningAiEngine(
         }
 
         val allEvaluations = rubric.map { c ->
+            // An idea the model did not report on was not shown to be covered: mastery is earned,
+            // never assumed (PLAN_LEARNING §4), so an omission counts as not yet.
             criteriaMap[c.claim] ?: TeachBackCriterionEvaluation(
                 criterion = c,
-                status = TeachBackStatus.MET,
-                feedback = "Covered adequately"
+                status = TeachBackStatus.UNMET,
+                feedback = "Not shown yet"
             )
         }
 

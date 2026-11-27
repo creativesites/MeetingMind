@@ -22,6 +22,7 @@ import com.craftflowtechnologies.meetingmind.core.share.ShareCardContent
 import com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination
 import com.craftflowtechnologies.meetingmind.feature.learn.home.CourseHost
 import com.craftflowtechnologies.meetingmind.feature.learn.home.LearningHomeActions
+import com.craftflowtechnologies.meetingmind.feature.learn.explain.ExplainAloudHost
 import com.craftflowtechnologies.meetingmind.feature.learn.home.LearningHomeHost
 import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LessonActions
 import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LessonHost
@@ -70,8 +71,20 @@ fun NavGraphBuilder.learnGraph(
                 onPractise = { sessionId -> navController.navigate(Routes.learnPracticeRoute(sessionId = sessionId)) },
                 onQuizConcept = { sessionId, conceptId -> navController.navigate(Routes.learnPracticeRoute(sessionId = sessionId, conceptId = conceptId)) },
                 onOpenRecording = { meetingId, at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) },
-                onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
+                onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) },
+                onExplainAloud = { sid, conceptId -> navController.navigate(Routes.learnExplainRoute(sid, conceptId)) }
             )
+        )
+    }
+
+    composable(Routes.LEARN_EXPLAIN, arguments = listOf(
+        navArgument("sessionId") { type = NavType.StringType },
+        navArgument("conceptId") { type = NavType.StringType }
+    )) { entry ->
+        ExplainAloudHost(
+            sessionId = entry.arguments?.getString("sessionId").orEmpty(),
+            conceptId = entry.arguments?.getString("conceptId").orEmpty(),
+            onDone = { navController.popBackStack() }
         )
     }
 
@@ -117,6 +130,13 @@ fun NavGraphBuilder.learnGraph(
                         if (noteId != null) navController.navigate(Routes.learningSessionRoute(noteId)) {
                             popUpTo(Routes.LEARN_PRACTICE) { inclusive = true }
                         }
+                    }
+                },
+                onExplainAloud = { conceptId ->
+                    cs.launch {
+                        val sid = session ?: StudyServices.forApp(context.applicationContext as Application)
+                            .learning.getActivitiesForConcept(conceptId).firstOrNull()?.sessionId
+                        if (sid != null) navController.navigate(Routes.learnExplainRoute(sid, conceptId))
                     }
                 },
                 onMakeStudyWin = {

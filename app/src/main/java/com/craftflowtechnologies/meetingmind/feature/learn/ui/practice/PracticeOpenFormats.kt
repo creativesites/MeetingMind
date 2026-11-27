@@ -11,6 +11,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Mic
+import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
@@ -165,7 +168,8 @@ internal fun ExplainItem(
     onReveal: () -> Unit,
     onRate: (RecallButton) -> Unit,
     onContinue: () -> Unit,
-    onPlaySource: (PracticeItem) -> Unit
+    onPlaySource: (PracticeItem) -> Unit,
+    onExplainAloud: (() -> Unit)? = null
 ) {
     val c = MM.colors
     val pose = rememberChoicePose(index, feedback?.correct)
@@ -178,6 +182,14 @@ internal fun ExplainItem(
         onPlaySource = onPlaySource,
         onContinue = onContinue,
         bottom = {
+            onExplainAloud?.let { speak ->
+                SecondaryButton(
+                    "Explain it aloud",
+                    onClick = speak,
+                    modifier = Modifier.fillMaxWidth().testTag("practice_explain_aloud"),
+                    leadingIcon = Icons.Rounded.Mic
+                )
+            }
             if (!revealed) {
                 InkButton("Show the model answer", onReveal)
             } else {

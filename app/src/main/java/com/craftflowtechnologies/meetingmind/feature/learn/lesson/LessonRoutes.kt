@@ -46,7 +46,9 @@ data class LessonActions(
     val onQuizConcept: (sessionId: String, conceptId: String) -> Unit,
     val onOpenRecording: (meetingId: String, startAtMs: Long?) -> Unit,
     /** Opens Plans from the allowance panel (the trigger says why). The default does nothing. */
-    val onOpenPlans: (PaywallTrigger) -> Unit = {}
+    val onOpenPlans: (PaywallTrigger) -> Unit = {},
+    /** "Explain it aloud" for one concept of this lecture. */
+    val onExplainAloud: (sessionId: String, conceptId: String) -> Unit = { _, _ -> }
 )
 
 /**
@@ -98,6 +100,7 @@ fun LessonHost(noteId: String, actions: LessonActions) {
         onAsk = { askOpen = true },
         onGenerate = vm::generate,
         onFixAudio = { state.meetingId?.let { actions.onOpenRecording(it, null) } },
+        onExplainAloud = { conceptId -> if (state.sessionId.isNotBlank()) actions.onExplainAloud(state.sessionId, conceptId) },
         reviewsPaused = reviewsPaused,
         conceptFlags = conceptFlags,
         onOpenNote = { actions.onOpenNote(noteId) },

@@ -26,7 +26,9 @@ data class PracticeActions(
     /** The round's next step, "Revisit inhibition": open that lesson. Given the learning session id. */
     val onOpenLesson: (sessionId: String) -> Unit = {},
     /** "Make a card" on the round-complete screen: the caller builds the study-win card. */
-    val onMakeStudyWin: () -> Unit = {}
+    val onMakeStudyWin: () -> Unit = {},
+    /** "Explain it aloud" on an Explain item: the concept it is about. Hidden when there is none. */
+    val onExplainAloud: (conceptId: String) -> Unit = {}
 )
 
 /**
@@ -60,6 +62,7 @@ fun PracticeHost(
         onDone = actions.onDone,
         onOpenNextStep = { step -> actions.onOpenLesson(step.sessionId) },
         onMakeCard = actions.onMakeStudyWin,
+        onExplainAloud = actions.onExplainAloud,
         sky = { ignite ->
             state.result?.let { result -> SkyView(sky = result.sky, ignite = ignite) }
         },
