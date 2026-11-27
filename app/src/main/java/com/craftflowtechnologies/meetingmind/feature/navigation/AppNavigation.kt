@@ -41,6 +41,9 @@ object Routes {
     /** One course (a Learning notebook): how well it is known, practise it, its lectures. */
     const val LEARN_COURSE = "learn_course/{courseId}"
     fun learnCourseRoute(courseId: String) = "learn_course/$courseId"
+    /** "Explain it aloud" for one concept of a lecture: speak it, then see what was covered. */
+    const val LEARN_EXPLAIN = "learn_explain/{sessionId}/{conceptId}"
+    fun learnExplainRoute(sessionId: String, conceptId: String) = "learn_explain/$sessionId/$conceptId"
     /** A lecture's replay with read-along. */
     const val LEARN_LISTEN = "learning_listen/{noteId}"
     fun learnListenRoute(noteId: String) = "learning_listen/$noteId"

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Adjust
 import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -74,6 +75,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
@@ -111,7 +113,9 @@ fun ConceptSheet(
     onToggleHidden: () -> Unit = {},
     onToggleReported: () -> Unit = {},
     /** The AI-written definition to report. Null once the learner has edited the concept. */
-    aiSource: (() -> AiReportSource)? = null
+    aiSource: (() -> AiReportSource)? = null,
+    /** "Explain it aloud": opens the speaking round for this idea. Null hides the action. */
+    onExplainAloud: (() -> Unit)? = null
 ) {
     StudyTheme {
         val c = MM.colors
@@ -156,6 +160,14 @@ fun ConceptSheet(
                         ).joinToString(" · "),
                         style = MM.type.caption,
                         color = c.inkSecondary
+                    )
+                }
+                onExplainAloud?.let { explainAloud ->
+                    SecondaryButton(
+                        "Explain it aloud",
+                        onClick = explainAloud,
+                        modifier = Modifier.fillMaxWidth().testTag("concept_explain_aloud"),
+                        leadingIcon = Icons.Rounded.Mic
                     )
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

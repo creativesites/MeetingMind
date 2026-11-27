@@ -119,6 +119,7 @@ fun LessonScreen(
     conceptFlags: Map<String, ConceptFlags> = emptyMap(),
     /** Opens the lecture's full notes (the overflow menu, and the note offer when the lesson cannot be made). */
     onOpenNote: () -> Unit = {},
+    onExplainAloud: ((conceptId: String) -> Unit)? = null,
     onTogglePauseReviews: () -> Unit = {},
     onToggleConceptHidden: (String) -> Unit = {},
     onRenameConcept: (conceptId: String, name: String) -> Unit = { _, _ -> },
@@ -186,7 +187,8 @@ fun LessonScreen(
                             listOf(openConcept.name, openConcept.definition).filter { it.isNotBlank() }.joinToString("\n"),
                             noteId = state.noteId
                         )
-                    }
+                    },
+                    onExplainAloud = onExplainAloud?.let { open -> { open(id) } }
                 )
             }
             if (ask != null) {

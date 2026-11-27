@@ -57,7 +57,9 @@ fun PracticeScreen(
     sky: @Composable (ignite: Set<String>) -> Unit = {},
     modifier: Modifier = Modifier,
     /** Every format except a multiple-choice pick, which still goes to [onAnswerChoice] as before. */
-    onAnswer: (PracticeAnswer) -> Unit = {}
+    onAnswer: (PracticeAnswer) -> Unit = {},
+    /** "Explain it aloud" on an Explain item, with the item's concept id. */
+    onExplainAloud: (conceptId: String) -> Unit = {}
 ) {
     StudyTheme {
         val result = state.result
@@ -88,7 +90,8 @@ fun PracticeScreen(
                             onReveal = onReveal,
                             onRate = onRate,
                             onContinue = onContinue,
-                            onPlaySource = onPlaySource
+                            onPlaySource = onPlaySource,
+                            onExplainAloud = onExplainAloud
                         )
                     }
                 }
@@ -108,7 +111,8 @@ private fun PracticeItemView(
     onReveal: () -> Unit,
     onRate: (RecallButton) -> Unit,
     onContinue: () -> Unit,
-    onPlaySource: (PracticeItem) -> Unit
+    onPlaySource: (PracticeItem) -> Unit,
+    onExplainAloud: (conceptId: String) -> Unit
 ) {
     val index = state.index
     val feedback = state.feedback
@@ -142,7 +146,8 @@ private fun PracticeItemView(
             item, index, feedback, state.revealed, state.recallHints, onAnswer, onRate, onContinue, onPlaySource
         )
         is PracticeExplain -> ExplainItem(
-            item, index, feedback, state.revealed, state.recallHints, onReveal, onRate, onContinue, onPlaySource
+            item, index, feedback, state.revealed, state.recallHints, onReveal, onRate, onContinue, onPlaySource,
+            onExplainAloud = item.conceptId?.let { id -> { onExplainAloud(id) } }
         )
     }
 }
