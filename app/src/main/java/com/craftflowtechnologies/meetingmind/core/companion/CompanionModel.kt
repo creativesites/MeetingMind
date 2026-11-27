@@ -49,7 +49,9 @@ enum class Presence { AROUND, MOMENTS, OFF }
 enum class CompanionPage {
     HOME, RECORDING, PROCESSING, NOTE_READY, FIRST_RECORDING, WORRIED, EMPTY, MILESTONE, READ_ALOUD,
     /** The user is choosing a companion here, so it always shows. */
-    ONBOARDING, QUICK_SHEET, COMPANION_SETTINGS;
+    ONBOARDING, QUICK_SHEET, COMPANION_SETTINGS,
+    /** Study home header and the practice round (docs/mvp/STUDY_AUDIT.md §4). Shown when presence is Around. */
+    STUDY_HOME, PRACTICE;
 
     val isChoosing: Boolean get() = this == ONBOARDING || this == QUICK_SHEET || this == COMPANION_SETTINGS
 }
