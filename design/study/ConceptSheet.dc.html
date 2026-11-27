@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concept sheet: Km</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0E7490}a:hover{color:#0B5568}
+@keyframes draw{from{stroke-dashoffset:420}to{stroke-dashoffset:0}}
+.draw{stroke-dasharray:420;animation:draw 1.6s ease-out forwards}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #FAFAF9; font-family: Inter, system-ui, sans-serif; color: #18181B; position: relative; overflow: hidden">
+
+  <div aria-hidden="true" style="padding: 70px 20px 0; display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 30px; font-weight: 700; letter-spacing: -0.025em">Enzyme kinetics</span>
+    <span style="font-size: 16px; line-height: 1.65; color: #27272A">Reaction speed rises with substrate concentration, then levels off at Vmax, when every enzyme is busy. Km is the concentration that gives half of Vmax.</span>
+  </div>
+  <div style="position: absolute; inset: 0; background: rgba(15,22,34,0.42)"></div>
+
+  <section aria-label="Km, Michaelis constant" style="position: absolute; left: 0; right: 0; bottom: 0; height: 724px; background: #FFFFFF; border-radius: 28px 28px 0 0; padding: 10px 20px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+    <span style="align-self: center; width: 40px; height: 5px; border-radius: 3px; background: #D4D4D8"></span>
+
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h2 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em">Km</h2>
+        <span style="font-size: 14px; color: #6B6B73">Michaelis constant</span>
+      </div>
+      <span style="display: flex; align-items: center; gap: 6px; background: #E3F1F5; color: #0B5568; font-size: 12px; font-weight: 700; padding: 7px 11px; border-radius: 14px">
+        <svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="none" stroke="#0E7490" stroke-width="1.6"></circle></svg>Getting there</span>
+    </div>
+
+    <p style="margin: 0; font-size: 16px; line-height: 1.55">The substrate concentration at which the reaction runs at half its top speed. Lower Km, tighter grip.</p>
+
+    <div style="background: #FBF6EC; border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 12px; font-weight: 700; color: #7A4E0F">In your lecturer's words</span>
+      <span style="font-size: 15px; line-height: 1.5; font-style: italic">"Km is not a speed. It's a concentration. Write that down twice."</span>
+      <button style="align-self: flex-start; height: 34px; padding: 0 12px; border-radius: 17px; border: none; background: #996515; color: #FFFFFF; font-family: 'JetBrains Mono', monospace; font-size: 12px; display: flex; align-items: center; gap: 6px">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="#FFFFFF" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>14:02 · 9 s</button>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 14px; font-weight: 700">Explain it another way</span>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap">
+        <button style="height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #E5E5E3; background: #FFFFFF; font-size: 13px; font-weight: 600; color: #18181B; font-family: Inter, sans-serif">Simpler</button>
+        <button style="height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #E5E5E3; background: #FFFFFF; font-size: 13px; font-weight: 600; color: #18181B; font-family: Inter, sans-serif">An analogy</button>
+        <button style="height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #E5E5E3; background: #FFFFFF; font-size: 13px; font-weight: 600; color: #18181B; font-family: Inter, sans-serif">An example</button>
+        <button aria-pressed="true" style="height: 36px; padding: 0 14px; border-radius: 18px; border: none; background: #18181B; font-size: 13px; font-weight: 600; color: #FFFFFF; font-family: Inter, sans-serif; display: flex; align-items: center; gap: 6px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 20c4-1 6-14 16-16"></path></svg>Draw it</button>
+      </div>
+    </div>
+
+    <figure style="margin: 0; background: #F5F5F4; border-radius: 18px; padding: 12px 12px 10px; display: flex; flex-direction: column; gap: 8px">
+      <svg width="326" height="170" viewBox="0 0 326 170" role="img" aria-label="Saturation curve: speed rises with substrate and levels at Vmax; Km sits at half of Vmax">
+        <path d="M34 144H312M34 144V12" stroke="#52525B" stroke-width="1.4" fill="none"></path>
+        <path d="M34 34H312" stroke="#A1A1AA" stroke-width="1" stroke-dasharray="4 4"></path>
+        <path d="M34 89H96V144" stroke="#996515" stroke-width="1.4" stroke-dasharray="4 4" fill="none"></path>
+        <path class="draw" d="M34 144C52 112 74 94 96 89C140 76 200 52 312 40" stroke="#0E7490" stroke-width="3" fill="none" stroke-linecap="round"></path>
+        <circle cx="96" cy="89" r="5" fill="#996515"></circle>
+        <g font-family="Inter, sans-serif" font-size="11" fill="#52525B">
+          <text x="272" y="28">Vmax</text>
+          <text x="2" y="93">½ Vmax</text>
+          <text x="88" y="160" fill="#7A4E0F" font-weight="700">Km</text>
+          <text x="236" y="160">substrate →</text>
+          <text x="40" y="20">speed</text>
+        </g>
+      </svg>
+      <figcaption style="font-size: 12px; color: #6B6B73; display: flex; align-items: center; gap: 6px">
+        <span style="font-weight: 700; color: #0B5568; background: #E3F1F5; border-radius: 6px; padding: 2px 6px">AI</span>Drawn from 14:02 and 16:40 of your lecture</figcaption>
+    </figure>
+
+    <div style="flex: 1"></div>
+    <div style="display: flex; gap: 10px; align-items: center">
+      <a href="Practice.dc.html" style="flex: 1; height: 52px; border-radius: 26px; background: #0E7490; color: #FFFFFF; font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: center; text-decoration: none">Quiz me on this</a>
+      <button style="height: 52px; padding: 0 14px; border: none; background: transparent; color: #52525B; font-size: 14px; font-weight: 600; font-family: Inter, sans-serif">Not right?</button>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

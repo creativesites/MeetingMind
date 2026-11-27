@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lesson: Enzyme kinetics</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0E7490}a:hover{color:#0B5568}
+@keyframes zfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.zfloat{animation:zfloat 3.2s ease-in-out infinite}
+.term{color:#18181B;text-decoration:underline;text-decoration-color:#0E7490;text-decoration-style:dotted;text-decoration-thickness:2px;text-underline-offset:4px;font-weight:600}
+</style>
+</helmet>
+<div style="width: 390px; height: 1500px; box-sizing: border-box; background: #FAFAF9; font-family: Inter, system-ui, sans-serif; color: #18181B; display: flex; flex-direction: column; position: relative; overflow: hidden">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 10px 0">
+    <a href="Main.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#18181B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></a>
+    <span style="font-size: 13px; font-weight: 600; color: #0E7490; font-family: 'JetBrains Mono', monospace">BIO 201 · Lecture 7</span>
+    <button aria-label="More" style="width: 44px; height: 44px; border: none; background: transparent; display: flex; align-items: center; justify-content: center">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="#18181B" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>
+  </div>
+
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 20px 0; gap: 12px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <h1 style="margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.1">Enzyme kinetics</h1>
+      <span style="font-size: 13px; color: #6B6B73">Tue 12 Nov · 1 h 14 min · 12 ideas</span>
+    </div>
+    <div class="zfloat" style="flex-shrink: 0">
+      <svg width="44" height="44" viewBox="0 0 100 100" aria-hidden="true">
+        <defs><radialGradient id="zl1" cx="36%" cy="30%" r="75%"><stop offset="0" stop-color="#A8E6F1"></stop><stop offset="0.5" stop-color="#1F9AB5"></stop><stop offset="1" stop-color="#0B5568"></stop></radialGradient></defs>
+        <g transform="rotate(-9 50 52)"><circle cx="50" cy="52" r="40" fill="url(#zl1)"></circle>
+        <ellipse cx="45" cy="49" rx="6" ry="8" fill="#151827"></ellipse><ellipse cx="66" cy="49" rx="6" ry="8" fill="#151827"></ellipse>
+        <circle cx="47" cy="46" r="2.2" fill="#FFFFFF"></circle><circle cx="68" cy="46" r="2.2" fill="#FFFFFF"></circle></g>
+      </svg>
+    </div>
+  </div>
+
+  <div style="margin: 18px 16px 0; background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <span style="font-size: 13px; font-weight: 600">The lecture, at a glance</span>
+      <span style="font-size: 12px; color: #996515; font-weight: 600; display: flex; align-items: center; gap: 4px">
+        <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 0l1.6 4.4 4.4 1.6-4.4 1.6-1.6 4.4-1.6-4.4-4.4-1.6 4.4-1.6z" fill="#996515"></path></svg>3 stressed moments</span>
+    </div>
+    <div style="position: relative; height: 64px">
+      <div style="display: flex; align-items: center; gap: 2px; height: 48px; position: absolute; left: 0; right: 0; top: 12px">
+        <sc-for list="{{ bars }}" as="b" hint-placeholder-count="58">
+          <span style="flex: 1; border-radius: 2px; height: {{ b.h }}px; background: {{ b.c }}"></span>
+        </sc-for>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 12 12" aria-hidden="true" style="position: absolute; left: 28px; top: 0"><path d="M6 0l1.6 4.4 4.4 1.6-4.4 1.6-1.6 4.4-1.6-4.4-4.4-1.6 4.4-1.6z" fill="#996515"></path></svg>
+      <svg width="16" height="16" viewBox="0 0 12 12" aria-hidden="true" style="position: absolute; left: 140px; top: 0"><path d="M6 0l1.6 4.4 4.4 1.6-4.4 1.6-1.6 4.4-1.6-4.4-4.4-1.6 4.4-1.6z" fill="#996515"></path></svg>
+      <svg width="16" height="16" viewBox="0 0 12 12" aria-hidden="true" style="position: absolute; left: 230px; top: 0"><path d="M6 0l1.6 4.4 4.4 1.6-4.4 1.6-1.6 4.4-1.6-4.4-4.4-1.6 4.4-1.6z" fill="#996515"></path></svg>
+      <span style="position: absolute; left: 123px; top: 6px; width: 2px; height: 58px; background: #18181B; border-radius: 1px"></span>
+      <span style="position: absolute; left: 118px; top: 2px; width: 12px; height: 12px; border-radius: 6px; background: #18181B"></span>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6B6B73">
+      <span>0:00</span><span style="color: #18181B">31:40 · Inhibition</span><span>1:14:02</span>
+    </div>
+  </div>
+
+  <div style="margin: 14px 16px 0; background: #E3F1F5; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <span style="font-size: 13px; font-weight: 700; color: #0B5568">In 30 seconds</span>
+      <button style="height: 34px; padding: 0 12px; border-radius: 17px; border: none; background: #0E7490; color: #FFFFFF; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; font-family: Inter, sans-serif">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="#FFFFFF" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>Hear it</button>
+    </div>
+    <p style="margin: 0; font-size: 15px; line-height: 1.55; color: #18181B">Enzymes speed reactions until every active site is busy. <span class="term">Km</span> tells you how much substrate it takes to reach half speed. Inhibitors slow things down in two different ways, and they leave different fingerprints on the graph.</p>
+  </div>
+
+  <div style="padding: 24px 20px 10px; display: flex; align-items: center; gap: 8px">
+    <svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 0l1.6 4.4 4.4 1.6-4.4 1.6-1.6 4.4-1.6-4.4-4.4-1.6 4.4-1.6z" fill="#996515"></path></svg>
+    <h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em">What your lecturer stressed</h2>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 16px">
+    <div style="background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start">
+      <button aria-label="Play from 14:02" style="flex-shrink: 0; height: 32px; padding: 0 10px; border-radius: 16px; border: 1px solid #E5E5E3; background: #FAFAF9; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #18181B; display: flex; align-items: center; gap: 5px">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="#18181B" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>14:02</button>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-size: 14px; line-height: 1.45; font-style: italic">"If you only remember one thing today, it's what Km actually means."</span>
+        <span style="font-size: 12px; color: #996515; font-weight: 600">Said it twice</span>
+      </div>
+    </div>
+    <div style="background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start">
+      <button aria-label="Play from 41:30" style="flex-shrink: 0; height: 32px; padding: 0 10px; border-radius: 16px; border: 1px solid #E5E5E3; background: #FAFAF9; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #18181B; display: flex; align-items: center; gap: 5px">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="#18181B" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>41:30</button>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-size: 14px; line-height: 1.45; font-style: italic">"Competitive versus non-competitive. This will be on the exam."</span>
+        <span style="font-size: 12px; color: #996515; font-weight: 600">Named the exam</span>
+      </div>
+    </div>
+    <div style="background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start">
+      <button aria-label="Play from 58:10" style="flex-shrink: 0; height: 32px; padding: 0 10px; border-radius: 16px; border: 1px solid #E5E5E3; background: #FAFAF9; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #18181B; display: flex; align-items: center; gap: 5px">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="#18181B" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>58:10</button>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-size: 14px; line-height: 1.45; font-style: italic">Drew the Lineweaver–Burk plot slowly, step by step.</span>
+        <span style="font-size: 12px; color: #996515; font-weight: 600">Slowed right down</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding: 28px 20px 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: baseline; gap: 10px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #0E7490">01</span>
+      <h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.015em">Michaelis–Menten</h2>
+    </div>
+    <p style="margin: 0; font-size: 16px; line-height: 1.65; color: #27272A">Reaction speed rises with <span class="term">substrate</span> concentration, then levels off at <span class="term">Vmax</span>, when every enzyme is busy. <span class="term">Km</span> is the concentration that gives half of Vmax. A low Km means the enzyme grabs its substrate easily.</p>
+  </div>
+
+  <div style="margin: 16px 16px 0; border: 1.5px dashed #0E7490; border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; background: #FFFFFF">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0E7490" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14"></path><path d="M12 17.2v.1"></path></svg>
+      <span style="font-size: 13px; font-weight: 700; color: #0B5568">Quick check</span>
+      <span style="font-size: 12px; color: #6B6B73">· 10 seconds</span>
+    </div>
+    <span style="font-size: 16px; font-weight: 600; line-height: 1.4">What does a low Km tell you about an enzyme?</span>
+    <div style="display: flex; gap: 8px">
+      <button style="height: 44px; padding: 0 18px; border-radius: 22px; border: none; background: #18181B; color: #FFFFFF; font-weight: 600; font-size: 14px; font-family: Inter, sans-serif">Reveal</button>
+      <button style="height: 44px; padding: 0 16px; border-radius: 22px; border: 1px solid #E5E5E3; background: #FFFFFF; color: #18181B; font-weight: 600; font-size: 14px; font-family: Inter, sans-serif; display: flex; align-items: center; gap: 6px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#18181B" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>Say it</button>
+    </div>
+  </div>
+
+  <div style="padding: 28px 20px 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: baseline; gap: 10px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #0E7490">02</span>
+      <h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.015em">Inhibition</h2>
+    </div>
+    <p style="margin: 0; font-size: 16px; line-height: 1.65; color: #27272A">A <span class="term">competitive inhibitor</span> sits in the active site, so more substrate can push it out. A <span class="term">non-competitive inhibitor</span> binds elsewhere and lowers Vmax however much substrate you add.</p>
+    <div style="display: flex; gap: 10px; align-items: flex-start; background: #F5F5F4; border-radius: 14px; padding: 10px 12px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#52525B" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8v.1"></path></svg>
+      <span style="font-size: 13px; line-height: 1.45; color: #52525B">Minutes 52–55 were hard to hear. Questions skip that part. <a href="#" style="font-weight: 600">Listen and fix</a></span>
+    </div>
+  </div>
+
+  <div style="flex: 1"></div>
+
+  <div style="position: absolute; left: 12px; right: 12px; bottom: 18px; height: 68px; background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 34px; box-shadow: 0 8px 24px rgba(24,24,27,0.10); display: flex; align-items: center; padding: 0 8px; gap: 6px">
+    <a href="Listen.dc.html" style="width: 76px; height: 52px; border-radius: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 600; color: #18181B; text-decoration: none">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#18181B" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2"></path><rect x="3" y="14" width="4" height="6" rx="1.5"></rect><rect x="17" y="14" width="4" height="6" rx="1.5"></rect></svg>Listen</a>
+    <a href="Practice.dc.html" style="flex: 1; height: 52px; border-radius: 26px; background: #0E7490; color: #FFFFFF; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 16px; text-decoration: none">Practice<span style="background: rgba(255,255,255,0.22); border-radius: 10px; padding: 2px 8px; font-size: 13px">8</span></a>
+    <a href="ConceptSheet.dc.html" style="width: 76px; height: 52px; border-radius: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 600; color: #18181B; text-decoration: none">
+      <svg width="22" height="22" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="#1F9AB5"></circle><ellipse cx="40" cy="48" rx="6" ry="8" fill="#151827"></ellipse><ellipse cx="60" cy="48" rx="6" ry="8" fill="#151827"></ellipse></svg>Ask</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const seq = [8,14,10,22,16,28,12,18,24,30,14,9,20,26,34,18,12,16,22,28,20,14,10,18,24,30,38,22,16,12,20,26,18,14,22,28,16,10,14,20,26,32,40,24,18,12,16,22,28,20,14,18,24,12,10,16,8,6];
+    const played = 21;
+    const stressed = { 6: true, 26: true, 42: true };
+    const bars = seq.map((h, i) => ({
+      h: h,
+      c: stressed[i] ? '#996515' : (i <= played ? '#0E7490' : '#D4E6EB')
+    }));
+    return { bars: bars };
+  }
+}
+</script>
+</body>
+</html>

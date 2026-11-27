@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Listen: lecture replay with read-along</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#5CC8DD}a:hover{color:#9BE1EE}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+@keyframes eq{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+.breathe{animation:breathe 4s ease-in-out infinite;transform-origin:center}
+.eq span{display:inline-block;transform-origin:bottom;animation:eq 1s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0C111B; font-family: Inter, system-ui, sans-serif; color: #F0F3F8; display: flex; flex-direction: column; position: relative; overflow: hidden">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 10px 0">
+    <a href="Lesson.dc.html" aria-label="Close player" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F0F3F8" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></a>
+    <div role="group" aria-label="Voice" style="display: flex; background: #192434; border-radius: 18px; padding: 3px">
+      <button aria-pressed="true" style="height: 30px; padding: 0 12px; border-radius: 15px; border: none; background: #F0F3F8; color: #0C111B; font-size: 12px; font-weight: 700; font-family: Inter, sans-serif">Lecturer</button>
+      <button aria-pressed="false" style="height: 30px; padding: 0 12px; border-radius: 15px; border: none; background: transparent; color: #B7C0CF; font-size: 12px; font-weight: 600; font-family: Inter, sans-serif">Read to Me</button>
+    </div>
+    <button aria-label="Voice and speed options" style="width: 44px; height: 44px; border: none; background: transparent; display: flex; align-items: center; justify-content: center">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F0F3F8" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg></button>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 12px; padding: 14px 22px 0">
+    <div class="breathe">
+      <svg width="48" height="48" viewBox="0 0 100 100" aria-hidden="true">
+        <defs><radialGradient id="zr1" cx="36%" cy="30%" r="75%"><stop offset="0" stop-color="#C6F0F7"></stop><stop offset="0.5" stop-color="#5CC8DD"></stop><stop offset="1" stop-color="#1F7F95"></stop></radialGradient></defs>
+        <circle cx="50" cy="50" r="40" fill="url(#zr1)"></circle>
+        <path d="M34 56q6 4 12 0M56 56q6 4 12 0" stroke="#151827" stroke-width="4" fill="none" stroke-linecap="round"></path>
+        <path d="M28 76h44l-4 8H32z" fill="#F0F3F8" opacity="0.9"></path><path d="M50 76v8" stroke="#1F7F95" stroke-width="1.5"></path>
+      </svg>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-size: 12px; color: #8995A8; font-family: 'JetBrains Mono', monospace">BIO 201 · Lecture 7 · 02 Inhibition</span>
+      <span style="font-size: 16px; font-weight: 700">Enzyme kinetics</span>
+    </div>
+  </div>
+
+  <div style="flex: 1; padding: 26px 24px 0; display: flex; flex-direction: column; gap: 18px; overflow: hidden">
+    <p style="margin: 0; font-size: 20px; line-height: 1.55; color: #536176">So if you flood the system with substrate, what happens to the inhibitor?</p>
+    <p style="margin: 0; font-size: 24px; line-height: 1.5; font-weight: 600; color: #F0F3F8"><span style="color: #8995A8; font-weight: 500">It gets pushed out. </span><span style="background: rgba(92,200,221,0.16); border-radius: 6px; box-shadow: 0 0 0 4px rgba(92,200,221,0.16); color: #FFFFFF">A competitive inhibitor sits in the active site, so enough substrate wins the seat back.</span></p>
+    <p style="margin: 0; font-size: 20px; line-height: 1.55; color: #8995A8">That's why Vmax doesn't change. Only the apparent Km goes up.</p>
+    <div style="display: flex; gap: 10px; align-items: center; background: #192434; border-radius: 16px; padding: 10px 12px; align-self: flex-start">
+      <svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 0l1.6 4.4 4.4 1.6-4.4 1.6-1.6 4.4-1.6-4.4-4.4-1.6 4.4-1.6z" fill="#E0B25A"></path></svg>
+      <span style="font-size: 13px; color: #F0CD87; font-weight: 600">Stressed moment in 9 s</span>
+    </div>
+  </div>
+
+  <div style="padding: 0 22px 30px; display: flex; flex-direction: column; gap: 16px; background: #0C111B">
+    <div style="position: relative; height: 34px">
+      <div style="display: flex; align-items: center; gap: 2px; height: 26px; position: absolute; left: 0; right: 0; top: 8px">
+        <sc-for list="{{ bars }}" as="b" hint-placeholder-count="64">
+          <span style="flex: 1; border-radius: 2px; height: {{ b.h }}px; background: {{ b.c }}"></span>
+        </sc-for>
+      </div>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8995A8; margin-top: -8px">
+      <span>41:21</span><span>−32:41</span>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <button style="width: 56px; height: 44px; border-radius: 22px; border: 1px solid #2A3749; background: transparent; color: #F0F3F8; font-size: 14px; font-weight: 700; font-family: Inter, sans-serif">1.25×</button>
+      <button aria-label="Back 15 seconds" style="width: 52px; height: 52px; border: none; background: transparent; display: flex; align-items: center; justify-content: center">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#F0F3F8" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"></path><path d="M4 4v4h4"></path><text x="8.2" y="15" font-size="6.5" fill="#F0F3F8" stroke="none" font-family="Inter, sans-serif" font-weight="700">15</text></svg></button>
+      <button aria-label="Pause" style="width: 76px; height: 76px; border-radius: 38px; border: none; background: #5CC8DD; display: flex; align-items: center; justify-content: center">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="#0C111B" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg></button>
+      <button aria-label="Forward 15 seconds" style="width: 52px; height: 52px; border: none; background: transparent; display: flex; align-items: center; justify-content: center">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#F0F3F8" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7"></path><path d="M20 4v4h-4"></path><text x="8.2" y="15" font-size="6.5" fill="#F0F3F8" stroke="none" font-family="Inter, sans-serif" font-weight="700">15</text></svg></button>
+      <button aria-label="Next stressed moment" style="width: 56px; height: 44px; border-radius: 22px; border: 1px solid #2A3749; background: transparent; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 0l1.6 4.4 4.4 1.6-4.4 1.6-1.6 4.4-1.6-4.4-4.4-1.6 4.4-1.6z" fill="#E0B25A"></path></svg></button>
+    </div>
+    <div style="display: flex; justify-content: center; gap: 18px; font-size: 13px; color: #B7C0CF">
+      <span style="display: flex; align-items: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B7C0CF" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10z"></path></svg>Stop at end of section</span>
+      <span style="display: flex; align-items: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B7C0CF" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"></path></svg>Quiz me after</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const bars = [];
+    for (let i = 0; i < 64; i++) {
+      const h = 6 + Math.round(Math.abs(Math.sin(i * 1.7) * 14 + Math.cos(i * 0.6) * 6));
+      const stressed = i === 7 || i === 36 || i === 50;
+      bars.push({ h: Math.min(h, 26), c: stressed ? '#E0B25A' : (i <= 35 ? '#5CC8DD' : '#2A3749') });
+    }
+    return { bars: bars };
+  }
+}
+</script>
+</body>
+</html>
