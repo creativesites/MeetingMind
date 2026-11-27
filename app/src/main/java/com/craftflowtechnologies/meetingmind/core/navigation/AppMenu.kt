@@ -34,7 +34,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.LocalFlorist
 import androidx.compose.material.icons.rounded.RecordVoiceOver
-import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.EmojiObjects
 import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material.icons.rounded.Extension
@@ -282,7 +282,7 @@ private fun iconFor(icon: MenuIcon): ImageVector = when (icon) {
     MenuIcon.JOURNAL -> Icons.Rounded.EditNote
     MenuIcon.GARDEN -> Icons.Rounded.LocalFlorist
     MenuIcon.LANTERN -> Icons.Rounded.RecordVoiceOver
-    MenuIcon.SKY -> Icons.Rounded.AutoAwesome
+    MenuIcon.SKY -> Icons.Rounded.NightsStay
     MenuIcon.SEED_JAR -> Icons.Rounded.EmojiObjects
     MenuIcon.PRACTICES -> Icons.Rounded.Spa
     MenuIcon.NOTES -> Icons.AutoMirrored.Rounded.Notes

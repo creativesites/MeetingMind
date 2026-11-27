@@ -39,7 +39,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Church
@@ -318,7 +318,7 @@ private fun Benefits() {
 }
 
 private fun benefitIcon(capability: Capability?): ImageVector = when (capability) {
-    Capability.MANAGED_CLOUD_AI -> Icons.Filled.AutoAwesome
+    Capability.MANAGED_CLOUD_AI -> Icons.Filled.CloudQueue
     Capability.BYOK_KEY -> Icons.Filled.Key
     Capability.CONNECTED_INTEGRATIONS -> Icons.Filled.Hub
     Capability.AUTOMATION_RECIPES -> Icons.Filled.Bolt

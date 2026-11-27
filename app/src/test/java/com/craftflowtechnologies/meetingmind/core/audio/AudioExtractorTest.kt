@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -193,7 +194,9 @@ class AudioExtractorTest {
         startSignal.await()
         assertTrue("Partial file should exist during extraction", extractedFileRef?.exists() == true)
 
-        job.cancel()
+        // The clean-up runs on the extractor's real IO dispatcher, so wait for the cancelled job to
+        // finish rather than only advancing the test clock (which raced with that thread).
+        job.cancelAndJoin()
         advanceUntilIdle()
 
         assertFalse("Partial file must be deleted upon cancellation", extractedFileRef?.exists() == true)

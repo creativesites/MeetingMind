@@ -33,7 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Mic
@@ -144,7 +144,7 @@ private fun Header(state: PersonalUiState, p: GardenPalette, onOpenSky: () -> Un
             Modifier.size(48.dp).clip(CircleShape).background(p.glass).border(1.dp, p.glassLine, CircleShape)
                 .clickable(role = Role.Button, onClickLabel = stringResource(R.string.garden_sky_open_label), onClick = onOpenSky).testTag("personal_open_sky"),
             contentAlignment = Alignment.Center
-        ) { Icon(Icons.Outlined.AutoAwesome, contentDescription = stringResource(R.string.garden_sky_description), tint = p.ink, modifier = Modifier.size(22.dp)) }
+        ) { Icon(Icons.Outlined.NightsStay, contentDescription = stringResource(R.string.garden_sky_description), tint = p.ink, modifier = Modifier.size(22.dp)) }
         Spacer(Modifier.width(8.dp))
         Box(Modifier.size(48.dp).clip(CircleShape).background(p.glass).border(1.dp, p.glassLine, CircleShape), contentAlignment = Alignment.Center) {
             menuButton(p.ink)
