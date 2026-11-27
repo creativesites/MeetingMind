@@ -25,15 +25,25 @@ class SkyPatternsTest {
     }
 
     @Test fun `most often on weekdays when at least sixty percent fall on weekdays`() {
-        val lines = SkyPatterns.lines("Inbox", inboxDays, utc)
+        // Spread across the day, so only the days make a pattern.
+        val days = listOf(at(2026, 11, 3, 8), at(2026, 11, 4, 13), at(2026, 11, 5, 19), at(2026, 11, 6, 8), at(2026, 11, 9, 13))
+        val lines = SkyPatterns.lines("Inbox", days, utc)
         assertTrue(lines.contains("Most often on weekdays."))
         assertFalse(lines.any { it.contains("weekends") })
+    }
+
+    @Test fun `days and time of day make one line, not two`() {
+        val lines = SkyPatterns.lines("Inbox", inboxDays, utc)
+        assertEquals(listOf("You've mentioned inbox in 5 reflections since 3 November.", "Most often on weekday evenings."), lines)
     }
 
     @Test fun `most often at weekends when the weekend share is high`() {
         // 2026-11-07 and 2026-11-08 are a Saturday and a Sunday; a third on a Sunday the week after.
         val weekend = listOf(at(2026, 11, 7, 10), at(2026, 11, 8, 10), at(2026, 11, 14, 10))
-        assertTrue(SkyPatterns.lines("Rest", weekend, utc).contains("Most often at weekends."))
+        // All at ten in the morning, so the days and the time make one line.
+        assertTrue(SkyPatterns.lines("Rest", weekend, utc).contains("Most often on weekend mornings."))
+        val spread = listOf(at(2026, 11, 7, 8), at(2026, 11, 8, 14), at(2026, 11, 14, 20))
+        assertTrue(SkyPatterns.lines("Rest", spread, utc).contains("Most often at weekends."))
     }
 
     @Test fun `no day line when the days are split evenly`() {
@@ -43,7 +53,9 @@ class SkyPatternsTest {
     }
 
     @Test fun `most often in the evening when at least sixty percent fall in the evening`() {
-        val lines = SkyPatterns.lines("Inbox", inboxDays, utc)
+        // Evenings, split evenly between weekdays and the weekend, so only the time makes a pattern.
+        val evenings = listOf(at(2026, 11, 3, 19), at(2026, 11, 7, 20), at(2026, 11, 4, 21), at(2026, 11, 8, 19))
+        val lines = SkyPatterns.lines("Inbox", evenings, utc)
         assertTrue(lines.contains("Most often in the evening."))
     }
 

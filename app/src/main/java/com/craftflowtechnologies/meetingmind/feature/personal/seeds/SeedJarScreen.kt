@@ -122,6 +122,28 @@ private fun IdeasLayout(
         }
         Column(Modifier.fillMaxWidth().heightIn(min = 240.dp).background(p.soil).padding(horizontal = 20.dp, vertical = 16.dp)) {
             SeedTabs(state, onTab)
+            // Every idea in the jar, newest first: tap to hold it up in the jar's card, or open it.
+            Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.ideas.forEach { idea -> IdeaRow(idea, onSelectIdea, onOpenNote) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdeaRow(idea: SeedIdeaUi, onSelect: (String) -> Unit, onOpen: (String) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(18.dp))
+            .background(GardenColors.SoilGlass).border(1.dp, GardenColors.SoilLine, RoundedCornerShape(18.dp))
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.seeds_open)) { onSelect(idea.id); onOpen(idea.id) }
+            .padding(horizontal = 16.dp, vertical = 10.dp).testTag("seeds_idea_${idea.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(GardenColors.Gold))
+        Column(Modifier.weight(1f)) {
+            Text(idea.title, color = GardenColors.SoilInk, fontFamily = InterFamily, fontWeight = FontWeight.Medium, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(dateLabel(idea.createdAt), color = GardenColors.SoilInkSoft, fontFamily = InterFamily, fontSize = 12.sp)
         }
     }
 }

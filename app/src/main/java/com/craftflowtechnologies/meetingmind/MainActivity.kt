@@ -802,6 +802,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 }
             }
         }
+        composable(Routes.PERSONAL_SEEDS) {
+            com.craftflowtechnologies.meetingmind.feature.personal.seeds.SeedJarHost(
+                onBack = { navController.popBackStack() },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onCaptureIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) }
+            )
+        }
         composable(Routes.PERSONAL_SKY) {
             com.craftflowtechnologies.meetingmind.feature.personal.sky.SkyHost(
                 onBack = { navController.popBackStack() },

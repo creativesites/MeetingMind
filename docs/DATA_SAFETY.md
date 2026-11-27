@@ -108,6 +108,10 @@ from any UI). Either wire it up behind an explicit, clearly-labeled opt-in toggl
 remove it, before shipping a build where the Data Safety form claims anything about cloud sync.
 Until then, this file's "not wired to any UI" note must stay accurate.
 
+## Personal ("Your garden") — what leaves the phone
+- **Nothing new.** Answers to the day's question are private Journal recordings and follow the same transcription and processing rules as any other recording. Practices, kept days, the seed jar and the sky's themes are computed and stored on the phone.
+- **Zuri's read** (Your sky, a paid feature) runs only on the phone's own language model. Reflections are private notes, so this read has no cloud route; without an on-device model it is not available.
+
 ## Read to Me (text to speech) — what leaves the phone
 
 Added with the Read to Me feature (plan: `docs/mvp/READ_TO_ME_PLAN.md`). This section is the accurate description for the Data Safety form; the older sections above predate it.

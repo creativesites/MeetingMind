@@ -2,15 +2,24 @@
 
 Updated: 2026-11-27. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
-## Personal becomes "Your garden" (2026-11-27, branch `ccr-4eced482-bn5f1l`)
-- **Design:** the founder chose the garden concept (design canvas "MeetingMind: Personal vertical redesign", page "Your garden (new)").
-- **Built:**
-  - Personal has a home of its own (`feature/personal/`): a painted scene that follows the clock (dawn, day, dusk, night), the day's question with "Light the lantern" (records a private Journal titled with the question; "Write instead" is the quiet button), practices drawn as plants, and the seed jar.
-  - Light and dark: `ui/theme/GardenColors.kt` paints every time of day for both themes; in the dark theme no phase is a bright sky (tested).
-  - Practices (`core/practice/`, schema 32, `375f8af1`): a practice is also a repeating PRACTICE task, so it shows in Tasks; ticking it there logs the day. Plants grow by kept days, rest when untended, never die. No streaks anywhere.
-  - Navigation: Personal claims a bottom-bar place like Work, Learning and Faith (Personal only: Personal, Tasks); the Today "Your spaces" card opens the garden instead of a blank note; "Your garden" leads the menu's Personal section.
-- **Tests (2026-11-27, this machine):** 183 run, all pass except `DesignSystemGuardTest` on `AiCraft.kt`, which predates this. Garden screenshots in `src/test/screenshots/personal/` (four times of day and empty, light and dark, both sheets), reviewed.
-- **Open:** not checked on the S20+; the reflection prompt is generic only (no AI follow-up yet); next phases from the canvas: the lantern recording screen, Your sky (patterns across reflections), seed packets from talk notes ("Plant it" from a note), the seed jar sorting screen, the Today window tile. New strings are inline English (for the i18n session).
+## Personal: "Your garden", complete (2026-11-27, branch `ccr-4eced482-bn5f1l`)
+- **What it is:** Personal has its own home and bar place. Design: canvas "MeetingMind: Personal vertical redesign", page "Your garden (new)".
+- **Screens (all in `feature/personal/`):**
+  - **Garden** (`PersonalHomeScreen`): a painted scene that follows the clock (dawn, day, dusk, night) in both themes; the day's question; practices as plants; Seed jar and Practices tiles; seed packets; "Notes from a talk or video". Header: Your sky and the app menu.
+  - **Lantern** (`lantern/`): answer the question out loud. A private one-speaker Journal recording on the normal recording service, then processing. After 40 s a fixed, local follow-up question (never AI). "Type instead" for the first 10 s.
+  - **Practices** (`PracticesScreen`): growing, part of you now, let go (folded, with Plant again). Adjust rhythm and nudge without losing kept days.
+  - **Seed jar** (`seeds/`): ideas in a jar and as a list; "To sort" offers a home for untyped memos (keyword suggestion, only spaces the person uses). Nothing moves until the person chooses.
+  - **Your sky** (`sky/`): reflections (Journal, Reflection, Gratitude) as stars; themes found on the phone join into constellations with a plain pattern line.
+  - **Today**: an arched window onto the garden replaces the tile that was labelled Personal but showed the calendar.
+- **Data:** practices are schema 32 (`375f8af1`). Each practice is also a repeating PRACTICE task, so it shows in Tasks; ticking it there keeps the day. No streaks anywhere; untended plants rest, never die.
+- **Plant from anywhere:** "Try this week" lines of talk and how-to notes become seed packets on the garden; any note line can be planted from its block menu ("Plant it in your garden…").
+- **Tiers:** everything is free except **Zuri's read** in Your sky, which uses `Capability.DEEP_SYNTHESIS` (Pro, BYOK, Church, or closed testing). It runs **on the phone's own model only**, because reflections are private notes; with no on-device model it offers Setup. The paywall's Personal line promises only free features; the synthesis row names Zuri's read.
+- **Menu:** Personal lists Your garden, Answer today's question, Practices, Seed jar, Your sky, Notes from a talk or video, Journal, Capture an idea.
+- **Tests (2026-11-27, this machine):** 478 in the Personal, navigation, Today, tasks, migration and guard set; all pass except `DesignSystemGuardTest` on `AiCraft.kt`, which predates this. Screenshots in `src/test/screenshots/personal/` (garden by time of day, lantern, practices, packets, window, sky, seed jar; light and dark), reviewed.
+- **Open:**
+  - not checked on the S20+: the lantern recording end to end, reminders for practices, the garden's animation cost;
+  - pure-Kotlin labels (questions, rhythm names, plant tags, sky pattern lines) are English only; screen text is in `strings_personal*.xml`;
+  - Gratitude and Reflection are still Faith workflows, so a Personal-only person counts Journal answers as lights but can't pick those two in the recorder.
 - **Build notes for cloud sessions:** Android SDK at `/home/user/android-sdk` (needs `dl.google.com`, allowed in the "MeetingMind" environment); Gradle needs `--no-configuration-cache` here; Maven Central sometimes answers 429, so retry after a minute.
 
 ## Release v51 for closed testing (2026-11-21)
