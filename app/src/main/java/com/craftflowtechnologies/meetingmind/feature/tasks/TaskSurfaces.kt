@@ -129,6 +129,8 @@ private fun kindColor(kind: TaskKind): Color = when (kind) {
     TaskKind.APPLY -> FaithGold
     TaskKind.PRAYER -> Danger
     TaskKind.FOLLOW_UP -> Success
+    // Minimal branch so the new kind compiles; the Your garden UI owns its real colour.
+    TaskKind.PRACTICE -> Success
 }
 
 @Composable

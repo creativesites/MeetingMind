@@ -5,6 +5,7 @@ import com.craftflowtechnologies.meetingmind.core.database.NotebookEntity
 import com.craftflowtechnologies.meetingmind.core.database.NotePersonCrossRef
 import com.craftflowtechnologies.meetingmind.core.database.PeopleDao
 import com.craftflowtechnologies.meetingmind.core.database.PersonEntity
+import com.craftflowtechnologies.meetingmind.core.database.PracticeDayEntity
 import com.craftflowtechnologies.meetingmind.core.database.TaskDao
 import com.craftflowtechnologies.meetingmind.core.database.TaskEntity
 import com.craftflowtechnologies.meetingmind.core.database.TaskLabelEntity
@@ -26,7 +27,9 @@ enum class TaskKind(val label: String) {
     /** Something to do because of a sermon or study — "Apply this". */
     APPLY("Apply"),
     PRAYER("Prayer"),
-    FOLLOW_UP("Follow up")
+    FOLLOW_UP("Follow up"),
+    /** A practice from Your garden. Ticking it logs a kept day (see [TaskRepository.toggleDone]). */
+    PRACTICE("Practice")
 }
 
 enum class TaskRepeat(val label: String) { NONE("Doesn't repeat"), DAILY("Every day"), WEEKLY("Every week"), MONTHLY("Every month") }
@@ -225,6 +228,11 @@ class TaskRepository(
             else -> TaskRules.nextOccurrence(task) ?: task.copy(doneAt = now)
         }.copy(updatedAt = now)
         tasks.upsert(next.toEntity(deletedAt = existing.deletedAt))
+        // A practice is kept for the day it was ticked. Reopening does not un-keep it, and a second
+        // tick the same day is ignored by the table's key.
+        if (!task.done && task.kind == TaskKind.PRACTICE) {
+            tasks.insertPracticeDay(PracticeDayEntity(task.sourceItemId ?: task.id, dayOf(now).toString(), now))
+        }
         next
     }.also { onRemindersChanged(); if (it != null) onTaskDone(it.id, it.done) }
 
@@ -323,6 +331,9 @@ class TaskRepository(
 
     private fun startOfDayPlus(days: Long): Long =
         Instant.ofEpochMilli(clock()).atZone(zone).toLocalDate().plusDays(days).atStartOfDay(zone).toInstant().toEpochMilli()
+
+    /** The local calendar day a timestamp falls on, in this repository's zone. */
+    private fun dayOf(ms: Long): LocalDate = Instant.ofEpochMilli(ms).atZone(zone).toLocalDate()
 
     suspend fun delete(id: String) { io { tasks.setDeleted(id, clock()) }; onRemindersChanged() }
     suspend fun restore(id: String) { io { tasks.setDeleted(id, null) }; onRemindersChanged() }

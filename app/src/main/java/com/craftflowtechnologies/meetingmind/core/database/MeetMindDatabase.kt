@@ -64,7 +64,9 @@ import androidx.room.migration.Migration
         TaskLabelLinkEntity::class,
         TaskFtsEntity::class,
         DocumentPageEntity::class,
-        DocumentPageFtsEntity::class
+        DocumentPageFtsEntity::class,
+        PracticeEntity::class,
+        PracticeDayEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -110,6 +112,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun activityAttemptDao(): ActivityAttemptDao
     abstract fun reviewScheduleDao(): ReviewScheduleDao
     abstract fun learningGoalDao(): LearningGoalDao
+    abstract fun practiceDao(): PracticeDao
 
     companion object {
         @Volatile
@@ -756,8 +759,24 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "ALTER TABLE `item_evidence` ADD COLUMN `boxJson` TEXT"
         )
 
+        /**
+         * Schema 32 (Your garden): practices, and the days they were kept. Additive only; no existing
+         * table changes. A practice's repeating task is linked by its sourceItemId, not a foreign key.
+         */
+        val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_31_32_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_31_32_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `practices` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `sourceNoteId` TEXT, `sourceTitle` TEXT, `taskId` TEXT, `rhythm` TEXT NOT NULL, `remindMinutes` INTEGER, `checkInWeeks` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, `checkInAt` INTEGER, `state` TEXT NOT NULL, `endedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `practice_days` (`practiceId` TEXT NOT NULL, `day` TEXT NOT NULL, `keptAt` INTEGER NOT NULL, PRIMARY KEY(`practiceId`, `day`))",
+            "CREATE INDEX IF NOT EXISTS `index_practice_days_practiceId` ON `practice_days` (`practiceId`)"
+        )
+
         /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
-        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31)
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32)
 
         internal val MIGRATION_21_22_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -921,7 +940,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 31
+        const val VERSION = 32
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {

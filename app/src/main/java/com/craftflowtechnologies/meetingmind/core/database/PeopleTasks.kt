@@ -363,6 +363,10 @@ interface TaskDao {
 
     @Query("SELECT COUNT(*) FROM task_label_links WHERE labelId = :labelId")
     suspend fun labelUseCount(labelId: String): Int
+
+    /** Logs a kept day for a practice (schema 32). A second tick on the same day is ignored. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertPracticeDay(day: PracticeDayEntity): Long
 }
 
 data class NoteHit(val id: String, val title: String, val workflow: String, val updatedAt: Long, val snippet: String)
