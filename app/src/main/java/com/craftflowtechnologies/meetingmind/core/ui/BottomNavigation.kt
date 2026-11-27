@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,9 +25,22 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Church
+import androidx.compose.material.icons.filled.LocalFlorist
+import androidx.compose.material.icons.outlined.LocalFlorist
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Church
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.runtime.remember
+import com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity
+import com.craftflowtechnologies.meetingmind.core.navigation.BarConfig
+import com.craftflowtechnologies.meetingmind.core.navigation.BarSlot
+import com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.runtime.compositionLocalOf
@@ -41,11 +55,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
@@ -54,22 +70,23 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 
 /**
- * The app's four primary destinations, plus New.
+ * The bar's destinations: Today and Notes, the New action, then two places that follow the
+ * person's spaces ([BarConfig]): Work, Learn, Faith, Tasks or Search.
  *
- * New is a filled action between the tabs, not a fifth destination: it opens the Create sheet,
- * where Record comes first, then a written note, photos and import (docs/PLAN_V1.md §2). The AI
- * Engine lives under Settings; it is something set up once, not somewhere people go daily.
+ * New is a filled action between the tabs, not a destination: it opens the Create sheet, where
+ * Record comes first, then a written note, photos and import (docs/PLAN_V1.md §2). Settings is the
+ * last place in the bar (founder, 2026-11-18), and is also in the app menu from the avatar.
  */
 enum class BottomNavDestination {
     HOME, NOTES, NEW, SEARCH, SETTINGS,
-    /** No tab is current (a screen reached from elsewhere, such as Search when its slot holds Work). */
+    WORK, LEARN, FAITH, PERSONAL, TASKS,
+    /** No tab is current (a screen reached from elsewhere, such as Settings). */
     NONE
 }
 
 /**
- * What the fourth slot is (docs/PLAN_PROFESSIONAL.md §7.4). Search, unless the person put Work
- * there; it is the same destination either way, so tags and the route table are unchanged, and
- * the route it opens is chosen by [TabSlots.route].
+ * The old Work-or-Search choice for the fourth slot (docs/PLAN_PROFESSIONAL.md §7.4). The bar now
+ * follows the person's spaces ([BarConfig]); this is kept for screens that still read it.
  */
 val LocalTabSlot = compositionLocalOf { TabSlot.SEARCH }
 
@@ -89,14 +106,33 @@ private data class NavItem(
     val isAction: Boolean = false
 )
 
-private fun navItems(slot: TabSlot) = listOf(
-    NavItem(BottomNavDestination.HOME, "Home", Icons.Filled.Home, Icons.Outlined.Home),
-    NavItem(BottomNavDestination.NOTES, "Notes", Icons.AutoMirrored.Filled.Notes, Icons.AutoMirrored.Outlined.Notes),
-    NavItem(BottomNavDestination.NEW, "New", Icons.Filled.Add, Icons.Filled.Add, isAction = true),
-    if (slot == TabSlot.WORK) NavItem(BottomNavDestination.SEARCH, TabSlots.label(slot), Icons.Filled.Work, Icons.Outlined.Work)
-    else NavItem(BottomNavDestination.SEARCH, TabSlots.label(slot), Icons.Filled.Search, Icons.Outlined.Search),
-    NavItem(BottomNavDestination.SETTINGS, "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
-)
+private fun slotItem(slot: BarSlot): NavItem = when (slot) {
+    BarSlot.WORK -> NavItem(BottomNavDestination.WORK, "Work", Icons.Filled.Work, Icons.Outlined.Work)
+    BarSlot.LEARN -> NavItem(BottomNavDestination.LEARN, "Learn", Icons.Filled.School, Icons.Outlined.School)
+    BarSlot.FAITH -> NavItem(BottomNavDestination.FAITH, "Faith", Icons.Filled.Church, Icons.Outlined.Church)
+    BarSlot.PERSONAL -> NavItem(BottomNavDestination.PERSONAL, "Personal", Icons.Filled.LocalFlorist, Icons.Outlined.LocalFlorist)
+    BarSlot.TASKS -> NavItem(BottomNavDestination.TASKS, "Tasks", Icons.Filled.TaskAlt, Icons.Outlined.TaskAlt)
+    BarSlot.SEARCH -> NavItem(BottomNavDestination.SEARCH, "Search", Icons.Filled.Search, Icons.Outlined.Search)
+}
+
+/** The places after New, for the person's spaces and Home. */
+@Composable
+fun rememberBarSlots(): List<BarSlot> {
+    val identity = LocalAppIdentity.current
+    val home = LocalAppearance.current.homeStyle
+    return remember(identity.spaces, identity.faithFirst, home) { BarConfig.slots(identity, home) }
+}
+
+@Composable
+private fun navItems(slots: List<BarSlot>) = listOf(
+    NavItem(BottomNavDestination.HOME, stringResource(R.string.nav_today), Icons.Filled.Home, Icons.Outlined.Home),
+    NavItem(BottomNavDestination.NOTES, stringResource(R.string.nav_notes), Icons.AutoMirrored.Filled.Notes, Icons.AutoMirrored.Outlined.Notes),
+    NavItem(BottomNavDestination.NEW, "New", Icons.Filled.Add, Icons.Filled.Add, isAction = true)
+) + slots.map(::slotItem) +
+    NavItem(BottomNavDestination.SETTINGS, stringResource(R.string.nav_settings), Icons.Filled.Settings, Icons.Outlined.Settings)
+
+/** Below this width the bar's six items do not fit with New's label, so New shows only its icon. */
+private val COMPACT_BAR_WIDTH = 380.dp
 
 /**
  * A floating pill navigation bar.
@@ -119,7 +155,7 @@ fun AppBottomNavigationBar(
     onNavigate: (BottomNavDestination) -> Unit,
     showNewAction: Boolean = true
 ) {
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
@@ -127,6 +163,7 @@ fun AppBottomNavigationBar(
             .padding(top = 4.dp, bottom = 8.dp),
         contentAlignment = Alignment.Center
     ) {
+        val compact = maxWidth < COMPACT_BAR_WIDTH
         Surface(
             shape = RoundedCornerShape(percent = 50),
             color = SurfaceBase,
@@ -137,11 +174,11 @@ fun AppBottomNavigationBar(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
             ) {
-                navItems(LocalTabSlot.current).forEach { item ->
+                navItems(rememberBarSlots()).forEach { item ->
                     when {
-                        item.isAction -> if (showNewAction) NewAction { onNavigate(BottomNavDestination.NEW) }
+                        item.isAction -> if (showNewAction) NewAction(compact) { onNavigate(BottomNavDestination.NEW) }
                         item.destination == current -> ActiveNavChip(item)
                         else -> InactiveNavIcon(item, onNavigate)
                     }
@@ -152,7 +189,7 @@ fun AppBottomNavigationBar(
 }
 
 @Composable
-private fun NewAction(onClick: () -> Unit) {
+private fun NewAction(compact: Boolean, onClick: () -> Unit) {
     // The one action on every screen reflects the person's chosen accent without competing with
     // the selected destination chip.
     Surface(
@@ -167,7 +204,7 @@ private fun NewAction(onClick: () -> Unit) {
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 14.dp)
+            modifier = Modifier.padding(horizontal = if (compact) 12.dp else 14.dp)
         ) {
             Icon(
                 imageVector = Icons.Filled.Add,
@@ -175,14 +212,16 @@ private fun NewAction(onClick: () -> Unit) {
                 tint = OnAccent,
                 modifier = Modifier.size(19.dp)
             )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = "New",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = (-0.1).sp,
-                color = OnAccent
-            )
+            if (!compact) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "New",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = (-0.1).sp,
+                    color = OnAccent
+                )
+            }
         }
     }
 }
@@ -225,7 +264,7 @@ private fun InactiveNavIcon(item: NavItem, onNavigate: (BottomNavDestination) ->
     IconButton(
         onClick = { onNavigate(item.destination) },
         modifier = Modifier
-            .size(44.dp)
+            .size(42.dp)
             .testTag(item.destination.testTag())
     ) {
         Icon(

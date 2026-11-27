@@ -227,6 +227,49 @@ class AskMeetingUseCase(
         return aiResponse
     }
 
+    fun invokeStream(
+        meetingId: String,
+        question: String,
+        userName: String? = null,
+        recordingType: com.craftflowtechnologies.meetingmind.core.model.RecordingType? = null
+    ): kotlinx.coroutines.flow.Flow<com.craftflowtechnologies.meetingmind.ai.llm.AskStreamEvent> = kotlinx.coroutines.flow.flow {
+        val transcript = transcriptRepository.getTranscriptDirect(meetingId)
+        val userMsg = ChatMessage(
+            id = UUID.randomUUID().toString(),
+            meetingId = meetingId,
+            isUser = true,
+            content = question,
+            timestamp = System.currentTimeMillis()
+        )
+        transcriptRepository.saveChatMessage(userMsg)
+
+        val speakers = transcriptRepository.getSpeakersDirect(meetingId)
+        val relevantSegments = retriever.retrieve(transcript.segments, question, speakers).map { it.segment }
+        val relevantVocabulary = vocabularyRepository?.findRelevantTerms(question) ?: emptyList()
+        val personalization = com.craftflowtechnologies.meetingmind.core.model.AskPersonalizationContext(userName, relevantVocabulary, recordingType)
+
+        pipelineIntelligence.askMeetingStream(question, transcript, relevantSegments, personalization).collect { ev ->
+            when (ev) {
+                is com.craftflowtechnologies.meetingmind.ai.llm.AskStreamEvent.Partial -> emit(ev)
+                is com.craftflowtechnologies.meetingmind.ai.llm.AskStreamEvent.Complete -> {
+                    val finalMsg = when (val r = ev.result) {
+                        is AiResult.Success -> r.value
+                        else -> ChatMessage(
+                            id = UUID.randomUUID().toString(),
+                            meetingId = meetingId,
+                            isUser = false,
+                            content = r.describeFailure()
+                                ?: "Ask Meeting is unavailable: no local meeting intelligence model is installed.",
+                            timestamp = System.currentTimeMillis()
+                        )
+                    }
+                    transcriptRepository.saveChatMessage(finalMsg)
+                    emit(com.craftflowtechnologies.meetingmind.ai.llm.AskStreamEvent.Complete(AiResult.Success(finalMsg)))
+                }
+            }
+        }
+    }
+
 }
 
 class SearchMeetingsUseCase(

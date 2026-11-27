@@ -30,7 +30,12 @@ data class UnveilTicket(
 ) {
     init { require(noteId.isNotBlank()) { "A ticket needs a note id" } }
 
-    fun isValid(nowMs: Long): Boolean = nowMs >= readyAtMs - ClockSkewMs && nowMs - readyAtMs < LifetimeMs
+    /**
+     * Still an arrival. The store keeps a ticket until its note is opened (up to [KeepUntilOpenedMs]); the planner
+     * passes the lifetime its flags allow, so the original budgeted ladder keeps its 24 h rule.
+     */
+    fun isValid(nowMs: Long, lifetimeMs: Long = KeepUntilOpenedMs): Boolean =
+        nowMs >= readyAtMs - ClockSkewMs && nowMs - readyAtMs < lifetimeMs
 
     /** The previous note-ready was under 15 minutes before this one (§8 back-to-back guard). */
     val backToBack: Boolean get() = previousReadyAtMs != null && readyAtMs - previousReadyAtMs in 0 until BackToBackMs
@@ -43,6 +48,11 @@ data class UnveilTicket(
 
     companion object {
         const val LifetimeMs: Long = 24 * 60 * 60 * 1000L
+        /**
+         * With the First Keep on every note (founder decision, 2026-11-17: "make sure it shows on every recording"),
+         * a recording opened days later still gets its First Keep. The cap only keeps the store tidy.
+         */
+        const val KeepUntilOpenedMs: Long = 30 * 24 * 60 * 60 * 1000L
         const val BackToBackMs: Long = 15 * 60 * 1000L
         /** A ticket stamped a little in the future (clock change) still counts. */
         private const val ClockSkewMs: Long = 60 * 60 * 1000L

@@ -80,6 +80,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -135,9 +137,14 @@ fun TodayScreen(
     onOpenDevotional: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit = {},
     onOpenFaith: () -> Unit = {},
+    /** Opens Personal, the garden. */
+    onOpenPersonal: () -> Unit = {},
     onOpenWork: () -> Unit = {},
     /** Opens Study; its tile shows only when the person uses the Learning space. */
     onOpenStudy: () -> Unit = {},
+    onOpenLearn: () -> Unit = {},
+    /** The Tasks card in "Your spaces". */
+    onOpenTasks: () -> Unit = {},
     onOpenCircles: () -> Unit = {},
     /** What the Circles tile shows; the caller loads it (see HomeCirclesViewModel). */
     homeCircles: HomeCircles = HomeCircles.Loading,
@@ -172,6 +179,7 @@ fun TodayScreen(
     val appearance = com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance.current
     val view by viewModel.view.collectAsState()
     val items by viewModel.items.collectAsState()
+    val riverPage by viewModel.river.collectAsState()
     val selectedDay by viewModel.selectedDay.collectAsState()
     val activity by viewModel.activity.collectAsState()
     val memories by viewModel.memories.collectAsState()
@@ -189,12 +197,15 @@ fun TodayScreen(
     val todayItems by viewModel.today.collectAsState()
 
     val listState = rememberLazyListState()
+    // Timeline cards already animated in, so scrolling back past them doesn't replay it.
+    val revealed = remember { HashSet<String>() }
     var quick by remember { mutableStateOf<TimelineItem?>(null) }
     var showInbox by remember { mutableStateOf(false) }
     var showLayers by remember { mutableStateOf(false) }
     var showJump by remember { mutableStateOf(false) }
 
-    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) viewModel.setAvatar(uri) }
+    // The avatar opens the app menu; the photo itself is changed in Settings › Account.
+    val appMenu = com.craftflowtechnologies.meetingmind.core.navigation.LocalAppMenu.current
     val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) viewModel.setCalendarEnabled(true) }
 
     // Refresh each minute while Home is showing.
@@ -291,7 +302,7 @@ fun TodayScreen(
                     // The floating "Up next" card is hidden on the Today home; the layout reads cleaner without it.
                     showTile = false,
                     listState = listState,
-                    onAvatar = { avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    onAvatar = { appMenu.open(null) },
                     onSearch = onSearch,
                     onInbox = { showInbox = true },
                     onSwitch = { viewModel.setFocus(switchTo) },
@@ -311,6 +322,45 @@ fun TodayScreen(
                     onSelect = { viewModel.setFocus(it) },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+            }
+
+            // Your spaces: Work, Learning and Faith (whichever the person uses) and Tasks, one tap each,
+            // right under the hero so every vertical is visible in the first seconds on Home.
+            item(key = "spaces") {
+                val (tasksDue, learnDue) = com.craftflowtechnologies.meetingmind.feature.today.home.rememberSpaceCounts()
+                com.craftflowtechnologies.meetingmind.feature.today.home.SpacesRow(
+                    glance = com.craftflowtechnologies.meetingmind.feature.today.home.SpaceGlance(
+                        nextTitle = todayItems.firstOrNull { it.start >= now }?.title,
+                        todayCount = todayItems.size,
+                        devotionalTitle = devotional?.devotional?.title,
+                        learnDue = learnDue, tasksDue = tasksDue
+                    ),
+                    onOpen = { space ->
+                        when (space) {
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK -> onOpenWork()
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING -> onOpenLearn()
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH -> onOpenFaith()
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL -> onOpenPersonal()
+                        }
+                    },
+                    onOpenTasks = onOpenTasks,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            }
+            // The companion's line: what it has to say right now (the hero already shows the companion).
+            item(key = "companion_line") {
+                com.craftflowtechnologies.meetingmind.feature.today.companion.HomeCompanionLine(
+                    space = null, onRecord = onRecord, onOpenNote = onOpenNote, onOpenRecording = onOpenProcessing,
+                    onSearch = onSearch, firstRun = false, showCompanion = false, showProcessing = false,
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp)
+                )
+            }
+            // Notes from a YouTube video: always one tap from Today, and a copied link offers itself.
+            item(key = "youtube") {
+                Column(Modifier.padding(horizontal = 16.dp).padding(top = 12.dp)) {
+                    com.craftflowtechnologies.meetingmind.feature.importing.YouTubeClipboardBanner(Modifier.padding(bottom = 10.dp))
+                    com.craftflowtechnologies.meetingmind.feature.importing.YouTubeHomeCard()
+                }
             }
 
             if (appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.CAPTURE)) item(key = "capture") {
@@ -368,28 +418,38 @@ fun TodayScreen(
 
             // Stories from today: three shareable cards drawn from the devotional.
             val dev = devotional?.devotional
-            if (dev != null && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.STORIES)) item(key = "stories") {
+            if (dev != null && identity.showsFaith && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.STORIES)) item(key = "stories") {
+                // Only AI-written devotionals can be reported (bundled readings are written by people).
+                val aiWritten = dev.origin == com.craftflowtechnologies.meetingmind.core.devotional.DevotionalOrigin.CLOUD_AI ||
+                    dev.origin == com.craftflowtechnologies.meetingmind.core.devotional.DevotionalOrigin.DEVICE_AI
+                fun report(vararg parts: String?) = if (!aiWritten) null else com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                    feature = com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.HOME_STORY,
+                    text = parts.filterNotNull().filter { it.isNotBlank() }.joinToString("\n\n")
+                )
                 val cards = listOf(
                     StoryCardData(
                         reference = dev.scripture.firstOrNull()?.display() ?: "Today",
                         headline = dev.keyText ?: dev.title,
                         body = dev.reflection.firstOrNull().orEmpty(),
                         caption = dev.title,
-                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.DEVOTIONAL) }
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.DEVOTIONAL) },
+                        report = report(dev.keyText ?: dev.title, dev.reflection.firstOrNull())
                     ),
                     StoryCardData(
                         reference = "Reflection",
                         headline = dev.liveItToday ?: "One thing to do today",
                         body = dev.reflection.getOrNull(1).orEmpty(),
                         caption = "Live it today",
-                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.WORD) }
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.WORD) },
+                        report = report(dev.liveItToday, dev.reflection.getOrNull(1))
                     ),
                     StoryCardData(
                         reference = "Prayer",
                         headline = dev.prayer ?: "Lord, shape this day",
                         body = dev.question.orEmpty(),
                         caption = dev.insight?.author ?: "Prayer",
-                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.PRAYER) }
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.PRAYER) },
+                        report = report(dev.prayer, dev.question)
                     )
                 )
                 StoryCards(cards, onShareAll = { onOpenStories(null) }, modifier = Modifier.padding(top = 20.dp))
@@ -444,28 +504,46 @@ fun TodayScreen(
                             fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = InkNavy, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp))
                     }
                     if (dayItems.isEmpty()) item(key = "month-empty") { Text("Nothing on this day.", color = Slate, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp)) }
-                    items(dayItems, key = { "m-" + it.id }) { TimelineCard(it, ::open, { q -> quick = q }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+                    items(dayItems.distinctBy { it.id }, key = { "m-" + it.id }) { TimelineCard(it, ::open, { q -> quick = q }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 }
                 CalendarView.RIVER -> {
-                    // Newest first, grouped by month, with big picture cards.
-                    val byMonth = items.filter { it.start <= now + 14 * 86_400_000L }.sortedByDescending { it.start }
-                        .groupBy { java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.getDefault()).format(Date(it.start)) }
+                    // Newest first, grouped by month, with big picture cards, a page at a time.
+                    val river = TimelinePaging.riverItems(items, now)
+                    val byMonth = TimelinePaging.visible(river, riverPage).withIndex()
+                        .groupBy { java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.getDefault()).format(Date(it.value.start)) }
                     byMonth.forEach { (month, list) ->
                         stickyHeader(key = "h-$month") {
                             Text(month, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = OutfitFamily, color = InkNavy,
                                 modifier = Modifier.fillMaxWidth().background(SurfaceBase.copy(alpha = 0.96f)).padding(horizontal = 16.dp, vertical = 8.dp))
                         }
-                        items(list, key = { "r-" + it.id }) { item ->
-                            TimelineCard(item, ::open, { quick = it }, Modifier.padding(horizontal = 16.dp, vertical = 5.dp).animateItem(),
+                        items(list, key = { "r-" + it.value.id }) { (index, item) ->
+                            val animateIn = remember(item.id) { index >= riverPage.revealFrom && revealed.add(item.id) }
+                            TimelineCard(item, ::open, { quick = it },
+                                Modifier.padding(horizontal = 16.dp, vertical = 5.dp).animateItem().revealIn(animateIn, index - riverPage.revealFrom),
                                 height = if (item.coverPath != null) 190.dp else 132.dp, showDate = true)
                         }
                     }
+                    if (riverPage.loading) items(2, key = { "river-skeleton-$it" }) { TimelineSkeleton(Modifier.padding(horizontal = 16.dp, vertical = 5.dp).animateItem()) }
                     item(key = "river-more") {
-                        TextButton(onClick = { viewModel.loadEarlier() }, modifier = Modifier.fillMaxWidth().padding(8.dp)) { Text("Show earlier", color = look.accent) }
+                        TimelineFooter(
+                            page = riverPage,
+                            hasMore = TimelinePaging.hasMore(river.size, riverPage),
+                            empty = river.isEmpty(),
+                            onMore = { viewModel.loadMore() },
+                            modifier = Modifier.animateItem()
+                        )
                     }
                 }
             }
         }
+    }
+    // Near the end of the Timeline, the next page loads by itself; the button stays as the fallback.
+    if (view == CalendarView.RIVER) LaunchedEffect(listState) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            listState.canScrollBackward && info.totalItemsCount > 0 && last >= info.totalItemsCount - 3
+        }.distinctUntilChanged().collect { near -> if (near) viewModel.loadMore() }
     }
     if (tourReady && tourDone == false) {
         com.craftflowtechnologies.meetingmind.core.ui.CoachMarkOverlay(coachTargets, homeTourSteps(storyKinds.isNotEmpty(), showSetup)) {

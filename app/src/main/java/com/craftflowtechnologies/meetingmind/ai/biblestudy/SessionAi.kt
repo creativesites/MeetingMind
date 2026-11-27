@@ -3,8 +3,11 @@ package com.craftflowtechnologies.meetingmind.ai.biblestudy
 import android.content.Context
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
+import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.ModelCapability
 import com.craftflowtechnologies.meetingmind.core.model.ModelTier
+import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** What asking for suggestions came to. */
@@ -44,13 +47,17 @@ class ModelSessionAi(private val context: Context) : SessionAi {
     private data class Candidate(val model: LanguageModel, val id: String, val cloud: Boolean)
 
     private suspend fun candidates(): List<Candidate> {
+        val profile = runCatching { UserPreferencesManager(context).preferencesFlow.first().processingProfile }
+            .getOrDefault(ProcessingProfile.INTERNET)
         val factory = com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory(
             context = context,
             modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(context),
             geminiTransport = com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(context)
         )
-        val cloud = runCatching { factory.resolve(com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET, ModelCapability.SUMMARIZATION) }
-            .getOrNull()?.takeIf { it.isCloud }
+        val cloud = if (profile == ProcessingProfile.INTERNET) {
+            runCatching { factory.resolve(ProcessingProfile.INTERNET, ModelCapability.SUMMARIZATION) }
+                .getOrNull()?.takeIf { it.isCloud }
+        } else null
         val local = runCatching { factory.resolveLocal(ModelCapability.SUMMARIZATION, ModelTier.RECOMMENDED) }.getOrNull()
         return listOfNotNull(cloud, local).map { Candidate(it.languageModel, it.modelId, it.isCloud) }
     }

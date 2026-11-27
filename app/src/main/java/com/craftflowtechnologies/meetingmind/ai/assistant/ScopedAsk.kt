@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.ai.assistant
 
+import com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.tools.TranscriptToolPrompts
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
@@ -15,6 +16,9 @@ import com.craftflowtechnologies.meetingmind.core.work.WorkTypeNames
 import com.craftflowtechnologies.meetingmind.core.work.itemKind
 import com.craftflowtechnologies.meetingmind.core.work.itemStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
 /**
@@ -30,6 +34,11 @@ enum class ScopedReason { NO_MODEL, NOTHING_FOUND, UNCITED, FAILED }
 /** [text] is null unless the answer cites at least one source. [sources] are always returned so the person can read them. */
 data class ScopedAnswer(val text: String?, val cited: List<AskSource>, val sources: List<AskSource>, val reason: ScopedReason? = null)
 
+sealed interface ScopedAskStreamEvent {
+    data class Partial(val text: String, val sources: List<AskSource>) : ScopedAskStreamEvent
+    data class Complete(val answer: ScopedAnswer) : ScopedAskStreamEvent
+}
+
 /**
  * Ask, limited to a scope. The scope decides which notes and transcripts are even searched (through
  * `note_people`, `item_links` and the project's notes), the context pack goes in ahead of the
@@ -42,7 +51,8 @@ class ScopedAsk(
     private val privacy: PackPrivacy = PackPrivacy { _, _ -> false },
     private val clock: () -> Long = System::currentTimeMillis,
     private val dateLabel: (Long) -> String = { it.toString() },
-    private val maxSources: Int = 14
+    private val maxSources: Int = 14,
+    private val onModelFinished: suspend () -> Unit = {}
 ) {
     private val context = ContextRepository(database, clock)
 
@@ -52,12 +62,58 @@ class ScopedAsk(
         // Privacy is decided on everything that will actually be shown to a model.
         val meetingIds = sources.mapNotNull { it.meetingId }.distinct()
         val model = models?.forPack(privacy.mustStayOnDevice(meetingIds, scope.packScope)) ?: return@withContext ScopedAnswer(null, emptyList(), sources, ScopedReason.NO_MODEL)
-        val raw = (model.generate(prompt(question, sources), maxOutputTokens = 400) as? AiResult.Success)?.value
-            ?: return@withContext ScopedAnswer(null, emptyList(), sources, ScopedReason.FAILED)
+        val raw = try {
+            (model.generate(prompt(question, sources), maxOutputTokens = 400) as? AiResult.Success)?.value
+        } finally {
+            runCatching { onModelFinished() }
+        } ?: return@withContext ScopedAnswer(null, emptyList(), sources, ScopedReason.FAILED)
         val parsed = AskEverything.parse(raw, sources)
         if (parsed.cited.isEmpty()) return@withContext ScopedAnswer(null, emptyList(), sources, ScopedReason.UNCITED)
         ScopedAnswer(parsed.text, parsed.cited, sources)
     }
+
+    fun askStream(question: String, scope: AskScope): Flow<ScopedAskStreamEvent> = flow {
+        val sources = gather(question, scope)
+        if (sources.isEmpty()) {
+            emit(ScopedAskStreamEvent.Complete(ScopedAnswer("I couldn't find anything about that in ${scope.label}.", emptyList(), emptyList(), ScopedReason.NOTHING_FOUND)))
+            return@flow
+        }
+        val meetingIds = sources.mapNotNull { it.meetingId }.distinct()
+        val model = models?.forPack(privacy.mustStayOnDevice(meetingIds, scope.packScope))
+        if (model == null) {
+            emit(ScopedAskStreamEvent.Complete(ScopedAnswer(null, emptyList(), sources, ScopedReason.NO_MODEL)))
+            return@flow
+        }
+        val raw = StringBuilder()
+        var doneText: String? = null
+        var failed = false
+        try {
+            model.generateStream(prompt(question, sources), maxOutputTokens = 400).collect { ev ->
+                when (ev) {
+                    is AiStreamEvent.TextDelta -> {
+                        raw.append(ev.text)
+                        emit(ScopedAskStreamEvent.Partial(raw.toString(), sources))
+                    }
+                    is AiStreamEvent.Completed -> doneText = ev.text
+                    is AiStreamEvent.Failed -> failed = true
+                    else -> Unit
+                }
+            }
+        } finally {
+            runCatching { onModelFinished() }
+        }
+        val finalRaw = (doneText ?: raw.toString()).takeIf { it.isNotBlank() }
+        if (finalRaw == null || failed) {
+            emit(ScopedAskStreamEvent.Complete(ScopedAnswer(null, emptyList(), sources, ScopedReason.FAILED)))
+            return@flow
+        }
+        val parsed = AskEverything.parse(finalRaw, sources)
+        if (parsed.cited.isEmpty()) {
+            emit(ScopedAskStreamEvent.Complete(ScopedAnswer(null, emptyList(), sources, ScopedReason.UNCITED)))
+        } else {
+            emit(ScopedAskStreamEvent.Complete(ScopedAnswer(parsed.text, parsed.cited, sources)))
+        }
+    }.flowOn(Dispatchers.IO)
 
     /** The context pack first, then what search finds inside the scope. Numbered from 1. */
     internal suspend fun gather(question: String, scope: AskScope): List<AskSource> {

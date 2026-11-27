@@ -1,6 +1,12 @@
 package com.craftflowtechnologies.meetingmind.feature.notes
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,15 +21,19 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Sort
@@ -58,9 +68,11 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,6 +88,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
@@ -101,6 +114,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar
 import com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRow
 import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRowModel
@@ -110,6 +124,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionVolume
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.feature.notes.editor.NotebookDot
 import com.craftflowtechnologies.meetingmind.feature.work.EmptyCompanionSize
@@ -148,7 +163,8 @@ fun NotesScreen(
     @Suppress("UNUSED_PARAMETER") onOpenFaith: (() -> Unit)? = null,
     @Suppress("UNUSED_PARAMETER") onOpenWork: (() -> Unit)? = null,
     onOpenTrash: () -> Unit = {},
-    onRecord: (() -> Unit)? = null
+    onRecord: (() -> Unit)? = null,
+    onOpenPaywall: (com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger) -> Unit = {}
 ) {
     val library = viewModel.library
     val holder = viewModel<NotesStateHolder>(key = "notes-library-" + viewModel.scope.toString())
@@ -176,6 +192,7 @@ fun NotesScreen(
     val folders = isRoot && view == LibraryView.FOLDERS && !query.isSearching && searchText.isBlank()
 
     var showAiMenu by remember { mutableStateOf(false) }
+    var showDeepSynthesis by remember { mutableStateOf(false) }
     var showAsk by remember { mutableStateOf(false) }
     var aiSheetOpen by remember { mutableStateOf(false) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
@@ -189,7 +206,9 @@ fun NotesScreen(
     var searchOpen by remember { mutableStateOf(false) }
     val homeMode = isRoot && !folders
     val showHero = homeMode && !query.isFiltered && !query.isSearching && searchText.isBlank()
-    val latestMeeting = remember(state.items) {
+    val showsWork = NotebookSpace.WORK in appIdentity.spaces
+    val latestMeeting = remember(state.items, showsWork) {
+        if (!showsWork) return@remember null
         state.items.filter { it.hasRecording && Workflows.space(it.note.workflow) == NotebookSpace.WORK }
             .maxByOrNull { it.note.eventDate ?: it.note.createdAt }
     }
@@ -326,12 +345,17 @@ fun NotesScreen(
                             NotesHomeTopBar(
                                 onSearch = { searchOpen = !searchOpen },
                                 onFolders = { library.setView(LibraryView.FOLDERS) },
-                                archived = archivedCount, trash = trashCount, onArchive = onOpenArchive, onTrash = onOpenTrash
+                                archived = archivedCount,
+                                trash = trashCount,
+                                onArchive = onOpenArchive,
+                                onTrash = onOpenTrash,
+                                noteCount = state.items.size,
+                                view = view,
+                                onViewChange = library::setView
                             )
                         }
                         val hero = latestMeeting.takeIf { showHero }
                         if (hero != null && companionShown) item(key = "home-hero-block") {
-                            // Zuri sits partly behind the hero card: one item, so the card can cover Zuri's lower body.
                             HomeHeroBlock(hero, heroTiles, onOpen = { onOpenNote(hero.id) }, onTile = { onOpenNote(hero.id) })
                         } else {
                             item(key = "home-greeting") {
@@ -340,16 +364,22 @@ fun NotesScreen(
                             if (hero != null) item(key = "home-hero") {
                                 LatestMeetingCard(
                                     hero, heroTiles, onOpen = { onOpenNote(hero.id) }, onTile = { onOpenNote(hero.id) },
-                                    modifier = Modifier.padding(top = MM.space.l)
+                                    modifier = Modifier.padding(top = MM.space.m)
                                 )
                             }
                         }
-                        if (searchOpen || searchText.isNotBlank()) item(key = "home-search") {
-                            WorkTextField(
-                                value = searchText, onValueChange = library::setSearch, placeholder = "Search notes",
-                                icon = Icons.Rounded.Search, modifier = Modifier.padding(top = MM.space.m).testTag("notes_search"),
-                                clearLabel = "Clear search"
-                            )
+                        item(key = "home-search") {
+                            AnimatedVisibility(
+                                visible = searchOpen || searchText.isNotBlank(),
+                                enter = fadeIn(MM.motion.enter()) + expandVertically(MM.motion.enter()),
+                                exit = fadeOut(MM.motion.quick()) + shrinkVertically(MM.motion.quick())
+                            ) {
+                                WorkTextField(
+                                    value = searchText, onValueChange = library::setSearch, placeholder = "Search notes",
+                                    icon = Icons.Rounded.Search, modifier = Modifier.fillMaxWidth().padding(top = MM.space.m).testTag("notes_search"),
+                                    clearLabel = "Clear search"
+                                )
+                            }
                         }
                         item(key = "home-header") {
                             NotesSectionHeader(
@@ -455,8 +485,25 @@ fun NotesScreen(
             if (tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.ASK) showAsk = true else { viewModel.runAi(tool); aiSheetOpen = true }
         },
         onRelated = null,
+        onDeepSynthesis = { showAiMenu = false; showDeepSynthesis = true },
         onDismiss = { showAiMenu = false }
     )
+    if (showDeepSynthesis) {
+        currentNotebook?.let { nb ->
+            com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisSheet(
+                target = com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisTarget.Notebook(nb.id),
+                onDismiss = { showDeepSynthesis = false },
+                onOpenPaywall = { trigger ->
+                    showDeepSynthesis = false
+                    onOpenPaywall(trigger)
+                },
+                onOpenNote = { nId ->
+                    showDeepSynthesis = false
+                    onOpenNote(nId)
+                }
+            )
+        }
+    }
     if (showAsk) com.craftflowtechnologies.meetingmind.feature.notes.ai.AskDialog(
         forNotebook = true,
         onAsk = { q -> showAsk = false; viewModel.runAi(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.ASK, q); aiSheetOpen = true },
@@ -476,6 +523,7 @@ fun NotesScreen(
         onApplyOrganized = null,
         onShowSource = { p -> p.noteId?.let { aiSheetOpen = false; onOpenNote(it) } },
         onCancel = { viewModel.cancelAi(aiJob.id) },
+        onRetry = { viewModel.runAi(aiJob.tool, aiJob.question) },
         onClose = { aiSheetOpen = false },
         onDiscard = { aiSheetOpen = false; viewModel.dismissAi(aiJob.id) }
     )
@@ -589,13 +637,24 @@ private fun MoreFiltersSheet(
 @Composable
 internal fun SortMenu(sort: NoteSort, onSort: (NoteSort) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    val c = MM.colors
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, "Sort: ${sort.label}", tint = MM.colors.inkSecondary) }
-        DropdownMenu(open, { open = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.card) {
+        Surface(
+            onClick = { open = true },
+            shape = CircleShape,
+            color = c.surfaceRaised,
+            border = BorderStroke(MMSize.hairline, c.lineSoft),
+            modifier = Modifier.size(34.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.AutoMirrored.Rounded.Sort, "Sort: ${sort.label}", tint = c.inkSecondary, modifier = Modifier.size(MMSize.iconSmall))
+            }
+        }
+        DropdownMenu(open, { open = false }, containerColor = c.surfaceRaised, shape = MM.radius.card) {
             NoteSort.entries.forEach { s ->
                 DropdownMenuItem(
-                    text = { Text(s.label, style = if (s == sort) MM.type.bodyStrong else MM.type.body, color = MM.colors.ink) },
-                    trailingIcon = { if (s == sort) Icon(Icons.Rounded.Check, null, tint = MM.colors.accent) },
+                    text = { Text(s.label, style = if (s == sort) MM.type.bodyStrong else MM.type.body, color = c.ink) },
+                    trailingIcon = { if (s == sort) Icon(Icons.Rounded.Check, null, tint = c.accent) },
                     onClick = { open = false; onSort(s) }
                 )
             }
@@ -607,11 +666,22 @@ internal fun SortMenu(sort: NoteSort, onSort: (NoteSort) -> Unit) {
 @Composable
 internal fun LibraryMenu(archived: Int, trash: Int, onArchive: () -> Unit, onTrash: () -> Unit) {
     var open by remember { mutableStateOf(false) }
+    val c = MM.colors
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = MM.colors.inkSecondary) }
-        DropdownMenu(open, { open = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.card) {
-            if (archived > 0) DropdownMenuItem(text = { Text("Archived · $archived", style = MM.type.body, color = MM.colors.ink) }, onClick = { open = false; onArchive() })
-            if (trash > 0) DropdownMenuItem(text = { Text("Trash · $trash", style = MM.type.body, color = MM.colors.ink) }, onClick = { open = false; onTrash() })
+        Surface(
+            onClick = { open = true },
+            shape = CircleShape,
+            color = c.surfaceRaised,
+            border = BorderStroke(MMSize.hairline, c.lineSoft),
+            modifier = Modifier.size(34.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.MoreVert, "More", tint = c.inkSecondary, modifier = Modifier.size(MMSize.iconSmall))
+            }
+        }
+        DropdownMenu(open, { open = false }, containerColor = c.surfaceRaised, shape = MM.radius.card) {
+            if (archived > 0) DropdownMenuItem(text = { Text("Archived · $archived", style = MM.type.body, color = c.ink) }, onClick = { open = false; onArchive() })
+            if (trash > 0) DropdownMenuItem(text = { Text("Trash · $trash", style = MM.type.body, color = c.ink) }, onClick = { open = false; onTrash() })
         }
     }
 }
@@ -727,7 +797,11 @@ private fun EmptyLibrary(
         )
         query.isFiltered -> EmptyState("No notes match these filters", "Try fewer filters.", action = { SecondaryButton("Show all notes", onClear) })
         else -> EmptyState(
-            illustration = { ZuriSlot(CompanionPage.EMPTY, EmptyCompanionSize) },
+            illustration = {
+                CompositionLocalProvider(LocalCompanionVolume provides true) {
+                    ZuriSlot(CompanionPage.EMPTY, EmptyCompanionSize, offerShow = true)
+                }
+            },
             title = "No notes yet — record or write one",
             body = "Every recording gets a note of its own, with the summary and what was said.",
             action = {
@@ -747,18 +821,86 @@ private fun NotebookList(
     notebooks: List<Notebook>, counts: Map<String, Int>, onOpen: (String) -> Unit, onMenu: (Notebook) -> Unit,
     onNew: () -> Unit, modifier: Modifier = Modifier
 ) {
+    val c = MM.colors
     LazyColumn(modifier.fillMaxWidth().testTag("notes_folders"), contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s)) {
         items(notebooks, key = { it.id }) { nb ->
             val n = counts[nb.id] ?: 0
-            ListRow(
-                nb.name,
-                Modifier.combinedClickable(role = Role.Button, onClick = { onOpen(nb.id) }, onLongClick = { onMenu(nb) }),
-                subtitle = nb.space.displayName, meta = if (n == 1) "1 note" else "$n notes",
-                leading = { NotebookDot(nb.colorHex, 16) }
-            )
+            val countText = if (n == 1) "1 note" else "$n notes"
+            val folderTint = nb.colorHex?.let { hex -> runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull() } ?: c.accent
+            MMCard(
+                modifier = Modifier
+                    .padding(vertical = MM.space.xs)
+                    .combinedClickable(role = Role.Button, onClick = { onOpen(nb.id) }, onLongClick = { onMenu(nb) }),
+                contentPadding = MM.space.m
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .background(folderTint.copy(alpha = 0.14f), MM.radius.small),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.FolderOpen,
+                            contentDescription = null,
+                            tint = folderTint,
+                            modifier = Modifier.size(MMSize.iconSmall)
+                        )
+                    }
+                    Spacer(Modifier.width(MM.space.m))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            nb.name,
+                            style = MM.type.bodyStrong,
+                            color = c.ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            nb.space.displayName,
+                            style = MM.type.secondary,
+                            color = c.inkSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(Modifier.width(MM.space.s))
+                    Surface(
+                        shape = MM.radius.pill,
+                        color = c.surfaceRaised,
+                        border = BorderStroke(MMSize.hairline, c.lineSoft)
+                    ) {
+                        Text(
+                            countText,
+                            style = MM.type.caption,
+                            color = c.inkMuted,
+                            modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                        )
+                    }
+                }
+            }
         }
         item(key = "new-notebook") {
-            Box(Modifier.padding(top = MM.space.m)) { SecondaryButton("New notebook", onNew, leadingIcon = Icons.Rounded.Add) }
+            Surface(
+                onClick = onNew,
+                shape = MM.radius.card,
+                color = c.surfaceRaised.copy(alpha = 0.5f),
+                border = BorderStroke(MMSize.hairline, c.lineSoft),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = MM.space.m)
+                    .heightIn(min = MMSize.minTouch)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(MM.space.m),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Rounded.Add, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
+                    Spacer(Modifier.width(MM.space.s))
+                    Text("New notebook", style = MM.type.bodyStrong, color = c.accent)
+                }
+            }
         }
     }
 }

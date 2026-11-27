@@ -26,6 +26,8 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
     CONVERSATION("Conversation", "General conversation summary"),
     RESEARCH("Research", "Notes and findings"),
     JOURNAL("Journal", "A personal, private entry"),
+    MOTIVATION("Motivation", "Mindset shifts, quotes, and daily habits"),
+    LIFE_SKILLS("Life skills", "Step-by-step frameworks, do's & don'ts, and playbooks"),
     // The Faith workflows (docs/PLAN_V1.md §6). Same pipeline, templates and hooks as every other
     // type — a workflow is configuration, never a separate code path.
     SERMON("Sermon", "Scripture, structure, and sermon notes"),
@@ -61,6 +63,8 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
         CONVERSATION -> "This is a general conversation. Summarize what was actually discussed without forcing it into a formal meeting structure."
         RESEARCH -> "This is a research recording. Focus on findings, sources, and open questions actually stated."
         JOURNAL -> "This is a personal journal entry. Focus on summarizing what the speaker actually said, respectfully and without embellishment."
+        MOTIVATION -> "This is a motivational or mindset talk. Focus on the core mindset shifts, memorable verbatim quotes, key principles or stories shared, and practical daily challenges or habits the speaker encourages."
+        LIFE_SKILLS -> "This is a life skills or practical how-to teaching. Focus on the step-by-step framework or playbook taught, concrete examples, common mistakes to avoid, and actionable takeaways the listener can apply immediately."
         SERMON -> "This is a sermon. Focus on the preacher's main message, the scripture passages they read or referred to, their key points in order, and the application they gave. Report what the preacher said about a passage; never interpret scripture yourself."
         BIBLE_STUDY -> "This is a Bible study discussion. Focus on the passage studied, the observations and questions people raised, and any conclusions the group reached. Attribute views to whoever expressed them; never add your own interpretation."
         DEVOTIONAL, PRAYER, TESTIMONY, GRATITUDE, REFLECTION, PRAYER_REQUEST -> "This is a personal faith reflection. Summarize only what the speaker said, in their own terms, respectfully and without adding spiritual interpretation or advice."
@@ -160,6 +164,16 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
             sectionTitle = "Reflections", topicsLabel = "Themes",
             analyzingStageLabel = "Summarizing your entry..."
         )
+        MOTIVATION -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = true, extractQuestions = true, extractFollowUps = false,
+            sectionTitle = "Motivation & Mindset Bytes", topicsLabel = "Core Principles",
+            analyzingStageLabel = "Extracting mindset bytes, quotes & habits..."
+        )
+        LIFE_SKILLS -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = true, extractQuestions = true, extractFollowUps = false,
+            sectionTitle = "Life Skills Playbook", topicsLabel = "Step-by-Step Takeaways",
+            analyzingStageLabel = "Building step-by-step playbook & takeaways..."
+        )
         SERMON -> IntelligenceProfile(
             extractDecisions = false, extractActionItems = false, extractQuestions = true, extractFollowUps = false,
             sectionTitle = "Sermon Notes", topicsLabel = "Key Points",
@@ -209,6 +223,8 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
             "This is solo narration. Prioritize natural paragraphs and preserve the speaker's first-person voice; a pause within one thought is not a reason to break it into separate paragraphs."
         LECTURE ->
             "This is an explanatory monologue. Prioritize coherent paragraphs; preserve definitions and examples exactly as stated."
+        MOTIVATION, LIFE_SKILLS ->
+            "This is an instructional or motivational talk. Prioritize natural, coherent paragraphs; preserve stories, numbered principles, and verbatim quotes as spoken."
         SERMON ->
             "This is a sermon: a long, coherent monologue. Prioritize long paragraphs; preserve scripture quotations and references (book, chapter, verse) exactly as spoken."
         BIBLE_STUDY ->
@@ -261,7 +277,7 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
         )
         // Explanatory monologue: favor long, coherent paragraphs over frequent breaks. A sermon is
         // the same shape — one voice, long arcs, pauses for effect that aren't paragraph breaks.
-        LECTURE, SERMON -> TranscriptMergePolicy(
+        LECTURE, SERMON, MOTIVATION, LIFE_SKILLS -> TranscriptMergePolicy(
             maxGapMs = 3_500L, extendedGapMs = 8_000L,
             maxParagraphDurationMs = 120_000L, maxParagraphChars = 1_600
         )
@@ -405,6 +421,30 @@ data class RecordingContext(
     val noteId: String? = null
 )
 
+/**
+ * Where a recording's current title actually came from. Persisted alongside the title so a later
+ * pass can tell "the person named this" from "the app generated this" without guessing from the
+ * text — the difference decides whether a reprocess or a backfill may replace it.
+ */
+enum class TitleSource {
+    /** Generated from real transcript content by a language model. */
+    AI,
+    /** Derived deterministically from real transcript content without a model. */
+    CONTENT,
+    /** The localized "type — date" fallback, used only when there is no usable transcript. */
+    DATE,
+    /** Typed by the person. Never overwritten automatically. */
+    USER,
+    /** The imported file's own usable name. Never overwritten automatically. */
+    IMPORT;
+
+    companion object {
+        /** Unknown or missing values are historically AI-generated titles, per schema 28's default. */
+        fun fromStored(raw: String?): TitleSource =
+            entries.firstOrNull { it.name == raw } ?: AI
+    }
+}
+
 data class Meeting(
     val id: String,
     val title: String,
@@ -425,7 +465,9 @@ data class Meeting(
      * unspecified; the diarization engine (if one runs) decides for itself. */
     val speakerCountPreference: Int? = null,
     /** The note this recording belongs to. See [Note]. */
-    val noteId: String? = null
+    val noteId: String? = null,
+    /** How [title] was produced, so a reprocess never silently replaces a person's own name. */
+    val titleSource: TitleSource = TitleSource.AI
 )
 
 data class TranscriptSegment(

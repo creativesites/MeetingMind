@@ -19,7 +19,6 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.craftflowtechnologies.meetingmind.MainActivity
 import com.craftflowtechnologies.meetingmind.core.common.DeviceCapabilityDetector
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.MeetingSource
@@ -29,6 +28,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,7 +67,14 @@ class MeetingRecordingService : Service() {
     private val binder = LocalBinder()
     override fun onBind(intent: Intent?): IBinder = binder
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // The handler is the last line of defence: an unexpected throw in a service coroutine (a full
+    // disk, a storage check) is logged instead of killing the app mid-recording. The audio keeps
+    // being written by the recorder either way.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+            com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs.log("recording", "service coroutine failed: ${e.javaClass.simpleName}: ${e.message}")
+        }
+    )
     private lateinit var audioRecorder: AudioRecorder
     private lateinit var meetingRepository: MeetingRepository
 
@@ -97,7 +104,6 @@ class MeetingRecordingService : Service() {
     private var maintenanceJob: Job? = null
 
     private var wakeLock: PowerManager.WakeLock? = null
-    private var recordingStartTimeMs: Long = 0L
     private var audioManager: AudioManager? = null
     private var focusRequest: AudioFocusRequest? = null
     private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
@@ -118,12 +124,14 @@ class MeetingRecordingService : Service() {
         const val ACTION_PAUSE = "com.craftflowtechnologies.meetingmind.meetmind.ACTION_PAUSE"
         const val ACTION_RESUME = "com.craftflowtechnologies.meetingmind.meetmind.ACTION_RESUME"
         const val ACTION_STOP = "com.craftflowtechnologies.meetingmind.meetmind.ACTION_STOP"
+        /** Sent by the service to itself when capture begins, so it is a started service and keeps
+         * recording after the screen that bound it goes away (Back, a swipe from Recents). */
+        const val ACTION_KEEP_RECORDING = "com.craftflowtechnologies.meetingmind.meetmind.ACTION_KEEP_RECORDING"
         const val NOTIFICATION_ID_MARKS = 1002
 
-        /** Binds a caller to the running (or freshly created) service. The service does not
-         * self-start via [Context.startService]/[Context.startForegroundService] on bind alone —
-         * [startRecording] is what actually begins capture and promotes it to foreground; binding
-         * on its own just gets a caller a reference to call that with. */
+        /** Binds a caller to the running (or freshly created) service. Binding alone starts
+         * nothing: [startRecording] begins capture, starts the service so it outlives the bound
+         * screen, and promotes it to foreground; binding just gets a caller a reference. */
         fun bindIntent(context: Context): Intent = Intent(context, MeetingRecordingService::class.java)
 
         private val _capturing = MutableStateFlow(false)
@@ -133,6 +141,42 @@ class MeetingRecordingService : Service() {
          * snackbar come after the stop (signature moments §3.3 row 4).
          */
         val capturing: StateFlow<Boolean> = _capturing.asStateFlow()
+
+        /** The microphone is held: capture is starting, running or paused. */
+        internal fun isLive(state: RecordingState): Boolean =
+            state == RecordingState.PREPARING || state == RecordingState.RECORDING || state == RecordingState.PAUSED
+
+        /** Capture has ended and the recording is being saved; teardown follows on its own. */
+        internal fun isFinishing(state: RecordingState): Boolean =
+            state == RecordingState.STOPPING || state == RecordingState.SAVING
+
+        /** A start request (a notification action, a restart) that finds no recording to act on
+         * leaves the service with nothing to do, so it stops itself instead of lingering. */
+        internal fun hasWork(state: RecordingState): Boolean = isLive(state) || isFinishing(state)
+
+        /** Work that must outlive the service: after a stop from the notification (the service
+         * stops itself right after saving, which must not cancel the marks or the processing
+         * queue), and recovering a recording moved aside by a new one. */
+        private val afterStopScope = CoroutineScope(
+            SupervisorJob() + Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+                com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs.log("recording", "after-stop work failed: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        )
+    }
+
+    /** Saves the marks, then queues processing, exactly as the in-app stop does through the
+     * processing screen. Settings are read at queue time; a failure leaves the recording saved. */
+    private fun afterNotificationStop(meetingId: String, marks: List<com.craftflowtechnologies.meetingmind.core.work.Mark>) {
+        val app = applicationContext
+        afterStopScope.launch {
+            if (marks.isNotEmpty()) {
+                runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(MeetMindDatabase.getInstance(app), meetingId, marks) }
+            }
+            val queued = runCatching { com.craftflowtechnologies.meetingmind.ai.pipeline.ProcessingScheduler.enqueue(app, meetingId) }.getOrNull()
+            if (queued == null) {
+                com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs.log("recording", "notification stop: processing not queued for $meetingId")
+            }
+        }
     }
 
     override fun onCreate() {
@@ -143,34 +187,66 @@ class MeetingRecordingService : Service() {
         audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         createNotificationChannel()
         scope.launch {
-            _state.collect { _capturing.value = it == RecordingState.PREPARING || it == RecordingState.RECORDING || it == RecordingState.PAUSED || it == RecordingState.STOPPING }
+            _state.collect { _capturing.value = isLive(it) || it == RecordingState.STOPPING }
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // The service is always explicitly started (see startRecording -> startForeground) once
-        // capture begins, so these notification-originated intents always arrive at a service
-        // that's already running — they just route to the real pause/resume/stop methods instead
-        // of the old display-only toggle.
+        // startRecording starts the service (ACTION_KEEP_RECORDING), so the notification's
+        // actions arrive at a running service and route to the real pause/resume/stop methods.
         when (intent?.action) {
+            ACTION_KEEP_RECORDING, null -> Unit
             ACTION_PAUSE -> pauseRecording()
             ACTION_RESUME -> resumeRecording()
-            ACTION_STOP -> stopRecording { id, file, _ ->
-                // Stopped from the notification: the marks tapped so far still belong on the recording's note.
+            ACTION_STOP -> stopRecording { id, file, _, persisted ->
+                // Stopped from the notification: the marks tapped so far still belong on the
+                // recording's note, and its notes are made now, as after a stop in the app.
                 val marks = com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.take()
-                if (file != null && marks.isNotEmpty()) scope.launch {
-                    runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(MeetMindDatabase.getInstance(applicationContext), id, marks) }
-                }
+                if (persisted && file != null) afterNotificationStop(id, marks)
             }
             else -> com.craftflowtechnologies.meetingmind.core.work.MarkActions.handle(intent?.action, durationMs.value)
         }
-        return START_STICKY
+        // A stale action (the recording already ended) or a restart finds nothing to do.
+        if (!hasWork(_state.value)) stopSelf(startId)
+        // Not sticky: a restart after the process died can't pick the microphone back up. The
+        // journal brings the audio back on the next launch instead.
+        return START_NOT_STICKY
+    }
+
+    /** Swiped away from Recents: the recording carries on under its notification. The audio so
+     * far is flushed and journaled first, in case the phone's maker kills the process anyway. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (isLive(_state.value)) {
+            com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs.log("recording", "app swiped away, recording continues")
+            runCatching { audioRecorder.checkpointSync() }
+            writeJournal()
+        } else if (!isFinishing(_state.value)) {
+            stopSelf()
+        }
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        // The system ended the service while capturing: never leave the microphone on with no
+        // notification. Close the recorder and keep the journal, so the next launch recovers it.
+        if (isLive(_state.value)) finishForRecovery()
         _capturing.value = false
         releaseWakeLock()
+        scope.cancel()
         super.onDestroy()
+    }
+
+    private fun finishForRecovery() {
+        com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs.log("recording", "service destroyed while ${_state.value}, audio kept for recovery")
+        // No trimming or converting here: that is slow, and the recovery does it on next launch.
+        runCatching { audioRecorder.releaseForRecovery() }
+        _state.value = RecordingState.STOPPING
+        writeJournal()
+        marksJob?.cancel(); marksJob = null
+        maintenanceJob?.cancel(); maintenanceJob = null
+        runCatching { getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID_MARKS) }
+        abandonAudioFocus()
+        runCatching { androidx.core.app.ServiceCompat.stopForeground(this, androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE) }
     }
 
     // ---- Capture control -----------------------------------------------------------------
@@ -179,6 +255,16 @@ class MeetingRecordingService : Service() {
      * recorder itself cannot start — e.g. the microphone is unavailable — rather than silently
      * doing nothing, so a caller can surface a real error instead of a dead Record button. */
     fun startRecording(newMeetingId: String, title: String, context: RecordingContext): File {
+        // Already capturing (e.g. the permission grant and the screen both asked to start): keep
+        // the recording that is running. Starting again would replace a live MediaRecorder.
+        val current = outputFile
+        if (current != null && (_state.value == RecordingState.RECORDING || _state.value == RecordingState.PAUSED || _state.value == RecordingState.PREPARING)) {
+            Log.w(TAG, "startRecording ignored: already ${_state.value}")
+            return current
+        }
+        // An interrupted recording not yet recovered is moved aside, never overwritten by this
+        // one's journal; it is recovered in the background once capture is running.
+        val parked = journalStore.parkIfOther(newMeetingId)
         _state.value = RecordingState.PREPARING
         meetingId = newMeetingId
         meetingTitle = title
@@ -194,9 +280,9 @@ class MeetingRecordingService : Service() {
             throw e
         }
 
-        recordingStartTimeMs = System.currentTimeMillis()
         outputFile = file
         acquireWakeLock()
+        keepRunning()
         // Android can refuse to promote the service (started from the background, or a revoked
         // permission). Recording carries on while the app is open instead of crashing the app.
         try {
@@ -208,8 +294,33 @@ class MeetingRecordingService : Service() {
         writeJournal()
         startMaintenanceLoop()
         startMarks()
+        if (parked) {
+            val app = applicationContext
+            afterStopScope.launch { RecordingAutoRecovery.recoverPending(app) }
+        }
         return file
     }
+
+    /**
+     * Makes this a started service, so it keeps recording when the bound screen goes away (Back,
+     * a swipe from Recents, the activity destroyed). This runs while the person is on the
+     * recorder, so the app is in the foreground and the start is allowed; startForeground follows
+     * at once. A plain start rather than startForegroundService: if Android refuses the
+     * microphone foreground type, a startForegroundService with no startForeground would crash
+     * the app a few seconds later, while a plain start just records on, and [onDestroy] still
+     * closes the recorder cleanly if the system stops it.
+     */
+    private fun keepRunning() {
+        try {
+            startService(Intent(this, MeetingRecordingService::class.java).setAction(ACTION_KEEP_RECORDING))
+        } catch (e: RuntimeException) {
+            // IllegalStateException (background start) or SecurityException: stays bound-only.
+            Log.w(TAG, "Could not start the recording service: ${e.message}", e)
+        }
+    }
+
+    /** The current recording's title, for a recorder screen reopened mid-recording. */
+    val liveTitle: String get() = meetingTitle
 
     fun pauseRecording() = pauseRecordingInternal(dueToFocusLoss = false)
 
@@ -235,36 +346,58 @@ class MeetingRecordingService : Service() {
      * only then reports back and tears the service down — so [onSaved] always describes a
      * recording that genuinely exists in Room, never just a file that might still be orphaned if
      * the process died a moment later. Behavior (what happens after saving) is entirely the
-     * caller's decision via [onSaved]; this method only guarantees the save itself completed. */
-    fun stopRecording(onSaved: (meetingId: String, file: File?, durationMs: Long) -> Unit) {
+     * caller's decision via [onSaved]; this method only guarantees the save itself completed.
+     *
+     * [onSaved]'s last argument is the guarantee: `persisted == true` means the row exists and the
+     * caller may open the recording. `persisted == false` means the audio is complete but the row
+     * is not, and the caller must tell the person the truth and leave the recording recoverable —
+     * never navigate to a recording that has no row. */
+    fun stopRecording(onSaved: (meetingId: String, file: File?, durationMs: Long, persisted: Boolean) -> Unit) {
         if (_state.value != RecordingState.RECORDING && _state.value != RecordingState.PAUSED) return
         _state.value = RecordingState.STOPPING
         val finalDurationMs = durationMs.value
         val file = audioRecorder.stopRecording()
+        if (file != null) outputFile = file
         val id = meetingId
 
         scope.launch {
             if (id != null && file != null) {
                 _state.value = RecordingState.SAVING
-                try {
-                    meetingRepository.createInitialMeeting(
-                        id = id,
-                        title = meetingTitle,
-                        source = MeetingSource.LOCAL_RECORDING,
-                        audioFilePath = file.absolutePath,
-                        recordingType = recordingContext.recordingType,
-                        customContext = recordingContext.customContext,
-                        speakerCountPreference = recordingContext.speakerCountPreference,
-                        language = recordingContext.language ?: "en",
-                        noteId = recordingContext.noteId
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to persist finished recording $id — audio file is still on disk at ${file.absolutePath}", e)
+                writeJournal()
+                val persisted = RecordingStopFinalizer.finalize(
+                    persist = {
+                        meetingRepository.createInitialMeeting(
+                            id = id,
+                            title = meetingTitle,
+                            source = MeetingSource.LOCAL_RECORDING,
+                            audioFilePath = file.absolutePath,
+                            recordingType = recordingContext.recordingType,
+                            customContext = recordingContext.customContext,
+                            speakerCountPreference = recordingContext.speakerCountPreference,
+                            language = recordingContext.language ?: "en",
+                            noteId = recordingContext.noteId
+                        )
+                    },
+                    // Cleared only after the row is durable; a failure keeps the journal, and the
+                    // next launch offers the recording again instead of losing it.
+                    clearJournal = { journalStore.clear() }
+                )
+                if (!persisted) {
+                    _state.value = RecordingState.SAVE_FAILED
+                    // Written while meetingId and outputFile are still set, so it survives teardown.
+                    writeJournal()
+                    onSaved(id, file, finalDurationMs, false)
+                    teardown()
+                    return@launch
                 }
+                _state.value = RecordingState.SAVED
+                onSaved(id, file, finalDurationMs, true)
+                teardown()
+                return@launch
             }
             _state.value = RecordingState.SAVED
             journalStore.clear()
-            onSaved(id.orEmpty(), file, finalDurationMs)
+            onSaved(id.orEmpty(), file, finalDurationMs, false)
             teardown()
         }
     }
@@ -359,7 +492,11 @@ class MeetingRecordingService : Service() {
                 markerCount = 0,
                 noteCount = 0,
                 lastHeartbeatAtMs = System.currentTimeMillis(),
-                state = _state.value.name
+                state = _state.value.name,
+                language = recordingContext.language,
+                speakerCountPreference = recordingContext.speakerCountPreference,
+                noteId = recordingContext.noteId,
+                customContext = recordingContext.customContext
             )
         )
     }
@@ -374,6 +511,7 @@ class MeetingRecordingService : Service() {
             while (isActive) {
                 delay(10_000)
                 if (_state.value != RecordingState.RECORDING && _state.value != RecordingState.PAUSED) break
+                audioRecorder.checkpointSync()
                 writeJournal()
                 val freeMb = DeviceCapabilityDetector.getAvailableStorageMb()
                 _capacityWarning.value = RecordingCapacity.inFlightWarning(freeMb, currentBatteryPercent())
@@ -495,36 +633,38 @@ class MeetingRecordingService : Service() {
         }
     }
 
-    private fun buildNotification(): Notification {
+    /** The recording's ongoing notification: "Recording" with the elapsed time, Pause or Resume,
+     * Stop, and a tap that opens the recorder. */
+    @androidx.annotation.VisibleForTesting
+    internal fun buildNotification(): Notification {
         val isPaused = _state.value == RecordingState.PAUSED
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        // Opens the recorder screen, which picks the running recording back up.
+        val pendingIntent = com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.pendingIntent(
+            this, com.craftflowtechnologies.meetingmind.core.notify.DeepLink.LiveRecording
         )
 
         val statusText = when {
             isPaused && _focusInterrupted.value -> "Paused — an interruption stopped it. Tap Resume to continue."
-            isPaused -> "Recording paused (offline)"
+            isPaused -> "$meetingTitle • Paused"
             _capacityWarning.value != null -> _capacityWarning.value!!
-            else -> "Continuous recording active • Tap to open"
+            else -> "$meetingTitle • Tap to open"
         }
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MeetingMind • $meetingTitle")
+            .setContentTitle(if (isPaused) "Recording paused" else "Recording")
             .setContentText(statusText)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
-            .setOngoing(!isPaused)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            // Elapsed recorded time (pauses excluded): the chronometer counts up from this base.
+            .setShowWhen(!isPaused)
             .setUsesChronometer(!isPaused)
-            .setWhen(recordingStartTimeMs)
+            .setWhen(System.currentTimeMillis() - durationMs.value)
 
         // Add quick actions for lock-screen control
         val pauseResumeIntent = Intent(this, MeetingRecordingService::class.java).apply {

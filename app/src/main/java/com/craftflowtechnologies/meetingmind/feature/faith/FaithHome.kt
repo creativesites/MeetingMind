@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material.icons.rounded.WbSunny
@@ -164,6 +165,7 @@ fun FaithHomeContent(
 ) {
     val c = MM.colors
     var moreOpen by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
     HomeScaffold(
         modifier = modifier.fillMaxSize().background(c.background).statusBarsPadding().testTag("faith_home"),
         header = {
@@ -174,6 +176,8 @@ fun FaithHomeContent(
                     IconButton(onClick = actions.onAssistant, modifier = Modifier.testTag("faith_assistant")) {
                         Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = "Ask the assistant", tint = c.ink)
                     }
+                    // The app menu with Faith first: every Faith feature, the other spaces and Settings.
+                    com.craftflowtechnologies.meetingmind.core.navigation.AppMenuButton(focus = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH)
                 }
             )
         },
@@ -256,6 +260,23 @@ fun FaithHomeContent(
                     )
                 }
             }
+            // The companion's line: what it has to say right now, or the week's quiet rhythm.
+            item(key = "companion_line") {
+                com.craftflowtechnologies.meetingmind.feature.today.companion.HomeCompanionLine(
+                    space = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH,
+                    onRecord = actions.onRecordSermon, onOpenNote = actions.onOpenNote, onOpenRecording = null
+                )
+            }
+            // Sermon notes from YouTube: the same shared card as every home, with Sermon preset.
+            item(key = "sermon_youtube") {
+                val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
+                com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
+                    onClick = { youTube.open(from = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH) },
+                    modifier = Modifier.testTag("faith_youtube_sermon"),
+                    title = "Sermon from a YouTube video",
+                    benefit = "Paste a link: sermon notes, scripture and key points"
+                )
+            }
             if (state.recent.isNotEmpty()) {
                 item(key = "recent") {
                     Column {
@@ -272,6 +293,12 @@ fun FaithHomeContent(
             if (hasMore && moreOpen) more(this)
         }
     )
+    // Private milestones (seven devotionals this month, a reading plan finished), once ever, over the page.
+    com.craftflowtechnologies.meetingmind.feature.today.companion.FaithMilestones(
+        planDone = (state.plan?.percent ?: 0) >= 100, planDays = state.plan?.length ?: 0,
+        modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
+    )
+    }
 }
 
 @Composable

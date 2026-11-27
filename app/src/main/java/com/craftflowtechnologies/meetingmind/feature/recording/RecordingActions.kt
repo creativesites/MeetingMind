@@ -40,6 +40,13 @@ object RecordingActions {
         question,
         note
     )
+    val lecture = listOf(
+        RecordingAction("exam_hint", "Exam hint", MarkKind.EXAM_HINT),
+        RecordingAction("confused", "Lost me", MarkKind.CONFUSED),
+        important,
+        question,
+        note
+    )
     val study = listOf(important, question, note)
     val default = listOf(highlight, note)
 
@@ -47,7 +54,8 @@ object RecordingActions {
         RecordingType.SERMON -> sermon
         RecordingType.MEETING, RecordingType.INTERVIEW, RecordingType.CLIENT_CALL, RecordingType.ONE_ON_ONE,
         RecordingType.STANDUP, RecordingType.CONSULTATION -> meeting
-        RecordingType.LECTURE, RecordingType.RESEARCH, RecordingType.BIBLE_STUDY -> study
+        RecordingType.LECTURE, RecordingType.RESEARCH -> lecture
+        RecordingType.BIBLE_STUDY -> study
         else -> default
     }
 

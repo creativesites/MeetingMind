@@ -149,6 +149,12 @@ object NoteExportMapper {
             val label = block.payload[NoteBlock.PAYLOAD_ALT]?.takeIf { it.isNotBlank() } ?: url
             ExportBlock.Paragraph(RichText.plain(label).applyStyle(com.craftflowtechnologies.meetingmind.core.notes.InlineStyle.LINK, 0, label.length, url))
         }
+        NoteBlockType.MATH -> ExportBlock.Excerpt("Formula", block.content.text)
+        NoteBlockType.CALLOUT -> {
+            val title = block.payload[NoteBlock.PAYLOAD_CALLOUT_TITLE] ?: block.payload[NoteBlock.PAYLOAD_CALLOUT_KIND] ?: "Callout"
+            ExportBlock.Quote(RichText.plain("$title: ${block.content.text}"))
+        }
+        NoteBlockType.DIAGRAM -> ExportBlock.Excerpt("Diagram", block.payload[NoteBlock.PAYLOAD_DIAGRAM_SYNTAX] ?: block.content.text)
         // Opened out into its own blocks before this point (MarkdownImport.expand).
         NoteBlockType.MARKDOWN -> null
     }

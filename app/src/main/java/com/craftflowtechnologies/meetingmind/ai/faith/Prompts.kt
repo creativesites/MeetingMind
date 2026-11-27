@@ -42,7 +42,11 @@ data class PromptAsset(val id: String, val version: Int, val fields: Map<String,
 object Prompts {
     private val cache = java.util.concurrent.ConcurrentHashMap<String, PromptAsset>()
 
-    val ALL = listOf("faith_contract", "devotional", "sermon_study", "ask_sermon", "scene_classifier", "faith_assistant", "bible_session")
+    /** Every prompt asset under `assets/prompts/` — kept in sync with that directory's contents. */
+    val ALL = listOf(
+        "faith_contract", "devotional", "sermon_study", "ask_sermon", "scene_classifier", "faith_assistant",
+        "bible_session", "notes_assistant", "ask_everything", "create_faith", "create_general"
+    )
 
     fun get(id: String): PromptAsset = cache.getOrPut(id) {
         val text = Prompts::class.java.getResourceAsStream("/$id.md")?.bufferedReader()?.use { it.readText() }

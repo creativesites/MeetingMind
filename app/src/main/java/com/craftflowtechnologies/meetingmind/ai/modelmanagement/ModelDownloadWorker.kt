@@ -38,7 +38,9 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
     override suspend fun doWork(): Result {
         if (modelId.isEmpty()) return Result.failure()
         AppNotifications.ensureChannels(applicationContext)
-        setForeground(foregroundInfo(0, 0))
+        // Android 12+ refuses a foreground start when the app is in the background. The download
+        // still runs as ordinary work then; only the progress notification is lost.
+        runCatching { setForeground(foregroundInfo(0, 0)) }
 
         val repository = ModelRepository(MeetMindDatabase.getInstance(applicationContext), LocalModelStorage(applicationContext))
         var lastUpdate = 0L
@@ -47,8 +49,8 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             if (now - lastUpdate < 700) return@installModel
             lastUpdate = now
             kotlinx.coroutines.runBlocking {
-                setProgress(workDataOf(KEY_DONE to done, KEY_TOTAL to total))
-                setForeground(foregroundInfo(done, total))
+                runCatching { setProgress(workDataOf(KEY_DONE to done, KEY_TOTAL to total)) }
+                runCatching { setForeground(foregroundInfo(done, total)) }
             }
         }
         return when (result) {

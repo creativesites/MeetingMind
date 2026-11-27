@@ -29,12 +29,18 @@ object MarkerNote {
     const val KEY_SCRIPTURE = "marker_scripture"
     const val KEY_NOTES = "marker_notes"
     const val KEY_PRAYER = "marker_prayer"
+    const val KEY_EXAM_HINTS = "marker_exam_hints"
+    const val KEY_CONFUSED = "marker_confused"
     /** Markers with no section of their own. Explicit, so a marker is never dropped for lack of one. */
     const val KEY_OTHER = "marker_other_moments"
-    val keys = setOf(KEY_MOMENTS, KEY_SCRIPTURE, KEY_NOTES, KEY_PRAYER, KEY_OTHER)
+    val keys = setOf(KEY_MOMENTS, KEY_SCRIPTURE, KEY_NOTES, KEY_PRAYER, KEY_EXAM_HINTS, KEY_CONFUSED, KEY_OTHER)
 
     /** Kinds that have a section above, or become findings through [Marks.reconcile]. Everything else lands in [KEY_OTHER]. */
-    private val PLACED = setOf(MarkKind.KEY, MarkKind.SCRIPTURE, MarkKind.NOTE, MarkKind.PRAYER, MarkKind.ACTION, MarkKind.QUESTION, MarkKind.DECISION)
+    private val PLACED = setOf(
+        MarkKind.KEY, MarkKind.SCRIPTURE, MarkKind.NOTE, MarkKind.PRAYER,
+        MarkKind.ACTION, MarkKind.QUESTION, MarkKind.DECISION,
+        MarkKind.EXAM_HINT, MarkKind.CONFUSED
+    )
 
     /** Highlights are pressed just after the thing is said, so look back further than forward. */
     private const val LOOK_BACK_MS = 20_000L
@@ -98,6 +104,31 @@ object MarkerNote {
         lines(MarkKind.NOTE, KEY_NOTES, "Your notes", NoteBlockType.PARAGRAPH)
         lines(MarkKind.PRAYER, KEY_PRAYER, "Prayer points", NoteBlockType.BULLET)
 
+        fun quotedMoments(kind: MarkKind, key: String, title: String) {
+            val list = sorted.filter { it.kind == kind }
+            if (list.isEmpty()) return
+            heading(key, title)
+            list.forEach { m ->
+                val near = segments.filter { it.endMs >= m.atMs - LOOK_BACK_MS && it.startMs <= m.atMs + LOOK_AHEAD_MS && it.text.isNotBlank() }.sortedBy { it.startMs }
+                val typed = m.text?.trim()?.takeIf { it.isNotEmpty() }
+                if (typed != null) {
+                    blocks += NoteBlock(id(m), noteId, 0, NoteBlockType.BULLET, RichText.plain(typed),
+                        payload = at(near.firstOrNull()?.startMs ?: m.atMs),
+                        source = BlockSource.USER, sourceSegmentIds = near.map { it.id }, sectionKey = key)
+                } else if (near.isEmpty()) {
+                    blocks += NoteBlock(id(m), noteId, 0, NoteBlockType.PARAGRAPH, RichText.plain("${kind.label} at ${stamp(m.atMs)}"),
+                        payload = at(m.atMs), source = BlockSource.TRANSCRIPT, sectionKey = key)
+                } else {
+                    val quote = near.joinToString(" ") { it.text.trim() }.let { if (it.length > MAX_QUOTE) it.take(MAX_QUOTE - 1).trimEnd() + "…" else it }
+                    blocks += NoteBlock(id(m), noteId, 0, NoteBlockType.TRANSCRIPT_EXCERPT, RichText.plain(quote),
+                        payload = at(near.first().startMs),
+                        source = BlockSource.TRANSCRIPT, sourceSegmentIds = near.map { it.id }, sectionKey = key)
+                }
+            }
+        }
+        quotedMoments(MarkKind.EXAM_HINT, KEY_EXAM_HINTS, "Exam hints")
+        quotedMoments(MarkKind.CONFUSED, KEY_CONFUSED, "Moments to revisit")
+
         val other = sorted.filter { it.kind !in PLACED }
         if (other.isNotEmpty()) {
             heading(KEY_OTHER, "Other moments")
@@ -115,7 +146,13 @@ object MarkerNote {
     /** Runs after processing has written the note's own sections. Does nothing when nothing was marked for the note. */
     suspend fun apply(context: Context, database: MeetMindDatabase, meetingId: String, segments: List<Marks.Segment>) {
         val noteId = database.meetingDao().getMeetingById(meetingId)?.noteId ?: return
-        val marks = Marks.forMeeting(database, meetingId)
+        val existingSectionKeys = database.noteDao().getBlocks(noteId).mapNotNull { it.sectionKey }.toSet()
+        val hasLectureExamSection = "lecture_exam_hints" in existingSectionKeys
+        val hasLectureUnpackSection = "lecture_confusion_unpacks" in existingSectionKeys
+        val marks = Marks.forMeeting(database, meetingId).filterNot {
+            (it.kind == MarkKind.EXAM_HINT && hasLectureExamSection) ||
+                (it.kind == MarkKind.CONFUSED && hasLectureUnpackSection)
+        }
         val generated = build(noteId, meetingId, marks, segments)
         if (generated.blocks.isEmpty()) return
         NoteRepository(context, database).applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys)

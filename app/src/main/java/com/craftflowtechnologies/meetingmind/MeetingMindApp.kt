@@ -1,7 +1,10 @@
 package com.craftflowtechnologies.meetingmind
 
 import android.app.Application
+import android.os.Build
+import com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs
 import com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog
+import com.craftflowtechnologies.meetingmind.core.diagnostics.ExitHistory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -10,6 +13,7 @@ import java.io.File
 import com.craftflowtechnologies.meetingmind.core.billing.Billing
 import com.craftflowtechnologies.meetingmind.core.billing.DisabledBillingGateway
 import com.craftflowtechnologies.meetingmind.core.billing.RevenueCatBillingGateway
+import com.craftflowtechnologies.meetingmind.core.billing.SimulatedBillingGateway
 
 /**
  * Installs the crash log before anything else runs, so a crash in a reminder, a widget, a worker
@@ -19,17 +23,32 @@ class MeetingMindApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLog.install(this, BuildConfig.VERSION_NAME)
+        Breadcrumbs.init(this)
+        Breadcrumbs.log("app", "start ${BuildConfig.VERSION_NAME}")
+        // The app runs in more than one process (speaker separation has its own). Only the main
+        // process records exits, so the same exit is not written twice.
+        if (isMainProcess()) CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { ExitHistory.record(this@MeetingMindApp) }
         runCatching {
             if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
                 com.google.firebase.FirebaseApp.initializeApp(this)
             }
         }
+        com.craftflowtechnologies.meetingmind.core.circles2.CirclesNotifier.ensureChannel(this)
         removeTeachBackFiles()
         setUpReadToMe()
-        // Billing is set up once per process. With no RevenueCat key the app is simply free: nothing is offered and nothing breaks.
+        // Billing is set up once per process. With a RevenueCat key the Play store is used. A debug build
+        // without one gets the simulated store, so the paywall can be tried on a device. A release build
+        // without a key is simply free: nothing is offered and nothing breaks.
         val key = BuildConfig.REVENUECAT_API_KEY
-        Billing.gateway = if (key.isBlank()) DisabledBillingGateway
-        else runCatching { RevenueCatBillingGateway(this, key) as com.craftflowtechnologies.meetingmind.core.billing.BillingGateway }.getOrDefault(DisabledBillingGateway)
+        Billing.gateway = when {
+            // Closed testing with tiers off: everyone has everything and nothing is sold.
+            com.craftflowtechnologies.meetingmind.core.billing.ClosedTesting.allAccess ->
+                com.craftflowtechnologies.meetingmind.core.billing.ClosedTestingBillingGateway
+            key.isNotBlank() -> runCatching { RevenueCatBillingGateway(this, key) as com.craftflowtechnologies.meetingmind.core.billing.BillingGateway }
+                .getOrDefault(DisabledBillingGateway)
+            BuildConfig.DEBUG -> SimulatedBillingGateway(this)
+            else -> DisabledBillingGateway
+        }
     }
 
     /**
@@ -63,4 +82,8 @@ class MeetingMindApp : Application() {
             }
         }
     }
+
+    /** True in the app's own process; false in the speaker-separation process. */
+    private fun isMainProcess(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.P || getProcessName() == packageName
 }

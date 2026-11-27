@@ -13,7 +13,8 @@ import com.craftflowtechnologies.meetingmind.core.notify.AppNotifications
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
+import com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
+import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.database.ProcessingJobEntity
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingStage
@@ -41,7 +42,12 @@ class MeetingProcessingWorker(
             workDataOf(KEY_ERROR to "Missing audioPath")
         )
         val durationMs = inputData.getLong(KEY_DURATION_MS, 0L)
-        val modelId = inputData.getString(KEY_MODEL_ID) ?: ModelCatalog.parakeetTdtV3Int8.id
+        val language = inputData.getString(KEY_LANGUAGE)
+        // Work queued without a model (an older app version) uses what is installed for the
+        // language, never a fixed model the phone may not have.
+        val modelId = inputData.getString(KEY_MODEL_ID)
+            ?: AsrModelResolver.resolve(LocalModelStorage(applicationContext), null, language)?.id
+            ?: AsrModelResolver.recommended(null, language).id
         val llmModelId = inputData.getString(KEY_LLM_MODEL_ID)
         val expectedSpeakerCount = inputData.getInt(KEY_EXPECTED_SPEAKER_COUNT, -1).takeIf { it > 0 }
         val recordingTitle = inputData.getString(KEY_RECORDING_TITLE) ?: "recording"
@@ -85,6 +91,7 @@ class MeetingProcessingWorker(
                 audioFile = File(audioPath),
                 totalDurationMs = durationMs,
                 modelId = modelId,
+                language = language,
                 expectedSpeakerCount = expectedSpeakerCount,
                 llmModelId = llmModelId,
                 cleanupMode = cleanupMode,
@@ -115,7 +122,14 @@ class MeetingProcessingWorker(
                 }
             )
             val outcome = when (resultMeeting.status) {
-                MeetingStatus.READY.name -> AppNotifications.Outcome.READY
+                // Ready without a summary and with no language model on the phone: the transcript is
+                // complete, so say that and point at the model download instead of a plain "ready".
+                MeetingStatus.READY.name ->
+                    if (resultMeeting.summaryText.isNullOrBlank() && !languageModelInstalled(applicationContext)) {
+                        AppNotifications.Outcome.NEEDS_LANGUAGE_MODEL
+                    } else {
+                        AppNotifications.Outcome.READY
+                    }
                 MeetingStatus.MODEL_REQUIRED.name -> AppNotifications.Outcome.NEEDS_MODEL
                 else -> AppNotifications.Outcome.FAILED
             }
@@ -131,6 +145,9 @@ class MeetingProcessingWorker(
             } else {
                 AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, outcome)
             }
+            // Success even when the recording ended ERROR or MODEL_REQUIRED: the pipeline already
+            // recorded the outcome, and a failed work item would cancel the recordings queued
+            // behind it in the unique chain. Readers check KEY_RESULT_STATUS, not the work state.
             Result.success(
                 workDataOf(
                     KEY_RESULT_MEETING_ID to resultMeeting.id,
@@ -290,6 +307,7 @@ class MeetingProcessingWorker(
         const val KEY_RECORDING_TITLE = "recordingTitle"
         const val KEY_CLEANUP_MODE = "cleanupMode"
         const val KEY_DIARIZATION_STRATEGY = "diarizationStrategy"
+        const val KEY_LANGUAGE = "language"
 
         const val KEY_PROGRESS_STEP = "step"
         const val KEY_PROGRESS_PERCENT = "percent"
@@ -300,3 +318,10 @@ class MeetingProcessingWorker(
         const val KEY_ERROR = "error"
     }
 }
+
+/** True when at least one local model can write summaries. Summaries are optional: without one the transcript still stands. */
+private fun languageModelInstalled(context: android.content.Context): Boolean =
+    com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmModelResolver.resolveSmallestInstalled(
+        com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(context),
+        com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SUMMARIZATION
+    ) != null

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.selects.select
 import java.io.File
 
@@ -44,6 +45,20 @@ object TranscriptionRoutes {
 
     internal fun consume(meetingId: String) { requests.value = requests.value - meetingId }
     internal fun publish(meetingId: String, info: RouteInfo?) { _info.value = if (info == null) _info.value - meetingId else _info.value + (meetingId to info) }
+
+    /** Raises the shown "N% done" as parts finish. Never lowers it, and never brings back a run that ended. */
+    internal fun raisePercent(meetingId: String, percent: Int) {
+        _info.update { all ->
+            val current = all[meetingId] ?: return@update all
+            if (percent <= current.percentDone) all else all + (meetingId to current.copy(percentDone = percent.coerceAtMost(100)))
+        }
+    }
+
+    /** Forgets everything about [meetingId]: its route and any switch asked for. Called when a run starts and ends. */
+    fun clear(meetingId: String) {
+        consume(meetingId)
+        publish(meetingId, null)
+    }
     internal fun peek(meetingId: String): TranscriptionRoute? = requests.value[meetingId]
 }
 
@@ -55,7 +70,11 @@ data class RunOutcome(
     /** Set when the run stopped short: what the last engine said. */
     val failure: String?,
     /** Gemini's message when it failed and the phone took over. */
-    val geminiFailure: String? = null
+    val geminiFailure: String? = null,
+    /** The phone was needed but has no speech model it can use. */
+    val localModelMissing: Boolean = false,
+    /** The person moved the run to this phone themselves (not a Gemini failure). */
+    val switchedToPhoneByUser: Boolean = false
 ) {
     val usedGemini get() = regions.any { it.route == TranscriptionRoute.GEMINI }
     val usedLocal get() = regions.any { it.route == TranscriptionRoute.LOCAL }
@@ -88,6 +107,12 @@ data class RunOutcome(
 class TranscriptionRunner(
     private val store: TranscriptionCheckpoints,
     private val gemini: GeminiTranscriptionEngine?,
+    /**
+     * Whether this phone has a speech model it can transcribe with. When false the phone is never
+     * offered as a route, and a Gemini failure ends the run as "model missing" instead of handing
+     * over to an engine that can only fail.
+     */
+    private val localAvailable: Boolean = true,
     /** Transcribes only [gaps] on this phone; reports each finished stretch through [onRegion]. */
     private val local: suspend (gaps: List<LongRange>, onRegion: (Long, Long, List<CanonicalWord>) -> Unit, onProgress: (Float, String) -> Unit) -> AiResult<List<CanonicalWord>>
 ) {
@@ -100,25 +125,58 @@ class TranscriptionRunner(
         onProgress: (Float, String) -> Unit = { _, _ -> },
         onPartial: suspend (List<CanonicalWord>, Int, Int) -> Unit = { _, _, _ -> }
     ): RunOutcome {
+        // A switch asked for in an earlier run (or after it ended) must not steer this one, and
+        // nothing is offered once the run is over.
+        TranscriptionRoutes.clear(meetingId)
+        try {
+            return runRoutes(meetingId, audioFile, totalMs, start, vocabularyHints, onProgress, onPartial)
+        } finally {
+            TranscriptionRoutes.clear(meetingId)
+        }
+    }
+
+    private suspend fun runRoutes(
+        meetingId: String,
+        audioFile: File,
+        totalMs: Long,
+        start: TranscriptionRoute,
+        vocabularyHints: List<String>,
+        onProgress: (Float, String) -> Unit,
+        onPartial: suspend (List<CanonicalWord>, Int, Int) -> Unit
+    ): RunOutcome {
         val fp = store.fingerprint(audioFile, totalMs)
         var regions = store.load(meetingId, fp)
         var route = if (start == TranscriptionRoute.GEMINI && gemini == null) TranscriptionRoute.LOCAL else start
         var geminiFailure: String? = null
         var failure: String? = null
+        var switchedByUser = false
         var note: String? = if (regions.isNotEmpty()) "Continuing from where it stopped" else null
+        // What is done so far, kept in memory so "N% done" can rise after every finished part.
+        val live = java.util.Collections.synchronizedList(regions.toMutableList())
+        val onSaved: (DoneRegion) -> Unit = { region ->
+            live += region
+            TranscriptionRoutes.raisePercent(meetingId, percent(totalMs, synchronized(live) { live.toList() }))
+        }
         // Guard against a request that flips forever: a handful of hand-overs is plenty.
         repeat(MAX_HANDOVERS) {
             val gaps = Coverage.gaps(totalMs, regions)
-            if (gaps.isEmpty()) return RunOutcome(regions, true, null, geminiFailure)
+            if (gaps.isEmpty()) return RunOutcome(regions, true, null, geminiFailure, switchedToPhoneByUser = switchedByUser)
+            if (route == TranscriptionRoute.LOCAL && !localAvailable) {
+                return RunOutcome(regions, false, failure ?: geminiFailure ?: NO_PHONE_MODEL, geminiFailure, localModelMissing = true)
+            }
             val other = if (route == TranscriptionRoute.GEMINI) TranscriptionRoute.LOCAL else TranscriptionRoute.GEMINI
-            TranscriptionRoutes.publish(meetingId, RouteInfo(route, other.takeIf { it != TranscriptionRoute.GEMINI || gemini != null }, percent(totalMs, regions), note))
-            val stage = runStage(meetingId, fp, audioFile, totalMs, route, gaps, regions, vocabularyHints, onProgress, onPartial)
+            val offered = other.takeIf { (it != TranscriptionRoute.GEMINI || gemini != null) && (it != TranscriptionRoute.LOCAL || localAvailable) }
+            val shown = maxOf(percent(totalMs, regions), TranscriptionRoutes.info.value[meetingId]?.percentDone ?: 0)
+            TranscriptionRoutes.publish(meetingId, RouteInfo(route, offered, shown, note))
+            val stage = runStage(meetingId, fp, audioFile, totalMs, route, gaps, regions, vocabularyHints, onProgress, onPartial, onSaved)
             regions = store.load(meetingId, fp)
+            synchronized(live) { live.clear(); live.addAll(regions) }
             when (stage) {
-                is Stage.Finished -> { if (Coverage.gaps(totalMs, regions).isEmpty()) return RunOutcome(regions, true, null, geminiFailure) }
+                is Stage.Finished -> { if (Coverage.gaps(totalMs, regions).isEmpty()) return RunOutcome(regions, true, null, geminiFailure, switchedToPhoneByUser = switchedByUser) }
                 is Stage.Switched -> {
                     TranscriptionRoutes.consume(meetingId)
                     route = stage.to
+                    switchedByUser = route == TranscriptionRoute.LOCAL
                     note = "Switched to ${route.label}"
                 }
                 is Stage.Failed -> {
@@ -128,24 +186,25 @@ class TranscriptionRunner(
                         note = "Gemini stopped — continuing on this phone"
                     } else {
                         failure = stage.message
-                        return RunOutcome(regions, false, failure, geminiFailure)
+                        return RunOutcome(regions, false, failure, geminiFailure, localModelMissing = stage.modelMissing, switchedToPhoneByUser = switchedByUser)
                     }
                 }
             }
         }
-        return RunOutcome(regions, Coverage.gaps(totalMs, regions).isEmpty(), failure ?: "Transcription kept switching engines without finishing.", geminiFailure)
+        return RunOutcome(regions, Coverage.gaps(totalMs, regions).isEmpty(), failure ?: "Transcription kept switching engines without finishing.", geminiFailure, switchedToPhoneByUser = switchedByUser)
     }
 
     private sealed interface Stage {
         data object Finished : Stage
         data class Switched(val to: TranscriptionRoute) : Stage
-        data class Failed(val message: String) : Stage
+        data class Failed(val message: String, val modelMissing: Boolean = false) : Stage
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun runStage(
         meetingId: String, fp: String, audio: File, totalMs: Long, route: TranscriptionRoute, gaps: List<LongRange>,
-        regions: List<DoneRegion>, hints: List<String>, onProgress: (Float, String) -> Unit, onPartial: suspend (List<CanonicalWord>, Int, Int) -> Unit
+        regions: List<DoneRegion>, hints: List<String>, onProgress: (Float, String) -> Unit, onPartial: suspend (List<CanonicalWord>, Int, Int) -> Unit,
+        onSaved: (DoneRegion) -> Unit
     ): Stage = coroutineScope {
         val work = async<Stage> {
             try { when (route) {
@@ -154,14 +213,22 @@ class TranscriptionRunner(
                     val r = engine.transcribe(
                         audioFile = audio, totalDurationMs = totalMs, vocabularyHints = hints, onProgress = onProgress, onPartial = onPartial,
                         restored = regions,
-                        onChunkDone = { chunk: AudioChunk, words -> store.append(meetingId, fp, DoneRegion(chunk.startMs, chunk.endMs, TranscriptionRoute.GEMINI, words)) }
+                        onChunkDone = { chunk: AudioChunk, words ->
+                            val region = DoneRegion(chunk.startMs, chunk.endMs, TranscriptionRoute.GEMINI, words)
+                            store.append(meetingId, fp, region)
+                            onSaved(region)
+                        }
                     )
                     if (r is AiResult.Success) {
                         Stage.Finished
                     } else Stage.Failed(r.describeFailure() ?: "Gemini failed.")
                 }
                 TranscriptionRoute.LOCAL -> {
-                    val r = local(gaps, { s, e, words -> store.append(meetingId, fp, DoneRegion(s, e, TranscriptionRoute.LOCAL, words)) }, onProgress)
+                    val r = local(gaps, { s, e, words ->
+                        val region = DoneRegion(s, e, TranscriptionRoute.LOCAL, words)
+                        store.append(meetingId, fp, region)
+                        onSaved(region)
+                    }, onProgress)
                     if (r is AiResult.Success) {
                         // Whatever the engine returned that no window reported (and stretches with no
                         // speech at all) is recorded now, so nothing is left looking "missing".
@@ -170,7 +237,7 @@ class TranscriptionRunner(
                             store.append(meetingId, fp, DoneRegion(g.first, g.last + 1, TranscriptionRoute.LOCAL, r.value.filter { it.startMs >= g.first && it.startMs <= g.last }))
                         }
                         Stage.Finished
-                    } else Stage.Failed(r.describeFailure() ?: "Transcription on this phone failed.")
+                    } else Stage.Failed(r.describeFailure() ?: "Transcription on this phone failed.", modelMissing = r is AiResult.ModelUnavailable)
                 }
             } } catch (e: CancellationException) { throw e } catch (e: Exception) { Stage.Failed(e.message ?: "The transcription engine stopped unexpectedly.") }
         }
@@ -187,5 +254,8 @@ class TranscriptionRunner(
 
     private fun percent(totalMs: Long, regions: List<DoneRegion>) = if (totalMs <= 0) 0 else (Coverage.doneMs(totalMs, regions) * 100 / totalMs).toInt()
 
-    private companion object { const val MAX_HANDOVERS = 6 }
+    private companion object {
+        const val MAX_HANDOVERS = 6
+        const val NO_PHONE_MODEL = "There is no speech model on this phone to continue with."
+    }
 }

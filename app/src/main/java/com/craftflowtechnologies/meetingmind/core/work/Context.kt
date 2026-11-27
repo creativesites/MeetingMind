@@ -91,7 +91,7 @@ class ContextRepository(
     suspend fun decisionHistory(type: ContextType, id: String): List<List<ItemEntity>> = withContext(Dispatchers.IO) {
         val repo = ItemRepository(database, clock)
         items(type, id).filter { it.itemKind == ItemKind.DECISION && it.itemStatus != ItemStatus.SUPERSEDED }
-            .map { repo.chain(it.id) }.sortedByDescending { it.last().createdAt }
+            .map { repo.chain(it.id) }.filter { it.isNotEmpty() }.sortedByDescending { it.last().createdAt }
     }
 
     suspend fun risks(type: ContextType, id: String): List<ItemEntity> = items(type, id).filter { it.itemKind == ItemKind.RISK && it.itemStatus == ItemStatus.OPEN }

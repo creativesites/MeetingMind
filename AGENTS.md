@@ -21,10 +21,10 @@ These rules apply to every agent working in this repository, human or AI. Keep t
 
 ## Work discipline
 
+- **Local Gradle runs are allowed** (founder decision, 2026-11-16; replaces the 2026-11-02 remote-only rule). Compile and run the tests that match your change before you commit. Run long suites in the background. Only one session runs Gradle at a time (8 GB Mac). Today that is the Learning session; other sessions ask it to run builds and tests (see `agents/TESTING.md`).
+- **A real device is available:** the founder's Samsung Galaxy S20+ (SM-G985F), over wireless debugging (`adb`), on request: install builds, run the app, record the screen, read logs. See `agents/TESTING.md`. Never wipe its data or uninstall without asking.
 - Read `agents/TESTING.md` before running tests. It lists the gotchas that already cost us time.
 - Run the tests that match your change first. Run the full suite before the APK, not for every small change.
-- Gradle memory: parallel agents use `-Xmx2g --max-workers=2`. A single full run uses `-Xmx6g --max-workers=4`. The machine has about 15 GB.
-- Long runs go in the background; check them with notifications, not polling loops.
 - Never weaken or delete a test to get green. Fix the cause, or report it.
 - Before deleting, overwriting or publishing anything, look at it first.
 
@@ -36,7 +36,8 @@ Full list: `agents/PRODUCT.md`. The short version:
 - A devotional is never empty. The bundled reading is always the fallback.
 - Every note gets its moment every time it is opened, including notes with no speech, typed notes, failed notes and sacred notes (founder decision, 2026-10-14). See `agents/PRODUCT.md`.
 - Circle content lives on the server. Personal notes stay local.
-- Study (Learning) is back in scope (founder, 2026-11-27): rebuilt as lesson, practice and companion. Rules: `docs/mvp/STUDY_AUDIT.md`.
+- Learning is in the MVP (founder decision, 2026-11-16). Release 1 scope follows `design/learning-vertical-design-spec.md`: Learn, Library, Progress, Practice as a mode, Ask Learning. Exam prep is Release 2 and Teach-Back is 1.1; their code is kept but has no entry point.
+- Study (the approved redesign canvas, `design/study/`, `feature/learn/`) runs beside Learning on its own `learn_study` routes until the founder decides how to combine them (2026-11-27). Rules: `docs/mvp/STUDY_AUDIT.md`.
 
 ## Reporting
 

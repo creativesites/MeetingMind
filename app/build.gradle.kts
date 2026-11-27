@@ -9,6 +9,34 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
+// Build configuration values, in one place, so every build kind reads the same sources in the
+// same order: the environment (CI), then local.properties (a developer's machine), then a default.
+// local.properties is gitignored; this repository is public, so nothing secret is ever committed.
+val localBuildProperties = Properties().apply {
+  val local = rootProject.file("local.properties")
+  if (local.exists()) local.inputStream().use { load(it) }
+}
+
+fun buildValue(env: String, vararg propertyNames: String, default: String = ""): String =
+  System.getenv(env)?.trim()?.takeIf { it.isNotEmpty() }
+    ?: propertyNames.firstNotNullOfOrNull { localBuildProperties.getProperty(it)?.trim()?.takeIf(String::isNotEmpty) }
+    ?: default
+
+// RevenueCat public SDK keys. Public by design (they ship in the app), but still chosen per build:
+// a "test_" key from the RevenueCat Test Store can only be used by debug builds, and a real Play
+// key is only injected into a release build.
+val debugRevenueCatKey = buildValue("REVENUECAT_API_KEY_DEBUG", "revenuecat.testApiKey")
+val releaseRevenueCatKey = buildValue("REVENUECAT_API_KEY", "revenuecat.apiKey")
+// The managed Gemini proxy (server/gemini-proxy). Release builds route managed AI here and carry
+// no raw Google key (founder decision 2026-10-25, amending B1).
+val geminiProxyUrl = buildValue("GEMINI_PROXY_URL", "gemini.proxyUrl")
+// The raw key is for debug builds only: a first recording works without setup while developing.
+val debugSystemGeminiKey = buildValue("SYSTEM_GEMINI_API_KEY", "system.geminiApiKey", "gemini.apiKey")
+// Store-required links on the paywall (Google Play needs them for subscriptions). Shown only when set.
+val privacyPolicyUrl = buildValue("PRIVACY_POLICY_URL", "legal.privacyPolicyUrl")
+val termsOfUseUrl = buildValue("TERMS_OF_USE_URL", "legal.termsOfUseUrl")
+val circlesApiUrl = buildValue("CIRCLES_API_URL", "circles.apiUrl", default = "https://meetingmind-circles.meetingmind.workers.dev")
+
 android {
   namespace = "com.craftflowtechnologies.meetingmind"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -17,8 +45,8 @@ android {
     applicationId = "com.craftflowtechnologies.meetingmind"
     minSdk = 24
     targetSdk = 36
-    versionCode = 47
-    versionName = "1.0-v47"
+    versionCode = 51
+    versionName = "1.0-v51"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -26,16 +54,9 @@ android {
     // https://circles-api.<account>.workers.dev. From local.properties (circles.apiUrl=...) or the
     // CIRCLES_API_URL environment variable, else the deployed production Worker (not a secret: every call is
     // authenticated with the user's Firebase ID token). An empty override shows "Circles isn't connected yet".
-    val circlesApiUrl = run {
-      val props = Properties()
-      val local = rootProject.file("local.properties")
-      if (local.exists()) local.inputStream().use { props.load(it) }
-      System.getenv("CIRCLES_API_URL") ?: props.getProperty("circles.apiUrl") ?: "https://meetingmind-circles.meetingmind.workers.dev"
-    }
     buildConfigField("String", "CIRCLES_API_URL", "\"${circlesApiUrl.trim().replace("\"", "")}\"")
-    // System Gemini API key for closed testing (via SYSTEM_GEMINI_API_KEY env var)
-    val systemGeminiKey = System.getenv("SYSTEM_GEMINI_API_KEY") ?: ""
-    buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${systemGeminiKey.replace("\"", "")}\"")
+    // No built-in Gemini key in defaultConfig: debug opts in below, release never carries one.
+    buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"\"")
     // DeepSeek, the fallback for AI text. The key stays out of public builds: production goes
     // through the proxy in server/deepseek-proxy (DEEPSEEK_PROXY_URL), which holds the key and
     // enforces each install's monthly allowance. SYSTEM_DEEPSEEK_API_KEY is for private builds only.
@@ -65,11 +86,13 @@ android {
     // The companion roster (docs/mvp/ZURI_EXPERIENCE.md §10.7): which forms are offered, in display
     // order. The founder's switch; all four forms at launch.
     buildConfigField("String", "COMPANION_FORMS", "\"ZURI,NAS,WREN,PAGE\"")
-    // RevenueCat public SDK key (Play). Empty = billing off: the app is free and offers no plans. Public by
-    // design (it ships in the app), but still read from the environment so builds choose their project.
-    buildConfigField("String", "REVENUECAT_API_KEY", "\"${(System.getenv("REVENUECAT_API_KEY") ?: "").replace("\"", "")}\"")
+    // RevenueCat public SDK key (Play). Per build type below: debug may use a Test Store key, release
+    // must use the real one, injected by CI. Empty = billing off, and the app says so honestly.
+    buildConfigField("String", "REVENUECAT_API_KEY", "\"\"")
     // Base URL of server/gemini-proxy (MeetingMind-managed cloud AI). Empty = no managed AI.
-    buildConfigField("String", "GEMINI_PROXY_URL", "\"${(System.getenv("GEMINI_PROXY_URL") ?: "").replace("\"", "")}\"")
+    buildConfigField("String", "GEMINI_PROXY_URL", "\"${geminiProxyUrl.replace("\"", "")}\"")
+    buildConfigField("String", "PRIVACY_POLICY_URL", "\"${privacyPolicyUrl.replace("\"", "")}\"")
+    buildConfigField("String", "TERMS_OF_USE_URL", "\"${termsOfUseUrl.replace("\"", "")}\"")
   }
 
   signingConfigs {
@@ -102,16 +125,32 @@ android {
       buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-p56sa9uf14ivlnfh2hubtn1j6nrhta7u.apps.googleusercontent.com\"")
       buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
       buildConfigField("String", "MICROSOFT_REDIRECT_URI", "\"msauth://com.craftflowtechnologies.meetingmind.dev/5wWRPGuPtxCEmMlzxlXOVAoSszg%3D\"")
+      // Debug only: a RevenueCat Test Store key (never a real Play key) and the raw Gemini key, so a
+      // fresh development install can record and reach a paywall without any setup.
+      buildConfigField("String", "REVENUECAT_API_KEY", "\"${debugRevenueCatKey.replace("\"", "")}\"")
+      buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${debugSystemGeminiKey.replace("\"", "")}\"")      // Debug builds keep their own tier switch in Settings (TieringModeStore).
+      buildConfigField("Boolean", "CLOSED_TESTING_ALL_ACCESS", "false")
     }
     release {
       isCrunchPngs = false
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
       buildConfigField("Boolean", "COMPANION_LIVE_WHISPER", "false")
-      // Play builds never use the RevenueCat test key: RevenueCat refuses it in a release build and the app closes.
-      // Empty means billing is off and the app is free. Set a production (goog_) key here to turn billing on.
-      buildConfigField("String", "REVENUECAT_API_KEY", "\"\"")
+      // The Play build sells plans with the real (goog_) key, injected by CI. RevenueCat refuses a
+      // test_ key in a release build, so a Test Store key can never leak into a Play artifact.
+      buildConfigField("String", "REVENUECAT_API_KEY", "\"${releaseRevenueCatKey.replace("\"", "")}\"")
+      // Founder decision 2026-10-25 (amends B1): a Play build carries NO raw Google key. Managed AI
+      // goes through the proxy, which holds the key and meters each plan's allowance.
+      buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"\"")
+      // Closed testing (founder decision 2026-11-17): tiers are off and every tester has everything,
+      // as if on Pro lifetime. Set meetingmind.closedTestingAllAccess=false in gradle.properties
+      // for the production launch (see agents/PLAY_STORE.md).
+      buildConfigField(
+        "Boolean", "CLOSED_TESTING_ALL_ACCESS",
+        (providers.gradleProperty("meetingmind.closedTestingAllAccess").orNull ?: "false").toBoolean().toString()
+      )
       // Sign-in registrations for W13 (docs/INTEGRATION_CREDENTIALS.md)
       buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-k9t9e8c1altm4boq43j5f5t4p06ksdhk.apps.googleusercontent.com\"")
       buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
@@ -146,9 +185,12 @@ android {
    * emulator. An arm64 emulator (the default on Apple Silicon) is fine. Add "x86_64" to the
    * include list if an x86 emulator is needed.
    */
+  // Off when building an app bundle: Play splits a bundle by ABI itself, and AGP now refuses a bundle
+  // while ABI splits are on ("Multiple shrunk-resources files found", issuetracker 402800800).
+  val buildingBundle = gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
   splits {
     abi {
-      isEnable = true
+      isEnable = !buildingBundle
       reset()
       include("arm64-v8a", "armeabi-v7a")
       isUniversalApk = false
@@ -172,6 +214,28 @@ android {
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
+
+// A Play artifact must be able to sell a plan and must reach the metered AI service. Both values
+// come from CI secrets; a release built without them would ship an app that is free by accident and
+// whose cloud AI has no allowance behind it. Failing the bundle is the honest outcome.
+val missingForPlayBundle = buildList {
+  if (releaseRevenueCatKey.isBlank() || releaseRevenueCatKey.startsWith("test_")) add("REVENUECAT_API_KEY (production goog_ key)")
+  if (geminiProxyUrl.isBlank()) add("GEMINI_PROXY_URL")
+  if (privacyPolicyUrl.isBlank()) add("PRIVACY_POLICY_URL")
+  if (termsOfUseUrl.isBlank()) add("TERMS_OF_USE_URL")
+  if (circlesApiUrl.isBlank()) add("CIRCLES_API_URL")
+}
+if (missingForPlayBundle.isNotEmpty()) {
+  tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {
+    doFirst {
+      throw GradleException(
+        "This release build is missing ${missingForPlayBundle.joinToString(" and ")}. " +
+          "Set them as environment variables (CI secrets) or in local.properties, then build again. " +
+          "Without a store key the app cannot sell a plan; without the proxy its cloud AI is unmetered."
+      )
+    }
+  }
+}
 
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
@@ -216,6 +280,10 @@ dependencies {
   // implementation(libs.play.services.location)
   // Document scanner for the Work Inbox: runs on the device, and hands back a PDF or pictures (docs/PLAN_PROFESSIONAL.md D7).
   implementation(libs.mlkit.document.scanner)
+  // R4 document reading (core/documents): PdfBox-Android reads the PDF text layer with positions; ML Kit
+  // text recognition is unbundled, so Play services delivers its model and the APK does not grow.
+  implementation(libs.pdfbox.android)
+  implementation(libs.play.services.mlkit.text.recognition)
   // sherpa-onnx: on-device speech recognition (VAD + Parakeet TDT ASR). Prebuilt AAR from
   // GitHub Releases — see settings.gradle.kts ivy repository and docs/AI_ARCHITECTURE.md.
   // Declared with an explicit "@aar" artifact type since the ivy repo pattern resolves a

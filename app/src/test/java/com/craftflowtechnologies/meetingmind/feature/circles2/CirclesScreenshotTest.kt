@@ -62,11 +62,11 @@ class CirclesScreenshotTest {
 
     @Test fun create() = shot("create", {
         CreateCircleContent(
-            CreateUiState(name = "Tuesday Night", displayName = "Ann"), {}, {}, {}, {}, {}, {}, {}, {}, {}
+            CreateUiState(name = "Tuesday Night", displayName = "Ann"), {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
         )
     })
     @Test fun createError() = shot("create_error", {
-        CreateCircleContent(CreateUiState(name = "", error = "Give your cell group a name."), {}, {}, {}, {}, {}, {}, {}, {}, {})
+        CreateCircleContent(CreateUiState(name = "", error = "Give your cell group a name."), {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     })
 
     // ---------- circle home ----------
@@ -92,19 +92,21 @@ class CirclesScreenshotTest {
         loading = false, circle = testCircle(), me = if (admin) members[1] else members[2], members = members, posts = posts, pending = pending, myPendingCount = myPending
     )
 
-    private fun home(state: CircleHomeUiState, chat: ChatUiState = ChatUiState(loading = false, myUid = "me", myName = "Ann Mensah"), tab: HomeTab = HomeTab.Feed, chatActions: ChatActions = ChatActions.None) = @Composable {
-        CircleHomeContent(state, chat, "", tab, {}, now, FeedActions.None, chatActions, MemberActions.None, SnackbarHostState(), {}, {}, {}, {})
+    private fun home(state: CircleHomeUiState, chat: ChatUiState = ChatUiState(loading = false, myUid = "me", myName = "Ann Mensah"), tab: CircleTab = CircleTab.Updates, chatActions: ChatActions = ChatActions.None) = @Composable {
+        CircleHomeContent(state, chat, "", tab, {}, now, FeedActions.None, chatActions, MemberActions.None, SnackbarHostState(), {}, {}, {}, {}, {})
     }
 
     @Test fun feed() = shot("feed", home(homeState()))
+    @Test fun faithHome() = shot("faith_home", home(homeState(), tab = CircleTab.Home))
+    @Test fun faithHomeQuiet() = shot("faith_home_quiet", home(homeState(posts = emptyList()), tab = CircleTab.Home))
     @Test fun feedMember() = shot("feed_member_waiting", home(homeState(admin = false, myPending = 1)))
     @Test fun feedEmpty() = shot("feed_empty", home(homeState(posts = emptyList())))
     @Test fun feedAdminPending() = shot("feed_admin_pending", home(homeState(posts = feedPosts.take(2), pending = listOf(
         PendingPost("pp1", PostType.Prayer, "Pray for my marriage. We are going through a hard season.", "Ecclesiastes 4:9", true, now - 5 * minute),
         PendingPost("pp2", PostType.Prayer, "Safe travel for the mission team next week.", null, false, now - 90 * minute)
     ))))
-    @Test fun members() = shot("members", home(homeState(), tab = HomeTab.Members))
-    @Test fun gone() = shot("gone", { CircleHomeContent(CircleHomeUiState(loading = false, gone = true), ChatUiState(), "", HomeTab.Feed, {}, now, FeedActions.None, ChatActions.None, MemberActions.None, SnackbarHostState(), {}, {}, {}, {}) })
+    @Test fun members() = shot("members", home(homeState(), tab = CircleTab.People))
+    @Test fun gone() = shot("gone", { CircleHomeContent(CircleHomeUiState(loading = false, gone = true), ChatUiState(), "", CircleTab.Home, {}, now, FeedActions.None, ChatActions.None, MemberActions.None, SnackbarHostState(), {}, {}, {}, {}, {}) })
 
     // ---------- chat ----------
 
@@ -130,9 +132,9 @@ class CirclesScreenshotTest {
         reactionsFor = { id -> flowOf(if (id == "m1") listOf(MessageReaction("🙏", 3, true), MessageReaction("❤️", 1, false)) else emptyList()) }
     )
 
-    @Test fun chatEmpty() = shot("chat_empty", home(homeState(), ChatUiState(loading = false, myUid = "me"), HomeTab.Chat))
-    @Test fun chat() = shot("chat_poll_celebration", home(homeState(), ChatUiState(loading = false, messages = chatMessages, myUid = "me", myName = "Ann Mensah"), HomeTab.Chat, funActions))
-    @Test fun chatReplying() = shot("chat_replying", home(homeState(), ChatUiState(loading = false, messages = chatMessages.take(2), myUid = "me", replyTo = chatMessages[0]), HomeTab.Chat, funActions))
+    @Test fun chatEmpty() = shot("chat_empty", home(homeState(), ChatUiState(loading = false, myUid = "me"), CircleTab.Chat))
+    @Test fun chat() = shot("chat_poll_celebration", home(homeState(), ChatUiState(loading = false, messages = chatMessages, myUid = "me", myName = "Ann Mensah"), CircleTab.Chat, funActions))
+    @Test fun chatReplying() = shot("chat_replying", home(homeState(), ChatUiState(loading = false, messages = chatMessages.take(2), myUid = "me", replyTo = chatMessages[0]), CircleTab.Chat, funActions))
 
     // ---------- settings ----------
 

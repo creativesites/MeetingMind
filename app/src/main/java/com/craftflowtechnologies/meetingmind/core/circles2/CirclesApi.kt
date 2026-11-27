@@ -19,11 +19,16 @@ data class CreatePostRequest(
     val verseRef: String? = null,
     val anonymous: Boolean = false,
     /** Photos on the post. Each was uploaded through the Worker first. */
-    val attachments: List<MediaAttachment> = emptyList()
+    val attachments: List<MediaAttachment> = emptyList(),
+    val requestId: String? = null,
+    val meta: PostMeta? = null
 )
 
+val MediaAttachment.w: Int? get() = null
+val MediaAttachment.h: Int? get() = null
+
 data class CreatedPost(val postId: String, val pending: Boolean)
-data class CreateCircleRequest(val name: String, val template: String, val vocab: String, val displayName: String, val settings: CircleSettings, val requestId: String = java.util.UUID.randomUUID().toString(), val description: String = "")
+data class CreateCircleRequest(val name: String, val template: String, val vocab: String, val displayName: String, val settings: CircleSettings, val requestId: String = java.util.UUID.randomUUID().toString(), val description: String = "", val space: String = "faith")
 
 /** The Worker's endpoints (server/circles-api). Every call returns a result: nothing here throws to the UI. */
 interface CirclesApi {
@@ -33,7 +38,10 @@ interface CirclesApi {
     suspend fun createCircle(req: CreateCircleRequest): CirclesResult<String>
     suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String? = null, coverPath: String? = null): CirclesResult<Unit>
     suspend fun myCircles(): CirclesResult<List<String>>
+    /** Moves the circles of the guest account [guestToken] belongs to over to the caller. Returns the circle ids moved. */
+    suspend fun adoptGuestCircles(guestToken: String): CirclesResult<List<String>>
     suspend fun createInvite(circleId: String, expiresInDays: Int = 7, maxUses: Int = 50): CirclesResult<Invite>
+    suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int = 7, maxUses: Int = 50): CirclesResult<Invite>
     suspend fun revokeInvite(code: String): CirclesResult<Unit>
     /** [pasted] is whatever the person pasted; the Worker extracts the code. Returns the circle id. */
     suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome>
@@ -58,6 +66,8 @@ interface CirclesApi {
     suspend fun editPost(circleId: String, postId: String, body: String): CirclesResult<Unit>
     suspend fun addUpdate(circleId: String, postId: String, body: String): CirclesResult<Unit>
     suspend fun markAnswered(circleId: String, postId: String): CirclesResult<Unit>
+    suspend fun setWorkStatus(circleId: String, postId: String, status: WorkStatus): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
+    suspend fun toggleChecklistItem(circleId: String, postId: String, itemId: String, done: Boolean? = null): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
     suspend fun deletePost(circleId: String, postId: String): CirclesResult<Unit>
     /** Returns true if this person had already prayed. */
     suspend fun prayed(circleId: String, postId: String): CirclesResult<Boolean>
@@ -66,7 +76,7 @@ interface CirclesApi {
     suspend fun report(circleId: String, postId: String, reason: String): CirclesResult<Unit>
     suspend fun reportMessage(circleId: String, messageId: String, reason: String): CirclesResult<Unit>
 
-    suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean): CirclesResult<Unit>
+    suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean, closesAt: Long? = null, correctOptionIndex: Int? = null, explanation: String? = null): CirclesResult<Unit>
     suspend fun closePoll(circleId: String, pollId: String): CirclesResult<Unit>
     suspend fun startChain(circleId: String, title: String, postId: String?): CirclesResult<Unit>
     suspend fun celebrate(circleId: String, kind: CelebrationKind, text: String, companion: String?, postId: String? = null): CirclesResult<Unit>
@@ -88,6 +98,23 @@ interface CirclesApi {
     suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?, requestId: String? = null): CirclesResult<Unit>
     suspend fun registerToken(token: String): CirclesResult<Unit>
     suspend fun unregisterToken(token: String): CirclesResult<Unit>
+    suspend fun notifyChat(circleId: String, hasMentions: Boolean): CirclesResult<Unit> = CirclesResult.Ok(Unit)
+
+    /** Sets my profile photo. Returns the new avatar version, which the Worker writes onto each of my member docs. */
+    suspend fun uploadAvatar(bytes: ByteArray, mime: String): CirclesResult<Long> = CirclesFailure.notConnected.asResult()
+    /** Removes my profile photo everywhere. */
+    suspend fun removeAvatar(): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
+    /** A member's profile photo, for members of [circleId] only. */
+    suspend fun downloadAvatar(circleId: String, uid: String): CirclesResult<ByteArray> = CirclesFailure.notConnected.asResult()
+
+    /** Marks a member external (or not). Owner and admins only, work circles only. The Worker writes members/{uid}.external. */
+    suspend fun setExternal(circleId: String, uid: String, external: Boolean): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
+    /** Sets a decision's status. The post's author, an admin or a moderator may. Decision posts only. */
+    suspend fun setDecisionStatus(circleId: String, postId: String, status: DecisionStatus): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
+    /** What an invite code leads to, before joining. Changes nothing. [code] is the bare code (see InviteCodes). */
+    suspend fun previewInvite(code: String): CirclesResult<InvitePreview> = CirclesFailure.notConnected.asResult()
+    /** The Table: claim an unclaimed bring item, or release it (release is for the holder, or an admin). */
+    suspend fun claimBringItem(circleId: String, eventId: String, itemId: String, claim: Boolean): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
 }
 
 /** Used when CIRCLES_API_URL is empty. Every call says so plainly. */
@@ -103,7 +130,9 @@ object NotConfiguredCirclesApi : CirclesApi {
     override suspend fun deleteMedia(circleId: String, path: String) = no<Unit>()
     override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?, requestId: String?) = no<Unit>()
     override suspend fun myCircles() = no<List<String>>()
+    override suspend fun adoptGuestCircles(guestToken: String) = no<List<String>>()
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = no<Invite>()
+    override suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int, maxUses: Int) = no<Invite>()
     override suspend fun revokeInvite(code: String) = no<Unit>()
     override suspend fun join(pasted: String, displayName: String) = no<JoinOutcome>()
     override suspend fun decideJoin(circleId: String, uid: String, approve: Boolean) = no<Unit>()
@@ -123,19 +152,26 @@ object NotConfiguredCirclesApi : CirclesApi {
     override suspend fun editPost(circleId: String, postId: String, body: String) = no<Unit>()
     override suspend fun addUpdate(circleId: String, postId: String, body: String) = no<Unit>()
     override suspend fun markAnswered(circleId: String, postId: String) = no<Unit>()
+    override suspend fun setWorkStatus(circleId: String, postId: String, status: WorkStatus) = no<Unit>()
+    override suspend fun toggleChecklistItem(circleId: String, postId: String, itemId: String, done: Boolean?) = no<Unit>()
     override suspend fun deletePost(circleId: String, postId: String) = no<Unit>()
     override suspend fun prayed(circleId: String, postId: String) = no<Boolean>()
     override suspend fun react(circleId: String, postId: String, kind: ReactionKind?) = no<Unit>()
     override suspend fun syncCounts(circleId: String, postId: String) = no<Unit>()
     override suspend fun report(circleId: String, postId: String, reason: String) = no<Unit>()
     override suspend fun reportMessage(circleId: String, messageId: String, reason: String) = no<Unit>()
-    override suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean) = no<Unit>()
+    override suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean, closesAt: Long?, correctOptionIndex: Int?, explanation: String?) = no<Unit>()
     override suspend fun closePoll(circleId: String, pollId: String) = no<Unit>()
     override suspend fun startChain(circleId: String, title: String, postId: String?) = no<Unit>()
     override suspend fun celebrate(circleId: String, kind: CelebrationKind, text: String, companion: String?, postId: String?) = no<Unit>()
     override suspend fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?) = no<Unit>()
     override suspend fun registerToken(token: String) = no<Unit>()
     override suspend fun unregisterToken(token: String) = no<Unit>()
+    override suspend fun notifyChat(circleId: String, hasMentions: Boolean) = no<Unit>()
+    override suspend fun setExternal(circleId: String, uid: String, external: Boolean) = no<Unit>()
+    override suspend fun setDecisionStatus(circleId: String, postId: String, status: DecisionStatus) = no<Unit>()
+    override suspend fun previewInvite(code: String) = no<InvitePreview>()
+    override suspend fun claimBringItem(circleId: String, eventId: String, itemId: String, claim: Boolean) = no<Unit>()
 }
 
 /** JSON bodies, kept pure so tests can assert exactly what leaves the phone. */
@@ -147,17 +183,62 @@ object CirclesJson {
         .put("joinApproval", s.joinApproval)
         .put("reactions", JSONArray(s.reactions.map { it.wire }))
         .put("guidelines", s.guidelines)
+        .put("space", s.space)
 
+    /** Always sends the bring list: the draft's list replaces the event's list (an empty list clears it). */
     fun event(circleId: String, d: EventDraft): JSONObject = JSONObject()
         .put("circleId", circleId).put("title", d.title).put("description", d.description)
         .put("location", d.location).put("onlineUrl", d.onlineUrl ?: "")
         .put("startsAt", d.startsAt).put("endsAt", d.endsAt).put("timeZone", d.timeZone)
+        .put("bringList", JSONArray(d.bringList))
+
+    fun postMeta(m: PostMeta): JSONObject = JSONObject().apply {
+        if (!m.sourceKind.isNullOrBlank()) put("sourceKind", m.sourceKind)
+        if (!m.sourceId.isNullOrBlank()) put("sourceId", m.sourceId)
+        if (!m.assigneeUid.isNullOrBlank()) put("assigneeUid", m.assigneeUid)
+        if (!m.assigneeName.isNullOrBlank()) put("assigneeName", m.assigneeName)
+        if (!m.dueText.isNullOrBlank()) put("dueText", m.dueText)
+        if (m.dueAt != null) put("dueAt", m.dueAt)
+        if (m.priority != null) put("priority", m.priority.wire)
+        if (!m.blockedOn.isNullOrBlank()) put("blockedOn", m.blockedOn)
+        if (!m.decisionOwner.isNullOrBlank()) put("decisionOwner", m.decisionOwner)
+        if (!m.meetingDate.isNullOrBlank()) put("meetingDate", m.meetingDate)
+        if (m.tags.isNotEmpty()) put("tags", JSONArray(m.tags))
+        m.decisionStatus?.let { put("decisionStatus", it.wire) }
+        if (!m.replacesPostId.isNullOrBlank()) put("replacesPostId", m.replacesPostId)
+        if (m.checklist.isNotEmpty()) {
+            put("checklist", JSONArray(m.checklist.map { item ->
+                JSONObject()
+                    .put("id", item.id)
+                    .put("text", item.text)
+                    .put("done", item.done)
+            }))
+        }
+    }
 
     fun createPost(r: CreatePostRequest): JSONObject = JSONObject()
         .put("circleId", r.circleId).put("type", r.type.wire).put("body", r.body)
         .put("anonymous", r.anonymous)
         .apply { if (!r.verseRef.isNullOrBlank()) put("verseRef", r.verseRef) }
-        .apply { if (r.attachments.isNotEmpty()) put("attachments", JSONArray(r.attachments.map { a -> JSONObject().put("path", a.path).put("mime", a.mime).put("bytes", a.bytes) })) }
+        .apply { if (!r.requestId.isNullOrBlank()) put("requestId", r.requestId) }
+        .apply {
+            if (r.attachments.isNotEmpty()) {
+                put("attachments", JSONArray(r.attachments.map { a ->
+                    JSONObject().put("path", a.path).put("mime", a.mime).put("bytes", a.bytes).apply {
+                        if (a.durationMs != null) put("durationMs", a.durationMs)
+                        if (a.w != null) put("w", a.w)
+                        if (a.h != null) put("h", a.h)
+                        if (a.name != null) put("name", a.name)
+                    }
+                }))
+            }
+        }
+        .apply {
+            val m = r.meta
+            if (m != null && !m.isEmpty) {
+                put("meta", postMeta(m))
+            }
+        }
 
     fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?): JSONObject = JSONObject()
         .put("circleId", circleId).put("postId", postId).put("body", body.take(2000))
@@ -166,7 +247,10 @@ object CirclesJson {
     fun createCircle(r: CreateCircleRequest): JSONObject = JSONObject()
         .put("name", r.name).put("template", r.template).put("vocab", r.vocab)
         .put("displayName", r.displayName).put("settings", settings(r.settings)).put("requestId", r.requestId)
-        .put("description", r.description)
+        .put("description", r.description).put("space", r.space)
+
+    fun emailInvite(circleId: String, email: String, expiresInDays: Int, maxUses: Int): JSONObject = JSONObject()
+        .put("circleId", circleId).put("email", email).put("expiresInDays", expiresInDays).put("maxUses", maxUses)
 }
 
 /**
@@ -230,8 +314,13 @@ class HttpCirclesApi(
 
     private fun failureFrom(status: Int, obj: JSONObject?, requestId: String?): CirclesFailure {
         val err = obj?.optJSONObject("error")
-        val code = err?.optString("code")?.takeIf { it.isNotBlank() }
-        val message = err?.optString("message")?.takeIf { it.isNotBlank() }
+        val rawCode = err?.optString("code")?.takeIf { it.isNotBlank() }
+        val rawMessage = err?.optString("message")?.takeIf { it.isNotBlank() }
+        // The Worker's router answers an endpoint it doesn't have yet (an older deploy) with a bare "Not found".
+        // Say that plainly, and don't let it read as "that code or circle wasn't found".
+        val routeMissing = status == 404 && rawCode == "not_found" && rawMessage == "Not found"
+        val code = if (routeMissing) "unavailable" else rawCode
+        val message = if (routeMissing) "This isn't available yet. Please try again later." else rawMessage
         val kind = when {
             status == 401 -> FailureKind.SignedOut
             status == 404 -> FailureKind.NotFound
@@ -261,6 +350,12 @@ class HttpCirclesApi(
             if (coverPath != null) put("coverPath", coverPath)
         })
 
+    override suspend fun adoptGuestCircles(guestToken: String): CirclesResult<List<String>> =
+        call("adoptGuestCircles", JSONObject().put("guestToken", guestToken)).map { o ->
+            val a = o.optJSONArray("moved") ?: JSONArray()
+            (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } }
+        }
+
     override suspend fun myCircles(): CirclesResult<List<String>> = call("myCircles").map { o ->
         val a = o.optJSONArray("circleIds") ?: JSONArray()
         (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } }
@@ -268,6 +363,13 @@ class HttpCirclesApi(
 
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) =
         call("createInvite", JSONObject().put("circleId", circleId).put("expiresInDays", expiresInDays).put("maxUses", maxUses))
+            .flatMap { o ->
+                val code = o.optString("code")
+                if (code.isBlank()) CirclesFailure.server().asResult() else CirclesResult.Ok(Invite(code, o.optString("expiresAt").ifBlank { null }, if (o.has("maxUses")) o.optInt("maxUses") else null))
+            }
+
+    override suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int, maxUses: Int): CirclesResult<Invite> =
+        call("createEmailInvite", CirclesJson.emailInvite(circleId, email, expiresInDays, maxUses))
             .flatMap { o ->
                 val code = o.optString("code")
                 if (code.isBlank()) CirclesFailure.server().asResult() else CirclesResult.Ok(Invite(code, o.optString("expiresAt").ifBlank { null }, if (o.has("maxUses")) o.optInt("maxUses") else null))
@@ -307,6 +409,11 @@ class HttpCirclesApi(
     override suspend fun editPost(circleId: String, postId: String, body: String) = unit("editPost", post(circleId, postId).put("body", body))
     override suspend fun addUpdate(circleId: String, postId: String, body: String) = unit("addUpdate", post(circleId, postId).put("body", body))
     override suspend fun markAnswered(circleId: String, postId: String) = unit("markAnswered", post(circleId, postId))
+    override suspend fun setWorkStatus(circleId: String, postId: String, status: WorkStatus) = unit("setWorkStatus", post(circleId, postId).put("status", status.wire))
+    override suspend fun toggleChecklistItem(circleId: String, postId: String, itemId: String, done: Boolean?): CirclesResult<Unit> =
+        unit("toggleChecklistItem", JSONObject().put("circleId", circleId).put("postId", postId).put("itemId", itemId).apply {
+            if (done != null) put("done", done)
+        })
     override suspend fun deletePost(circleId: String, postId: String) = unit("deletePost", post(circleId, postId))
     override suspend fun prayed(circleId: String, postId: String): CirclesResult<Boolean> = call("prayed", post(circleId, postId)).map { it.optBoolean("alreadyPrayed", false) }
     override suspend fun react(circleId: String, postId: String, kind: ReactionKind?) =
@@ -315,8 +422,12 @@ class HttpCirclesApi(
     override suspend fun report(circleId: String, postId: String, reason: String) = unit("report", post(circleId, postId).put("reason", reason))
     override suspend fun reportMessage(circleId: String, messageId: String, reason: String) = unit("reportMessage", JSONObject().put("circleId", circleId).put("messageId", messageId).put("reason", reason))
 
-    override suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean) =
-        unit("createPoll", JSONObject().put("circleId", circleId).put("question", question).put("options", JSONArray(options)).put("multi", multi))
+    override suspend fun createPoll(circleId: String, question: String, options: List<String>, multi: Boolean, closesAt: Long?, correctOptionIndex: Int?, explanation: String?) =
+        unit("createPoll", JSONObject().put("circleId", circleId).put("question", question).put("options", JSONArray(options)).put("multi", multi).apply {
+            if (closesAt != null) put("closesAt", closesAt)
+            if (correctOptionIndex != null) put("correctIndex", correctOptionIndex)
+            if (!explanation.isNullOrBlank()) put("explanation", explanation)
+        })
     override suspend fun closePoll(circleId: String, pollId: String) = unit("closePoll", JSONObject().put("circleId", circleId).put("pollId", pollId))
     override suspend fun startChain(circleId: String, title: String, postId: String?) =
         unit("startChain", JSONObject().put("circleId", circleId).put("title", title).apply { if (postId != null) put("postId", postId) })
@@ -386,8 +497,85 @@ class HttpCirclesApi(
 
     override suspend fun registerToken(token: String) = unit("registerToken", JSONObject().put("token", token))
     override suspend fun unregisterToken(token: String) = unit("unregisterToken", JSONObject().put("token", token))
+    override suspend fun notifyChat(circleId: String, hasMentions: Boolean) =
+        unit("notifyChat", JSONObject().put("circleId", circleId).put("hasMentions", hasMentions))
+
+    override suspend fun setExternal(circleId: String, uid: String, external: Boolean): CirclesResult<Unit> =
+        unit("setExternal", JSONObject().put("circleId", circleId).put("uid", uid).put("external", external))
+
+    override suspend fun setDecisionStatus(circleId: String, postId: String, status: DecisionStatus): CirclesResult<Unit> =
+        unit("setDecisionStatus", post(circleId, postId).put("status", status.wire))
+
+    override suspend fun previewInvite(code: String): CirclesResult<InvitePreview> =
+        call("previewInvite", JSONObject().put("code", code.take(2000))).flatMap { o ->
+            val name = nullableText(o, "name")
+            if (name == null) CirclesFailure.server().asResult<InvitePreview>()
+            else CirclesResult.Ok(
+                InvitePreview(
+                    circleId = nullableText(o, "circleId"),
+                    name = name,
+                    space = nullableText(o, "space") ?: "faith",
+                    template = nullableText(o, "template"),
+                    memberCount = if (o.has("memberCount")) o.optInt("memberCount") else 0,
+                    coverPath = nullableText(o, "coverPath"),
+                    inviterName = nullableText(o, "inviterName")
+                )
+            )
+        }
+
+    override suspend fun claimBringItem(circleId: String, eventId: String, itemId: String, claim: Boolean): CirclesResult<Unit> =
+        unit("claimBringItem", JSONObject().put("circleId", circleId).put("eventId", eventId).put("itemId", itemId).put("claim", claim))
+
+    override suspend fun uploadAvatar(bytes: ByteArray, mime: String): CirclesResult<Long> {
+        if (!isConfigured) return CirclesFailure.notConnected.asResult()
+        val token = when (val t = tokenProvider()) {
+            is CirclesResult.Ok -> t.value
+            is CirclesResult.Err -> return t
+        }
+        return withContext(Dispatchers.IO) {
+            val request = try {
+                Request.Builder().url("$root/v1/avatar").header("Authorization", "Bearer $token")
+                    .put(bytes.toRequestBody(mime.toMediaType())).build()
+            } catch (e: IllegalArgumentException) {
+                return@withContext CirclesFailure.notConnected.asResult()
+            }
+            runRequest(request).flatMap { o ->
+                val version = o.optLong("avatarVersion", 0L)
+                if (version > 0L) CirclesResult.Ok(version) else CirclesFailure.server().asResult()
+            }
+        }
+    }
+
+    override suspend fun removeAvatar(): CirclesResult<Unit> = unit("removeAvatar", JSONObject())
+
+    override suspend fun downloadAvatar(circleId: String, uid: String): CirclesResult<ByteArray> {
+        if (!isConfigured) return CirclesFailure.notConnected.asResult()
+        val token = when (val t = tokenProvider()) {
+            is CirclesResult.Ok -> t.value
+            is CirclesResult.Err -> return t
+        }
+        return withContext(Dispatchers.IO) {
+            val request = try {
+                Request.Builder().url("$root/v1/avatar/$circleId/$uid").header("Authorization", "Bearer $token").get().build()
+            } catch (e: IllegalArgumentException) {
+                return@withContext CirclesFailure.notConnected.asResult()
+            }
+            try {
+                client.newCall(request).execute().use { res ->
+                    if (res.isSuccessful) CirclesResult.Ok(res.body?.bytes() ?: ByteArray(0))
+                    else CirclesResult.Err(failureFrom(res.code, null, res.header("X-Request-Id")))
+                }
+            } catch (e: IOException) {
+                CirclesFailure.offline.asResult()
+            } catch (e: RuntimeException) {
+                CirclesFailure.server().asResult()
+            }
+        }
+    }
 
     private fun post(circleId: String, postId: String) = JSONObject().put("circleId", circleId).put("postId", postId)
+    /** A text field, or null when it is missing, JSON null or blank. (optString would turn JSON null into "null".) */
+    private fun nullableText(o: JSONObject, key: String): String? = if (o.isNull(key)) null else o.optString(key).takeIf { it.isNotBlank() }
     private fun str(o: JSONObject, key: String): CirclesResult<String> =
         o.optString(key).takeIf { it.isNotBlank() }?.let { CirclesResult.Ok(it) } ?: CirclesFailure.server().asResult()
 }

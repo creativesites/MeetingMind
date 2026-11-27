@@ -52,6 +52,15 @@ class CirclesApiTest {
         assertEquals("https://circles.example.workers.dev/v1/createPost", c.request?.url.toString())
     }
 
+    @Test fun `an endpoint the deployed Worker doesn't have yet reads as unavailable, not as a missing code`() = runBlocking {
+        val missing = api(Canned(404, """{"ok":false,"error":{"code":"not_found","message":"Not found"}}""")).previewInvite("GRACE-7K2Q")
+        val f = (missing as CirclesResult.Err).failure
+        assertEquals("unavailable", f.code)
+        assertEquals("This isn't available yet. Please try again later.", f.message)
+        val realMiss = api(Canned(404, """{"ok":false,"error":{"code":"not_found","message":"That code wasn't found. Check it and try again."}}""")).previewInvite("GRACE-7K2Q")
+        assertEquals("not_found", (realMiss as CirclesResult.Err).failure.code)
+    }
+
     @Test fun `commentAsAuthor sends no uid or name, and token calls hit their endpoints`() = runBlocking {
         val c = Canned(body = """{"ok":true,"commentId":"x"}""")
         assertTrue(api(c).commentAsAuthor("c1", "p1", "Thanks", "cm1") is CirclesResult.Ok)
@@ -130,5 +139,144 @@ class CirclesApiTest {
         api(c2).celebrate("c1", CelebrationKind.Birthday, "30!", "zuri")
         val j = JSONObject(c2.sent)
         assertEquals("birthday", j.getString("kind")); assertEquals("zuri", j.getString("companion"))
+    }
+
+    @Test fun `createPost with meta serializes meta object and omits when empty or null`() {
+        val meta = PostMeta(
+            sourceKind = "action_item",
+            sourceId = "act-1",
+            assigneeUid = "u-99",
+            assigneeName = "Bob",
+            dueText = "Friday",
+            dueAt = 1731600000000L,
+            priority = WorkPriority.High,
+            blockedOn = "backend",
+            decisionOwner = "Alice",
+            meetingDate = "2026-11-14"
+        )
+        val reqWithMeta = CreatePostRequest("c1", PostType.Task, "Task body", meta = meta)
+        val json = CirclesJson.createPost(reqWithMeta)
+        assertTrue(json.has("meta"))
+        val metaObj = json.getJSONObject("meta")
+        assertEquals("action_item", metaObj.getString("sourceKind"))
+        assertEquals("act-1", metaObj.getString("sourceId"))
+        assertEquals("u-99", metaObj.getString("assigneeUid"))
+        assertEquals("Bob", metaObj.getString("assigneeName"))
+        assertEquals("Friday", metaObj.getString("dueText"))
+        assertEquals(1731600000000L, metaObj.getLong("dueAt"))
+        assertEquals("high", metaObj.getString("priority"))
+        assertEquals("backend", metaObj.getString("blockedOn"))
+        assertEquals("Alice", metaObj.getString("decisionOwner"))
+        assertEquals("2026-11-14", metaObj.getString("meetingDate"))
+
+        val reqEmptyMeta = CreatePostRequest("c1", PostType.Task, "Task body", meta = PostMeta())
+        assertFalse(CirclesJson.createPost(reqEmptyMeta).has("meta"))
+
+        val reqNullMeta = CreatePostRequest("c1", PostType.Task, "Task body", meta = null)
+        assertFalse(CirclesJson.createPost(reqNullMeta).has("meta"))
+    }
+
+    @Test fun `setWorkStatus posts to endpoint with proper status wire mapping`() = runBlocking {
+        val c = Canned()
+        val r = api(c).setWorkStatus("c1", "p1", WorkStatus.InProgress)
+        assertTrue(r is CirclesResult.Ok)
+        assertEquals("https://circles.example.workers.dev/v1/setWorkStatus", c.request?.url.toString())
+        val j = JSONObject(c.sent)
+        assertEquals("c1", j.getString("circleId"))
+        assertEquals("p1", j.getString("postId"))
+        assertEquals("in_progress", j.getString("status"))
+
+        api(c).setWorkStatus("c1", "p1", WorkStatus.Done)
+        assertEquals("answered", JSONObject(c.sent).getString("status"))
+
+        api(c).setWorkStatus("c1", "p1", WorkStatus.Open)
+        assertEquals("open", JSONObject(c.sent).getString("status"))
+
+        val notConnected = NotConfiguredCirclesApi.setWorkStatus("c1", "p1", WorkStatus.Open)
+        assertEquals(FailureKind.NotConnected, notConnected.failureOrNull?.kind)
+    }
+
+    @Test fun `createPoll includes closesAt only when specified`() = runBlocking {
+        val c = Canned()
+        api(c).createPoll("c1", "Deadline?", listOf("Yes", "No"), multi = false, closesAt = 1731600000000L)
+        assertEquals("https://circles.example.workers.dev/v1/createPoll", c.request?.url.toString())
+        val jWithDeadline = JSONObject(c.sent)
+        assertEquals(1731600000000L, jWithDeadline.getLong("closesAt"))
+
+        api(c).createPoll("c1", "No deadline?", listOf("Yes", "No"), multi = false)
+        val jNoDeadline = JSONObject(c.sent)
+        assertFalse(jNoDeadline.has("closesAt"))
+    }
+
+    @Test fun `createPost serializes tags and checklist in meta`() {
+        val meta = PostMeta(
+            tags = listOf("backend", "worker"),
+            checklist = listOf(
+                ChecklistItem("c0", "Task A", true),
+                ChecklistItem("c1", "Task B", false)
+            )
+        )
+        val json = CirclesJson.createPost(CreatePostRequest("c1", PostType.Task, "Do work", meta = meta))
+        assertTrue(json.has("meta"))
+        val metaObj = json.getJSONObject("meta")
+        val tagsArr = metaObj.getJSONArray("tags")
+        assertEquals(2, tagsArr.length())
+        assertEquals("backend", tagsArr.getString(0))
+        assertEquals("worker", tagsArr.getString(1))
+
+        val checkArr = metaObj.getJSONArray("checklist")
+        assertEquals(2, checkArr.length())
+        assertEquals("c0", checkArr.getJSONObject(0).getString("id"))
+        assertEquals("Task A", checkArr.getJSONObject(0).getString("text"))
+        assertTrue(checkArr.getJSONObject(0).getBoolean("done"))
+        assertEquals("c1", checkArr.getJSONObject(1).getString("id"))
+        assertEquals("Task B", checkArr.getJSONObject(1).getString("text"))
+        assertFalse(checkArr.getJSONObject(1).getBoolean("done"))
+    }
+
+    @Test fun `createPoll serializes correctIndex and explanation for quiz polls`() = runBlocking {
+        val c = Canned()
+        api(c).createPoll(
+            circleId = "c1",
+            question = "Capital of France?",
+            options = listOf("London", "Paris", "Berlin"),
+            multi = false,
+            correctOptionIndex = 1,
+            explanation = "Paris is the capital."
+        )
+        assertEquals("https://circles.example.workers.dev/v1/createPoll", c.request?.url.toString())
+        val j = JSONObject(c.sent)
+        assertEquals(1, j.getInt("correctIndex"))
+        assertEquals("Paris is the capital.", j.getString("explanation"))
+
+        // Without quiz fields
+        api(c).createPoll("c1", "Normal?", listOf("A", "B"), multi = false)
+        val j2 = JSONObject(c.sent)
+        assertFalse(j2.has("correctIndex"))
+        assertFalse(j2.has("explanation"))
+    }
+
+    @Test fun `toggleChecklistItem posts to endpoint with proper payload`() = runBlocking {
+        val c = Canned()
+        val r = api(c).toggleChecklistItem("c1", "p1", "item-1")
+        assertTrue(r is CirclesResult.Ok)
+        assertEquals("https://circles.example.workers.dev/v1/toggleChecklistItem", c.request?.url.toString())
+        val j = JSONObject(c.sent)
+        assertEquals("c1", j.getString("circleId"))
+        assertEquals("p1", j.getString("postId"))
+        assertEquals("item-1", j.getString("itemId"))
+        assertFalse(j.has("done"))
+
+        // Explicit done
+        api(c).toggleChecklistItem("c1", "p1", "item-1", done = true)
+        val j2 = JSONObject(c.sent)
+        assertTrue(j2.getBoolean("done"))
+
+        api(c).toggleChecklistItem("c1", "p1", "item-1", done = false)
+        val j3 = JSONObject(c.sent)
+        assertFalse(j3.getBoolean("done"))
+
+        val notConnected = NotConfiguredCirclesApi.toggleChecklistItem("c1", "p1", "item-1")
+        assertEquals(FailureKind.NotConnected, notConnected.failureOrNull?.kind)
     }
 }

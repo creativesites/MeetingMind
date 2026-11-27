@@ -88,4 +88,33 @@ class CreateRenderingTest {
         }
         file.delete()
     }
+
+    @Test fun `viral card styles and eyebrow render cleanly and codec preserves them`() {
+        val clean = CreateCardRenderer.render(
+            context,
+            CreateRenderInput("Keep going.", null, CreateFormat.STORY, CreateDesign(background = CreateBackground.Pack("night"), style = CreateCardStyle.CLEAN)),
+            0.35f
+        )
+        val badgeHook = CreateCardRenderer.render(
+            context,
+            CreateRenderInput(
+                "Keep going.",
+                null,
+                CreateFormat.STORY,
+                CreateDesign(background = CreateBackground.Pack("night"), style = CreateCardStyle.BADGE_HOOK, eyebrow = "WORD FOR TODAY")
+            ),
+            0.35f
+        )
+        assertTrue(differs(clean, badgeHook, 0, clean.height))
+
+        val original = CreateDesign(
+            background = CreateBackground.Pack("indigo"),
+            fontPair = CreateFontPair.EDITORIAL,
+            style = CreateCardStyle.SPOTLIGHT,
+            eyebrow = "READ THIS TWICE"
+        )
+        val restored = CreateCardCodec.designFromJson(CreateCardCodec.designToJson(original).toString())
+        assertEquals(CreateCardStyle.SPOTLIGHT, restored.style)
+        assertEquals("READ THIS TWICE", restored.eyebrow)
+    }
 }

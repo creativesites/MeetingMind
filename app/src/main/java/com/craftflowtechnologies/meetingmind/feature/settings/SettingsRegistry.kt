@@ -33,7 +33,7 @@ enum class SettingId {
     NOTIF_RECORDING, NOTIF_DOWNLOADS,
 
     // Recording
-    TIDY_FILLER, TRANSCRIPT_CLEANUP, SPEAKER_DETECTION, RECIPES,
+    TIDY_FILLER, TRANSCRIPT_CLEANUP, NOTE_POLISH, SPEAKER_DETECTION, RECIPES,
 
     // AI & offline models
     PLAN_USAGE, SETUP_GUIDE, AI_ENGINE, GEMINI_KEY, WIFI_ONLY, GEMINI_CHECK, DEEPSEEK,
@@ -42,7 +42,7 @@ enum class SettingId {
     BIBLE_TRANSLATION, BIBLE_OFFLINE, DEVOTIONAL, PRAYER_REMINDERS, ORIGINAL_PACKS, PERSONAL_TOUCH, FAITH_LOCK,
 
     // Appearance & home
-    LOOK_AND_HOME, COMPANION, HERO_MODE, LOOK_FEEL, CALENDAR_ON_HOME,
+    LOOK_AND_HOME, COMPANION, LANGUAGE, HERO_MODE, LOOK_FEEL, CALENDAR_ON_HOME,
 
     // Privacy & security
     APP_LOCK, ON_DEVICE_ONLY,
@@ -110,6 +110,7 @@ object SettingsRegistry {
         // Recording
         e(SettingId.TIDY_FILLER, SettingsGroup.RECORDING, "Tidy up filler words", "uh um hesitation transcript clean verbatim"),
         e(SettingId.TRANSCRIPT_CLEANUP, SettingsGroup.RECORDING, "Transcript cleanup", "conservative moderate aggressive polish wording"),
+        e(SettingId.NOTE_POLISH, SettingsGroup.RECORDING, "Note formatting & AI polish", "notes blocks sermon lesson lecture polish format structure ai"),
         e(SettingId.SPEAKER_DETECTION, SettingsGroup.RECORDING, "Speaker detection", "diarization who spoke automatic deterministic ai assisted"),
         e(SettingId.RECIPES, SettingsGroup.RECORDING, "Recipes & automation", "post meeting actions tasks review triggers", advanced = true, needs = Needs.FEATURE_RECIPES),
 
@@ -134,6 +135,7 @@ object SettingsRegistry {
         // Appearance & home
         e(SettingId.LOOK_AND_HOME, SettingsGroup.APPEARANCE, "Look and home", "theme dark light mode system colour accent text size font home today focus everyday style sections"),
         e(SettingId.COMPANION, SettingsGroup.APPEARANCE, "Companion", "mimi zuri character presence name"),
+        e(SettingId.LANGUAGE, SettingsGroup.APPEARANCE, "Language", "interface language locale english french spanish portuguese swahili shona zulu nyanja bemba translate"),
         e(SettingId.HERO_MODE, SettingsGroup.APPEARANCE, "Home hero card", "daily scripture quote stats streak sky card banner", advanced = true),
         e(SettingId.LOOK_FEEL, SettingsGroup.APPEARANCE, "Look & feel", "professional sanctuary minimal cards classic vivid", advanced = true),
         e(SettingId.CALENDAR_ON_HOME, SettingsGroup.APPEARANCE, "Upcoming events on Home", "calendar events meetings services phone calendar permission", advanced = true),
@@ -151,7 +153,7 @@ object SettingsRegistry {
         e(SettingId.TEST_ONBOARDING, SettingsGroup.ABOUT, "Onboarding experience", "onboarding welcome walkthrough start intro"),
         e(SettingId.TEST_PAYWALL, SettingsGroup.ABOUT, "Paywall and subscription", "paywall subscription plans pricing trial upgrade"),
         e(SettingId.SHARE_APP, SettingsGroup.ABOUT, "Share MeetingMind", "invite friends tell"),
-        e(SettingId.CRASH_REPORT, SettingsGroup.ABOUT, "Last crash report", "crash error closed unexpectedly", advanced = true, needs = Needs.CRASH_REPORT),
+        e(SettingId.CRASH_REPORT, SettingsGroup.ABOUT, "Diagnostics", "diagnostics crash error closed unexpectedly report share logs", advanced = true, needs = Needs.CRASH_REPORT),
         e(SettingId.DIAGNOSTIC_LOG, SettingsGroup.ABOUT, "Gemini log", "diagnostics log requests errors support copy share", advanced = true),
         e(SettingId.AUDIO_BENCHMARK, SettingsGroup.ABOUT, "Audio benchmark (developer)", "benchmark sound detector", advanced = true, needs = Needs.DEBUG_BUILD)
     )

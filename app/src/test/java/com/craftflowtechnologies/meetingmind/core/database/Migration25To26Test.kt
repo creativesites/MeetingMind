@@ -81,10 +81,11 @@ class Migration25To26Test {
     }
 
     @Test
-    fun theDatabaseOpensAtSchemaTwentySix() {
-        assertEquals(26, MeetMindDatabase.VERSION)
+    fun theDatabaseOpensAtTheCurrentSchema() {
+        // Schema 27 (transcript translations) is built on top of this one, so the check is that the chain reaches VERSION.
+        assertTrue(MeetMindDatabase.VERSION >= 26)
         Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName)
             .addMigrations(*MeetMindDatabase.ALL_MIGRATIONS).allowMainThreadQueries().build().also { migrated = it }
-        assertEquals(26, migrated!!.openHelper.readableDatabase.version)
+        assertEquals(MeetMindDatabase.VERSION, migrated!!.openHelper.readableDatabase.version)
     }
 }

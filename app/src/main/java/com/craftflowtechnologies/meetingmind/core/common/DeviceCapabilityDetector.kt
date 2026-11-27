@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.model.DeviceCapabilities
 
@@ -32,8 +33,9 @@ object DeviceCapabilityDetector {
             else -> "Entry Level / Battery Saver"
         }
 
-        // Only one real on-device ASR model exists (see ModelCatalog) — nothing to choose between.
-        val recommendedAsr = ModelCatalog.parakeetTdtV3Int8.id
+        // Several speech models exist (Parakeet, Whisper, Omnilingual); which one suits depends on
+        // the phone's memory and the language. The phone's own language is the best guess here.
+        val recommendedAsr = recommendedAsrModelId(totalRamGb, java.util.Locale.getDefault().language)
         val recommendedLlm = recommendedLlmModelId(totalRamGb)
 
         return DeviceCapabilities(
@@ -62,6 +64,10 @@ object DeviceCapabilityDetector {
             ModelCatalog.qwen25_1_5bInstruct.id
         }
     }
+
+    /** The speech model to suggest for [language] on a phone with [totalRamGb]. Pure, see [AsrModelResolver.recommended]. */
+    fun recommendedAsrModelId(totalRamGb: Float, language: String?): String =
+        AsrModelResolver.recommended(AsrModelResolver.ramMbOf(totalRamGb), language).id
 
     fun getAvailableStorageMb(): Long {
         return try {

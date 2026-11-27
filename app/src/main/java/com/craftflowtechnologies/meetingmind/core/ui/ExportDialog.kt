@@ -25,14 +25,20 @@ import com.craftflowtechnologies.meetingmind.core.export.ExportFormat
 @Composable
 fun ExportDialog(
     onDismiss: () -> Unit,
-    onExport: (ExportContentType, ExportFormat) -> Unit
+    onExport: (ExportContentType, ExportFormat) -> Unit,
+    onShareAsFile: ((ExportContentType, ExportFormat) -> Unit)? = null
 ) {
     var selectedContentType by remember { mutableStateOf<ExportContentType?>(null) }
+    var shareMode by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(selectedContentType?.let { "Export ${it.displayName} as…" } ?: "Export")
+            Text(
+                selectedContentType?.let {
+                    if (shareMode) "Share ${it.displayName} as…" else "Export ${it.displayName} as…"
+                } ?: "Export"
+            )
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -49,10 +55,27 @@ fun ExportDialog(
                 } else {
                     ExportFormat.entries.filter { it.supportedFor(contentType) }.forEach { format ->
                         TextButton(
-                            onClick = { onExport(contentType, format) },
+                            onClick = {
+                                if (shareMode && onShareAsFile != null) {
+                                    onShareAsFile(contentType, format)
+                                } else {
+                                    onExport(contentType, format)
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth().testTag("export_format_${format.name}")
                         ) {
                             Text(format.displayName, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                    if (onShareAsFile != null) {
+                        TextButton(
+                            onClick = { shareMode = !shareMode },
+                            modifier = Modifier.fillMaxWidth().testTag("export_toggle_share_mode")
+                        ) {
+                            Text(
+                                if (shareMode) "Switch to Save to device" else "Switch to Send to app…",
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
@@ -61,7 +84,12 @@ fun ExportDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = {
-                if (selectedContentType != null) selectedContentType = null else onDismiss()
+                if (selectedContentType != null) {
+                    selectedContentType = null
+                    shareMode = false
+                } else {
+                    onDismiss()
+                }
             }) {
                 Text(if (selectedContentType != null) "Back" else "Cancel")
             }

@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.export.ExportFormat
 import com.craftflowtechnologies.meetingmind.core.export.NoteExportOptions
@@ -22,8 +23,10 @@ import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -46,7 +49,9 @@ data class RecordingCard(
     val durationMs: Long,
     val status: String,
     val summary: String?,
-    val audioPath: String?
+    val audioPath: String?,
+    /** Set when the recording is a YouTube video: it plays on YouTube, not from a file. */
+    val youtube: com.craftflowtechnologies.meetingmind.core.youtube.ParsedYouTubeUrl? = null
 )
 
 /** One transcript segment offered by the "Quote from a recording" picker. */
@@ -140,7 +145,8 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     private val recordingCards = database.noteDao().observeMeetingsForNote(noteId)
         .map { list ->
             list.associate {
-                it.id to RecordingCard(it.id, it.title, it.durationMs, it.status, it.summaryText, it.audioFilePath)
+                it.id to RecordingCard(it.id, it.title, it.durationMs, it.status, it.summaryText, it.audioFilePath,
+                    youtube = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.parse(it.audioFilePath))
             }
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -212,20 +218,48 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     init {
         viewModelScope.launch {
+            // A note made from a YouTube video carries its source line at the bottom (older ones get it now).
+            runCatching { notes.ensureYouTubeSource(noteId) }
             val doc = notes.getDocument(noteId)
             if (doc == null) { _gone.value = true; return@launch }
             _note.value = doc.note
-            _blocks.value = BlockEditing.ensureTrailingParagraph(doc.blocks.sortedBy { it.position }, noteId)
+            var lastObservedUpdatedAt = doc.note.updatedAt
+            synced = doc.blocks.sortedBy { it.position }
+            // AI paragraphs saved with the model's JSON wrapper read as the Markdown inside (no migration).
+            _blocks.value = BlockEditing.ensureTrailingParagraph(com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(doc.blocks.sortedBy { it.position }), noteId)
             opened = com.craftflowtechnologies.meetingmind.core.notes.NoteSnapshot(doc.note.title, doc.blocks.sortedBy { it.position })
             _loaded.value = true
-            // Keep note-level fields (title from a recording, status) current without touching blocks.
+            // Keep note-level fields (title from a recording, status) current, and reload blocks
+            // written underneath (a retry's or polish's notes, another screen) whenever this editor has
+            // nothing unsaved. With unsaved edits the next save merges them with what is stored.
             notes.observeNote(noteId).collect { fresh ->
                 if (fresh == null) _gone.value = true
-                else _note.value = _note.value?.let { mine ->
-                    // The title the user is typing wins over one arriving from the database.
-                    // The saved title is trimmed; the one on screen keeps the space just typed.
-                    fresh.copy(title = if (titleDirty || mine.title.trim() == fresh.title.trim()) mine.title else fresh.title)
-                } ?: fresh
+                else {
+                    _note.value = _note.value?.let { mine ->
+                        // The title the user is typing wins over one arriving from the database.
+                        // The saved title is trimmed; the one on screen keeps the space just typed.
+                        fresh.copy(title = if (titleDirty || mine.title.trim() == fresh.title.trim()) mine.title else fresh.title)
+                    } ?: fresh
+                    // (Before: no reload once a session started and the note had generated content. A
+                    // recording card counts as generated, and a pause save started a session, so an
+                    // editor left open on a failed import never saw its retry's notes and then saved
+                    // the empty note back over them.)
+                    if (fresh.updatedAt > lastObservedUpdatedAt && _saved.value && !dirty) {
+                        lastObservedUpdatedAt = fresh.updatedAt
+                        notes.getDocument(noteId)?.let { refreshed ->
+                            val stored = refreshed.blocks.sortedBy { it.position }
+                            // Its own save comes back unchanged: nothing to reload.
+                            if (!dirty && !NoteMerge.sameList(stored, synced)) {
+                                synced = stored
+                                val sorted = BlockEditing.ensureTrailingParagraph(com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(stored), noteId)
+                                _blocks.value = sorted
+                                if (!sessionStarted) opened = com.craftflowtechnologies.meetingmind.core.notes.NoteSnapshot(refreshed.note.title, sorted)
+                            }
+                        }
+                    } else {
+                        lastObservedUpdatedAt = maxOf(lastObservedUpdatedAt, fresh.updatedAt)
+                    }
+                }
             }
         }
         // A recording added while the note is open (Record here) gets its card.
@@ -368,13 +402,46 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         val end: Int,
         val original: String,
         val action: String? = null,
+        val instruction: String = "",
         val busy: Boolean = false,
+        val partial: String? = null,
         val result: String? = null,
-        val error: String? = null
+        val error: String? = null,
+        val provider: String? = null
+    )
+
+    /** Pending inline diff staged on the note canvas for explicit per-block Accept / Discard review. */
+    data class PendingBlockDiff(
+        val id: String,
+        val blockId: String,
+        val start: Int,
+        val end: Int,
+        val label: String,
+        val originalText: String,
+        val proposedMarkdown: String
     )
 
     private val _aiEdit = MutableStateFlow<AiEdit?>(null)
     val aiEdit: StateFlow<AiEdit?> = _aiEdit.asStateFlow()
+
+    // ---------------------------------------------------------- [n] citations: play the moment in place
+
+    /** The cited moment open in the citation sheet, with the block that cites it. */
+    private val _citation = MutableStateFlow<Pair<NoteBlock, com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.Cite>?>(null)
+    val citation: StateFlow<Pair<NoteBlock, com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.Cite>?> = _citation.asStateFlow()
+
+    fun openCitation(block: NoteBlock, cite: com.craftflowtechnologies.meetingmind.core.notes.NoteCitations.Cite) { _citation.value = block to cite }
+    fun closeCitation() { _citation.value = null }
+
+    /** The recording behind a meeting id, if its audio file is on this phone. */
+    suspend fun citationAudioFor(meetingId: String): com.craftflowtechnologies.meetingmind.feature.learning.components.CitationAudio? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val m = runCatching { database.meetingDao().getMeetingById(meetingId) }.getOrNull() ?: return@withContext null
+            val path = m.audioFilePath?.takeIf { java.io.File(it).exists() } ?: return@withContext null
+            com.craftflowtechnologies.meetingmind.feature.learning.components.CitationAudio(recordingId = m.id, title = m.title.ifBlank { "Recording" }, filePath = path)
+        }
+    private val _pendingDiffs = MutableStateFlow<List<PendingBlockDiff>>(emptyList())
+    val pendingDiffs: StateFlow<List<PendingBlockDiff>> = _pendingDiffs.asStateFlow()
     private var aiEditJob: kotlinx.coroutines.Job? = null
     private val geminiTransport by lazy {
         com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(getApplication())
@@ -394,7 +461,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     fun runAiEdit(action: String, instruction: String) {
         val edit = _aiEdit.value ?: return
         aiEditJob?.cancel()
-        _aiEdit.value = edit.copy(action = action, busy = true, result = null, error = null)
+        _aiEdit.value = edit.copy(action = action, instruction = instruction, busy = true, partial = null, result = null, error = null, provider = null)
         aiEditJob = viewModelScope.launch {
             val block = _blocks.value.firstOrNull { it.id == edit.blockId }
             val title = _note.value?.title.orEmpty()
@@ -406,26 +473,107 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                 }
                 append("Text to edit:\n").append(edit.original)
             }
-            val result = if (!geminiTransport.refreshConfigured()) {
-                com.craftflowtechnologies.meetingmind.ai.common.AiResult.Failed("AI editing needs a Gemini API key. Add one in Settings.")
-            } else geminiTransport.execute(
-                com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest(
-                    modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
-                    systemInstruction = AI_EDIT_SYSTEM,
-                    prompt = prompt,
-                    temperature = 0.4f
-                )
-            )
-            val current = _aiEdit.value ?: return@launch
-            _aiEdit.value = when (result) {
-                is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success -> {
-                    val text = result.value.trim().removeSurrounding("```markdown", "```").removeSurrounding("```", "```").trim()
-                    if (text.isBlank()) current.copy(busy = false, error = "The AI returned nothing. Try again.")
-                    else current.copy(busy = false, result = text)
+            val requestedProfile = withContext(Dispatchers.IO) {
+                com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(getApplication())
+                    .preferencesFlow.first().processingProfile
+            }
+            val effectiveProfile = withContext(Dispatchers.IO) {
+                com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forNote(getApplication(), noteId, requestedProfile)
+            }
+            val cloudReady = effectiveProfile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET &&
+                runCatching { geminiTransport.refreshConfigured() }.getOrDefault(false)
+
+            val raw = StringBuilder()
+            var doneText: String? = null
+            var provider: String? = null
+            var failure: String? = null
+            if (cloudReady) {
+                geminiTransport.stream(
+                    com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest(
+                        modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
+                        systemInstruction = AI_EDIT_SYSTEM,
+                        prompt = prompt,
+                        thinkingLevel = com.craftflowtechnologies.meetingmind.ai.cloud.ThinkingLevel.LOW,
+                        temperature = 0.4f,
+                        timeoutMs = 60_000L
+                    )
+                ).collect { ev ->
+                    when (ev) {
+                        is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.TextDelta -> {
+                            raw.append(ev.text)
+                            val cur = _aiEdit.value
+                            if (cur != null) _aiEdit.value = cur.copy(partial = com.craftflowtechnologies.meetingmind.core.notes.PasteTool.clean(raw.toString()))
+                        }
+                        is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Completed -> {
+                            doneText = ev.text
+                            provider = com.craftflowtechnologies.meetingmind.ai.cloud.DeepSeek.lastProvider
+                        }
+                        is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Failed -> failure = ev.error.describeFailure()
+                        else -> Unit
+                    }
                 }
-                is com.craftflowtechnologies.meetingmind.ai.common.AiResult.ModelUnavailable -> current.copy(busy = false, error = result.message)
-                is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Failed -> current.copy(busy = false, error = result.message)
-                else -> current.copy(busy = false, error = "AI editing isn't available right now.")
+            }
+
+            // One-way local LLM fallback when offline, privacy-restricted, free-tier exhausted, or no key configured.
+            if (doneText.isNullOrBlank() && raw.isEmpty()) {
+                val localResolved = withContext(Dispatchers.IO) {
+                    com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory(
+                        context = getApplication(),
+                        modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(getApplication()),
+                        geminiTransport = geminiTransport
+                    ).resolveLocal(
+                        com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SUMMARIZATION,
+                        com.craftflowtechnologies.meetingmind.core.model.ModelTier.RECOMMENDED
+                    )
+                }
+                if (localResolved != null) {
+                    failure = null
+                    val localPrompt = "$AI_EDIT_SYSTEM\n\n$prompt"
+                    try {
+                        localResolved.languageModel.generateStream(localPrompt, maxOutputTokens = 1024).collect { ev ->
+                            when (ev) {
+                                is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.TextDelta -> {
+                                    raw.append(ev.text)
+                                    val cur = _aiEdit.value
+                                    if (cur != null) _aiEdit.value = cur.copy(partial = com.craftflowtechnologies.meetingmind.core.notes.PasteTool.clean(raw.toString()))
+                                }
+                                is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Completed -> {
+                                    doneText = ev.text
+                                    provider = localResolved.modelId
+                                }
+                                is com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent.Failed -> {
+                                    failure = ev.error.describeFailure()
+                                }
+                                else -> Unit
+                            }
+                        }
+                        if (provider == null && (doneText != null || raw.isNotEmpty())) {
+                            provider = localResolved.modelId
+                        }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (t: Throwable) {
+                        // A native on-device engine failure (or out of memory) must not take the app down.
+                        failure = "On-device AI stopped before finishing. Try again, or use Internet mode."
+                    } finally {
+                        com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
+                    }
+                } else if (!cloudReady) {
+                    val cur = _aiEdit.value ?: return@launch
+                    _aiEdit.value = cur.copy(
+                        busy = false,
+                        error = "AI editing needs Internet mode with a Gemini key, or an installed on-device AI model in Settings."
+                    )
+                    return@launch
+                }
+            }
+            val current = _aiEdit.value ?: return@launch
+            val finalRaw = (doneText ?: raw.toString())
+            val cleaned = com.craftflowtechnologies.meetingmind.core.notes.PasteTool.clean(finalRaw)
+            _aiEdit.value = when {
+                cleaned.isNotBlank() -> current.copy(busy = false, partial = null, result = cleaned, provider = provider ?: com.craftflowtechnologies.meetingmind.ai.cloud.DeepSeek.lastProvider)
+                failure != null -> current.copy(busy = false, partial = null, error = failure)
+                else -> current.copy(busy = false, partial = null, error = "The AI returned nothing. Try again.")
             }
         }
     }
@@ -436,30 +584,114 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         val text = edit.result ?: return
         val blocks = _blocks.value
         val index = blocks.indexOfFirst { it.id == edit.blockId }.takeIf { it >= 0 } ?: run { _aiEdit.value = null; return }
+        applyReplacementToBlock(blocks, index, edit.start, edit.end, text, replace, edit.action)
+        _aiEdit.value = null
+        _pendingDiffs.value = _pendingDiffs.value.filterNot { it.blockId == edit.blockId }
+        _message.value = if (replace) "Replaced · Undo puts the original back" else "Added below · Undo to remove it"
+    }
+
+    /** Stages the current AI rewrite as an inline green/red diff proposal directly on the note canvas. */
+    fun stageAiEditAsDiff() {
+        val edit = _aiEdit.value ?: return
+        val text = edit.result ?: return
+        val diff = PendingBlockDiff(
+            id = "diff_${java.util.UUID.randomUUID().toString().take(8)}",
+            blockId = edit.blockId,
+            start = edit.start,
+            end = edit.end,
+            label = edit.action ?: "AI edit",
+            originalText = edit.original,
+            proposedMarkdown = text
+        )
+        _pendingDiffs.value = _pendingDiffs.value.filterNot { it.blockId == edit.blockId } + diff
+        _aiEdit.value = null
+        _message.value = "Staged inline diff on canvas"
+    }
+
+    fun acceptBlockDiff(diffId: String) {
+        val diff = _pendingDiffs.value.firstOrNull { it.id == diffId } ?: return
+        val blocks = _blocks.value
+        val index = blocks.indexOfFirst { it.id == diff.blockId }
+        if (index >= 0) {
+            applyReplacementToBlock(blocks, index, diff.start, diff.end, diff.proposedMarkdown, replace = true, label = diff.label)
+        }
+        _pendingDiffs.value = _pendingDiffs.value.filterNot { it.id == diffId }
+        _message.value = "Applied edit · Undo puts the original back"
+    }
+
+    fun rejectBlockDiff(diffId: String) {
+        _pendingDiffs.value = _pendingDiffs.value.filterNot { it.id == diffId }
+    }
+
+    fun acceptAllDiffs() {
+        val diffs = _pendingDiffs.value
+        if (diffs.isEmpty()) return
+        snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Apply ${diffs.size} AI edits")
+        var current = _blocks.value
+        history.record(current)
+        diffs.forEach { diff ->
+            val idx = current.indexOfFirst { it.id == diff.blockId }
+            if (idx >= 0) {
+                val res = computeReplacement(current, idx, diff.start, diff.end, diff.proposedMarkdown, replace = true)
+                current = res.blocks
+            }
+        }
+        update(current, recordUndo = false)
+        _pendingDiffs.value = emptyList()
+        _message.value = "Applied ${diffs.size} edits · Undo puts originals back"
+    }
+
+    fun rejectAllDiffs() {
+        _pendingDiffs.value = emptyList()
+    }
+
+    private fun applyReplacementToBlock(
+        blocks: List<NoteBlock>,
+        index: Int,
+        start: Int,
+        end: Int,
+        text: String,
+        replace: Boolean,
+        label: String?
+    ) {
+        snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, label)
+        val result = computeReplacement(blocks, index, start, end, text, replace)
+        history.record(blocks)
+        update(result.blocks, recordUndo = false)
+        result.focus?.let { requestFocus(it) }
+    }
+
+    private fun computeReplacement(
+        blocks: List<NoteBlock>,
+        index: Int,
+        start: Int,
+        end: Int,
+        text: String,
+        replace: Boolean
+    ): EditResult {
         val block = blocks[index]
-        snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, edit.action)
-        val result: EditResult = if (replace) {
-            val end = edit.end.coerceAtMost(block.content.text.length)
-            val start = edit.start.coerceAtMost(end)
-            BlockEditing.pasteMarkdown(blocks, index, BlockEditing.Insertion(start, end, text)) ?: run {
-                val (before, _) = block.content.splitAt(start)
-                val after = block.content.splitAt(end).second
+        return if (replace) {
+            val clampedEnd = end.coerceAtMost(block.content.text.length)
+            val clampedStart = start.coerceAtMost(clampedEnd)
+            BlockEditing.pasteMarkdown(blocks, index, BlockEditing.Insertion(clampedStart, clampedEnd, text)) ?: run {
+                val (before, _) = block.content.splitAt(clampedStart)
+                val after = block.content.splitAt(clampedEnd).second
                 val content = before.append(RichText.plain(text)).append(after)
                 BlockEditing.applyTextEdit(blocks, index, content, before.text.length + text.length)
             }
         } else {
             BlockEditing.insertAfter(blocks, index, com.craftflowtechnologies.meetingmind.core.notes.MarkdownImport.parse(text, noteId))
         }
-        history.record(blocks)
-        update(result.blocks, recordUndo = false)
-        result.focus?.let { requestFocus(it) }
-        _aiEdit.value = null
-        _message.value = if (replace) "Replaced · Undo puts the original back" else "Added below · Undo to remove it"
     }
 
     fun dismissAiEdit() {
         aiEditJob?.cancel()
         _aiEdit.value = null
+    }
+
+    fun cancelAiEdit() {
+        aiEditJob?.cancel()
+        _aiEdit.value = _aiEdit.value?.copy(busy = false)
     }
 
     fun toggleBlockType(type: NoteBlockType) {
@@ -602,11 +834,19 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     fun openPasteTools(blockId: String) { _pasteTools.value = PasteToolState(blockId) }
     fun closePasteTools() { pasteToolJob?.cancel(); _pasteTools.value = null }
+    fun cancelPasteTool() {
+        pasteToolJob?.cancel()
+        _pasteTools.value = _pasteTools.value?.copy(busy = false, progress = null)
+    }
 
     fun runPasteTool(tool: com.craftflowtechnologies.meetingmind.core.notes.PasteTool) {
         val state = _pasteTools.value ?: return
         val block = _blocks.value.firstOrNull { it.id == state.blockId } ?: return
         val text = block.content.text
+        if (text.isBlank()) {
+            _pasteTools.value = state.copy(tool = tool, busy = false, error = "Write or paste some text first.", progress = null)
+            return
+        }
         pasteToolJob?.cancel()
         _pasteTools.value = state.copy(tool = tool, busy = true, result = null, error = null, progress = "${tool.label}…")
         pasteToolJob = viewModelScope.launch {
@@ -620,7 +860,8 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                         modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
                         systemInstruction = T.SYSTEM,
                         prompt = T.prompt(tool, piece),
-                        temperature = 0.3f
+                        temperature = 0.3f,
+                        timeoutMs = 60_000L
                     )
                 )
                 if (r !is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success) {
@@ -704,6 +945,71 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         _editingMarkdown.value = block.id
     }
 
+    /** Inserts a native math formula block with default derivation template. */
+    fun insertMath(latex: String = "\\frac{d}{dx}[f(x)] = \\lim_{h \\to 0} \\frac{f(x+h) - f(x)}{h}") {
+        val block = NoteBlock(
+            id = NoteRepository.newId("block"),
+            noteId = noteId,
+            position = 0,
+            type = NoteBlockType.MATH,
+            content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(latex)
+        )
+        insert(listOf(block))
+    }
+
+    /** Inserts a semantic academic callout (definition, theorem, exam tip). */
+    fun insertCallout(kind: String = "DEFINITION", title: String = "Definition", body: String = "") {
+        val payload = mapOf(
+            NoteBlock.PAYLOAD_CALLOUT_KIND to kind,
+            NoteBlock.PAYLOAD_CALLOUT_TITLE to title
+        )
+        val block = NoteBlock(
+            id = NoteRepository.newId("block"),
+            noteId = noteId,
+            position = 0,
+            type = NoteBlockType.CALLOUT,
+            content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(body),
+            payload = payload
+        )
+        insert(listOf(block))
+    }
+
+    /** Inserts a Mermaid architecture or state diagram block. */
+    fun insertDiagram(syntax: String = "graph TD\n    A[Input] --> B[Process]\n    B --> C[Output]") {
+        val payload = mapOf(NoteBlock.PAYLOAD_DIAGRAM_SYNTAX to syntax)
+        val block = NoteBlock(
+            id = NoteRepository.newId("block"),
+            noteId = noteId,
+            position = 0,
+            type = NoteBlockType.DIAGRAM,
+            content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(syntax),
+            payload = payload
+        )
+        insert(listOf(block))
+    }
+
+    fun updateMathBlock(blockId: String, text: String, steps: String? = null) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        val payload = if (steps != null) block.payload + (NoteBlock.PAYLOAD_MATH_STEPS to steps) else block.payload - NoteBlock.PAYLOAD_MATH_STEPS
+        update(_blocks.value.replace(i, block.copy(content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(text), payload = payload)))
+    }
+
+    fun updateCalloutBlock(blockId: String, kind: String, title: String?, text: String) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        var payload = block.payload + (NoteBlock.PAYLOAD_CALLOUT_KIND to kind)
+        payload = if (!title.isNullOrBlank()) payload + (NoteBlock.PAYLOAD_CALLOUT_TITLE to title) else payload - NoteBlock.PAYLOAD_CALLOUT_TITLE
+        update(_blocks.value.replace(i, block.copy(content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(text), payload = payload)))
+    }
+
+    fun updateDiagramBlock(blockId: String, syntax: String) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        val payload = block.payload + (NoteBlock.PAYLOAD_DIAGRAM_SYNTAX to syntax)
+        update(_blocks.value.replace(i, block.copy(content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(syntax), payload = payload)))
+    }
+
     /** The Markdown block open as source, if any. */
     private val _editingMarkdown = MutableStateFlow<String?>(null)
     val editingMarkdown: StateFlow<String?> = _editingMarkdown.asStateFlow()
@@ -739,6 +1045,17 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.MANUAL, "Before combining")
         update(combined)
         _message.value = "${blocks.size} blocks → ${combined.size} · Undo puts them back"
+    }
+
+    /** Hides AI blocks the person reported (a line, or a whole AI section), or shows them again. */
+    fun setHiddenAfterReport(blockIds: Collection<String>, hidden: Boolean) {
+        val ids = blockIds.toSet()
+        if (ids.isEmpty()) return
+        val key = com.craftflowtechnologies.meetingmind.core.aireport.AiReport.PAYLOAD_HIDDEN_AFTER_REPORT
+        val next = _blocks.value.map { b ->
+            if (b.id !in ids) b else b.copy(payload = if (hidden) b.payload + (key to "true") else b.payload - key)
+        }
+        update(next, recordUndo = false)
     }
 
     /** Folds a heading's section away, or a long block down to its first lines; again to unfold. */
@@ -1186,8 +1503,17 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     private var deleted = false
 
+    /** The blocks as stored when this editor last read or wrote them. */
+    private var synced: List<NoteBlock> = emptyList()
+    /** The editor has block changes of its own not yet saved. Only then does it write the note. */
+    private var dirty = false
+    /** Counts edits, so a save that finishes after a newer edit leaves the editor dirty. */
+    private var editGeneration = 0L
+
     private fun update(newBlocks: List<NoteBlock>, recordUndo: Boolean = true) {
         if (recordUndo) history.record(_blocks.value)
+        dirty = true
+        editGeneration++
         _blocks.value = newBlocks
         refreshHistory()
         scheduleSave()
@@ -1204,11 +1530,39 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     private suspend fun persist() {
         if (deleted || !_loaded.value) return
+        // Nothing of its own to save: never write (an untouched editor would put back an old copy).
+        if (!dirty) { _saved.value = titleJob?.isActive != true; return }
         // A draft with nothing of the person's in it isn't written (PLAN_V2 F0).
         if (!promoteDraftIfNeeded()) { _saved.value = true; return }
-        notes.saveBlocks(noteId, _blocks.value)
+        val generation = editGeneration
+        val toWrite = withStored(_blocks.value, synced)
+        if (toWrite !== _blocks.value) _blocks.value = toWrite
+        try {
+            notes.saveBlocks(noteId, toWrite)
+        } catch (e: android.database.sqlite.SQLiteConstraintException) {
+            // The note was deleted under the editor (elsewhere, or by an empty-note cleanup): nothing to save into.
+            if (notes.getNote(noteId) != null) throw e
+            deleted = true
+            return
+        }
+        synced = toWrite.mapIndexed { i, b -> b.copy(noteId = noteId, position = i) }
+        if (editGeneration == generation) dirty = false
         _saved.value = titleJob?.isActive != true
         runCatching { sessionSnapshot() }
+    }
+
+    /**
+     * [ours] ready to write: as it is when the stored note hasn't changed since [base], or merged with
+     * what was written meanwhile, so neither the person's edits nor the new blocks are lost.
+     */
+    private suspend fun withStored(ours: List<NoteBlock>, base: List<NoteBlock>): List<NoteBlock> {
+        val stored = notes.getDocument(noteId)?.blocks?.sortedBy { it.position } ?: return ours
+        if (NoteMerge.sameList(stored, base)) return ours
+        // Compared as shown: saved AI replies are repaired on screen, and repairing never counts as an edit.
+        val shownBase = com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(base)
+        val shownStored = com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.repairBlocks(stored)
+        val merged = NoteMerge.merge(shownBase, NoteMerge.core(ours), shownStored)
+        return BlockEditing.ensureTrailingParagraph(merged, noteId)
     }
 
     /**
@@ -1228,11 +1582,44 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     /** Writes anything pending right now. */
     suspend fun flush() {
+        flushInternal()
+    }
+
+    private suspend fun flushInternal() {
         saveJob?.cancel()
         titleJob?.cancel()
         if (deleted || !_loaded.value) return
-        if (titleDirty && promoteDraftIfNeeded()) { notes.renameNote(noteId, _note.value?.title.orEmpty()); titleDirty = false }
+        if (titleDirty && promoteDraftIfNeeded()) {
+            notes.renameNote(noteId, _note.value?.title.orEmpty())
+            titleDirty = false
+        }
         persist()
+    }
+
+    /**
+     * Flushes pending title/block edits in [closingScope] so navigating back never loses what
+     * the user just typed, even if they tap Back immediately after the last keystroke.
+     */
+    fun flushAndExit(onComplete: () -> Unit) {
+        closingScope.launch {
+            withContext(NonCancellable) {
+                withTimeoutOrNull(1_500L) {
+                    flushInternal()
+                }
+            }
+            withContext(Dispatchers.Main.immediate) {
+                onComplete()
+            }
+        }
+    }
+
+    /** Best-effort non-blocking save when the editor pauses or stops. */
+    fun flushOnPause() {
+        closingScope.launch {
+            withContext(NonCancellable) {
+                flushInternal()
+            }
+        }
     }
 
     // ------------------------------------------------------------ note AI
@@ -1253,10 +1640,124 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     fun cancelAi(jobId: String) = viewModelScope.launch { noteAi.cancel(jobId) }
     fun dismissAi(jobId: String) = viewModelScope.launch { noteAi.dismiss(jobId) }
 
+    private val _polishingNote = MutableStateFlow(false)
+    val polishingNote: StateFlow<Boolean> = _polishingNote.asStateFlow()
+
+    /**
+     * Polishes the entire note into structured, formatted blocks using [NotePolishEngine].
+     * Uses the note's linked recording transcript when available, or the note's own text blocks
+     * otherwise. Records an undo snapshot so one tap restores the previous state.
+     */
+    fun polishWholeNote() {
+        if (_polishingNote.value) return
+        val currentNote = _note.value ?: return
+        _polishingNote.value = true
+        _message.value = "Polishing note with AI…"
+        viewModelScope.launch {
+            try {
+                flush()
+                val linkedMeetingId = recordings.value.keys.firstOrNull()
+                val segments = withContext(Dispatchers.IO) {
+                    if (linkedMeetingId != null) {
+                        database.transcriptDao().getSegmentsForMeetingDirect(linkedMeetingId).map {
+                            com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment(
+                                id = it.id, meetingId = it.meetingId, speakerId = it.speakerId,
+                                speakerName = it.speakerName, startMs = it.startMs, endMs = it.endMs,
+                                text = it.text, confidence = it.confidence, cleanedText = it.cleanedText
+                            )
+                        }
+                    } else {
+                        _blocks.value
+                            .filter { it.type.isText && it.content.text.isNotBlank() }
+                            .mapIndexed { idx, b ->
+                                com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment(
+                                    id = b.id, meetingId = noteId, startMs = idx * 1000L,
+                                    endMs = (idx + 1) * 1000L, text = b.content.text
+                                )
+                            }
+                    }
+                }
+                if (segments.isEmpty()) {
+                    _message.value = "Nothing to polish yet — record or write some notes first."
+                    return@launch
+                }
+                val profile = withContext(Dispatchers.IO) {
+                    com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(getApplication())
+                        .preferencesFlow.first().processingProfile
+                }
+                val resolved = withContext(Dispatchers.IO) {
+                    val factory = com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory(
+                        context = getApplication(),
+                        modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(getApplication()),
+                        geminiTransport = com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(getApplication())
+                    )
+                    factory.resolveWithFallback(profile, com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SYNTHESIS)
+                }
+                if (resolved == null) {
+                    _message.value = "No AI model is available. Add a Gemini key or download an on-device model in Settings."
+                    return@launch
+                }
+                val result = try {
+                    val userBlocks = _blocks.value.filter { it.source == BlockSource.USER && it.content.text.isNotBlank() }
+                    val marks = linkedMeetingId?.let { mid ->
+                        withContext(Dispatchers.IO) { runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.forMeeting(database, mid) }.getOrDefault(emptyList()) }
+                    }.orEmpty()
+                    withContext(Dispatchers.Default) {
+                        com.craftflowtechnologies.meetingmind.ai.notes.NotePolishEngine(
+                            resolved.languageModel, resolved.contextLengthTokens
+                        ).polish(noteId, linkedMeetingId ?: noteId, currentNote.workflow, segments, userNotes = userBlocks, marks = marks)
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    // The model can throw (a native engine error, out of memory): the note stays as it was.
+                    com.craftflowtechnologies.meetingmind.ai.common.AiResult.Failed("Note polish stopped: ${t.message ?: t::class.simpleName}", t)
+                } finally {
+                    val ranLocal = !resolved.isCloud ||
+                        (resolved.languageModel as? com.craftflowtechnologies.meetingmind.ai.routing.ResilientLanguageModel)?.lastRanLocally == true
+                    if (ranLocal) com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
+                }
+                when (result) {
+                    is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success -> {
+                        snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Polish note")
+                        val kept = _blocks.value.filterNot {
+                            it.sectionKey == com.craftflowtechnologies.meetingmind.ai.notes.NotePolishEngine.KEY_POLISHED &&
+                                !it.isUserEdited && it.source != BlockSource.USER
+                        }
+                        val insertAt = kept.indexOfLast { it.type == NoteBlockType.RECORDING }.let { if (it < 0) 0 else it + 1 }
+                        val merged = kept.toMutableList().apply { addAll(insertAt, result.value) }
+                        update(BlockEditing.ensureTrailingParagraph(merged, noteId))
+                        _message.value = "Note polished — Undo to restore"
+                    }
+                    else -> _message.value = "Couldn't polish the note right now. Try again."
+                }
+            } finally {
+                _polishingNote.value = false
+            }
+        }
+    }
+
     fun applySummary(jobId: String, points: List<com.craftflowtechnologies.meetingmind.ai.notes.CitedItem>) {
         snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Summary")
         update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.withSummary(_blocks.value, noteId, points))
         dismissAi(jobId); _message.value = "Summary added — Undo to remove it"
+    }
+
+    fun applyPointsTool(jobId: String, tool: com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool, points: List<com.craftflowtechnologies.meetingmind.ai.notes.CitedItem>) {
+        when (tool) {
+            com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.EXTRACT_ACTIONS -> applyActions(jobId, points)
+            com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.UNRESOLVED_GAPS -> {
+                snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, tool.label)
+                update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.withGaps(_blocks.value, noteId, points))
+                dismissAi(jobId); _message.value = "Open questions added — Undo to remove"
+            }
+            com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.FOLLOW_UP_BRIEF -> {
+                snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, tool.label)
+                update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.withRecap(_blocks.value, noteId, points))
+                dismissAi(jobId); _message.value = "Recap added — Undo to remove"
+            }
+            else -> applySummary(jobId, points)
+        }
     }
 
     fun applyActions(jobId: String, actions: List<com.craftflowtechnologies.meetingmind.ai.notes.CitedItem>) {
@@ -1285,12 +1786,43 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         _focus.value = FocusRequest(target, ++focusSerial)
     }
 
+    /**
+     * Creates a Learning Course from this recorded lesson / study note, links the note and its
+     * LearningSession to the new course notebook, and synthesizes study concepts & flashcards.
+     */
+    fun createCourseFromNote(
+        courseName: String? = null,
+        courseCode: String = "",
+        domain: com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain? = null,
+        onCreated: ((courseId: String) -> Unit)? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            flush()
+            val repo = com.craftflowtechnologies.meetingmind.core.repository.LearningRepository(database)
+            val course = repo.createCourseFromNotes(
+                noteIds = listOf(noteId),
+                courseName = courseName,
+                courseCode = courseCode,
+                domain = domain
+            )
+            _note.value = notes.getNote(noteId)
+            _message.value = "Course '${course.notebook.name}' created"
+            if (onCreated != null) {
+                withContext(Dispatchers.Main) {
+                    onCreated(course.notebook.id)
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
         // The view model's own scope is already cancelled here, so the last save runs on its own.
         if (!deleted && _loaded.value) {
             val blocks = _blocks.value
             val note = _note.value
             val title = note?.title.takeIf { titleDirty }
+            val hasEdits = dirty
+            val base = synced
             closingScope.launch {
                 val draft = note != null && com.craftflowtechnologies.meetingmind.core.repository.NoteContent.isDraft(note)
                 if (draft) {
@@ -1299,9 +1831,13 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                     notes.keepDraft(noteId)
                 }
                 title?.let { notes.renameNote(noteId, it) }
-                notes.saveBlocks(noteId, blocks)
-                // The session's last state joins the history (skipped if nothing changed).
-                if (sessionStarted) runCatching { versions.snapshot(noteId, com.craftflowtechnologies.meetingmind.core.notes.VersionReason.EDIT_SESSION, blocks = blocks) }
+                // Only the person's own unsaved changes are written, merged with anything stored meanwhile.
+                if (hasEdits) {
+                    val toWrite = withStored(blocks, base)
+                    notes.saveBlocks(noteId, toWrite)
+                    // The session's last state joins the history (skipped if nothing changed).
+                    if (sessionStarted) runCatching { versions.snapshot(noteId, com.craftflowtechnologies.meetingmind.core.notes.VersionReason.EDIT_SESSION, blocks = toWrite) }
+                }
                 discardIfEmpty()
             }
         }
@@ -1316,12 +1852,16 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     private fun <T> List<T>.replace(index: Int, value: T): List<T> = toMutableList().apply { this[index] = value }
 
     companion object {
-        const val SAVE_DELAY_MS = 600L
+        const val SAVE_DELAY_MS = 350L
         private const val AI_EDIT_SYSTEM =
             "You edit a passage from the user's own notes as instructed. Reply with only the edited " +
                 "passage, in Markdown where formatting helps (**bold**, '- ' bullets, '1.' numbers). " +
                 "No preamble, no explanation, no quotation marks around it. Keep the user's language."
         const val SESSION_SNAPSHOT_MS = 10 * 60 * 1000L
-        private val closingScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        /** Saves that outlive the screen. One that fails (the note deleted meanwhile, a full disk) is logged, never a crash. */
+        private val closingScope = CoroutineScope(
+            SupervisorJob() + Dispatchers.IO +
+                kotlinx.coroutines.CoroutineExceptionHandler { _, t -> android.util.Log.w("NoteEditor", "Closing save failed", t) }
+        )
     }
 }

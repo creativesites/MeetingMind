@@ -55,9 +55,11 @@ class NoteEditorUnveilScreenshotTest {
         store = MomentLedgerStore(PreferenceDataStoreFactory.create(scope = CoroutineScope(Dispatchers.IO + SupervisorJob())) { file })
     }
 
+    // No db.close(): the compose rule pauses the editor after this, and its pause save (and any pending
+    // autosave) still writes to this database. Closing it here made that write fail on a later test's thread.
+    // The database is in memory and goes with the process.
     @After fun tearDown() {
         MeetMindDatabase.setInstanceForTest(null)
-        db.close()
     }
 
     @Test fun `the note editor just after a fresh open, light`() {

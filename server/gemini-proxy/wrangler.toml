@@ -3,7 +3,7 @@ main = "worker.js"
 compatibility_date = "2026-09-01"
 
 [vars]
-ALLOWED_MODELS = "gemini-3.5-transcribe,gemini-3.6-flash"
+ALLOWED_MODELS = "gemini-3.5-transcribe,gemini-3.6-flash,gemini-3.8-flash,gemini-3.5-flash-lite,gemini-3.8-flash-tts,gemini-3.8-flash-lite-tts,gemini-3.8-live,gemini-3.8-live-extended-thinking,gemini-embedding-001"
 # The first FOUNDER_LIMIT paying people get FOUNDER_MULTIPLIER x their allowance for FOUNDER_DAYS days.
 # Set FOUNDER_LIMIT to "0" to turn the bonus off.
 FOUNDER_LIMIT = "100"
@@ -14,7 +14,7 @@ FOUNDER_MULTIPLIER = "1.5"
 # Create with: npx wrangler kv namespace create CACHE, then paste its id here. Caches RevenueCat lookups for 5 minutes.
 [[kv_namespaces]]
 binding = "CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "66eaf5a3aa3b471f8917c433b33e6115"
 
 [[durable_objects.bindings]]
 name = "LEDGER"

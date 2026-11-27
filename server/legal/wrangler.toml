@@ -1,0 +1,9 @@
+# MeetingMind's public legal pages (privacy policy and terms of use), served as static files.
+# Deploy: cd server/legal && npx wrangler deploy
+# URLs: https://meetingmind-legal.<account>.workers.dev/privacy and /terms
+name = "meetingmind-legal"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "./public"
+html_handling = "drop-trailing-slash"

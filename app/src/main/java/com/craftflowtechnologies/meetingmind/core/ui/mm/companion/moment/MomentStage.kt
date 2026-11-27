@@ -108,7 +108,14 @@ class MomentScope internal constructor(
             val t = baseMs()
             if (target == StageTarget.BODY) {
                 val p = m.stage(StageTarget.BODY, StageProp.PROGRESS, t, 1f)
-                val e = (p * 1.6f - index * 0.3f).coerceIn(0f, 1f)
+                if (p >= 1f || clock?.playing == false) {
+                    alpha = 1f
+                    translationY = 0f
+                    return@graphicsLayer
+                }
+                val delay = index.coerceIn(0, 4) * 0.10f
+                val span = (1f - delay).coerceAtLeast(0.2f)
+                val e = ((p - delay) / span).coerceIn(0f, 1f)
                 alpha = e
                 translationY = 8.dp.toPx() * (1f - MomentEasing.Out.transform(e))
                 return@graphicsLayer

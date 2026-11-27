@@ -26,7 +26,7 @@ enum class CardStyle(val label: String, val description: String) {
  * a vertical directly (PLAN_V1 §9 rule 2).
  */
 data class AppIdentity(
-    val spaces: Set<NotebookSpace> = NotebookSpace.entries.toSet(),
+    val spaces: Set<NotebookSpace> = AppIdentity.DEFAULT_SPACES,
     val look: LookAndFeel = LookAndFeel.PROFESSIONAL,
     val displayName: String? = null,
     val avatarPath: String? = null,
@@ -42,8 +42,14 @@ data class AppIdentity(
     fun allows(type: RecordingType): Boolean = Workflows.space(type) in spaces
 
     companion object {
+        /**
+         * The spaces a person has when they haven't chosen. Reads ([parseSpaces]) and writes
+         * (UserPreferences.setSpaces) both use this, so an empty choice never stores a different set.
+         */
+        val DEFAULT_SPACES: Set<NotebookSpace> = NotebookSpace.entries.toSet()
+
         fun parseSpaces(raw: Set<String>?): Set<NotebookSpace> =
-            raw?.mapNotNull { runCatching { NotebookSpace.valueOf(it) }.getOrNull() }?.toSet()?.ifEmpty { null } ?: NotebookSpace.entries.toSet()
+            raw?.mapNotNull { runCatching { NotebookSpace.valueOf(it) }.getOrNull() }?.toSet()?.ifEmpty { null } ?: DEFAULT_SPACES
     }
 }
 

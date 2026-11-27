@@ -7,7 +7,6 @@ import com.craftflowtechnologies.meetingmind.core.model.LearningMasteryState
 import com.craftflowtechnologies.meetingmind.core.model.LearningSession
 import com.craftflowtechnologies.meetingmind.core.model.MasteryCalculator
 import com.craftflowtechnologies.meetingmind.core.model.ReviewSchedule
-import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import kotlinx.coroutines.flow.first
 
 /** One Learning session with everything the Study screens read about it. */
@@ -43,9 +42,9 @@ data class SessionSnapshot(
 
 /**
  * Loads what the Study screens need from the Learning tables, once per call. Every read goes
- * through [LearningRepository], so nothing here needs the network.
+ * through [StudyRepository], so nothing here needs the network.
  */
-class StudySnapshotLoader(private val learning: LearningRepository) {
+class StudySnapshotLoader(private val learning: StudyRepository) {
 
     suspend fun sessions(): List<SessionSnapshot> = learning.observeAllSessions().first().map { load(it) }
 

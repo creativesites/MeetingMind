@@ -94,6 +94,9 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND workflow IN (:workflows) ORDER BY pinned DESC, updatedAt DESC")
     fun observeByWorkflows(workflows: List<String>): Flow<List<NoteEntity>>
 
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 1 AND deletedAt IS NULL AND workflow = :workflow ORDER BY updatedAt DESC")
+    fun observeDraftsByWorkflow(workflow: String): Flow<List<NoteEntity>>
+
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
     suspend fun getActiveOnce(): List<NoteEntity>
 
@@ -129,6 +132,14 @@ interface NoteDao {
     /** Notes whose day (event date, else created) falls in [from, to) — the timeline's backbone. */
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND COALESCE(eventDate, createdAt) >= :from AND COALESCE(eventDate, createdAt) < :to ORDER BY COALESCE(eventDate, createdAt)")
     suspend fun getNotesBetween(from: Long, to: Long): List<NoteEntity>
+
+    /** When the oldest note on the timeline happened (null with no notes): where Today's Timeline stops paging. */
+    @Query("SELECT MIN(COALESCE(eventDate, createdAt)) FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL")
+    suspend fun earliestNoteDate(): Long?
+
+    /** The date of the note [skip] places older than the newest one before [before]: how far back a page of that many reaches. */
+    @Query("SELECT COALESCE(eventDate, createdAt) AS d FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND COALESCE(eventDate, createdAt) < :before ORDER BY d DESC LIMIT 1 OFFSET :skip")
+    suspend fun noteDateBefore(before: Long, skip: Int): Long?
 
     /** Prayer requests answered in [from, to), for the "Answered" milestone. */
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND deletedAt IS NULL AND answeredAt IS NOT NULL AND answeredAt >= :from AND answeredAt < :to")

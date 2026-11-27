@@ -40,11 +40,19 @@ enum class NotebookSpace(val displayName: String) {
     PERSONAL("Personal")
 }
 
+/** The `kind` of a notebook, stored as text in `notebooks.kind`. */
+object NotebookKind {
+    const val NOTEBOOK = "NOTEBOOK"
+    /** A work context: a client, a matter, a case. Also a task list. */
+    const val PROJECT = "PROJECT"
+    /** A list in the Tasks manager (schema 31). Its space is PERSONAL, LEARNING or WORK. */
+    const val TASK_LIST = "TASK_LIST"
+}
+
 /**
- * Spaces the UI offers (filters, pickers, onboarding). Learning is offered again now that Study is rebuilt
- * (docs/mvp/STUDY_AUDIT.md); the list stays so a space can be hidden again in one place.
+ * Spaces the UI offers across filters, pickers, and onboarding — including first-class [NotebookSpace.LEARNING].
  */
-val OfferedNotebookSpaces: List<NotebookSpace> = NotebookSpace.entries.toList()
+val OfferedNotebookSpaces: List<NotebookSpace> = NotebookSpace.entries
 
 data class Notebook(
     val id: String,
@@ -83,7 +91,13 @@ enum class NoteBlockType {
      * A whole Markdown document in one block — what a paste becomes. Its text is the Markdown
      * source; it shows formatted, folds when long, and opens as source to edit.
      */
-    MARKDOWN;
+    MARKDOWN,
+    /** Native LaTeX / chemical formula expression rendered offline with stacked fractions & symbols. */
+    MATH,
+    /** Semantic academic callout (definition, theorem, formula, exam tip, pitfall, worked example). */
+    CALLOUT,
+    /** Offline Mermaid flowchart / state diagram rendered natively in Compose. */
+    DIAGRAM;
 
     /** Whether the block holds editable text. The others are carried by their payload. */
     val isText: Boolean
@@ -101,7 +115,7 @@ enum class NoteBlockType {
  * Where a block's words came from. The UI marks anything that isn't [USER] so the user always
  * knows what they wrote and what was produced for them (PLAN_V1 §7, the AI boundary).
  */
-enum class BlockSource { USER, AI, TRANSCRIPT, IMPORTED, SCRIPTURE }
+enum class BlockSource { USER, AI, TRANSCRIPT, IMPORTED, SCRIPTURE, ENRICHED }
 
 data class NoteBlock(
     val id: String,
@@ -150,6 +164,22 @@ data class NoteBlock(
         const val PAYLOAD_PASTE_SOURCE = "pasteSource"
         /** Earlier versions of a Markdown block, newest last, as JSON [{"tool":…,"text":…}] — "Step back". */
         const val PAYLOAD_HISTORY = "history"
+        /** Semantic kind for [NoteBlockType.CALLOUT] (DEFINITION, THEOREM, FORMULA, EXAM_TIP, etc.). */
+        const val PAYLOAD_CALLOUT_KIND = "calloutKind"
+        /** Optional heading inside a [NoteBlockType.CALLOUT] or T-account table. */
+        const val PAYLOAD_CALLOUT_TITLE = "calloutTitle"
+        /** Specialised table presentation (accounting_journal, t_account, trace_table, differential). */
+        const val PAYLOAD_TABLE_STYLE = "tableStyle"
+        /** Algorithm time/space complexity badge on [NoteBlockType.CODE]. */
+        const val PAYLOAD_COMPLEXITY = "complexity"
+        /** Optional step-by-step justification metadata on [NoteBlockType.MATH]. */
+        const val PAYLOAD_MATH_STEPS = "mathSteps"
+        /** Mermaid diagram source on [NoteBlockType.DIAGRAM]. */
+        const val PAYLOAD_DIAGRAM_SYNTAX = "diagramSyntax"
+        /** Label shown on a folded [BlockSource.ENRICHED] unpack pill. */
+        const val PAYLOAD_ENRICH_LABEL = "enrichLabel"
+        /** "1" when a [BlockSource.ENRICHED] block has been unpacked; absent/"0" means folded by default. */
+        const val PAYLOAD_UNPACKED = "unpacked"
     }
 }
 

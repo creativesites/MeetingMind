@@ -49,7 +49,14 @@ sealed interface PrepTarget {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrepareSheet(target: PrepTarget, viewModel: WorkViewModel, onOpenMeeting: (String, Long?) -> Unit, onDismiss: () -> Unit) {
+fun PrepareSheet(
+    target: PrepTarget,
+    viewModel: WorkViewModel,
+    onOpenMeeting: (String, Long?) -> Unit,
+    onDismiss: () -> Unit,
+    /** Opens the full Prepare screen for the same target; the peek is then dismissed. Null hides the link. */
+    onOpenFull: (() -> Unit)? = null
+) {
     val pack by produceState<PrepPack?>(null, target) {
         value = when (target) {
             is PrepTarget.Event -> viewModel.prepare.forEvent(target.event)
@@ -77,6 +84,15 @@ fun PrepareSheet(target: PrepTarget, viewModel: WorkViewModel, onOpenMeeting: (S
         val p = pack
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp).testTag("prepare_sheet")) {
             Text("PREPARE", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(horizontal = 20.dp))
+            onOpenFull?.let { open ->
+                Text(
+                    "Open full screen",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp).clickable { onDismiss(); open() }.testTag("prepare_open_full")
+                )
+            }
             Text(p?.title?.ifBlank { null } ?: "Prepare", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp))
             when {
                 p == null -> Unit

@@ -1,12 +1,16 @@
 package com.craftflowtechnologies.meetingmind.core.create
 
 import android.content.Context
-import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore
-import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiHttpTransport
+import com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
+import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager
+import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage
 import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
+import com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
+import com.craftflowtechnologies.meetingmind.core.model.ModelCapability
+import com.craftflowtechnologies.meetingmind.core.model.ModelTier
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.core.scripture.PassageResult
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser
@@ -15,28 +19,98 @@ import kotlinx.coroutines.flow.first
 
 /** The text model Create writes with. A seam so tests can script it. */
 interface CreateTextModel {
-    /** False when there is no model to ask (no Internet mode, no key): the studio then offers the editor and starters. */
+    /** False when neither a configured cloud key (in Internet mode) nor a local model is ready: the studio then offers the editor and starters. */
     suspend fun available(): Boolean
     suspend fun complete(system: String, prompt: String, timeoutMs: Long = 40_000L): AiResult<String>
+
+    /** Schema-enforced completion when supported by the backing cloud transport or local model. */
+    suspend fun completeStructured(
+        system: String,
+        prompt: String,
+        responseSchema: String,
+        timeoutMs: Long = 40_000L
+    ): AiResult<String> = complete(system, prompt, timeoutMs)
 }
 
-/** Gemini behind the app's own transport. */
+/** Gemini (with DeepSeek fallback) in Internet mode, with one-way on-device LLM fallback for offline/free users. */
 class GeminiCreateModel(private val context: Context) : CreateTextModel {
-    override suspend fun available(): Boolean = runCatching {
-        UserPreferencesManager(context).preferencesFlow.first().processingProfile == ProcessingProfile.INTERNET &&
-            GeminiCredentialStore(context).getApiKey() != null
-    }.getOrDefault(false)
+    private val appContext = context.applicationContext
+    private val transport by lazy { CloudAi.transport(appContext) }
+    private val modelStorage by lazy { LocalModelStorage(appContext) }
+    private val prefs by lazy { UserPreferencesManager(appContext) }
+    private val factory by lazy { LanguageModelFactory(appContext, modelStorage, transport) }
+
+    override suspend fun available(): Boolean {
+        val profile = runCatching { prefs.preferencesFlow.first().processingProfile }.getOrDefault(ProcessingProfile.INTERNET)
+        val cloudReady = profile == ProcessingProfile.INTERNET && runCatching {
+            transport.refreshConfigured()
+        }.getOrDefault(false)
+        if (cloudReady) return true
+        return factory.resolveLocal(ModelCapability.SUMMARIZATION, ModelTier.RECOMMENDED) != null
+    }
 
     override suspend fun complete(system: String, prompt: String, timeoutMs: Long): AiResult<String> =
-        GeminiHttpTransport(GeminiCredentialStore(context)).execute(
-            GeminiRequest(
-                modelId = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
-                systemInstruction = system,
-                prompt = prompt,
-                temperature = 0.9f,
-                timeoutMs = timeoutMs
+        completeWithSchema(system, prompt, responseSchema = null, timeoutMs = timeoutMs)
+
+    override suspend fun completeStructured(
+        system: String,
+        prompt: String,
+        responseSchema: String,
+        timeoutMs: Long
+    ): AiResult<String> = completeWithSchema(system, prompt, responseSchema = responseSchema, timeoutMs = timeoutMs)
+
+    private suspend fun completeWithSchema(
+        system: String,
+        prompt: String,
+        responseSchema: String?,
+        timeoutMs: Long
+    ): AiResult<String> {
+        val profile = runCatching { prefs.preferencesFlow.first().processingProfile }.getOrDefault(ProcessingProfile.INTERNET)
+        var cloudFailure: AiResult<String>? = null
+        if (profile == ProcessingProfile.INTERNET && runCatching { transport.refreshConfigured() }.getOrDefault(false)) {
+            val cloudResult = transport.execute(
+                GeminiRequest(
+                    modelId = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
+                    systemInstruction = system,
+                    prompt = prompt,
+                    responseSchema = responseSchema,
+                    jsonOutput = true,
+                    temperature = 0.9f,
+                    timeoutMs = timeoutMs,
+                    thinkingLevel = com.craftflowtechnologies.meetingmind.ai.cloud.ThinkingLevel.LOW
+                )
             )
-        )
+            if (cloudResult is AiResult.Success) return cloudResult
+            cloudFailure = cloudResult
+        }
+
+        val local = factory.resolveLocal(ModelCapability.SUMMARIZATION, ModelTier.RECOMMENDED)
+            ?: return cloudFailure ?: AiResult.ModelUnavailable(
+                "ai_unavailable",
+                "Connect to the internet or download an on-device AI model in Settings."
+            )
+
+        val combinedPrompt = buildString {
+            if (system.isNotBlank()) append(system.trim()).append("\n\n")
+            append(prompt)
+        }
+        return try {
+            if (responseSchema != null) {
+                local.languageModel.generateStructured(
+                    prompt = combinedPrompt,
+                    responseSchema = responseSchema,
+                    maxOutputTokens = 1024
+                )
+            } else {
+                local.languageModel.generate(
+                    prompt = combinedPrompt,
+                    maxOutputTokens = 1024
+                )
+            }
+        } finally {
+            LlmEngineManager.release()
+        }
+    }
 }
 
 /** Verse text that came from the Bible library, with the translation it came from. Never stored on a card. */

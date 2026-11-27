@@ -1,7 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.onboarding
 
 /** Which example recording to show. */
-enum class SampleKind(val label: String) { MEETING("Team meeting"), SERMON("Sermon") }
+enum class SampleKind(val label: String) { MEETING("Team meeting"), SERMON("Sermon"), LECTURE("University lecture") }
 
 data class SampleLine(val speaker: String, val time: String, val text: String)
 
@@ -24,7 +24,28 @@ object SampleContent {
     fun of(kind: SampleKind): SampleRecording = when (kind) {
         SampleKind.MEETING -> meeting
         SampleKind.SERMON -> sermon
+        SampleKind.LECTURE -> lecture
     }
+
+    private val lecture = SampleRecording(
+        title = "Calculus: Limits & Rates of Change",
+        length = "4 min",
+        lines = listOf(
+            SampleLine("Professor", "0:05", "Today we begin the foundations of differential calculus: limits."),
+            SampleLine("Professor", "0:22", "Consider the instantaneous velocity of a moving object as time delta approaches zero."),
+            SampleLine("Professor", "0:45", "The formal definition of a limit tells us how a function behaves near a point, not at it."),
+            SampleLine("Professor", "1:10", "Notice the key theorem: if the left and right hand limits are unequal, the limit does not exist."),
+            SampleLine("Professor", "1:35", "Make sure you master this before Wednesday, because it is the core of every derivative.")
+        ),
+        summary = "An introduction to limits and rates of change. The lecture establishes the formal concept of approaching a point and the condition for a limit to exist.",
+        actions = listOf(
+            "Review left-hand and right-hand limit definitions",
+            "Complete practice problem set 2.1 before Wednesday",
+            "Prepare questions on epsilon-delta proofs"
+        ),
+        question = "When does a two-sided limit exist?",
+        answer = "A two-sided limit exists if and only if both the left-hand and right-hand limits exist and are equal."
+    )
 
     private val meeting = SampleRecording(
         title = "Launch check-in",

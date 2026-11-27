@@ -42,6 +42,9 @@ class AppearanceTest {
         assertEquals(HomeStyle.CALM, Appearance.decode(stored, existingInstall = true).homeStyle)
         assertEquals(HomeStyle.CALM, Appearance.decode(stored, existingInstall = false).homeStyle)
         assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.TODAY).encode()).homeStyle)
+        val learning = Appearance(homeStyle = HomeStyle.LEARNING).encode()
+        assertEquals(HomeStyle.LEARNING, Appearance.decode(learning, existingInstall = true).homeStyle)
+        assertEquals(HomeStyle.LEARNING, Appearance.decode(learning, existingInstall = false).homeStyle)
     }
 
     @Test fun retiredHomesOpenToday() {
@@ -51,7 +54,7 @@ class AppearanceTest {
     }
 
     @Test fun onlyTheThreeHomesAreSelectable() {
-        assertEquals(listOf(HomeStyle.TODAY, HomeStyle.PROFESSIONAL, HomeStyle.CALM), HomeStyle.SELECTABLE)
+        assertEquals(listOf(HomeStyle.TODAY, HomeStyle.PROFESSIONAL, HomeStyle.LEARNING, HomeStyle.CALM), HomeStyle.SELECTABLE)
     }
 
     @Test fun accentRecolorsBothPalettesAndKeepsTheRest() {

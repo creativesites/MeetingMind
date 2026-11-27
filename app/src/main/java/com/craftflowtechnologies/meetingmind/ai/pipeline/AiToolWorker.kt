@@ -178,15 +178,22 @@ class AiToolWorker(
                 "No AI model is available for \"${toolType.label}\". Install a local model, or turn on Internet mode in Settings."
             )
 
+        val targetLanguageDisplay = if (toolType == TranscriptAiToolType.TRANSLATE_TRANSCRIPT) {
+            com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(preferences.translationTargetLanguage)
+        } else null
+
         setProgress(workDataOf(KEY_PROGRESS_PERCENT to 40))
-        val outcome = engine.run(
-            tool = toolType,
-            segments = scoped,
-            cleanupProfile = recordingType.transcriptCleanupProfile(preferences.transcriptCleanupMode)
-        )
-        // A tool engine allocation is as heavy as any other LLM allocation; release it before
-        // anything else loads, exactly as the processing pipeline does between its stages.
-        LlmEngineManager.release()
+        val outcome = try {
+            engine.run(
+                tool = toolType,
+                segments = scoped,
+                cleanupProfile = recordingType.transcriptCleanupProfile(preferences.transcriptCleanupMode),
+                targetLanguageDisplay = targetLanguageDisplay
+            )
+        } finally {
+            // Release any loaded local LLM allocation even if cloud fell back to local mid-run.
+            LlmEngineManager.release()
+        }
 
         return when (outcome) {
             is AiResult.Success -> succeed(
@@ -215,13 +222,19 @@ class AiToolWorker(
             modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(applicationContext),
             geminiTransport = com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(applicationContext)
         )
-        val resolved = factory.resolve(
+        val resolved = factory.resolveWithFallback(
             profile = preferences.processingProfile,
             capability = com.craftflowtechnologies.meetingmind.core.model.ModelCapability.TRANSCRIPT_CLEANUP,
             preferredTier = com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL
                 .transcriptCleanupProfile(preferences.transcriptCleanupMode).preferredModelTier
         ) ?: return null
-        return TranscriptToolEngine(languageModel = resolved.languageModel, engineName = resolved.modelId)
+        val resilient = resolved.languageModel as? com.craftflowtechnologies.meetingmind.ai.routing.ResilientLanguageModel
+        return TranscriptToolEngine(
+            languageModel = resolved.languageModel,
+            engineName = resolved.modelId,
+            contextLengthTokens = resolved.contextLengthTokens,
+            actualEngineName = { resilient?.lastActualModelId ?: resolved.modelId }
+        )
     }
 
     /** Reads back findings the processing pipeline already extracted and persisted. */

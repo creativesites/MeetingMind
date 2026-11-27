@@ -4,6 +4,7 @@ enum class MeetingSource {
     LOCAL_RECORDING,
     IMPORTED_AUDIO,
     IMPORTED_VIDEO,
+    YOUTUBE_VIDEO,
     REMOTE_BOT
 }
 
@@ -43,6 +44,9 @@ enum class MeetingStatus {
 
 enum class ModelCapability {
     TRANSCRIPTION,
+    /** Finds where speech is in a recording (Silero VAD). A helper the speech-to-text job needs, never a
+     * choice the person makes, so it is not listed as a speech recognition model. */
+    VOICE_ACTIVITY,
     // Retained for backward compatibility with existing LlmModelResolver call sites and stored
     // preferences — every current LLM catalog entry still carries this alongside the more granular
     // capabilities below, which describe the same underlying "general-purpose instruct LLM"
@@ -171,5 +175,26 @@ enum class ProcessingProfile(
          * profile — an unreadable value must never silently start uploading audio. */
         fun fromNameOrDefault(name: String?): ProcessingProfile =
             entries.firstOrNull { it.name == name } ?: OFFLINE
+    }
+}
+
+/**
+ * How recordings are turned into structured, formatted notes once transcription finishes.
+ *
+ * Driven by user settings so someone can choose between keeping only the recording card &
+ * transcript, generating structured workflow blocks, or running an additional AI polish pass
+ * for richer headings, callouts, lists, and readability.
+ */
+enum class NotePolishMode(val displayName: String, val description: String) {
+    /** Only attach the recording card and transcript; do not auto-generate note sections. */
+    OFF("Transcript only", "Keep only the recording card and transcript; don't auto-write note sections."),
+    /** Build structured workflow sections and proper note blocks from extraction and summary. */
+    STANDARD("Structured", "Automatically format transcripts into structured note sections and blocks."),
+    /** Build structured sections plus an AI polish pass for richer formatting, callouts, and clarity. */
+    DEEP("Polished", "Structured sections plus an AI polish pass for clarity, callouts, and rich formatting.");
+
+    companion object {
+        fun fromNameOrDefault(name: String?): NotePolishMode =
+            entries.firstOrNull { it.name == name } ?: DEEP
     }
 }

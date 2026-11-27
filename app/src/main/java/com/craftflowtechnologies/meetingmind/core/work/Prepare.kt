@@ -85,7 +85,7 @@ class Prepare(
             else -> 5
         }
         fun kind(i: ItemEntity) = when (rank(i)) { 0 -> AgendaKind.OVERDUE; 1 -> AgendaKind.DECIDE; 2, 4 -> AgendaKind.FOLLOW_UP; 3 -> AgendaKind.RESOLVE; else -> AgendaKind.REVIEW }
-        return open.filter { it.itemKind != ItemKind.DECISION || it.itemStatus == ItemStatus.PROPOSED }
+        return open.distinctBy { it.id }.filter { it.itemKind != ItemKind.DECISION || it.itemStatus == ItemStatus.PROPOSED }
             .sortedWith(compareBy<ItemEntity> { rank(it) }.thenBy { it.dueAt ?: Long.MAX_VALUE }.thenByDescending { it.createdAt })
             .take(MAX_AGENDA).map { AgendaLine(kind(it), it.text, it.id) }
     }

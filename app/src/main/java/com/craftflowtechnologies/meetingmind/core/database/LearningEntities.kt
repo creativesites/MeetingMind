@@ -6,15 +6,19 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.craftflowtechnologies.meetingmind.core.model.ActivityAttempt
+import com.craftflowtechnologies.meetingmind.core.model.ExamImportance
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivityType
 import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
 import com.craftflowtechnologies.meetingmind.core.model.LearningEvidence
+import com.craftflowtechnologies.meetingmind.core.model.LearningGoal
 import com.craftflowtechnologies.meetingmind.core.model.LearningMasteryState
 import com.craftflowtechnologies.meetingmind.core.model.LearningSession
 import com.craftflowtechnologies.meetingmind.core.model.RecallRating
 import com.craftflowtechnologies.meetingmind.core.model.ReviewSchedule
+import com.craftflowtechnologies.meetingmind.core.model.TeachBackCriterion
 import org.json.JSONArray
+import org.json.JSONObject
 
 @Entity(
     tableName = "learning_sessions",
@@ -47,7 +51,10 @@ data class LearningSessionEntity(
     @ColumnInfo(defaultValue = "ACTIVE") val status: String = "ACTIVE",
     val lastStudiedAt: Long? = null,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    @ColumnInfo(defaultValue = "GENERAL") val subjectDomain: String = "GENERAL",
+    @ColumnInfo(defaultValue = "0") val examSignalCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val unresolvedConfusionCount: Int = 0
 ) {
     fun toDomain(): LearningSession = LearningSession(
         id = id,
@@ -58,7 +65,10 @@ data class LearningSessionEntity(
         status = status,
         lastStudiedAt = lastStudiedAt,
         createdAt = createdAt,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        subjectDomain = subjectDomain,
+        examSignalCount = examSignalCount,
+        unresolvedConfusionCount = unresolvedConfusionCount
     )
 
     companion object {
@@ -71,7 +81,10 @@ data class LearningSessionEntity(
             status = domain.status,
             lastStudiedAt = domain.lastStudiedAt,
             createdAt = domain.createdAt,
-            updatedAt = domain.updatedAt
+            updatedAt = domain.updatedAt,
+            subjectDomain = domain.subjectDomain,
+            examSignalCount = domain.examSignalCount,
+            unresolvedConfusionCount = domain.unresolvedConfusionCount
         )
     }
 }
@@ -104,7 +117,9 @@ data class LearningConceptEntity(
     @ColumnInfo(defaultValue = "0") val isDismissed: Boolean = false,
     @ColumnInfo(defaultValue = "0") val isStale: Boolean = false,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    @ColumnInfo(defaultValue = "NORMAL") val examImportance: String = "NORMAL",
+    val formulaLatex: String? = null
 ) {
     fun toDomain(): LearningConcept = LearningConcept(
         id = id,
@@ -122,7 +137,9 @@ data class LearningConceptEntity(
         isDismissed = isDismissed,
         isStale = isStale,
         createdAt = createdAt,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        examImportance = runCatching { ExamImportance.valueOf(examImportance) }.getOrDefault(ExamImportance.NORMAL),
+        formulaLatex = formulaLatex
     )
 
     companion object {
@@ -139,7 +156,9 @@ data class LearningConceptEntity(
             isDismissed = domain.isDismissed,
             isStale = domain.isStale,
             createdAt = domain.createdAt,
-            updatedAt = domain.updatedAt
+            updatedAt = domain.updatedAt,
+            examImportance = domain.examImportance.name,
+            formulaLatex = domain.formulaLatex
         )
     }
 }
@@ -181,7 +200,8 @@ data class LearningActivityEntity(
     @ColumnInfo(defaultValue = "0") val isDismissed: Boolean = false,
     @ColumnInfo(defaultValue = "0") val isStale: Boolean = false,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    @ColumnInfo(defaultValue = "[]") val rubricJson: String = "[]"
 ) {
     fun toDomain(): LearningActivity = LearningActivity(
         id = id,
@@ -200,7 +220,8 @@ data class LearningActivityEntity(
         isDismissed = isDismissed,
         isStale = isStale,
         createdAt = createdAt,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        rubric = TeachBackCriterion.parseList(rubricJson)
     )
 
     companion object {
@@ -218,7 +239,8 @@ data class LearningActivityEntity(
             isDismissed = domain.isDismissed,
             isStale = domain.isStale,
             createdAt = domain.createdAt,
-            updatedAt = domain.updatedAt
+            updatedAt = domain.updatedAt,
+            rubricJson = TeachBackCriterion.listToJson(domain.rubric)
         )
     }
 }
@@ -255,7 +277,9 @@ data class ActivityAttemptEntity(
     val isCorrect: Boolean,
     val selfRating: String? = null,
     @ColumnInfo(defaultValue = "") val feedback: String = "",
-    val createdAt: Long
+    val createdAt: Long,
+    val audioPath: String? = null,
+    val attachmentId: String? = null
 ) {
     fun toDomain(): ActivityAttempt = ActivityAttempt(
         id = id,
@@ -266,7 +290,9 @@ data class ActivityAttemptEntity(
         isCorrect = isCorrect,
         selfRating = selfRating?.let { runCatching { RecallRating.valueOf(it) }.getOrNull() },
         feedback = feedback,
-        createdAt = createdAt
+        createdAt = createdAt,
+        audioPath = audioPath,
+        attachmentId = attachmentId
     )
 
     companion object {
@@ -279,7 +305,9 @@ data class ActivityAttemptEntity(
             isCorrect = domain.isCorrect,
             selfRating = domain.selfRating?.name,
             feedback = domain.feedback,
-            createdAt = domain.createdAt
+            createdAt = domain.createdAt,
+            audioPath = domain.audioPath,
+            attachmentId = domain.attachmentId
         )
     }
 }
@@ -351,6 +379,73 @@ data class ReviewScheduleEntity(
             isPaused = domain.isPaused,
             snoozedUntil = domain.snoozedUntil,
             lastReviewedAt = domain.lastReviewedAt,
+            createdAt = domain.createdAt,
+            updatedAt = domain.updatedAt
+        )
+    }
+}
+
+@Entity(
+    tableName = "learning_goals",
+    foreignKeys = [
+        ForeignKey(
+            entity = NotebookEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["notebookId"],
+            onDelete = ForeignKey.SET_NULL
+        )
+    ],
+    indices = [
+        Index(value = ["notebookId"]),
+        Index(value = ["examDateMs"])
+    ]
+)
+data class LearningGoalEntity(
+    @PrimaryKey val id: String,
+    val notebookId: String? = null,
+    val title: String,
+    val examDateMs: Long,
+    @ColumnInfo(defaultValue = "MIXED") val examFormat: String = "MIXED",
+    @ColumnInfo(defaultValue = "[]") val sessionIdsJson: String = "[]",
+    @ColumnInfo(defaultValue = "{}") val topicWeightsJson: String = "{}",
+    val pastPaperNoteId: String? = null,
+    @ColumnInfo(defaultValue = "25") val dailyMinutesTarget: Int = 25,
+    val createdAt: Long,
+    val updatedAt: Long
+) {
+    fun toDomain(): LearningGoal = LearningGoal(
+        id = id,
+        notebookId = notebookId,
+        title = title,
+        examDateMs = examDateMs,
+        examFormat = examFormat,
+        sessionIds = runCatching {
+            val arr = JSONArray(sessionIdsJson)
+            List(arr.length()) { arr.getString(it) }
+        }.getOrDefault(emptyList()),
+        topicWeights = runCatching {
+            val obj = JSONObject(topicWeightsJson)
+            obj.keys().asSequence().associateWith { key -> obj.optDouble(key, 1.0).toFloat() }
+        }.getOrDefault(emptyMap()),
+        pastPaperNoteId = pastPaperNoteId,
+        dailyMinutesTarget = dailyMinutesTarget,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+
+    companion object {
+        fun fromDomain(domain: LearningGoal): LearningGoalEntity = LearningGoalEntity(
+            id = domain.id,
+            notebookId = domain.notebookId,
+            title = domain.title,
+            examDateMs = domain.examDateMs,
+            examFormat = domain.examFormat,
+            sessionIdsJson = JSONArray(domain.sessionIds).toString(),
+            topicWeightsJson = JSONObject().apply {
+                domain.topicWeights.forEach { (k, v) -> put(k, v.toDouble()) }
+            }.toString(),
+            pastPaperNoteId = domain.pastPaperNoteId,
+            dailyMinutesTarget = domain.dailyMinutesTarget,
             createdAt = domain.createdAt,
             updatedAt = domain.updatedAt
         )

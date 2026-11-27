@@ -8,6 +8,7 @@ import com.craftflowtechnologies.meetingmind.core.database.ItemLinkEntity
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.database.MeetingEntity
 import com.craftflowtechnologies.meetingmind.core.database.NoteEntity
+import com.craftflowtechnologies.meetingmind.core.database.ProjectItemCounts
 import com.craftflowtechnologies.meetingmind.core.database.TaskEntity
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
@@ -25,6 +26,20 @@ import java.util.UUID
 
 /** A recording waiting for its Wrap-up, or for its follow-up to be sent. */
 data class MeetingRow(val meetingId: String, val noteId: String?, val title: String, val at: Long, val durationMs: Long, val type: RecordingType)
+
+/** A queued recording is only "stuck" (and shown under Needs you) after it has waited this long. */
+const val QUEUED_STALE_MS = 30 * 60_000L
+
+/**
+ * Whether a recording needs the person under Needs you: its processing failed (ERROR), a local model must be
+ * installed (MODEL_REQUIRED), or it has been QUEUED since before [now] minus [QUEUED_STALE_MS]. Mirrors the
+ * predicate in [WorkDao.observeFailed]; the audio is kept in every case.
+ */
+fun needsRecovery(status: String, updatedAt: Long, now: Long): Boolean = when (status) {
+    "ERROR", "MODEL_REQUIRED" -> true
+    "QUEUED" -> updatedAt < now - QUEUED_STALE_MS
+    else -> false
+}
 
 /** Work notes list order (WORK_UX §2.2). */
 enum class WorkNoteSort { RECENT, MEETING_DATE, TITLE }
@@ -85,8 +100,16 @@ class WorkRepository(private val database: MeetMindDatabase) {
     /** Work recordings with findings nobody has reviewed yet (Home and Work → To review). */
     fun observeToReview(): Flow<List<MeetingRow>> = work.observeUnreviewed().map { list ->
         withContext(Dispatchers.IO) {
-            list.filter { isWork(it.recordingType) || it.recordingType == "GENERAL" }.filter { hasFindings(it.id) }.map { it.row() }
+            list.filter { isWork(it.recordingType) || it.recordingType == "GENERAL" || it.recordingType == "CUSTOM" }.filter { hasFindings(it.id) }.map { it.row() }
         }
+    }
+
+    /**
+     * Recordings that need the person (see [WorkDao.observeFailed] and [needsRecovery]). Shown under Needs you:
+     * Try again or Open. A queued recording counts once it has waited [QUEUED_STALE_MS].
+     */
+    fun observeFailed(): Flow<List<MeetingRow>> = work.observeFailed(System.currentTimeMillis() - QUEUED_STALE_MS).map { list ->
+        withContext(Dispatchers.IO) { list.map { it.row() } }
     }
 
     fun observeRecentWork(limit: Int = 12): Flow<List<MeetingRow>> = work.observeByTypes(WorkTypeNames, limit).map { l -> l.map { it.row() } }
@@ -348,6 +371,18 @@ class WorkRepository(private val database: MeetMindDatabase) {
     /** The whole decision log, newest first, including what was replaced. */
     fun observeDecisionLog(limit: Int = 500): Flow<List<FindingRow>> = database.itemDao().observeDecisions(limit).map { l -> l.map { it.toRow() } }
 
+    /** Requirements, newest first (Decisions › Requirements). Empty for profiles that do not use the kind. */
+    fun observeRequirements(limit: Int = 200): Flow<List<FindingRow>> = work.observeItemsOfKind("REQUIREMENT", limit).map { l -> l.map { it.toRow() } }
+
+    /** Per-project counts that decide each project's status line. Start of today is read when the flow is made. */
+    fun observeProjectItemCounts(): Flow<List<ProjectItemCounts>> =
+        work.observeProjectItemCounts(DueDates.startOfDay(System.currentTimeMillis()))
+
+    /** A decision the person has agreed to: PROPOSED becomes ACTIVE (In force). */
+    suspend fun confirmDecision(itemId: String) {
+        ItemRepository(database).setStatus(itemId, ItemStatus.ACTIVE)
+    }
+
     fun observeOpenQuestions(limit: Int = 200): Flow<List<FindingRow>> = database.itemDao().observeOpenQuestions(limit).map { l -> l.map { it.toRow() } }
 
     private suspend fun ItemEntity.toRow(): FindingRow = withContext(Dispatchers.IO) {
@@ -492,6 +527,21 @@ class WorkRepository(private val database: MeetMindDatabase) {
 
         fun followUpSentAt(metadataJson: String): Long? =
             runCatching { JSONObject(metadataJson).optString(FOLLOW_UP_SENT).toLongOrNull() }.getOrNull()
+
+        /** "Not processed": the audio is kept but no notes have been made (saved, recovered, queued, or waiting on a model). */
+        const val TRANSCRIPT_NOT_PROCESSED = "NOT_PROCESSED"
+
+        /**
+         * The transcript marker for a note's recordings. Only a READY meeting reads as ready: a recording that was
+         * saved or recovered (SAVED), queued for later (QUEUED) or is waiting on a model (MODEL_REQUIRED) has no notes yet.
+         */
+        fun transcriptIndicator(statuses: List<String>): String? = when {
+            statuses.isEmpty() -> null
+            statuses.any { it == "ERROR" } -> "ERROR"
+            statuses.any { it == "PROCESSING" || it == "RECORDING" } -> "PROCESSING"
+            statuses.any { it == "READY" } -> "READY"
+            else -> TRANSCRIPT_NOT_PROCESSED
+        }
     }
 
     /** What a page of notes shows beside each title: a recording, its transcript state, open tasks. One bounded query set per page. */
@@ -502,12 +552,7 @@ class WorkRepository(private val database: MeetMindDatabase) {
         (work.openTaskCountsForNotes(ids) + work.openMeetingTaskCountsForNotes(ids)).forEach { tasks[it.noteId] = (tasks[it.noteId] ?: 0) + it.count }
         ids.associateWith { id ->
             val st = statuses[id].orEmpty()
-            NoteIndicators(hasRecording = st.isNotEmpty(), transcript = when {
-                st.isEmpty() -> null
-                st.any { it == "ERROR" } -> "ERROR"
-                st.any { it == "PROCESSING" || it == "RECORDING" } -> "PROCESSING"
-                else -> "READY"
-            }, openTasks = tasks[id] ?: 0)
+            NoteIndicators(hasRecording = st.isNotEmpty(), transcript = transcriptIndicator(st), openTasks = tasks[id] ?: 0)
         }
     }
 

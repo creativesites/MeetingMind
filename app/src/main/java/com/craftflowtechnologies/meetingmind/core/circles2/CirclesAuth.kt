@@ -12,6 +12,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import java.util.concurrent.CancellationException
 
@@ -44,6 +45,11 @@ interface CirclesAuth {
     suspend fun linkGoogle(activityContext: Context): LinkResult
     /** After [LinkResult.AlreadyInUse] and the person agreeing: signs in as that existing account. */
     suspend fun switchToLinkedAccount(): LinkResult
+    /**
+     * A fresh ID token for the current guest (anonymous) account, or null when signed in with Google. Taken just before
+     * switching accounts: it is the proof the Worker needs to carry this phone's circles over to the signed-in account.
+     */
+    suspend fun guestToken(): String? = null
 }
 
 class FirebaseCirclesAuth(private val context: Context) : CirclesAuth {
@@ -60,8 +66,17 @@ class FirebaseCirclesAuth(private val context: Context) : CirclesAuth {
     override val currentUid: String? get() = auth?.currentUser?.uid
     override val isAnonymous: Boolean get() = auth?.currentUser?.isAnonymous ?: true
 
+    /** One anonymous sign-in at a time: two screens asking at once must not create two accounts. */
+    private val signInLock = kotlinx.coroutines.sync.Mutex()
+
     override suspend fun ensureSignedIn(): CirclesResult<String> {
         val a = auth ?: return CirclesFailure.notConnected.asResult()
+        a.currentUser?.uid?.let { return CirclesResult.Ok(it) }
+        return signInLock.withLock { signInAnonymouslyOnce(a) }
+    }
+
+    private suspend fun signInAnonymouslyOnce(a: FirebaseAuth): CirclesResult<String> {
+        // Another caller may have finished signing in while this one waited for the lock.
         a.currentUser?.uid?.let { return CirclesResult.Ok(it) }
         return try {
             val uid = a.signInAnonymously().await().user?.uid
@@ -128,6 +143,17 @@ class FirebaseCirclesAuth(private val context: Context) : CirclesAuth {
             Log.w(TAG, "Switching account failed: ${e.message}")
             collided = null
             LinkResult.Failed("Couldn't switch accounts. Choose your Google account again.")
+        }
+    }
+
+    override suspend fun guestToken(): String? {
+        val user = auth?.currentUser?.takeIf { it.isAnonymous } ?: return null
+        return try {
+            user.getIdToken(true).await()?.token?.takeIf { it.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
         }
     }
 

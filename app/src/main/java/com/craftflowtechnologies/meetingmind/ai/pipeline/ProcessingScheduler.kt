@@ -8,7 +8,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.database.MeetingEntity
 import com.craftflowtechnologies.meetingmind.core.database.ProcessingJobEntity
@@ -66,21 +65,31 @@ object ProcessingScheduler {
         val duration = durationMs?.takeIf { it > 0 } ?: meeting.durationMs.takeIf { it > 0 } ?: probeDurationMs(path)
         val speakers = expectedSpeakerCount ?: meeting.speakerCountPreference
         val prefs = UserPreferencesManager(context).preferencesFlow.first()
-        val asrModelId = if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(meeting.language)) {
-            if (prefs.selectedAsrModelId == ModelCatalog.omnilingualAsr1bInt8.id || prefs.selectedAsrModelId == ModelCatalog.omnilingualAsr300mInt8.id) {
-                prefs.selectedAsrModelId
-            } else {
-                com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.defaultModelIdForLanguage(meeting.language)
-            }
-        } else {
-            prefs.selectedAsrModelId
-        }
+        // The speech model actually installed for this language, not just the saved choice: a
+        // person with Whisper or Omnilingual on the phone must never be told to download Parakeet.
+        // When nothing installed can do it, the recommended model's id is passed on, so the run
+        // ends as MODEL_REQUIRED naming the model worth getting.
+        val asrRamMb = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.ramMbOf(
+            com.craftflowtechnologies.meetingmind.core.common.DeviceCapabilityDetector.detect(context).totalRamGb
+        )
+        val installedAsr = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.installedIds(
+            com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(context)
+        )
+        val asrModelId = com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
+            .resolve(installedAsr, prefs.selectedAsrModelId, meeting.language, asrRamMb)?.id
+            ?: com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.recommended(asrRamMb, meeting.language).id
+        // A saved choice whose model isn't on the phone follows what is, so the AI engine screen
+        // and processing name the same model.
+        com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
+            .selectionToSave(installedAsr, prefs.selectedAsrModelId, meeting.language, asrRamMb)
+            ?.let { runCatching { UserPreferencesManager(context).setSelectedAsrModel(it) } }
 
         val input = workDataOf(
             MeetingProcessingWorker.KEY_MEETING_ID to meetingId,
             MeetingProcessingWorker.KEY_AUDIO_PATH to path,
             MeetingProcessingWorker.KEY_DURATION_MS to duration,
             MeetingProcessingWorker.KEY_MODEL_ID to asrModelId,
+            MeetingProcessingWorker.KEY_LANGUAGE to meeting.language,
             // Resolved (not raw) so a model the user selected and later deleted falls back to one
             // they still have, instead of failing with "no model installed".
             MeetingProcessingWorker.KEY_LLM_MODEL_ID to com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmModelResolver.resolve(
@@ -141,8 +150,13 @@ object ProcessingScheduler {
     private suspend fun resumeOne(context: Context, database: MeetMindDatabase, meeting: MeetingEntity): String? {
         if (activeWork(context, meeting.id) != null) return null
         val path = meeting.audioFilePath
-        if (path.isNullOrBlank() || !File(path).exists()) {
-            // Nothing to process: say so on the recording, so the user is not shown a bare failure.
+        if (com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(path)) {
+            return enqueue(context, meeting.id, path, meeting.durationMs)?.let { meeting.id }
+        }
+        val salvaged = com.craftflowtechnologies.meetingmind.core.audio.RecordingAudioSalvager
+            .salvageForRecovery(context, meeting.id, path)
+        if (salvaged == null) {
+            // Nothing playable to process: say so on the recording, so the user is not shown a bare failure.
             database.meetingDao().updateMeeting(meeting.copy(status = MeetingStatus.ERROR.name))
             database.processingJobDao().insertOrUpdateJob(
                 ProcessingJobEntity(
@@ -160,7 +174,17 @@ object ProcessingScheduler {
             )
             return null
         }
-        return enqueue(context, meeting.id)?.let { meeting.id }
+        val repairedDuration = maxOf(meeting.durationMs, salvaged.durationMs)
+        if (salvaged.file.absolutePath != path || repairedDuration > meeting.durationMs) {
+            database.meetingDao().updateMeeting(
+                meeting.copy(
+                    audioFilePath = salvaged.file.absolutePath,
+                    durationMs = repairedDuration,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+        return enqueue(context, meeting.id, salvaged.file.absolutePath, repairedDuration)?.let { meeting.id }
     }
 
     /**
@@ -181,12 +205,15 @@ object ProcessingScheduler {
         WorkManager.getInstance(context).cancelAllWorkByTag(MeetingProcessingWorker.meetingWorkTag(meetingId))
     }
 
-    private fun probeDurationMs(path: String): Long = runCatching {
-        MediaMetadataRetriever().run {
-            setDataSource(path)
-            val d = extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            release()
-            d
-        }
-    }.getOrDefault(0L)
+    private fun probeDurationMs(path: String): Long =
+        com.craftflowtechnologies.meetingmind.core.audio.RecordingAudioSalvager.probeDurationMs(File(path))
+            .takeIf { it > 0L }
+            ?: runCatching {
+                MediaMetadataRetriever().run {
+                    setDataSource(path)
+                    val d = extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                    release()
+                    d
+                }
+            }.getOrDefault(0L)
 }

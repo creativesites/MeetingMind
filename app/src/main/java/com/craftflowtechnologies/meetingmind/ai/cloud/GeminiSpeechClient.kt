@@ -105,7 +105,7 @@ class GeminiSpeechClient(
     private fun decode(media: GeneratedMedia, text: String): Pair<Pcm, Long>? {
         val mime = media.mimeType.lowercase()
         val pcm = if ("l16" in mime) {
-            val rate = Regex("""rate=(\d+)""").find(mime)?.groupValues?.get(1)?.toIntOrNull() ?: DEFAULT_SAMPLE_RATE
+            val rate = Regex("""rate=(\d+)""").find(mime)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
             Wav.fromL16(media.bytes, rate)
         } else Wav.read(media.bytes)
         pcm ?: return null

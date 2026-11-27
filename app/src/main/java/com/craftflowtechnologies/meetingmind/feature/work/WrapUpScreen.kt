@@ -9,11 +9,14 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,6 +60,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.model.Speaker
+import com.craftflowtechnologies.meetingmind.core.ui.work.SourceChip
+import com.craftflowtechnologies.meetingmind.core.work.DueDates
 import com.craftflowtechnologies.meetingmind.core.work.Finding
 import com.craftflowtechnologies.meetingmind.core.work.FindingKind
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
@@ -85,7 +91,8 @@ fun WrapUpScreen(
     onDone: (noteId: String?) -> Unit,
     onPlay: (Long?) -> Unit,
     onOpenPerson: (String) -> Unit,
-    startComposing: Boolean = false
+    startComposing: Boolean = false,
+    onStartCircle: () -> Unit = {}
 ) {
     val meeting by viewModel.meeting.collectAsState()
     val items by viewModel.findings.collectAsState()
@@ -106,8 +113,12 @@ fun WrapUpScreen(
     var naming by remember { mutableStateOf(false) }
     var projectPicker by remember { mutableStateOf(false) }
     var composing by remember { mutableStateOf(startComposing) }
+    var showShareCircle by remember { mutableStateOf(false) }
     var contactFor by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.WorkPerson?>(null) }
     var showAll by remember { mutableStateOf(false) }
+    var checkSheet by remember { mutableStateOf(false) }
+    var warned by remember { mutableStateOf(false) }
+    var finished by remember { mutableStateOf<WrapUpSummary?>(null) }
     var adding by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -124,6 +135,24 @@ fun WrapUpScreen(
     val questions = shown.filter { it.kind == FindingKind.QUESTION }
     val unnamed = viewModel.unnamed(speakers)
     val project = notebooks.firstOrNull { it.id == note?.notebookId }
+    val pendingChanges = changes.filter { it.id !in confirmed }
+    val keepCount = tasksAll.size + decisions.size + questions.size
+
+    fun finish(confirmAll: Boolean) {
+        checkSheet = false
+        if (confirmAll) pendingChanges.forEach { viewModel.confirmChange(it) }
+        val unconfirmed = if (confirmAll) 0 else pendingChanges.size
+        finished = WrapUpSummary(
+            project = project?.name, decisions = decisions.size, myTasks = myTasks.size, theirTasks = theirs.size,
+            questions = questions.size, changesConfirmed = changes.size - unconfirmed, changesSuggested = unconfirmed
+        )
+        viewModel.done()
+    }
+    /** Done with unconfirmed changes asks once (spec §6 Wrap-up); the second Done saves them as suggested. */
+    fun attemptDone() {
+        if (pendingChanges.isNotEmpty() && !warned) { warned = true; checkSheet = true; return }
+        finish(confirmAll = false)
+    }
 
     // Signature moments (Z-16/Z-33): the same ladder as the note screen, crisp in Work. The character stays in
     // the header zone at 48 dp or less and never crosses decisions or tasks; the First Keep plays over the page.
@@ -146,14 +175,35 @@ fun WrapUpScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Surface(color = SurfaceBase, shadowElevation = 8.dp) {
-                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { composing = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
-                        Text("Draft follow-up", modifier = Modifier.padding(vertical = 4.dp))
+                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (finished == null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick = { showShareCircle = true },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Rounded.Groups, null, modifier = Modifier.size(18.dp), tint = Ink)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Share to Circle", modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                        OutlinedButton(onClick = { composing = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
+                            Text("Draft follow-up", modifier = Modifier.padding(vertical = 4.dp))
+                        }
                     }
-                    Button(
-                        onClick = { viewModel.done(); onDone(meeting?.noteId) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk)
-                    ) { Text("Done", modifier = Modifier.padding(vertical = 4.dp)) }
+                    if (finished == null) {
+                        Button(
+                            onClick = { attemptDone() }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk)
+                        ) { Text("Done · save $keepCount", modifier = Modifier.padding(vertical = 4.dp)) }
+                    } else {
+                        Button(
+                            onClick = { composing = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk)
+                        ) { Text("Review follow-up", modifier = Modifier.padding(vertical = 4.dp)) }
+                        OutlinedButton(onClick = { onDone(meeting?.noteId) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                            Text("Close", modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                    }
                 }
             }
         }
@@ -219,18 +269,19 @@ fun WrapUpScreen(
                     }
                 }
             }
+            finished?.let { summary -> item(key = "completion") { WrapUpCompletion(summary) } }
             // Changes: what this recording replaces, to confirm with one tap (D6).
-            if (changes.isNotEmpty()) {
+            if (finished == null && changes.isNotEmpty()) {
                 item(key = "h-changes") { WorkSectionTitle("Changes", "${changes.size}") }
                 items(changes, key = { "c-" + it.id }) { c ->
                     ChangeCard(c, confirmed = c.id in confirmed, onConfirm = { viewModel.confirmChange(c) }, onUndo = { viewModel.undoChange(c) },
                         onReject = { viewModel.rejectChange(c) }, onPlay = { onPlay(c.startMs) })
                 }
             }
-            section("Decisions", decisions, "d")
-            section("You owe", myTasks, "m")
-            section("They owe", theirs, "w")
-            section("Open questions", questions, "q")
+            if (finished == null) section("Decisions", decisions, "d")
+            if (finished == null) section("You owe", myTasks, "m")
+            if (finished == null) section("They owe", theirs, "w")
+            if (finished == null) section("Open questions", questions, "q")
             // Unclear: a promise nobody could place. Settle it or dismiss it; left alone it is kept as unclear, never guessed.
             val unclear = extras.unclear.filter { it.id !in settled }
             if (unclear.isNotEmpty()) {
@@ -241,7 +292,7 @@ fun WrapUpScreen(
                         onDismiss = { viewModel.dismissSignal(s.id) }, onPlay = { onPlay(s.startMs) })
                 }
             }
-            if (extras.more.isNotEmpty()) {
+            if (finished == null && extras.more.isNotEmpty()) {
                 item(key = "more-signals") {
                     TextButton(onClick = { moreOpen = !moreOpen }, modifier = Modifier.padding(horizontal = 12.dp)) {
                         Text(if (moreOpen) "Hide" else "+ ${extras.more.size} more found")
@@ -251,10 +302,10 @@ fun WrapUpScreen(
                     ExtraSignalRow(s, added = s.id in added, onAdd = { viewModel.addSignal(s.id) }, onDismiss = { viewModel.dismissSignal(s.id) }, onPlay = { onPlay(s.startMs) })
                 }
             }
-            if (hidden > 0) item {
+            if (finished == null && hidden > 0) item {
                 TextButton(onClick = { showAll = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("+ $hidden more found, less certain") }
             }
-            item {
+            if (finished == null) item {
                 OutlinedTextField(
                     value = adding, onValueChange = { adding = it }, placeholder = { Text("Add a task, decision or question") },
                     singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -283,13 +334,20 @@ fun WrapUpScreen(
 
     editing?.let { current ->
         val i = items.firstOrNull { it.id == current.id } ?: current
-        FindingEditSheet(
+        WrapUpEditSheet(
             f = i, owners = ownerChoices(speakers, self?.name), onDismiss = { editing = null },
-            onText = { viewModel.setText(i, it) }, onKind = { viewModel.setKind(i, it); editing = null }, onOwner = { viewModel.setOwner(i, it) },
+            onText = { viewModel.setText(i, it) }, onKind = { viewModel.setKind(i, it) }, onOwner = { viewModel.setOwner(i, it) },
             onDue = { viewModel.setDue(i, it) }, onAnswer = { viewModel.setAnswer(i, it) },
-            onDelete = { editing = null; viewModel.dismiss(i) }, onPlay = { editing = null; onPlay(i.startMs) }
+            onDelete = { editing = null; viewModel.dismiss(i) }, onPlay = { onPlay(i.startMs) },
+            meetingId = meeting?.id
         )
     }
+    if (checkSheet) WrapUpCheckSheet(
+        pending = pendingChanges,
+        onCheck = { checkSheet = false },
+        onConfirmAll = { finish(confirmAll = true) },
+        onDismiss = { checkSheet = false }
+    )
     if (naming) NameSpeakersSheet(speakers, with.map { it.name }, onDismiss = { naming = false },
         onRename = { s, n -> viewModel.renameSpeaker(s, n) }, onMe = { viewModel.speakerIsMe(it) }, onPlay = onPlay)
     if (projectPicker) {
@@ -313,12 +371,28 @@ fun WrapUpScreen(
     }
     if (composing) FollowUpSheet(
         title = "Follow-up", recipients = with, settings = settings,
-        compose = { c, t -> viewModel.followUp(c, t) },
+        compose = { c, t, l -> composeFollowUp(meeting?.title.orEmpty(), meeting?.createdAt, items, with, self?.name, settings, c, t, l) },
         onDismiss = { composing = false },
         onSent = { c -> viewModel.markSent(c); composing = false; onDone(meeting?.noteId) },
         onAddContact = { contactFor = it }
     )
     contactFor?.let { p -> ContactDialog(p, onDismiss = { contactFor = null }) { e, ph -> viewModel.addContact(p, e, ph); contactFor = null } }
+    if (showShareCircle) {
+        ShareToCircleSheet(
+            meetingTitle = meeting?.title ?: "Meeting",
+            summary = note?.plainText,
+            decisions = decisions,
+            tasks = tasksAll,
+            meetingId = viewModel.meetingId,
+            onDismiss = { showShareCircle = false },
+            onNavigateCreateCircle = onStartCircle,
+            onShared = { circleName, count ->
+                scope.launch {
+                    snackbar.showSnackbar("Shared $count items to $circleName")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -448,4 +522,236 @@ private fun ExtraSignalRow(s: com.craftflowtechnologies.meetingmind.core.work.Si
             if (added) Chip("✓ Added", true) {} else { Chip("Add") { onAdd() }; Chip("Dismiss") { onDismiss() } }
         }
     }
+}
+
+/** What a finished Wrap-up saved, shown on the completion card (spec §6: "what went where"). */
+internal data class WrapUpSummary(
+    val project: String?,
+    val decisions: Int,
+    val myTasks: Int,
+    val theirTasks: Int,
+    val questions: Int,
+    val changesConfirmed: Int,
+    val changesSuggested: Int
+)
+
+/** Saved to the project, with what went where and the next step. Nothing confirmed was overwritten. */
+@Composable
+private fun WrapUpCompletion(summary: WrapUpSummary) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 8.dp)) {
+        Text("Saved to ${summary.project ?: "your records"}", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+        Text("Everything is linked to this recording. Tomorrow's Pulse picks it up.", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp))
+        Surface(shape = RoundedCornerShape(16.dp), color = SurfaceSunk, modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                WrapUpSummaryRow("Decisions", "${summary.decisions}")
+                WrapUpSummaryRow("Your tasks", "${summary.myTasks}")
+                WrapUpSummaryRow("Waiting on others", "${summary.theirTasks}")
+                WrapUpSummaryRow("Open questions", "${summary.questions}")
+                WrapUpSummaryRow("Changes confirmed", "${summary.changesConfirmed}")
+                if (summary.changesSuggested > 0) WrapUpSummaryRow("Left as suggested", "${summary.changesSuggested}")
+            }
+        }
+        Text(
+            if (summary.changesSuggested > 0) "Unconfirmed changes stay \"suggested\". They don't overwrite older decisions or dates."
+            else "Next: send the follow-up. It is written from what you just confirmed.",
+            fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 12.dp)
+        )
+    }
+}
+
+@Composable
+private fun WrapUpSummaryRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 15.sp, color = Ink, modifier = Modifier.weight(1f))
+        Text(value, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+    }
+}
+
+/** Done with unconfirmed changes: "Check them" goes back to the list, "Confirm all" confirms and saves. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WrapUpCheckSheet(
+    pending: List<com.craftflowtechnologies.meetingmind.core.work.ChangeProposal>,
+    onCheck: () -> Unit,
+    onConfirmAll: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
+            Text(
+                if (pending.size == 1) "One change isn't confirmed" else "${pending.size} changes aren't confirmed",
+                fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink
+            )
+            Text("Unconfirmed changes don't overwrite older decisions or dates. They stay suggested.", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 6.dp))
+            Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                pending.forEach { c -> Text("• " + c.newText, fontSize = 14.sp, color = Ink) }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = onCheck, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Check them") }
+                Button(
+                    onClick = onConfirmAll, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk)
+                ) { Text("Confirm all") }
+            }
+        }
+    }
+}
+
+/** The types a finding can be, in the edit sheet. Risk is not offered: the Wrap-up has no risk kind yet. */
+private enum class WrapType(val label: String) { TASK("Your task"), WAITING("Waiting on"), DECISION("Decision"), QUESTION("Question") }
+
+private fun wrapTypeOf(f: Finding): WrapType = when (f.kind) {
+    FindingKind.DECISION -> WrapType.DECISION
+    FindingKind.QUESTION -> WrapType.QUESTION
+    FindingKind.ACTION, FindingKind.FOLLOW_UP -> if (f.isMine) WrapType.TASK else WrapType.WAITING
+}
+
+/**
+ * Edits one finding in the Wrap-up: its words, what it is ("This is a…"), who owes it, when it's due,
+ * and the moment it was said. One change per tap: a type change is applied on its own, and the owner is
+ * set on the next tap, once the finding is a task.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun WrapUpEditSheet(
+    f: Finding,
+    owners: List<OwnerChoice>,
+    onDismiss: () -> Unit,
+    onText: (String) -> Unit,
+    onKind: (FindingKind) -> Unit,
+    onOwner: (OwnerChoice?) -> Unit,
+    onDue: (String?) -> Unit,
+    onAnswer: (String) -> Unit,
+    onDelete: () -> Unit,
+    onPlay: () -> Unit,
+    meetingId: String? = null
+) {
+    var text by remember(f.id) { mutableStateOf(f.text) }
+    var typedOwner by remember(f.id) { mutableStateOf("") }
+    var answer by remember(f.id) { mutableStateOf(f.answer.orEmpty()) }
+    val type = wrapTypeOf(f)
+    val me = owners.firstOrNull { it.isSelf }
+
+    fun applyType(t: WrapType) {
+        when (t) {
+            WrapType.DECISION -> if (f.kind != FindingKind.DECISION) onKind(FindingKind.DECISION)
+            WrapType.QUESTION -> if (f.kind != FindingKind.QUESTION) onKind(FindingKind.QUESTION)
+            WrapType.TASK -> when {
+                f.kind != FindingKind.ACTION && f.kind != FindingKind.FOLLOW_UP -> onKind(FindingKind.ACTION)
+                !f.isMine -> me?.let { onOwner(it) }
+            }
+            // Waiting on needs a person: the kind changes now, and the owner is picked below.
+            WrapType.WAITING -> if (f.kind != FindingKind.ACTION) onKind(FindingKind.ACTION)
+        }
+    }
+
+    ModalBottomSheet(onDismissRequest = { if (text != f.text) onText(text); onDismiss() }, containerColor = SurfaceBase) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
+            Text("Edit finding", fontSize = 13.sp, color = InkMuted, fontWeight = FontWeight.SemiBold)
+            OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences))
+
+            WrapLabel("This is a…")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                WrapType.entries.forEach { t -> Chip(t.label, type == t, Ink) { applyType(t) } }
+            }
+
+            if (f.kind == FindingKind.ACTION || f.kind == FindingKind.FOLLOW_UP) {
+                WrapLabel(if (type == WrapType.WAITING) "Who owes it" else "Who")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    owners.filter { !it.isSelf }.forEach { o ->
+                        val selected = o.speakerId != null && o.speakerId == f.ownerSpeakerId
+                        Chip(o.label, selected) { onOwner(o) }
+                    }
+                    Chip("Nobody yet", !f.hasOwner) { onOwner(null) }
+                }
+                OutlinedTextField(
+                    typedOwner, { typedOwner = it }, placeholder = { Text("Someone else: type a name") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp), keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    trailingIcon = { if (typedOwner.isNotBlank()) TextButton(onClick = { onOwner(OwnerChoice(typedOwner.trim(), name = typedOwner.trim())); typedOwner = "" }) { Text("Set") } }
+                )
+
+                WrapLabel("When")
+                val now = System.currentTimeMillis()
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Today" to "today", "Tomorrow" to "tomorrow", "Friday" to "Friday", "Next week" to "next week").forEach { (label, words) ->
+                        val at = DueDates.parse(words, now)
+                        Chip(label, at != null && at == f.dueAt) { onDue(words) }
+                    }
+                    Chip("No date", f.dueAt == null && f.dueText == null) { onDue(null) }
+                }
+                f.dueText?.takeIf { it.isNotBlank() }?.let { Text("Said: \u201c$it\u201d", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 6.dp)) }
+            }
+
+            if (f.kind == FindingKind.QUESTION) {
+                OutlinedTextField(
+                    answer, { answer = it }, label = { Text("Answer, if you have it") }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    trailingIcon = { if (answer.isNotBlank() && answer != f.answer) TextButton(onClick = { onAnswer(answer) }) { Text("Save") } }
+                )
+            }
+
+            f.startMs?.let { ms ->
+                WrapLabel("Source")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SourceChip(label = formatTime(ms), onClick = onPlay)
+                    Text("  Plays the moment it was said", fontSize = 12.sp, color = InkMuted)
+                }
+            }
+
+            Row(Modifier.fillMaxWidth().padding(top = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onDelete) { Text("Dismiss", color = Danger) }
+                // Play's AI-content policy: a finding the AI wrote can be reported.
+                com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                    com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                        com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.WORK_PULSE, f.text, meetingId = meetingId
+                    )
+                })
+                Spacer(Modifier.weight(1f))
+                Button(
+                    onClick = { if (text != f.text) onText(text); onDismiss() },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk)
+                ) { Text("Save") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WrapLabel(text: String) {
+    Text(text.uppercase(), fontSize = 11.sp, color = InkMuted, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
+}
+
+/**
+ * The follow-up written from what was confirmed in this Wrap-up. Same content as the Wrap-up's own
+ * follow-up, with the length passed through (the ViewModel's version has no length).
+ */
+private fun composeFollowUp(
+    meetingTitle: String,
+    meetingAt: Long?,
+    findings: List<Finding>,
+    recipients: List<com.craftflowtechnologies.meetingmind.core.work.WorkPerson>,
+    selfName: String?,
+    settings: com.craftflowtechnologies.meetingmind.core.work.WorkSettings,
+    channel: com.craftflowtechnologies.meetingmind.core.work.Channel,
+    tone: com.craftflowtechnologies.meetingmind.core.work.Tone,
+    length: com.craftflowtechnologies.meetingmind.core.work.FollowUpLength
+): com.craftflowtechnologies.meetingmind.core.work.OutgoingMessage {
+    fun line(f: Finding) = com.craftflowtechnologies.meetingmind.core.work.FollowUpLine(f.text, f.ownerName, f.dueAt, f.dueText)
+    val tasks = findings.filter { it.kind == FindingKind.ACTION || it.kind == FindingKind.FOLLOW_UP }
+    return com.craftflowtechnologies.meetingmind.core.work.FollowUpWriter.compose(
+        com.craftflowtechnologies.meetingmind.core.work.FollowUpWriter.Input(
+            meetingTitle = meetingTitle,
+            meetingAt = meetingAt ?: System.currentTimeMillis(),
+            recipients = recipients,
+            decisions = findings.filter { it.kind == FindingKind.DECISION }.map(::line),
+            myTasks = tasks.filter { it.isMine }.map(::line),
+            theirTasks = tasks.filter { !it.isMine }.map(::line),
+            questions = findings.filter { it.kind == FindingKind.QUESTION }.map(::line),
+            senderName = selfName?.takeIf { it != "Me" },
+            settings = settings,
+            tone = tone,
+            length = length
+        ),
+        channel
+    )
 }

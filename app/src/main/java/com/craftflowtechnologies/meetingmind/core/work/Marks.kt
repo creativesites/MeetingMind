@@ -17,7 +17,10 @@ enum class MarkKind(val label: String) {
     // R-1: the buttons that depend on what is being recorded. Stored in the same list.
     DECISION("Decision"), SCRIPTURE("Scripture"), NOTE("Note"), PRAYER("Prayer point"),
     // Schema 25. Appended last: stored by name, so the seven above keep their stored values.
-    IDEA("Idea")
+    IDEA("Idea"),
+    // Live lecture markers: stored by name, appended so existing kinds never shift.
+    EXAM_HINT("Exam hint"),
+    CONFUSED("Lost me")
 }
 
 /** A tap at [atMs] into the recording, with the words the person typed for it, if any. */

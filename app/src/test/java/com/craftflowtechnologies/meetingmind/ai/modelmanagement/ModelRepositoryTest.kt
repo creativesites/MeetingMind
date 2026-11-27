@@ -83,4 +83,64 @@ class ModelRepositoryTest {
         val result = repository.installModel("does-not-exist")
         assertTrue(result is AiResult.ModelUnavailable)
     }
+
+    @Test
+    fun `deleteModel is rejected when background processing jobs are active`() = runBlocking {
+        val repository = ModelRepository(database, LocalModelStorage(context))
+        val job = com.craftflowtechnologies.meetingmind.core.database.ProcessingJobEntity(
+            id = "test_job_1",
+            meetingId = "meeting_1",
+            meetingTitle = "Strategy Call",
+            currentStep = "Transcribing",
+            progressPercent = 40,
+            isCompleted = false,
+            isFailed = false,
+            errorMessage = null,
+            startedAt = System.currentTimeMillis()
+        )
+        database.processingJobDao().insertOrUpdateJob(job)
+
+        val result = repository.deleteModel(ModelCatalog.parakeetTdtV3Int8.id)
+        assertTrue(result is AiResult.Failed)
+        assertEquals("Cannot delete model while background processing is active.", (result as AiResult.Failed).message)
+    }
+
+    @Test
+    fun `deleteModel resets user preference to default when selected active model is deleted`() = runBlocking {
+        val prefs = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context)
+        prefs.setSelectedAsrModel(ModelCatalog.omnilingualAsr300mInt8.id)
+        prefs.setSelectedLlmModel(ModelCatalog.qwen25_0_5bInstruct.id)
+
+        val repository = ModelRepository(
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            userPreferencesManager = prefs
+        )
+
+        val asrResult = repository.deleteModel(ModelCatalog.omnilingualAsr300mInt8.id)
+        assertTrue(asrResult is AiResult.Success)
+        val afterAsr = prefs.preferencesFlow.first()
+        assertEquals(ModelCatalog.parakeetTdtV3Int8.id, afterAsr.selectedAsrModelId)
+
+        val llmResult = repository.deleteModel(ModelCatalog.qwen25_0_5bInstruct.id)
+        assertTrue(llmResult is AiResult.Success)
+        val afterLlm = prefs.preferencesFlow.first()
+        assertEquals(ModelCatalog.qwen25_1_5bInstruct.id, afterLlm.selectedLlmModelId)
+    }
+
+    @Test
+    fun `deleting the selected speech model hands the selection to another installed speech model`() = runBlocking {
+        val storage = LocalModelStorage(context)
+        storage.markInstalled(ModelCatalog.whisperTurboInt8.id)
+        val prefs = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context)
+        prefs.setSelectedAsrModel(ModelCatalog.omnilingualAsr300mInt8.id)
+        try {
+            val repository = ModelRepository(database = database, modelStorage = storage, userPreferencesManager = prefs)
+
+            assertTrue(repository.deleteModel(ModelCatalog.omnilingualAsr300mInt8.id) is AiResult.Success)
+            assertEquals(ModelCatalog.whisperTurboInt8.id, prefs.preferencesFlow.first().selectedAsrModelId)
+        } finally {
+            storage.delete(ModelCatalog.whisperTurboInt8.id)
+        }
+    }
 }

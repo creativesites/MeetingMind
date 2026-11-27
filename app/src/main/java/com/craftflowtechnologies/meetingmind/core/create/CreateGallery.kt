@@ -58,6 +58,8 @@ object CreateCardCodec {
         put("anchor", d.companionAnchor.name)
         put("watermark", d.watermark)
         put("scale", d.textScale.toDouble())
+        put("style", d.style.name)
+        d.eyebrow?.takeIf { it.isNotBlank() }?.let { put("eyebrow", it) }
     }
 
     fun designFromJson(json: String): CreateDesign = runCatching {
@@ -72,7 +74,9 @@ object CreateCardCodec {
             companionPose = com.craftflowtechnologies.meetingmind.core.companion.CreateMode.entries.firstOrNull { it.name == o.optString("pose") },
             companionAnchor = CompanionAnchor.entries.firstOrNull { it.name == o.optString("anchor") } ?: CompanionAnchor.BELOW,
             watermark = o.optBoolean("watermark", false),
-            textScale = o.optDouble("scale", 1.0).toFloat().coerceIn(0.7f, 1.4f)
+            textScale = o.optDouble("scale", 1.0).toFloat().coerceIn(0.7f, 1.4f),
+            style = CreateCardStyle.entries.firstOrNull { it.name == o.optString("style") } ?: CreateCardStyle.CLEAN,
+            eyebrow = o.optString("eyebrow").takeIf { it.isNotBlank() && !o.isNull("eyebrow") }
         )
     }.getOrDefault(CreateDesign())
 

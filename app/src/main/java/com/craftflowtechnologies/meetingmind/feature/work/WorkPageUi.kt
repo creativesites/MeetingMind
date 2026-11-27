@@ -18,9 +18,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Badge
@@ -37,6 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
@@ -48,25 +50,26 @@ import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.notes.PagedState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
-import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
+import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
 /** One entry of the ＋ or ⋯ menu. [badge] shows a count beside the label when above 0. */
 internal data class WorkMenuAction(val label: String, val badge: Int = 0, val onClick: () -> Unit)
 
-/**
- * The Work header (WORK_UX §2): "Work", one context line, and Search, ＋, ⋯. Plain surface, no gradient.
- * The ⋯ icon carries the Inbox count only when it is above 0.
- */
-/** The Work header companion: small and crisp (T0). */
+/** The Work companion in the header (T0): small and crisp. */
 private val WorkCompanionSize = 40.dp
 
 /** The companion in a Work empty state (§5.5: 96 dp). */
 internal val EmptyCompanionSize = 96.dp
 
+/**
+ * The Work header: "Work", one context line, and four actions: Work search (scoped to Work, with a fallback to
+ * everything), Inbox (the only Inbox door besides the Pulse row, with its count as a badge), ＋ and ⋯. The global app
+ * bar is not shown inside Work; the in-vertical bar below the pane carries Home.
+ */
 @Composable
 internal fun WorkPageHeader(
     contextLine: String,
@@ -74,41 +77,60 @@ internal fun WorkPageHeader(
     moreActions: List<WorkMenuAction>,
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null
+    inboxCount: Int = 0,
+    onOpenInbox: (() -> Unit)? = null,
+    /** Work's own group for the shared app menu. Set: the ⋯ opens the app menu with Work first (and Settings one tap away). Null: the local ⋯ list. */
+    menuSection: (() -> com.craftflowtechnologies.meetingmind.core.navigation.MenuSection)? = null
 ) {
-    val inbox = moreActions.sumOf { it.badge }
-    Column(modifier) {
-        // A small companion leads the title (40 dp, §5.3); nothing is reserved while it is filtered out.
-        val companionShown = rememberCompanionVisible(CompanionPage.HOME)
-        ScreenHeader(
-            "Work",
-            leading = if (onBack == null && !companionShown) null else { {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.ink) }
-                    ZuriSlot(CompanionPage.HOME, WorkCompanionSize)
+    val companionShown = rememberCompanionVisible(CompanionPage.HOME)
+    val leading: (@Composable () -> Unit)? = if (companionShown) {
+        { ZuriSlot(CompanionPage.HOME, WorkCompanionSize) }
+    } else null
+    Column(modifier.fillMaxWidth()) {
+        ScreenHeader(title = "Work", leading = leading) {
+            IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search Work", tint = MM.colors.ink) }
+            if (onOpenInbox != null) {
+                IconButton(onClick = onOpenInbox) {
+                    if (inboxCount > 0) {
+                        BadgedBox(badge = { Badge(containerColor = MM.colors.accent, contentColor = MM.colors.onAccent) { Text(inboxCount.toString(), style = MM.type.caption) } }) {
+                            Icon(Icons.Rounded.Inbox, "Work Inbox, $inboxCount waiting", tint = MM.colors.ink)
+                        }
+                    } else {
+                        Icon(Icons.Rounded.Inbox, "Work Inbox", tint = MM.colors.ink)
+                    }
                 }
-            } },
-            actions = {
-                IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search Work", tint = MM.colors.inkSecondary) }
-                MenuButton(Icons.Rounded.Add, "New", addActions, badge = 0)
-                MenuButton(Icons.Rounded.MoreHoriz, if (inbox > 0) "More, $inbox in Inbox" else "More", moreActions, badge = inbox)
             }
-        )
-        Text(contextLine, style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(bottom = MM.space.s))
+            MenuButton(Icons.Rounded.Add, "New", addActions, tint = MM.colors.ink)
+            if (menuSection != null) {
+                com.craftflowtechnologies.meetingmind.core.navigation.AppMenuButton(
+                    focus = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK,
+                    tint = MM.colors.ink,
+                    local = menuSection
+                )
+            } else {
+                MenuButton(Icons.Rounded.MoreHoriz, "More", moreActions, tint = MM.colors.ink)
+            }
+        }
+        Row(
+            Modifier.padding(top = MM.space.xs, bottom = MM.space.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+        ) {
+            Box(Modifier.size(6.dp).background(MM.colors.accent, MM.radius.pill))
+            Text(
+                contextLine,
+                style = MM.type.secondary,
+                color = MM.colors.inkSecondary
+            )
+        }
     }
 }
 
 @Composable
-private fun MenuButton(icon: ImageVector, description: String, actions: List<WorkMenuAction>, badge: Int) {
+private fun MenuButton(icon: ImageVector, description: String, actions: List<WorkMenuAction>, tint: Color) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) {
-            if (badge > 0) {
-                BadgedBox(badge = { Badge(containerColor = MM.colors.accent, contentColor = MM.colors.onAccent) { Text(badge.toString(), style = MM.type.caption) } }) {
-                    Icon(icon, description, tint = MM.colors.inkSecondary)
-                }
-            } else Icon(icon, description, tint = MM.colors.inkSecondary)
-        }
+        IconButton(onClick = { open = true }) { Icon(icon, description, tint = tint) }
         DropdownMenu(open, { open = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.card) {
             actions.forEach { a ->
                 DropdownMenuItem(

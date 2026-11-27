@@ -33,14 +33,12 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.share.ShareHelper
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import com.craftflowtechnologies.meetingmind.core.circles2.CardPayload
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
@@ -147,7 +145,7 @@ fun CardDetailSheet(card: CardPayload, image: ImageBitmap?, onDismiss: () -> Uni
         ) {
             Text(
                 if (mood != null) "$mood Card" else "Shared Card",
-                style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                style = MM.type.title.copy(fontWeight = FontWeight.Bold),
                 color = MM.colors.ink
             )
             IconButton(onClick = onDismiss) {
@@ -179,13 +177,14 @@ fun CardDetailSheet(card: CardPayload, image: ImageBitmap?, onDismiss: () -> Uni
         PrimaryButton(
             "Share card",
             {
-                val textToShare = buildString {
+                val rawText = buildString {
                     append(card.text)
                     if (!card.verseRef.isNullOrBlank()) {
                         append("\n\n— ")
                         append(card.verseRef)
                     }
                 }
+                val textToShare = com.craftflowtechnologies.meetingmind.core.share.AppLinks.withAppLink(rawText)
                 ShareHelper.shareText(context, "Card", textToShare, "Share Card")
             },
             leadingIcon = Icons.Rounded.Share,

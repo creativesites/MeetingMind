@@ -78,7 +78,9 @@ class HomeCirclesViewModel(private val repo: CirclesRepository) : ViewModel() {
         viewModelScope.launch {
             try {
                 // Activates push only for someone already in a circle: opening Home is not opting in.
-                repo.refresh(activatePush = false)
+                kotlinx.coroutines.withTimeoutOrNull(3500L) {
+                    repo.refresh(activatePush = false)
+                }
             } finally {
                 refreshed.value = true
             }

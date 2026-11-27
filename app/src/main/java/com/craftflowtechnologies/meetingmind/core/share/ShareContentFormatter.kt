@@ -13,7 +13,7 @@ import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
  */
 object ShareContentFormatter {
 
-    fun transcriptText(meeting: Meeting, segments: List<TranscriptSegment>): String = buildString {
+    fun transcriptText(meeting: Meeting, segments: List<TranscriptSegment>, includeAppLink: Boolean = true): String = buildString {
         appendLine(meeting.title)
         appendLine(Formatters.formatDateRelative(meeting.createdAt))
         appendLine()
@@ -25,9 +25,9 @@ object ShareContentFormatter {
                 appendLine("[${Formatters.formatDurationHms(seg.startMs)}] $speaker: ${seg.text}")
             }
         }
-    }.trimEnd()
+    }.trimEnd().let { if (includeAppLink) AppLinks.withAppLink(it, "Notes & transcripts via MeetingMind") else it }
 
-    fun summaryText(meeting: Meeting, summary: String?, decisions: List<Decision>, actionItems: List<ActionItem>): String = buildString {
+    fun summaryText(meeting: Meeting, summary: String?, decisions: List<Decision>, actionItems: List<ActionItem>, includeAppLink: Boolean = true): String = buildString {
         appendLine(meeting.title)
         appendLine(Formatters.formatDateRelative(meeting.createdAt))
         appendLine("Duration: ${Formatters.formatDurationHms(meeting.durationMs)}")
@@ -43,9 +43,9 @@ object ShareContentFormatter {
             appendLine("Action Items:")
             actionItems.forEach { appendLine("- ${actionItemLine(it)}") }
         }
-    }.trimEnd()
+    }.trimEnd().let { if (includeAppLink) AppLinks.withAppLink(it, "Recorded & summarized in MeetingMind") else it }
 
-    fun actionItemsText(meeting: Meeting, items: List<ActionItem>): String = buildString {
+    fun actionItemsText(meeting: Meeting, items: List<ActionItem>, includeAppLink: Boolean = true): String = buildString {
         appendLine("Action Items — ${meeting.title}")
         appendLine()
         if (items.isEmpty()) {
@@ -53,7 +53,7 @@ object ShareContentFormatter {
         } else {
             items.forEach { appendLine(actionItemLine(it)) }
         }
-    }.trimEnd()
+    }.trimEnd().let { if (includeAppLink) AppLinks.withAppLink(it, "Get MeetingMind") else it }
 
     private fun actionItemLine(item: ActionItem): String {
         val status = if (item.isCompleted) "[x]" else "[ ]"

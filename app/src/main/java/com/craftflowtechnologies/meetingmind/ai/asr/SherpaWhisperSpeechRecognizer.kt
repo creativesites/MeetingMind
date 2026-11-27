@@ -61,13 +61,17 @@ class SherpaWhisperSpeechRecognizer(
                 return AiResult.Success(emptyList())
             }
 
+            val whisperLanguage = when (val lang = options.language.lowercase().trim()) {
+                "", "auto" -> ""
+                else -> lang
+            }
             val config = OfflineRecognizerConfig(
                 featConfig = FeatureConfig(sampleRate = AudioFormatConverter.TARGET_SAMPLE_RATE, featureDim = FEATURE_DIM),
                 modelConfig = OfflineModelConfig(
                     whisper = OfflineWhisperModelConfig(
                         encoder = encoder.absolutePath,
                         decoder = decoder.absolutePath,
-                        language = "",
+                        language = whisperLanguage,
                         task = "transcribe",
                         tailPaddings = -1
                     ),
@@ -78,7 +82,8 @@ class SherpaWhisperSpeechRecognizer(
                 ),
                 decodingMethod = "greedy_search"
             )
-            val recognizer = SherpaEngineManager.getOrCreateRecognizer(modelId, config)
+            val cacheKey = if (whisperLanguage.isNotEmpty()) "$modelId:$whisperLanguage" else modelId
+            val recognizer = SherpaEngineManager.getOrCreateRecognizer(cacheKey, config)
 
             val sampleRate = AudioFormatConverter.TARGET_SAMPLE_RATE
             val decodedDurationMs = decoded.samples.size.toLong() * 1000L / sampleRate

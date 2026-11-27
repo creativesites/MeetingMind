@@ -4,14 +4,17 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.craftflowtechnologies.meetingmind.core.circles2.ChecklistItem
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleSettings
+import com.craftflowtechnologies.meetingmind.core.circles2.ComposerDraft
 import com.craftflowtechnologies.meetingmind.core.circles2.EventDraft
 import com.craftflowtechnologies.meetingmind.core.circles2.JoinRequest
 import com.craftflowtechnologies.meetingmind.core.circles2.Rsvp
 import com.craftflowtechnologies.meetingmind.core.circles2.RsvpAnswer
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
+import com.craftflowtechnologies.meetingmind.core.circles2.FailureKind
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesRepository
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult
 import com.craftflowtechnologies.meetingmind.core.circles2.Comment
@@ -24,11 +27,14 @@ import com.craftflowtechnologies.meetingmind.core.circles2.InviteCodes
 import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.PendingPost
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
+import com.craftflowtechnologies.meetingmind.core.circles2.PostMeta
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.circles2.PostUpdate
 import com.craftflowtechnologies.meetingmind.core.circles2.ReactionKind
 import com.craftflowtechnologies.meetingmind.core.circles2.Role
+import com.craftflowtechnologies.meetingmind.core.circles2.WorkStatus
 import com.craftflowtechnologies.meetingmind.core.circles2.valueOr
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -43,11 +49,18 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.craftflowtechnologies.meetingmind.core.circles2.fold
 
 /** A post as the feed shows it: [mine] is true even for my anonymous posts (known only on this phone). */
 @Immutable
-data class FeedPost(val post: Post, val mine: Boolean, val prayedByMe: Boolean)
+data class FeedPost(
+    val post: Post,
+    val mine: Boolean,
+    val prayedByMe: Boolean,
+    val myReaction: ReactionKind? = null,
+    val saved: Boolean = false
+)
 
 @Immutable
 data class CircleHomeUiState(
@@ -67,7 +80,14 @@ data class CircleHomeUiState(
     val myPendingCount: Int = 0,
     val failure: CirclesFailure? = null,
     /** I'm no longer in this circle (removed, left on another phone, or it was closed). */
-    val gone: Boolean = false
+    val gone: Boolean = false,
+    val unreadFeedCount: Int = 0,
+    /** When I last opened this circle's posts on this phone (0 = never). Drives "since you were here" and the catch-up deck. */
+    val lastVisitAt: Long = 0L,
+    val savedCount: Int = 0,
+    val streakDays: Int = 0,
+    val checkedInToday: Boolean = false,
+    val promptDismissedToday: Boolean = false
 ) {
     val isAdmin: Boolean get() = me?.role?.isAdmin == true
     val canModerate: Boolean get() = me?.role?.canModerate == true
@@ -83,11 +103,16 @@ data class ComposerState(
     /** Photos already uploaded for this post. */
     val attachments: List<MediaAttachment> = emptyList(),
     val sending: Boolean = false,
+    val uploading: Boolean = false,
     val error: String? = null,
     /** Set when "Turn into testimony" starts a draft from an answered request. */
-    val fromAnswered: Boolean = false
+    val fromAnswered: Boolean = false,
+    /** True when reopened from a locally auto-saved draft. */
+    val draftRestored: Boolean = false,
+    val meta: PostMeta? = null
 ) {
     val open: Boolean get() = type != null
+    val hasText: Boolean get() = body.isNotBlank() || verse.isNotBlank()
 }
 
 @Immutable
@@ -100,7 +125,13 @@ data class ThreadUiState(
 )
 
 @Immutable
-data class InviteUiState(val busy: Boolean = false, val invite: Invite? = null, val shareText: String? = null, val error: String? = null)
+data class InviteUiState(
+    val busy: Boolean = false,
+    val invite: Invite? = null,
+    val shareText: String? = null,
+    val error: String? = null,
+    val invitedEmail: String? = null
+)
 
 /**
  * The Feed, Members and Settings tabs of one circle. The Chat tab has its own view model.
@@ -118,7 +149,27 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     val messages: SharedFlow<String> = _messages
 
     val composer = MutableStateFlow(ComposerState())
+    val savedDraft = MutableStateFlow(repo.store.composerDraft(circleId)?.takeIf { it.hasContent() })
     val invite = MutableStateFlow(InviteUiState())
+    val myReactions = MutableStateFlow<Map<String, ReactionKind>>(emptyMap())
+
+    private fun loadHabitInfo(): HabitInfo {
+        val now = repo.clock()
+        val today = now / 86_400_000L
+        return HabitInfo(
+            savedIds = repo.store.savedPostIds(circleId),
+            lastVisit = repo.store.lastFeedVisit(circleId),
+            streakDays = repo.store.currentStreak(now),
+            checkedInToday = repo.store.checkedInToday(now),
+            promptDismissedToday = repo.store.dismissedPromptDay(circleId) == today
+        )
+    }
+
+    private val habitInfo = MutableStateFlow(loadHabitInfo())
+
+    private fun refreshHabits() {
+        habitInfo.value = loadHabitInfo()
+    }
 
     init { viewModelScope.launch { myUid.value = repo.uid().okOrNull } }
 
@@ -141,30 +192,61 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
 
     private val extras: Flow<Extras> = combine(eventsState, adminData) { e, a -> Extras(e.valueOr(emptyList()), a) }
 
+    private val rawUserData: Flow<RawUser> = combine(myUid, prayed, mine, sentPending, myReactions) { u, p, m, s, r -> RawUser(u, p, m, s, r) }
+    private val userData: Flow<UserData> = combine(rawUserData, habitInfo) { r, h -> UserData(r, h) }
+
     val state: StateFlow<CircleHomeUiState> = combine(
-        circleState, membersState, postsState, extras, combine(myUid, prayed, mine, sentPending) { u, p, m, s -> Quad(u, p, m, s) }
+        circleState, membersState, postsState, extras, userData
     ) { c, ms, ps, ex, q ->
         val members = ms.valueOr(emptyList())
         val circle = (c as? DataState.Ready)?.value
         val failure = listOf(c, ms, ps).filterIsInstance<DataState.Failed>().firstOrNull()?.failure
         val removed = (c is DataState.Ready && c.value == null) || failure?.code == "permission_denied"
+        val r = q.raw
+        val habit = q.habit
+        val feedPosts = ps.valueOr(emptyList()).map { post ->
+            FeedPost(
+                post = post,
+                mine = (r.uid != null && post.authorUid == r.uid) || post.id in r.mine,
+                prayedByMe = post.id in r.prayed,
+                myReaction = r.reactions[post.id],
+                saved = post.id in habit.savedIds
+            )
+        }
+        val now = repo.clock()
+        val lastVisit = habit.lastVisit
+        val unreadCount = when {
+            feedPosts.isEmpty() -> 0
+            lastVisit > 0L -> feedPosts.count { !it.mine && it.post.createdAt > lastVisit }
+            feedPosts.count { it.post.createdAt >= now - 86_400_000L } >= 2 ->
+                feedPosts.count { !it.mine && it.post.createdAt >= now - 86_400_000L }
+            else -> 0
+        }
         CircleHomeUiState(
             loading = c is DataState.Loading && circle == null,
             circle = circle,
-            me = members.firstOrNull { it.uid == q.uid },
+            me = members.firstOrNull { it.uid == r.uid },
             members = members,
-            posts = ps.valueOr(emptyList()).map { FeedPost(it, mine = (q.uid != null && it.authorUid == q.uid) || it.id in q.mine, prayedByMe = it.id in q.prayed) },
+            posts = feedPosts,
             pending = ex.admin.pending,
             joinRequests = ex.admin.requests,
             events = ex.events,
             pinnedPostId = circle?.pinnedPostId,
-            myPendingCount = q.pending,
+            myPendingCount = r.pending,
             failure = if (removed) null else failure,
-            gone = removed
+            gone = removed,
+            unreadFeedCount = unreadCount,
+            lastVisitAt = lastVisit,
+            savedCount = feedPosts.count { it.saved },
+            streakDays = habit.streakDays,
+            checkedInToday = habit.checkedInToday,
+            promptDismissedToday = habit.promptDismissedToday
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CircleHomeUiState())
 
-    private data class Quad(val uid: String?, val prayed: Set<String>, val mine: Set<String>, val pending: Int)
+    private data class RawUser(val uid: String?, val prayed: Set<String>, val mine: Set<String>, val pending: Int, val reactions: Map<String, ReactionKind>)
+    private data class HabitInfo(val savedIds: Set<String>, val lastVisit: Long, val streakDays: Int, val checkedInToday: Boolean, val promptDismissedToday: Boolean)
+    private data class UserData(val raw: RawUser, val habit: HabitInfo)
     private data class AdminData(val pending: List<PendingPost>, val requests: List<JoinRequest>)
     private data class Extras(val events: List<CircleEvent>, val admin: AdminData)
 
@@ -172,41 +254,155 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     private fun fail(f: CirclesFailure) = say(f.message)
 
     // ---------- composer ----------
+    private fun persistDraft(state: ComposerState) {
+        val type = state.type ?: return
+        val draft = ComposerDraft(
+            typeWire = type.wire,
+            body = state.body,
+            verse = state.verse,
+            anonymous = state.anonymous && type == PostType.Prayer,
+            fromAnswered = state.fromAnswered,
+            updatedAt = System.currentTimeMillis()
+        )
+        if (draft.hasContent()) {
+            repo.store.setComposerDraft(circleId, draft)
+            savedDraft.value = draft
+        } else {
+            repo.store.setComposerDraft(circleId, null)
+            savedDraft.value = null
+        }
+    }
+
     fun openComposer(type: PostType) {
         val circle = state.value.circle
         // Free-form is always on: it is not one of the circle's listed kinds.
         if (circle != null && type != PostType.Note && type !in circle.settings.allowedTypes) return
-        composer.value = ComposerState(type = type)
+        val existingDraft = repo.store.composerDraft(circleId)?.takeIf { it.hasContent() }
+        composer.update { current ->
+            if (current.open) {
+                current.copy(
+                    type = type,
+                    anonymous = if (type == PostType.Prayer) current.anonymous else false,
+                    error = null
+                ).also(::persistDraft)
+            } else if (existingDraft != null && (existingDraft.typeWire == type.wire || type == PostType.Note)) {
+                ComposerState(
+                    type = type,
+                    body = existingDraft.body,
+                    verse = existingDraft.verse,
+                    anonymous = existingDraft.anonymous && type == PostType.Prayer,
+                    fromAnswered = existingDraft.fromAnswered,
+                    draftRestored = true
+                )
+            } else {
+                ComposerState(type = type)
+            }
+        }
     }
-    fun closeComposer() { composer.value = ComposerState() }
 
-    /** A photo for the post being written. Opens a free-form composer when none is open. */
+    fun openWorkComposer(type: PostType, initialBody: String = "", initialMeta: PostMeta? = null) {
+        val circle = state.value.circle
+        val targetType = if (circle != null && type != PostType.Note && type !in circle.settings.allowedTypes) {
+            PostType.Note
+        } else {
+            type
+        }
+        composer.value = ComposerState(
+            type = targetType,
+            body = initialBody.take(4000),
+            meta = initialMeta
+        )
+    }
+
+    fun resumeSavedDraft() {
+        val existingDraft = repo.store.composerDraft(circleId)?.takeIf { it.hasContent() } ?: return
+        val type = PostType.entries.firstOrNull { it.wire == existingDraft.typeWire } ?: PostType.Note
+        composer.value = ComposerState(
+            type = type,
+            body = existingDraft.body,
+            verse = existingDraft.verse,
+            anonymous = existingDraft.anonymous && type == PostType.Prayer,
+            fromAnswered = existingDraft.fromAnswered,
+            draftRestored = true
+        )
+    }
+
+    /** Auto-saves any typed words instead of wiping them on Back, outside tap, or close icon. */
+    fun closeComposer() {
+        val current = composer.value
+        val hadText = current.hasText
+        persistDraft(current)
+        composer.value = ComposerState()
+        if (hadText) say("Draft saved — your words won't be lost.")
+    }
+
+    fun discardDraft() {
+        repo.store.setComposerDraft(circleId, null)
+        savedDraft.value = null
+        composer.value = ComposerState()
+    }
+
+    /** A photo, video or document for the post being written. Opens a free-form composer when none is open. */
     fun addPhoto(file: PickedFile) {
         if (!composer.value.open) openComposer(PostType.Note)
+        if (composer.value.attachments.size >= 4) {
+            composer.update { it.copy(error = "A post can have at most 4 attachments.") }
+            return
+        }
         viewModelScope.launch {
-            repo.uploadAttachment(circleId, MediaKind.Image, file.bytes, file.mime, file.name, null).fold(
-                onOk = { a -> composer.update { it.copy(attachments = it.attachments + a, error = null) } },
-                onErr = { f -> composer.update { it.copy(error = f.message) } }
-            )
+            val kind = when {
+                file.mime.startsWith("video/") -> MediaKind.Video
+                file.mime == "application/pdf" || file.name.orEmpty().endsWith(".pdf", ignoreCase = true) || file.mime.startsWith("application/") -> MediaKind.File
+                else -> MediaKind.Image
+            }
+            composer.update { it.copy(uploading = true, error = null) }
+            try {
+                repo.uploadAttachment(circleId, kind, file.bytes, file.mime, file.name, file.durationMs).fold(
+                    onOk = { a -> composer.update { it.copy(attachments = it.attachments + a, uploading = false, error = null) } },
+                    onErr = { f -> composer.update { it.copy(uploading = false, error = f.message) } }
+                )
+            } finally {
+                composer.update { it.copy(uploading = false) }
+            }
         }
     }
     fun removePhoto(a: MediaAttachment) { composer.update { it.copy(attachments = it.attachments.filter { x -> x.path != a.path }) } }
 
-    /** The cover photo for the circle's hero. Admins only; the Worker checks it. */
-    fun setCover(file: PickedFile) {
+    /** Sets my profile photo. The Worker writes the new version onto my member doc in every circle I'm in. */
+    fun setProfilePhoto(file: PickedFile) {
+        say("Updating your photo…")
         viewModelScope.launch {
-            repo.uploadAttachment(circleId, MediaKind.Image, file.bytes, file.mime, file.name, null).fold(
-                onOk = { a ->
-                    repo.api.updateCircle(circleId, null, null, null, null, coverPath = a.path).fold(onOk = { say("Cover photo saved.") }, onErr = ::fail)
-                },
-                onErr = ::fail
+            val jpeg = withContext(Dispatchers.Default) { avatarJpeg(file.bytes) }
+            if (jpeg == null) { fail(CirclesFailure(FailureKind.Rejected, "That photo couldn't be read. Try another.", "bad_image")); return@launch }
+            repo.setProfilePhoto(jpeg).fold(onOk = { say("Profile photo updated.") }, onErr = ::fail)
+        }
+    }
+
+    fun removeProfilePhoto() {
+        viewModelScope.launch { repo.removeProfilePhoto().fold(onOk = { say("Profile photo removed.") }, onErr = ::fail) }
+    }
+
+    /** Saving state and the last outcome of a cover change, for Settings (which has no snackbar of its own). */
+    data class CoverUi(val busy: Boolean = false, val note: CoverNote? = null)
+    private val _cover = MutableStateFlow(CoverUi())
+    val cover: StateFlow<CoverUi> = _cover
+
+    /** A new cover for the circle's hero: a pack picture (no upload) or a photo. Admins only; the Worker checks it. */
+    fun setCover(choice: com.craftflowtechnologies.meetingmind.core.circles2.CoverChoice) {
+        if (_cover.value.busy) return
+        _cover.value = CoverUi(busy = true)
+        viewModelScope.launch {
+            repo.setCover(circleId, choice).fold(
+                onOk = { _cover.value = CoverUi(note = CoverNote("Cover saved.", failed = false)) },
+                onErr = { f -> _cover.value = CoverUi(note = CoverNote(com.craftflowtechnologies.meetingmind.core.circles2.coverFailureLine(f), failed = true)) }
             )
         }
     }
-    fun setBody(v: String) = composer.update { it.copy(body = v.take(4000), error = null) }
-    fun setVerse(v: String) = composer.update { it.copy(verse = v.take(64), error = null) }
+    fun setBody(v: String) = composer.update { it.copy(body = v.take(4000), error = null).also(::persistDraft) }
+    fun setVerse(v: String) = composer.update { it.copy(verse = v.take(64), error = null).also(::persistDraft) }
     /** Only prayer requests can be anonymous; for any other type the flag is forced off. */
-    fun setAnonymous(v: Boolean) = composer.update { it.copy(anonymous = v && it.type == PostType.Prayer) }
+    fun setAnonymous(v: Boolean) = composer.update { it.copy(anonymous = v && it.type == PostType.Prayer).also(::persistDraft) }
+    fun setMeta(meta: PostMeta?) = composer.update { it.copy(meta = meta, error = null) }
 
     /** "Turn into testimony" after Answered: a testimony draft that starts from the request (blank for anonymous ones). */
     fun startTestimonyFrom(post: Post) {
@@ -214,7 +410,9 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         if (PostType.Testimony !in circle.settings.allowedTypes) return
         // An anonymous request's words are never copied into a named testimony: the person writes it fresh.
         val body = if (post.anonymous) "" else "God answered this prayer:\n\n${post.body}\n\n"
-        composer.value = ComposerState(type = PostType.Testimony, body = body, fromAnswered = true)
+        val next = ComposerState(type = PostType.Testimony, body = body, fromAnswered = true)
+        composer.value = next
+        persistDraft(next)
     }
 
     fun submitPost() {
@@ -226,12 +424,25 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         composer.update { it.copy(sending = true, error = null) }
         viewModelScope.launch {
             // No uid, no name: the Worker takes the caller from the token and, for an anonymous post, never stores it on the post.
-            val req = CreatePostRequest(circleId, type, body, c.verse.trim().ifBlank { null }, anonymous = c.anonymous && type == PostType.Prayer, attachments = c.attachments)
+            val effectiveMeta = if (type == PostType.Prayer) null else c.meta?.takeIf { !it.isEmpty }
+            val req = CreatePostRequest(
+                circleId = circleId,
+                type = type,
+                body = body,
+                verseRef = c.verse.trim().ifBlank { null },
+                anonymous = c.anonymous && type == PostType.Prayer,
+                attachments = c.attachments,
+                meta = effectiveMeta
+            )
             repo.createPost(req).fold(
                 onOk = { created ->
                     mine.value = repo.store.myPostIds(circleId)
                     if (created.pending) sentPending.update { it + 1 }
+                    repo.store.setComposerDraft(circleId, null)
+                    savedDraft.value = null
                     composer.value = ComposerState()
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
                     say(if (created.pending) "Sent to the admins. It will appear once they approve it." else "Posted.")
                 },
                 onErr = { f -> composer.update { it.copy(sending = false, error = f.message) } }
@@ -240,21 +451,103 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     }
 
     // ---------- feed actions ----------
+    fun toggleBookmark(post: Post) {
+        val added = repo.store.toggleSavedPost(circleId, post.id)
+        refreshHabits()
+        say(if (added) "Saved for later" else "Removed from saved")
+    }
+
+    fun markCatchUpSeen() {
+        repo.store.setLastFeedVisit(circleId, repo.clock())
+        refreshHabits()
+    }
+
+    fun dismissTodayPrompt() {
+        repo.store.setDismissedPromptDay(circleId, repo.clock() / 86_400_000L)
+        refreshHabits()
+    }
+
     fun pray(post: Post) {
         if (post.id in prayed.value) return
         prayed.update { it + post.id }
         viewModelScope.launch {
-            repo.prayed(circleId, post.id).fold(onOk = { }, onErr = { f -> prayed.update { it - post.id }; fail(f) })
+            repo.prayed(circleId, post.id).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                },
+                onErr = { f -> prayed.update { it - post.id }; fail(f) }
+            )
         }
     }
 
     fun react(post: Post, kind: ReactionKind?) {
-        viewModelScope.launch { repo.api.react(circleId, post.id, kind).failureOrNull?.let(::fail) }
+        val current = myReactions.value[post.id]
+        val target = if (kind == null || current == kind) null else kind
+        myReactions.update { currentMap ->
+            if (target == null) currentMap - post.id else currentMap + (post.id to target)
+        }
+        viewModelScope.launch {
+            val res = repo.api.react(circleId, post.id, target)
+            val err = res.failureOrNull
+            if (err != null) {
+                fail(err)
+            } else if (target != null) {
+                repo.store.recordActivity(repo.clock())
+                refreshHabits()
+            }
+        }
     }
 
     fun markAnswered(post: Post, onDone: (Post) -> Unit = {}) {
         viewModelScope.launch {
-            repo.api.markAnswered(circleId, post.id).fold(onOk = { say("Marked answered. Thank God!"); onDone(post) }, onErr = ::fail)
+            if (post.type == PostType.Task || post.type == PostType.Blocker) {
+                val message = if (post.type == PostType.Blocker) "Marked resolved." else "Marked completed."
+                repo.api.setWorkStatus(circleId, post.id, WorkStatus.Done).fold(
+                    onOk = {
+                        repo.store.recordActivity(repo.clock())
+                        refreshHabits()
+                        say(message)
+                        onDone(post)
+                    },
+                    onErr = ::fail
+                )
+            } else {
+                repo.api.markAnswered(circleId, post.id).fold(
+                    onOk = {
+                        repo.store.recordActivity(repo.clock())
+                        refreshHabits()
+                        say("Marked answered. Thank God!")
+                        onDone(post)
+                    },
+                    onErr = ::fail
+                )
+            }
+        }
+    }
+
+    fun setWorkStatus(post: Post, status: WorkStatus) {
+        viewModelScope.launch {
+            repo.api.setWorkStatus(circleId, post.id, status).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                    say("Marked ${status.label.lowercase()}.")
+                },
+                onErr = ::fail
+            )
+        }
+    }
+
+    fun toggleChecklistItem(post: Post, item: ChecklistItem) {
+        viewModelScope.launch {
+            repo.toggleChecklistItem(circleId, post.id, item.id, !item.done).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                },
+                onErr = { f -> _messages.emit(f.message) }
+            )
         }
     }
 
@@ -263,13 +556,26 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         if (post.anonymous) return
         viewModelScope.launch {
             repo.api.celebrate(circleId, com.craftflowtechnologies.meetingmind.core.circles2.CelebrationKind.Answered, "", companionId?.takeIf { it in com.craftflowtechnologies.meetingmind.core.circles2.COMPANION_IDS }, post.id)
-                .fold(onOk = { say("Shared in the chat.") }, onErr = ::fail)
+                .fold(onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                    say("Shared in the chat.")
+                }, onErr = ::fail)
         }
     }
 
     fun addUpdate(post: Post, text: String) {
         val t = text.trim(); if (t.isEmpty()) return
-        viewModelScope.launch { repo.api.addUpdate(circleId, post.id, t).fold(onOk = { say("Update posted.") }, onErr = ::fail) }
+        viewModelScope.launch {
+            repo.api.addUpdate(circleId, post.id, t).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                    say("Update posted.")
+                },
+                onErr = ::fail
+            )
+        }
     }
 
     fun editPost(post: Post, text: String) {
@@ -287,6 +593,7 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
 
     // ---------- comments ----------
     private val openThreadId = MutableStateFlow<String?>(null)
+    val commentDraft = MutableStateFlow("")
     val thread: StateFlow<ThreadUiState?> = openThreadId.flatMapLatest<String?, ThreadUiState?> { id ->
         if (id == null) flowOf(null)
         else combine(repo.data.observeComments(circleId, id), repo.data.observeUpdates(circleId, id)) { c, u ->
@@ -295,13 +602,37 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    fun openThread(postId: String) { openThreadId.value = postId }
+    fun openThread(postId: String) {
+        openThreadId.value = postId
+        commentDraft.value = repo.store.commentDraft(circleId, postId)
+    }
+
     fun closeThread() { openThreadId.value = null }
+
+    fun setCommentDraft(text: String) {
+        val clean = text.take(2000)
+        commentDraft.value = clean
+        openThreadId.value?.let { postId -> repo.store.setCommentDraft(circleId, postId, clean) }
+    }
 
     fun comment(postId: String, text: String, parentId: String? = null) {
         val t = text.trim(); if (t.isEmpty()) return
         val name = state.value.me?.displayName ?: repo.displayName.ifBlank { "Member" }
-        viewModelScope.launch { repo.comment(circleId, postId, name, t, parentId).failureOrNull?.let(::fail) }
+        commentDraft.value = ""
+        repo.store.setCommentDraft(circleId, postId, "")
+        viewModelScope.launch {
+            val err = repo.comment(circleId, postId, name, t, parentId).failureOrNull
+            if (err != null) {
+                if (commentDraft.value.isEmpty()) {
+                    commentDraft.value = t
+                    repo.store.setCommentDraft(circleId, postId, t)
+                }
+                fail(err)
+            } else {
+                repo.store.recordActivity(repo.clock())
+                refreshHabits()
+            }
+        }
     }
 
     fun deleteComment(postId: String, commentId: String) {
@@ -326,6 +657,40 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     fun reject(p: PendingPost) { viewModelScope.launch { repo.api.rejectPost(circleId, p.id).fold(onOk = { say("Not shared.") }, onErr = ::fail) } }
 
     // ---------- members ----------
+    /** Work circles: marks someone as outside the organisation. Shares to this circle then ask for a second confirmation. */
+    fun setExternal(m: Member, external: Boolean) {
+        viewModelScope.launch {
+            repo.setExternal(circleId, m.uid, external).fold(
+                onOk = { say(if (external) "${m.displayName} is marked as external." else "${m.displayName} is no longer marked as external.") },
+                onErr = ::fail
+            )
+        }
+    }
+
+    fun setDecisionStatus(post: Post, status: com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus) {
+        viewModelScope.launch {
+            repo.setDecisionStatus(circleId, post.id, status).fold(onOk = { say("Decision marked ${status.label.lowercase()}.") }, onErr = ::fail)
+        }
+    }
+
+    /** Starts a new decision that replaces [post]. The old one stays on record, marked replaced, once the new one is posted. */
+    fun replaceDecision(post: Post) {
+        openWorkComposer(
+            PostType.Decision, "",
+            PostMeta(replacesPostId = post.id, decisionStatus = com.craftflowtechnologies.meetingmind.core.circles2.DecisionStatus.Confirmed)
+        )
+    }
+
+    /** The Table: say you'll bring something, or let it go. */
+    fun claimBringItem(eventId: String, itemId: String, claim: Boolean) {
+        viewModelScope.launch {
+            repo.claimBringItem(circleId, eventId, itemId, claim).fold(
+                onOk = { say(if (claim) "Thank you. It's on your list." else "Released.") },
+                onErr = ::fail
+            )
+        }
+    }
+
     fun setRole(m: Member, role: Role) { viewModelScope.launch { repo.api.setRole(circleId, m.uid, role).fold(onOk = { say("${m.displayName} is now ${role.label.lowercase()}.") }, onErr = ::fail) } }
     /** A display title such as "Pastor". Blank clears it. The title never changes what the person can do. */
     fun setTitle(m: Member, title: String) {
@@ -373,7 +738,16 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     }
 
     fun rsvp(eventId: String, answer: RsvpAnswer) {
-        viewModelScope.launch { repo.api.rsvp(circleId, eventId, answer).fold(onOk = { say("Saved: ${answer.label}.") }, onErr = ::fail) }
+        viewModelScope.launch {
+            repo.api.rsvp(circleId, eventId, answer).fold(
+                onOk = {
+                    repo.store.recordActivity(repo.clock())
+                    refreshHabits()
+                    say("Saved: ${answer.label}.")
+                },
+                onErr = ::fail
+            )
+        }
     }
 
     // ---------- invites ----------
@@ -383,6 +757,28 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         viewModelScope.launch {
             repo.api.createInvite(circleId).fold(
                 onOk = { inv -> invite.value = InviteUiState(invite = inv, shareText = InviteCodes.shareText(c.name, c.groupWord, inv.code)) },
+                onErr = { f -> invite.value = InviteUiState(error = f.message) }
+            )
+        }
+    }
+
+    fun createEmailInvite(email: String) {
+        val clean = email.trim()
+        if (clean.isBlank() || "@" !in clean) {
+            invite.value = InviteUiState(error = "Enter a valid email address.")
+            return
+        }
+        val c = state.value.circle ?: return
+        invite.value = InviteUiState(busy = true)
+        viewModelScope.launch {
+            repo.createEmailInvite(circleId, clean).fold(
+                onOk = { inv ->
+                    invite.value = InviteUiState(
+                        invite = inv,
+                        shareText = InviteCodes.shareText(c.name, c.groupWord, inv.code),
+                        invitedEmail = clean
+                    )
+                },
                 onErr = { f -> invite.value = InviteUiState(error = f.message) }
             )
         }

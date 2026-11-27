@@ -18,16 +18,31 @@ object Routes {
     const val SEARCH = "search"
     const val MODELS = "models"
     const val SETTINGS = "settings"
+    /** Settings opened at one group (from a vertical's menu), e.g. "faith". Plain [SETTINGS] stays the hub. */
+    const val SETTINGS_GROUP = "settings_group/{group}"
+    fun settingsGroupRoute(group: String) = "settings_group/$group"
     const val INTEGRATIONS = "integrations"
     const val RECIPES = "recipes"
     /** Plans. [trigger] is a PaywallTrigger name; it only labels where the person came from. */
     const val PAYWALL = "paywall?trigger={trigger}"
     fun paywallRoute(trigger: String = "SETTINGS") = "paywall?trigger=$trigger"
+    const val LEARN = "learn"
+    /** Personal: "Your garden". */
+    const val PERSONAL = "personal"
+    const val LEARNING_SESSION = "learning_session/{noteId}"
+    fun learningSessionRoute(noteId: String) = "learning_session/$noteId"
+    const val LEARN_PRACTICE = "learn_practice?sessionId={sessionId}&activityId={activityId}"
+    fun learnPracticeRoute(sessionId: String? = null, activityId: String? = null) =
+        "learn_practice" + listOfNotNull(sessionId?.let { "sessionId=$it" }, activityId?.let { "activityId=$it" }).joinToString("&", prefix = "?").takeIf { sessionId != null || activityId != null }.orEmpty()
+    const val LEARN_EXAM = "learn_exam?goalId={goalId}&courseId={courseId}"
+    fun learnExamRoute(goalId: String? = null, courseId: String? = null) =
+        "learn_exam" + listOfNotNull(goalId?.let { "goalId=$it" }, courseId?.let { "courseId=$it" }).joinToString("&", prefix = "?").takeIf { goalId != null || courseId != null }.orEmpty()
     const val FAITH = "faith"
     const val TESTIMONIES = "faith_testimonies"
     const val FELLOWSHIP = "fellowship"
     const val CIRCLE_DETAIL = "fellowship_circle/{circleId}"
-    const val CIRCLE_CREATE = "circle_create"
+    const val CIRCLE_CREATE = "circle_create?space={space}"
+    fun circleCreateRoute(space: String? = null) = "circle_create" + (space?.let { "?space=$it" } ?: "")
     fun circleDetailRoute(circleId: String) = "fellowship_circle/$circleId"
     const val FAITH_JOURNEY = "faith_journey"
     const val FAITH_SCRIPTURE = "faith_scripture"
@@ -42,15 +57,18 @@ object Routes {
     /** A saved devotional, opened as it was — never rewritten. */
     fun pastDevotionalRoute(noteId: String) = "devotional?note=$noteId"
     const val DEVOTIONAL_ARCHIVE = "devotional_archive"
-    /** Study (Learning) space: home, a lecture's lesson page, its replay, and a practice round. */
-    const val LEARN = "learn"
-    const val LESSON = "learn/lesson/{noteId}"
-    const val LISTEN = "learn/listen/{noteId}"
-    const val PRACTICE = "learn/practice?session={session}&concept={concept}"
-    fun lessonRoute(noteId: String) = "learn/lesson/$noteId"
-    fun listenRoute(noteId: String) = "learn/listen/$noteId"
-    fun practiceRoute(sessionId: String? = null, conceptId: String? = null) =
-        "learn/practice" + listOfNotNull(sessionId?.let { "session=$it" }, conceptId?.let { "concept=$it" })
+    /**
+     * Study (the approved redesign, feature/learn): home, a lecture's lesson page, its replay and a
+     * practice round. Runs beside Learning (LEARN) on its own routes until the two are combined.
+     */
+    const val STUDY_HOME = "learn_study"
+    const val STUDY_LESSON = "learn_study/lesson/{noteId}"
+    const val STUDY_LISTEN = "learn_study/listen/{noteId}"
+    const val STUDY_PRACTICE = "learn_study/practice?session={session}&concept={concept}"
+    fun studyLessonRoute(noteId: String) = "learn_study/lesson/$noteId"
+    fun studyListenRoute(noteId: String) = "learn_study/listen/$noteId"
+    fun studyPracticeRoute(sessionId: String? = null, conceptId: String? = null) =
+        "learn_study/practice" + listOfNotNull(sessionId?.let { "session=$it" }, conceptId?.let { "concept=$it" })
             .joinToString("&", prefix = "?").takeIf { sessionId != null || conceptId != null }.orEmpty()
     /** Study beside a note: a sermon's timeline and transcript, or a Bible passage. */
     const val STUDY = "study/{noteId}?meeting={meeting}&ref={ref}"
@@ -61,7 +79,12 @@ object Routes {
     const val PLANS = "reading_plans"
     const val PRAYER_LIST = "prayer_list"
     const val TASKS = "tasks"
+    /** Tasks opened straight onto one task or one list (Work, reminders, links). Back goes to Tasks home. */
+    const val TASKS_OPEN = "tasks/open?task={task}&list={list}"
+    fun tasksOpenRoute(taskId: String? = null, listId: String? = null) =
+        "tasks/open" + listOfNotNull(taskId?.let { "task=$it" }, listId?.let { "list=$it" }).joinToString("&", prefix = "?").takeIf { taskId != null || listId != null }.orEmpty()
     const val APPEARANCE = "appearance"
+    const val LANGUAGE = "language"
     const val PRAY = "pray?mode={mode}"
     const val SETUP = "setup"
     // Work (docs/PLAN_PROFESSIONAL.md §6–7).
@@ -73,9 +96,14 @@ object Routes {
     const val WORK_SETTINGS = "work_settings"
     /** The Work Inbox: things shared into the app, waiting to be filed. */
     const val WORK_INBOX = "work_inbox"
+    /** A document read on the phone (PDF or scan) from the Work Inbox, optionally opened at a page. */
+    const val DOCUMENT = "work/document/{itemId}?page={page}"
+    fun documentRoute(itemId: String, page: Int? = null) = "work/document/$itemId" + (page?.let { "?page=$it" } ?: "")
     /** Imports a file already in the app (an inbox audio item) as a recording. */
-    const val IMPORT_FILE = "import_file/{path}"
-    fun importFileRoute(path: String) = "import_file/" + java.net.URLEncoder.encode(path, "UTF-8")
+    const val IMPORT_FILE = "import_file/{path}?type={type}"
+    /** [type] is an optional RecordingType name to pre-select (the YouTube link sheet sets it). */
+    fun importFileRoute(path: String, type: String? = null) =
+        "import_file/" + java.net.URLEncoder.encode(path, "UTF-8") + (type?.let { "?type=$it" } ?: "")
     /** One context page for a person, an organisation or a project (D5.2). */
     const val CONTEXT = "context/{type}/{id}"
     /** An Intelligence Brief: [kind] is a BriefKind name, and the id is the meeting, organisation, project or person ("-" for the weekly one). */

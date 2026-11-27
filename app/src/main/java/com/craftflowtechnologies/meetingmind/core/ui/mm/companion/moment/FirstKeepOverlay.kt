@@ -46,12 +46,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionFlags
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionForm
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionTier
 import com.craftflowtechnologies.meetingmind.core.companion.moment.MomentPlan
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionLook
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionParallaxGate
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionTiltEffect
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionVolume
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.Pose
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.companionPalette
@@ -69,10 +75,10 @@ data class FirstKeepNote(val title: String, val meta: String, val keyPoints: Lis
  * The First Keep (§2): a full-screen overlay composed **over the already-rendered note screen**. The note is
  * underneath from frame 0; "Open note" just dismisses this overlay ([onOpen]) and plays nothing more.
  *
- * Every string comes from the caller (Z-35 `strings_moments.xml`): the headline ("Your first note is
+ * Every string comes from the caller (Z-35 `strings_moments.xml`): the headline ("Your note is
  * ready." / with the user's name / the sermon line), the sub line ("Everything you said, kept." or the real
  * action-item count), the optional companion line ("I kept every word.", none in Faith), the action labels,
- * and the one polite [announcement] ("Your first note is ready. {title}.").
+ * and the one polite [announcement] ("Your note is ready. {title}.").
  *
  * ```
  * if (plan is MomentPlan.FirstKeep && showOverlay) FirstKeepOverlay(
@@ -130,6 +136,12 @@ fun FirstKeepOverlay(
     }
     val geo = remember { FkGeometry() }
     val density = LocalDensity.current
+    val volumeOn = LocalCompanionVolume.current ?: CompanionFlags.volumeLayer
+    val heroLook = remember { CompanionLook() }
+    val heroParallax = CompanionParallaxGate.parallax(volumeOn, CompanionTier.T2, if (reduced) 0f else 1f)
+    CompanionTiltEffect(
+        CompanionParallaxGate.gyro(volumeOn, CompanionTier.T2, if (reduced) 0f else 1f, onScreen = true, resumed = true)
+    )
 
     BoxWithConstraints(
         modifier.fillMaxSize().background(c.background).skipOnTap(clock).semantics { isTraversalGroup = true }
@@ -151,11 +163,16 @@ fun FirstKeepOverlay(
                     // 1: the character.
                     if (showCharacter) MomentCharacter(
                         moment, clock, form!!, palette, MomentSpecs.FirstKeepCompanionDp.dp, staticPose = staticPose,
-                        modifier = with(scope) { Modifier.momentLayer(StageTarget.COMPANION) }
+                        look = if (heroParallax) heroLook else null,
+                        modifier = with(scope) {
+                            Modifier.momentLayer(StageTarget.COMPANION)
+                                .then(if (heroParallax) heroLook.touchModifier() else Modifier)
+                        }
                     ) else Spacer(Modifier.size(0.dp))
                     // 2: Page's mini.
                     if (showCharacter && form == CompanionForm.PAGE) MomentCharacter(
                         moment, clock, CompanionForm.PAGE, palette, MomentSpecs.FirstKeepCompanionDp.dp, staticPose = staticPose, mini = true,
+                        look = if (heroParallax) heroLook else null,
                         modifier = with(scope) { Modifier.momentLayer(StageTarget.MINI_COMPANION) }
                     ) else Spacer(Modifier.size(0.dp))
                     // 3: the words.

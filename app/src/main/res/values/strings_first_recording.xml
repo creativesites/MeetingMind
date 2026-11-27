@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The first recording experience: the record-screen coach, the silence cue, and the processing
+  wait (time left, "What's happening?"). Owned by feature/recording and feature/processing.
+  The "where" sentences must match docs/DATA_SAFETY.md.
+-->
+<resources>
+    <!-- Record screen: first-recording coach (shown once) -->
+    <string name="first_recording_tip_placement">Put your phone near whoever is speaking, screen up.</string>
+    <string name="first_recording_tip_mark">Something worth keeping? Tap a button below to mark the moment.</string>
+    <string name="first_recording_tip_finish">Tap Finish when you\'re done. Your notes are made for you.</string>
+    <string name="first_recording_got_it">Got it</string>
+
+    <!-- Record screen: long silence while recording -->
+    <string name="recording_silence_cue">Still listening, but it\'s very quiet. Is the mic covered?</string>
+
+    <!-- Processing: time left -->
+    <string name="processing_time_line">%1$s · %2$s</string>
+    <string name="processing_time_leave_screen">you can leave this screen</string>
+    <string name="processing_time_almost_done">Almost done</string>
+    <string name="processing_time_under_minute">Less than a minute left</string>
+    <plurals name="processing_time_minutes_left">
+        <item quantity="one">About %d min left</item>
+        <item quantity="other">About %d min left</item>
+    </plurals>
+
+    <!-- Processing: What's happening? -->
+    <string name="processing_explain_open">What\'s happening?</string>
+    <string name="processing_explain_hide">Hide</string>
+    <string name="processing_explain_preparing">Getting your audio ready: checking it and making it easy to work with.</string>
+    <string name="processing_explain_detecting">Finding the parts where someone is speaking, so silence and noise are skipped.</string>
+    <string name="processing_explain_transcribing">Listening through your recording and writing down every word. This is the longest step.</string>
+    <string name="processing_explain_speakers">Telling voices apart, so you can see who said what.</string>
+    <string name="processing_explain_cleaning">Tidying the transcript: fixing breaks, repeated words and punctuation.</string>
+    <string name="processing_explain_analyzing">Reading the transcript and writing your notes: the summary, key points and next steps.</string>
+    <string name="processing_explain_saving">Saving everything to your phone.</string>
+    <string name="processing_explain_where_device">All of this happens on this phone. Your recording never leaves it.</string>
+    <string name="processing_explain_where_cloud">Your recording is sent to Google\'s AI to do this. MeetingMind\'s servers keep no copy of your audio or text.</string>
+</resources>

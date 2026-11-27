@@ -66,6 +66,15 @@ sealed interface CreateBackground {
     data class Photo(val path: String) : CreateBackground
 }
 
+/** Visual card frame & typography layout styles inside [CreateCardRenderer]. [CLEAN] preserves open classic card layout. */
+enum class CreateCardStyle(val label: String, val hint: String) {
+    CLEAN("Clean", "Open minimalist layout"),
+    QUOTE_POSTER("Bold Quote", "Editorial quotation marks and accent rule"),
+    FRAMED("Gallery Frame", "Thin architectural border inside safe bounds"),
+    SPOTLIGHT("Glass Card", "Translucent panel behind copy for high contrast"),
+    BADGE_HOOK("Viral Hook", "Punchy eyebrow pill tag above the headline")
+}
+
 /** How the card looks. Watermark and companion are both off until the person turns them on. */
 data class CreateDesign(
     val background: CreateBackground = CreateBackground.Pack("dawn"),
@@ -78,7 +87,11 @@ data class CreateDesign(
     val companionAnchor: CompanionAnchor = CompanionAnchor.BELOW,
     val watermark: Boolean = false,
     /** Relative text size, 0.7–1.4. */
-    val textScale: Float = 1f
+    val textScale: Float = 1f,
+    /** Viral layout treatment rendered over the background. Defaults to [CreateCardStyle.CLEAN]. */
+    val style: CreateCardStyle = CreateCardStyle.CLEAN,
+    /** Optional short uppercase hook tag at the top of the card (e.g. "WORD FOR TODAY"). */
+    val eyebrow: String? = null
 )
 
 /** One state of the words. Remixes and edits each add one; undo steps back. */
@@ -134,3 +147,86 @@ data class CreateSeed(
     /** The source note is tagged grief, funeral or memorial: Peaceful only. */
     val grief: Boolean = false
 )
+
+/** One-tap curated viral card aesthetic combining frame style, hook badge, backdrop and typography. */
+data class CreateViralPreset(
+    val id: String,
+    val label: String,
+    val eyebrow: String?,
+    val style: CreateCardStyle,
+    val packId: String,
+    val fontPair: CreateFontPair,
+    val centered: Boolean,
+    val vibe: CreateVibe
+)
+
+object CreateViralPresets {
+    val all: List<CreateViralPreset> = listOf(
+        CreateViralPreset(
+            id = "midnight_gold",
+            label = "Midnight Gold",
+            eyebrow = "WORD FOR TODAY",
+            style = CreateCardStyle.BADGE_HOOK,
+            packId = "night",
+            fontPair = CreateFontPair.EDITORIAL,
+            centered = true,
+            vibe = CreateVibe.REFLECTIVE
+        ),
+        CreateViralPreset(
+            id = "glass_story",
+            label = "Glass Story",
+            eyebrow = "READ THIS TWICE",
+            style = CreateCardStyle.SPOTLIGHT,
+            packId = "indigo",
+            fontPair = CreateFontPair.MODERN,
+            centered = true,
+            vibe = CreateVibe.MOTIVATIONAL
+        ),
+        CreateViralPreset(
+            id = "editorial_print",
+            label = "Editorial Paper",
+            eyebrow = "DAILY TRUTH",
+            style = CreateCardStyle.FRAMED,
+            packId = "paper",
+            fontPair = CreateFontPair.CLASSIC,
+            centered = true,
+            vibe = CreateVibe.WISDOM
+        ),
+        CreateViralPreset(
+            id = "bold_quote",
+            label = "Bold Quote",
+            eyebrow = "PAUSE & REFLECT",
+            style = CreateCardStyle.QUOTE_POSTER,
+            packId = "ember",
+            fontPair = CreateFontPair.EDITORIAL,
+            centered = false,
+            vibe = CreateVibe.CELEBRATORY
+        ),
+        CreateViralPreset(
+            id = "sanctuary_clean",
+            label = "Sanctuary Clean",
+            eyebrow = null,
+            style = CreateCardStyle.CLEAN,
+            packId = "sanctuary",
+            fontPair = CreateFontPair.CLASSIC,
+            centered = true,
+            vibe = CreateVibe.PEACEFUL
+        )
+    )
+}
+
+object CreateViralHooks {
+    fun forVibe(vibe: CreateVibe): List<String> = when (vibe) {
+        CreateVibe.PRAYERFUL -> listOf("A PRAYER FOR TODAY", "LORD, HOLD THIS", "QUIET MOMENT")
+        CreateVibe.PEACEFUL -> listOf("PAUSE & BREATHE", "EXHALE", "PEACE IN THE NOISE")
+        CreateVibe.GRATEFUL -> listOf("THANKFUL TODAY", "DON'T MISS THIS", "GRACE NOTE")
+        CreateVibe.JOYFUL -> listOf("GOOD NEWS TODAY", "CHOOSE JOY", "BRIGHT SIDE")
+        CreateVibe.REFLECTIVE -> listOf("READ THIS TWICE", "SIT WITH THIS", "HONEST THOUGHT")
+        CreateVibe.CELEBRATORY -> listOf("GOD DID IT", "SMALL WIN", "MILESTONE")
+        CreateVibe.MOTIVATIONAL -> listOf("START WHERE YOU ARE", "ONE STEP", "KEEP GOING")
+        CreateVibe.FUNNY -> listOf("MEETING REALITY", "TOO REAL", "SEND HELP")
+        CreateVibe.WISDOM -> listOf("WORD FOR TODAY", "TRUTH TO CARRY", "REMEMBER THIS")
+        CreateVibe.LOVE -> listOf("PASS IT ON", "FOR SOMEONE TODAY", "KINDNESS NOTE")
+        CreateVibe.CUSTOM -> listOf("MY NOTE", "SAVE THIS", "SHARE THIS")
+    }
+}

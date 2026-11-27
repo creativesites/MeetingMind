@@ -9,11 +9,21 @@ package com.craftflowtechnologies.meetingmind.core.circles2
  */
 object InviteCodes {
     /** Same word list as the Worker. A pasted "self-care" must not look like a code. */
-    val WORDS = listOf(
+    val FAITH_WORDS = listOf(
         "GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT",
         "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING",
         "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"
     )
+    val WORK_WORDS = listOf(
+        "SPRINT", "FOCUS", "LAUNCH", "ALIGN", "IMPACT", "STRIDE", "TALENT", "VISION", "TARGET", "MATRIX",
+        "NEXUS", "VECTOR", "DELTA", "APEX", "SUMMIT", "PULSE", "BRIDGE", "PIVOT", "THRIVE", "FORGE",
+        "CLIMB", "SCALE", "DRIVE", "RESOLVE", "QUEST", "SYNC", "PRISM", "SIGNAL", "CHORD", "SYNERGY"
+    )
+    val LEARNING_WORDS = listOf(
+        "STUDY", "EXAM", "CLASS", "NOTES", "LEARN", "LOGIC", "ACADEMY", "THEORY", "CAMPUS", "SCHOLAR",
+        "DEGREE", "HONOR", "TUTOR", "COURSE", "LECTURE", "THESIS", "REVISION", "RECALL", "FORMULA", "SYNTAX"
+    )
+    val WORDS = (FAITH_WORDS + WORK_WORDS + LEARNING_WORDS).distinct()
     const val ALPHABET = "23456789BCDFGHJKMNPQRSTVWXZ"
 
     private const val MAX_SCAN = 2000
@@ -36,12 +46,16 @@ object InviteCodes {
     /** The first code found in whatever was pasted, or null. Never throws. */
     fun extract(text: String?): String? = extractAll(text, 1).firstOrNull()
 
-    /** Link people can tap; the code is also written out in the share text for apps that do not link it. */
+    /** Custom scheme link; kept for internal deep-link compatibility. */
     fun link(code: String): String = "meetingmind://c/$code"
 
-    /** The message shared from the invite sheet. The plain code is always in it. */
+    /** Clickable HTTPS App Link for WhatsApp, SMS, and web fallbacks. */
+    fun webLink(code: String): String = "https://meetingmind.app/c/$code"
+
+    /** The message shared from the invite sheet. Includes clickable HTTPS link, plain code, and Play Store link. */
     fun shareText(circleName: String, vocab: String, code: String): String =
-        "Join our $vocab \"${circleName.trim()}\" on MeetingMind.\nCode: $code\n${link(code)}\n" +
+        "Join our $vocab \"${circleName.trim()}\" on MeetingMind.\nCode: $code\n${webLink(code)}\n\n" +
+            "Download MeetingMind: ${com.craftflowtechnologies.meetingmind.core.share.AppLinks.DOWNLOAD_URL}\n" +
             "Open MeetingMind, go to Circles, tap Join and paste this message."
 
     /** The code carried by a deep link (`meetingmind://c/CODE`, `.../c/CODE`, or one with a ?code= query), or null. */

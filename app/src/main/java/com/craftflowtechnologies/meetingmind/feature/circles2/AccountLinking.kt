@@ -15,7 +15,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesRepository
 import com.craftflowtechnologies.meetingmind.core.circles2.LinkResult
-import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
@@ -55,9 +54,8 @@ class AccountViewModel(private val repo: CirclesRepository) : ViewModel() {
         if (_state.value.busy) return
         _state.update { it.copy(busy = true, conflict = false) }
         viewModelScope.launch {
-            val r = repo.auth.switchToLinkedAccount()
-            if (r is LinkResult.Linked) repo.onAccountSwitched()
-            apply(r, switched = true)
+            // Circles made on this phone before signing in come along; if they can't yet, nothing switches.
+            apply(repo.switchAccountKeepingCircles(), switched = true)
         }
     }
 
@@ -98,12 +96,15 @@ tailrec fun Context.findHostActivity(): android.app.Activity? = when (this) {
 fun KeepCirclesOffer(state: AccountUiState, onLink: (Context) -> Unit, onSwitch: () -> Unit, onDismissConflict: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     if (!state.linked) {
-        Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-            StatusLine(
-                StatusKind.Info,
+        Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            Text(
                 state.message ?: "Keep your circles on any phone. Sign in with Google so they come with you if you change or lose this one.",
-                actionLabel = if (state.busy) null else "Sign in with Google",
-                onAction = { onLink(context.findHostActivity() ?: context) }
+                style = MM.type.secondary, color = MM.colors.inkSecondary
+            )
+            com.craftflowtechnologies.meetingmind.core.ui.GoogleSignInButton(
+                onClick = { onLink(context.findHostActivity() ?: context) },
+                busy = state.busy,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -125,7 +126,11 @@ fun AccountSection(state: AccountUiState, onLink: (Context) -> Unit, onSwitch: (
                 "This phone holds your circles right now. Sign in with Google to keep them if you change or lose it.",
                 style = MM.type.secondary, color = MM.colors.inkSecondary
             )
-            SecondaryButton(if (state.busy) "Opening Google..." else "Keep your circles on any phone", { onLink(context.findHostActivity() ?: context) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth())
+            com.craftflowtechnologies.meetingmind.core.ui.GoogleSignInButton(
+                onClick = { onLink(context.findHostActivity() ?: context) },
+                busy = state.busy,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
         state.message?.let { StatusLine(StatusKind.Info, it) }
     }
@@ -133,7 +138,7 @@ fun AccountSection(state: AccountUiState, onLink: (Context) -> Unit, onSwitch: (
 }
 
 @Composable
-private fun SwitchAccountDialog(state: AccountUiState, onSwitch: () -> Unit, onDismiss: () -> Unit) {
+internal fun SwitchAccountDialog(state: AccountUiState, onSwitch: () -> Unit, onDismiss: () -> Unit) {
     if (!state.conflict) return
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = MM.colors.surfaceRaised,

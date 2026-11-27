@@ -48,6 +48,9 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Functions
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material3.AlertDialog
@@ -73,6 +76,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -110,7 +115,10 @@ internal enum class InsertAction(val label: String, val icon: ImageVector) {
     EXCERPT("Quote the recording", Icons.Filled.RecordVoiceOver),
     SUMMARY("Insert summary", Icons.Filled.Summarize),
     TRANSCRIPT("Insert transcript", Icons.Filled.Subtitles),
-    NOTE_LINK("Link a note", Icons.Filled.Link)
+    NOTE_LINK("Link a note", Icons.Filled.Link),
+    MATH("Formula", Icons.Filled.Functions),
+    CALLOUT("Callout", Icons.Filled.Lightbulb),
+    DIAGRAM("Diagram", Icons.Filled.AccountTree)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -121,7 +129,7 @@ internal fun InsertSheet(hasRecordings: Boolean, onPick: (InsertAction) -> Unit,
             SheetTitle("Insert")
             SectionLabel("Write")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(InsertAction.TEXT, InsertAction.MARKDOWN, InsertAction.HEADING, InsertAction.BULLETS, InsertAction.NUMBERS, InsertAction.CHECKLIST, InsertAction.QUOTE, InsertAction.DIVIDER)
+                listOf(InsertAction.TEXT, InsertAction.MARKDOWN, InsertAction.HEADING, InsertAction.BULLETS, InsertAction.NUMBERS, InsertAction.CHECKLIST, InsertAction.QUOTE, InsertAction.DIVIDER, InsertAction.MATH, InsertAction.CALLOUT, InsertAction.DIAGRAM)
                     .forEach { InsertTile(it) { onPick(it) } }
             }
             SectionLabel("Add")
@@ -466,7 +474,9 @@ internal fun BlockMenu(
     onEditMarkdown: (() -> Unit)? = null,
     onSplitMarkdown: (() -> Unit)? = null,
     onAiTools: (() -> Unit)? = null,
-    onMakeTask: (() -> Unit)? = null
+    onMakeTask: (() -> Unit)? = null,
+    /** Reports an AI-written block (Play's AI-generated content policy). Null for the person's own words. */
+    onReportAi: (() -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -493,19 +503,21 @@ internal fun BlockMenu(
                 MenuRow("Move down") { onMoveDown() }
                 MenuRow("Duplicate") { onDuplicate() }
                 MenuRow("Delete", destructive = true) { onDelete() }
+                onReportAi?.let { MenuRow("Report this", contentDescription = "Report this AI content") { it() } }
             }
         }
     )
 }
 
 @Composable
-private fun MenuRow(label: String, selected: Boolean = false, destructive: Boolean = false, onClick: () -> Unit) {
+private fun MenuRow(label: String, selected: Boolean = false, destructive: Boolean = false, contentDescription: String? = null, onClick: () -> Unit) {
     Text(
         label,
         fontSize = 15.sp,
         color = when { destructive -> Danger; selected -> Accent; else -> Ink },
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp)
+            .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
     )
 }
 

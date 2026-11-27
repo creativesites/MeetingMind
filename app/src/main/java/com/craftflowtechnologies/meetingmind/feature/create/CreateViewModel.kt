@@ -5,11 +5,18 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.craftflowtechnologies.meetingmind.core.circles2.Circle
+import com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState
+import com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult
+import com.craftflowtechnologies.meetingmind.core.circles2.MessageDraft
+import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.create.CardVersion
 import com.craftflowtechnologies.meetingmind.core.create.CreateBackdrops
 import com.craftflowtechnologies.meetingmind.core.create.CreateBackground
 import com.craftflowtechnologies.meetingmind.core.create.CreateCard
 import com.craftflowtechnologies.meetingmind.core.create.CreateCardRenderer
+import com.craftflowtechnologies.meetingmind.core.create.CreateCardStyle
+import com.craftflowtechnologies.meetingmind.core.create.CreateChatCard
 import com.craftflowtechnologies.meetingmind.core.create.CreateDesign
 import com.craftflowtechnologies.meetingmind.core.create.CreateFormat
 import com.craftflowtechnologies.meetingmind.core.create.CreateGallery
@@ -26,6 +33,7 @@ import com.craftflowtechnologies.meetingmind.core.create.CreateStarter
 import com.craftflowtechnologies.meetingmind.core.create.CreateStarters
 import com.craftflowtechnologies.meetingmind.core.create.CreateVibe
 import com.craftflowtechnologies.meetingmind.core.create.CreateVibePolicy
+import com.craftflowtechnologies.meetingmind.core.create.CreateViralPreset
 import com.craftflowtechnologies.meetingmind.core.create.GeminiCreateModel
 import com.craftflowtechnologies.meetingmind.core.create.ProviderScriptureLookup
 import com.craftflowtechnologies.meetingmind.core.create.RemixAction
@@ -35,11 +43,14 @@ import com.craftflowtechnologies.meetingmind.core.create.ScriptureFetch
 import com.craftflowtechnologies.meetingmind.core.scripture.BibleVersions
 import com.craftflowtechnologies.meetingmind.core.share.ShareActions
 import com.craftflowtechnologies.meetingmind.core.share.ShareTarget
+import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -108,6 +119,9 @@ class CreateViewModel(app: Application) : AndroidViewModel(app) {
     private val session get() = sessionFlow.value
     private val misc = MutableStateFlow(Misc())
     private val installed = MutableStateFlow(InstalledApps())
+    private val _joinedCircles = MutableStateFlow<List<Circle>>(emptyList())
+    val joinedCircles: StateFlow<List<Circle>> = _joinedCircles.asStateFlow()
+    private var circlesJob: Job? = null
 
     /** The source note is tagged grief, funeral or memorial (from the seed): Peaceful only. */
     var grief = false
@@ -283,6 +297,91 @@ class CreateViewModel(app: Application) : AndroidViewModel(app) {
         if (userChoseBackground) misc.update { it.copy(backgroundChosen = true) }
     }
 
+    fun setStyle(style: CreateCardStyle) = setDesign({ it.copy(style = style) })
+
+    fun setEyebrow(text: String?) = setDesign({ it.copy(eyebrow = text?.take(36)) })
+
+    fun applyViralPreset(preset: CreateViralPreset) {
+        val current = session.card.value
+        val allowedVibe = CreateVibePolicy.enforce(current.source, preset.vibe, grief)
+        session.setVibe(allowedVibe)
+        session.setDesign(
+            current.design.copy(
+                background = CreateBackground.Pack(preset.packId),
+                fontPair = preset.fontPair,
+                centered = preset.centered,
+                style = preset.style,
+                eyebrow = preset.eyebrow
+            )
+        )
+        misc.update { it.copy(vibeChosen = true, backgroundChosen = true) }
+    }
+
+    fun loadJoinedCircles() {
+        if (circlesJob?.isActive == true) return
+        circlesJob = viewModelScope.launch {
+            val repo = runCatching { Circles2.repository(context) }.getOrNull() ?: return@launch
+            repo.circles().collect { state ->
+                if (state is CirclesListState.Ready) {
+                    _joinedCircles.value = state.circles
+                }
+            }
+        }
+    }
+
+    /** Shares the card directly to a chosen Circle, either as an interactive Chat Card or a Circle Feed post. */
+    fun shareToCircle(circle: Circle, postToFeed: Boolean, companion: Bitmap?) {
+        if (misc.value.sharing) return
+        val card = session.card.value
+        val verse = session.scripture.value
+        misc.update { it.copy(sharing = true, message = null) }
+        viewModelScope.launch {
+            persist(companion)
+            val outcomeMessage = runCatching {
+                val repo = Circles2.repository(context)
+                val payload = CreateChatCard.toPayload(card, verse)
+                if (!postToFeed && payload != null) {
+                    val uid = repo.uid().okOrNull
+                        ?: return@runCatching "Sign in to your Circle account to send cards."
+                    val result = repo.data.sendMessage(
+                        circle.id,
+                        uid,
+                        repo.displayName.ifBlank { "Member" },
+                        MessageDraft.Card(payload)
+                    )
+                    when (result) {
+                        is CirclesResult.Ok -> {
+                            runCatching { repo.api.notifyChat(circle.id, false) }
+                            "Shared card to ${circle.name} chat"
+                        }
+                        is CirclesResult.Err -> result.failure.message
+                    }
+                } else {
+                    val bodyText = buildString {
+                        card.design.eyebrow?.takeIf { it.isNotBlank() }?.let {
+                            append(it.uppercase()).append("\n\n")
+                        }
+                        append(card.text.trim())
+                        if (verse != null && card.text.isBlank()) {
+                            append("“").append(verse.text.trim('“', '”', '"')).append("”")
+                        }
+                    }.trim()
+                    if (bodyText.isEmpty()) return@runCatching "Add a line or verse before posting."
+                    val postType = when {
+                        circle.isWork -> PostType.Note
+                        card.vibe == CreateVibe.CELEBRATORY || card.source == CreateSourceKind.ACHIEVEMENT -> PostType.Achievement
+                        else -> PostType.Encouragement
+                    }
+                    when (val result = repo.createPost(circle.id, bodyText.take(4000), postType, anonymous = false, verseRef = verse?.reference)) {
+                        is CirclesResult.Ok -> "Posted to ${circle.name}"
+                        is CirclesResult.Err -> result.failure.message
+                    }
+                }
+            }.getOrElse { "Could not share to ${circle.name}." }
+            misc.update { it.copy(sharing = false, message = outcomeMessage) }
+        }
+    }
+
     fun setPhoto(path: String) = setDesign({ it.copy(background = CreateBackground.Photo(path)) }, userChoseBackground = true)
 
     fun dismissMessage() = misc.update { it.copy(message = null) }
@@ -299,13 +398,29 @@ class CreateViewModel(app: Application) : AndroidViewModel(app) {
                 ShareActions.saveToCache(context, bmp, "meetingmind_create_${System.currentTimeMillis()}")
             }
             persist(companion)
-            val result = runCatching { ShareActions.send(context, file, target, caption = shareCaption(c, verse)) }.getOrElse { "Couldn't open that app." }
+            val result = runCatching {
+                val caption = com.craftflowtechnologies.meetingmind.core.share.AppLinks.withAppLink(shareCaption(c, verse))
+                ShareActions.send(context, file, target, caption = caption)
+            }.getOrElse { "Couldn't open that app." }
             misc.update { it.copy(sharing = false, message = result ?: if (target == ShareTarget.ANY) null else "Done. It's in My creations too.") }
         }
     }
 
     /** The words as plain text, for Copy and as a caption. */
     fun plainText(): String = shareCaption(session.card.value, session.scripture.value)
+
+    /** Share-ready caption with viral framing tags and app link. */
+    fun viralCaptionText(): String {
+        val c = session.card.value
+        val base = shareCaption(c, session.scripture.value)
+        val tag = when (c.vibe) {
+            CreateVibe.FUNNY, CreateVibe.MOTIVATIONAL, CreateVibe.WISDOM -> "#MeetingMind #DailyThought"
+            else -> "#MeetingMind #FaithReflection"
+        }
+        return com.craftflowtechnologies.meetingmind.core.share.AppLinks.withAppLink(
+            if (base.isBlank()) tag else "$base\n\n$tag"
+        )
+    }
 
     private fun shareCaption(c: CreateCard, v: ResolvedScripture?): String = buildString {
         append(c.text.trim())
@@ -334,5 +449,8 @@ class CreateViewModel(app: Application) : AndroidViewModel(app) {
         return CreateCardRenderer.fits(context, CreateRenderInput(c.text, session.scripture.value, c.format, c.design))
     }
 
-    override fun onCleared() { super.onCleared() }
+    override fun onCleared() {
+        circlesJob?.cancel()
+        super.onCleared()
+    }
 }

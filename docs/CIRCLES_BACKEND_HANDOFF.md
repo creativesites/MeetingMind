@@ -215,3 +215,24 @@ If any contract has to change, update this document and the Android side in the 
 7. Section 3 once the Moderator decision is made.
 
 Each step: tests green, the commit message names the section, and the PR description lists which contracts changed.
+
+## 10. D5 package: external members, decision status, invite preview, bring-list (2026-11-16)
+
+The founder approved this as decision D5 (`design/circles-experience-design-spec.md` §12, §16). It is built in `server/circles-api` and `firestore.rules` on `release/1.0-paid-launch`, and covered by `test/unit/circles_d5.test.js` (`npm test`: 106/106). The rules emulator tests were added but **not run**. **Deploying to production waits for the founder:** `wrangler deploy`, then `firebase deploy --only firestore:rules`.
+
+Each endpoint is `POST /v1/<name>`:
+
+| Endpoint | Who | Request | Response | Errors |
+|---|---|---|---|---|
+| `setExternal` | owner, admin; Work circles only | `{circleId, uid, external}` | `{}` | 400 bad_request, 403 forbidden / not_a_member, 404, 409 not_work_circle |
+| `setDecisionStatus` | author, admin, moderator; decisions only | `{circleId, postId, status: proposed\|confirmed\|replaced}` | `{}` | 400, 403, 404 |
+| `createPost` meta | as today | `meta.decisionStatus`, `meta.replacesPostId` | the replaced decision gets `decisionStatus: replaced` and `replacedByPostId` in the same write | 409 already_replaced, 404, 400 |
+| `previewInvite` | any signed-in user | `{code}` | `{circleId, name, space, template, memberCount, coverPath, inviterName}`. No membership writes. | 404 not_found, 410 revoked / expired, 409 full, 429 rate_limited (shares the join failure budget) |
+| `createEvent` / `updateEvent` | as today | `bringList: [text]`, at most 20 items of 80 characters each. Claims survive on unchanged items. Omitting it on update keeps the list. | | |
+| `claimBringItem` | any member; releasing is for the holder or an admin | `{circleId, eventId, itemId, claim}` | `{}` (transactional) | 403, 404, 409 already_claimed / event_cancelled |
+
+Hardening that came with it:
+
+- Poll votes are refused after `closesAt` (`pollIsOpen` in the rules).
+- An MP4 upload whose `ftyp` brand is QuickTime (`qt  `) gets the existing 415.
+- Members still can't write anything on their member document except `lastReadAt`, so they can't set their own `external`.

@@ -1,5 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.notes
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,94 +13,204 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.Canvas
-import com.craftflowtechnologies.meetingmind.feature.today.home.rememberSceneTime
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Book
 import androidx.compose.material.icons.rounded.BusinessCenter
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Notes
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import com.craftflowtechnologies.meetingmind.core.ui.MeetingMindMark
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
+import com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity
+import com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel
 import com.craftflowtechnologies.meetingmind.core.notes.LibraryChip
 import com.craftflowtechnologies.meetingmind.core.notes.LibraryItem
 import com.craftflowtechnologies.meetingmind.core.notes.LibraryQuery
 import com.craftflowtechnologies.meetingmind.core.notes.NoteLabels
 import com.craftflowtechnologies.meetingmind.core.notes.NoteSort
+import com.craftflowtechnologies.meetingmind.core.timeline.TimeOfDaySky
+import com.craftflowtechnologies.meetingmind.core.ui.MeetingMindMark
 import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRowModel
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionVolume
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
+import com.craftflowtechnologies.meetingmind.feature.today.home.rememberSceneTime
 import com.craftflowtechnologies.meetingmind.ui.icons.AiMark
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import kotlin.math.roundToInt
+
+// Design token aliases ensuring full semantic clarity
+private val MMColors.borderSubtle: Color get() = lineSoft
+private val MMColors.border: Color get() = line
+private val MMColors.accentSoft: Color get() = accentWash
 
 // The Notes "home" layout (root, list view): top bar, greeting with Zuri, the Latest meeting hero, then the library.
-// Everything here uses MM tokens only, so light/dark and all six accents work without extra code.
+// Everything here uses MM tokens only, so light/dark and all accents work without extra code.
 
-/** Wordmark on the left; search and notebooks on the right. */
+/** Wordmark on the left; search, list/folders toggle, and notebooks on the right. */
 @Composable
 internal fun NotesHomeTopBar(
-    onSearch: () -> Unit, onFolders: () -> Unit,
-    archived: Int, trash: Int, onArchive: () -> Unit, onTrash: () -> Unit
+    onSearch: () -> Unit,
+    onFolders: () -> Unit,
+    archived: Int,
+    trash: Int,
+    onArchive: () -> Unit,
+    onTrash: () -> Unit,
+    noteCount: Int? = null,
+    view: LibraryView = LibraryView.LIST,
+    onViewChange: ((LibraryView) -> Unit)? = null
 ) {
     val c = MM.colors
-    Row(Modifier.fillMaxWidth().padding(top = MM.space.s), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = MM.space.s),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         MeetingMindMark(size = 32.dp)
-        Row(Modifier.weight(1f).padding(start = MM.space.s)) {
-            Text("Meeting", style = MM.type.title, color = c.ink)
-            Text("Mind", style = MM.type.title, color = c.accent)
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(start = MM.space.s)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Meeting", style = MM.type.title, color = c.ink)
+                Text("Mind", style = MM.type.title, color = c.accent)
+            }
+            if (noteCount != null && noteCount > 0) {
+                Text(
+                    if (noteCount == 1) "1 note" else "$noteCount notes",
+                    style = MM.type.caption,
+                    color = c.inkMuted
+                )
+            }
         }
-        IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search notes", tint = c.inkSecondary) }
-        IconButton(onClick = onFolders) { Icon(Icons.Rounded.FolderOpen, "Show notebooks", tint = c.inkSecondary) }
-        if (archived > 0 || trash > 0) LibraryMenu(archived, trash, onArchive, onTrash)
+
+        // Tonal circular action buttons & List/Folders segmented control
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (onViewChange != null) {
+                Surface(
+                    shape = MM.radius.pill,
+                    color = c.track,
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Row(
+                        Modifier.padding(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            onClick = { onViewChange(LibraryView.LIST) },
+                            shape = MM.radius.pill,
+                            color = if (view == LibraryView.LIST) c.surfaceRaised else Color.Transparent,
+                            border = if (view == LibraryView.LIST) BorderStroke(MMSize.hairline, c.borderSubtle) else null,
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Rounded.Notes,
+                                    contentDescription = "Show notes",
+                                    tint = if (view == LibraryView.LIST) c.accent else c.inkSecondary,
+                                    modifier = Modifier.size(MMSize.iconSmall)
+                                )
+                            }
+                        }
+                        Surface(
+                            onClick = { onViewChange(LibraryView.FOLDERS) },
+                            shape = MM.radius.pill,
+                            color = if (view == LibraryView.FOLDERS) c.surfaceRaised else Color.Transparent,
+                            border = if (view == LibraryView.FOLDERS) BorderStroke(MMSize.hairline, c.borderSubtle) else null,
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Rounded.FolderOpen,
+                                    contentDescription = "Show notebooks",
+                                    tint = if (view == LibraryView.FOLDERS) c.accent else c.inkSecondary,
+                                    modifier = Modifier.size(MMSize.iconSmall)
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    onClick = onFolders,
+                    shape = CircleShape,
+                    color = c.surfaceRaised,
+                    border = BorderStroke(MMSize.hairline, c.borderSubtle),
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.FolderOpen, "Show notebooks", tint = c.inkSecondary, modifier = Modifier.size(MMSize.iconSmall))
+                    }
+                }
+            }
+
+            Surface(
+                onClick = onSearch,
+                shape = CircleShape,
+                color = c.surfaceRaised,
+                border = BorderStroke(MMSize.hairline, c.borderSubtle),
+                modifier = Modifier.size(34.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Search, "Search notes", tint = c.inkSecondary, modifier = Modifier.size(MMSize.iconSmall))
+                }
+            }
+
+            if (archived > 0 || trash > 0) {
+                LibraryMenu(archived, trash, onArchive, onTrash)
+            }
+        }
     }
 }
 
@@ -116,40 +228,71 @@ private fun rememberGreeting(): GreetingInfo = remember {
 
 @Composable
 private fun GreetingText(greeting: String, modifier: Modifier = Modifier) {
-    Text(greeting, style = MM.type.title, color = MM.colors.ink, modifier = modifier)
+    Column(modifier = modifier) {
+        Text(greeting, style = MM.type.title, color = MM.colors.ink)
+        Text(
+            "Your workspace at a glance",
+            style = MM.type.secondary,
+            color = MM.colors.inkSecondary,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+    }
 }
 
-/** Greeting on the left, Zuri and a speech bubble on the right, side by side. Used when the Latest meeting hero is not shown. */
+/**
+ * Zuri rendered with full 3D volumetric form, rim lighting, and interactive capabilities
+ * on an unobstructed ambient hero stage. Nothing may draw on top of or slice off the Companion.
+ */
+private val ZURI_SIZE = 76.dp
+private val ZURI_STAGE_SIZE = 84.dp
+
+@Composable
+private fun CompanionZuri(lateNight: Boolean, modifier: Modifier = Modifier) {
+    val c = MM.colors
+    Box(
+        modifier = modifier
+            .size(ZURI_STAGE_SIZE)
+            .background(
+                Brush.radialGradient(
+                    listOf(c.accentSoft.copy(alpha = 0.25f), Color.Transparent)
+                ),
+                CircleShape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        CompositionLocalProvider(LocalCompanionVolume provides true) {
+            ZuriSlot(
+                page = CompanionPage.HOME,
+                size = ZURI_SIZE,
+                state = if (lateNight) CompanionState.SLEEPY else CompanionState.IDLE,
+                offerShow = true
+            )
+        }
+    }
+}
+
+/** Greeting on the left, Zuri in full 3D on the right, side by side. Used when the Latest meeting hero is not shown. */
 @Composable
 internal fun NotesGreeting() {
     val info = rememberGreeting()
     val companionShown = rememberCompanionVisible(CompanionPage.HOME)
-    Row(Modifier.fillMaxWidth().padding(top = MM.space.l), verticalAlignment = Alignment.Top) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = MM.space.m),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         GreetingText(info.greeting, Modifier.weight(1f))
         if (companionShown) {
-            Column(Modifier.padding(start = MM.space.s).widthIn(max = ZURI_COLUMN_WIDTH), horizontalAlignment = Alignment.End) {
-                CompanionZuri(info.lateNight)
-            }
+            CompanionZuri(info.lateNight)
         }
     }
 }
 
 /**
- * How much of Zuri's height sits behind the hero card: the lower 38% is covered, so the face and the speech bubble
- * stay visible. Tune on a device; raise it to hide more of Zuri's body, lower it to show more.
- */
-private const val ZURI_OVERLAP = 0.38f
-private val ZURI_SIZE = 104.dp
-private val ZURI_COLUMN_WIDTH = 132.dp
-
-@Composable
-private fun CompanionZuri(lateNight: Boolean) =
-    ZuriSlot(CompanionPage.HOME, ZURI_SIZE, state = if (lateNight) CompanionState.SLEEPY else CompanionState.IDLE)
-
-/**
- * The greeting, Zuri and the Latest meeting card as one block. Zuri sits top-end; the card is placed last, so it covers
- * Zuri's lower body and takes every tap over that overlap. The card's top is measured from the greeting and from Zuri,
- * never a fixed height, so the greeting text cannot run under the card at any font scale.
+ * The greeting, Zuri and the Latest meeting card as one cohesive block.
+ * Zuri sits prominently in the foreground beside the greeting, completely unobstructed above the hero card.
  */
 @Composable
 internal fun HeroWithZuri(
@@ -159,88 +302,174 @@ internal fun HeroWithZuri(
     heroSlot: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Read the MM token here, in composition: the measure lambda below is not composable.
-    val gapDp = MM.space.m
-    Layout(
-        // Each slot is wrapped in its own box so it always yields exactly one child. A slot with nothing to
-        // show (no latest meeting, say) would otherwise drop out of the list and break the destructuring below.
-        content = { Box { greetingSlot() }; Box { bubbleSlot() }; Box { zuriSlot() }; Box { heroSlot() } },
-        modifier = modifier
-    ) { measurables, constraints ->
-        val (greetingM, bubbleM, zuriM, heroM) = measurables
-        val width = constraints.maxWidth
-        val gap = gapDp.roundToPx()
-        val columnWidth = ZURI_COLUMN_WIDTH.roundToPx()
-        val greeting = greetingM.measure(Constraints(maxWidth = (width * 0.6f).roundToInt()))
-        val bubble = bubbleM.measure(Constraints(maxWidth = columnWidth))
-        val zuri = zuriM.measure(Constraints(maxWidth = columnWidth))
-        val zuriTop = bubble.height + gap
-        val zuriVisibleBottom = zuriTop + (zuri.height * (1f - ZURI_OVERLAP)).roundToInt()
-        val cardTop = maxOf(greeting.height + gap, zuriVisibleBottom)
-        val hero = heroM.measure(Constraints.fixedWidth(width))
-        layout(width, cardTop + hero.height) {
-            greeting.placeRelative(0, 0)
-            bubble.placeRelative(width - bubble.width, 0)
-            zuri.placeRelative(width - zuri.width, zuriTop)
-            hero.placeRelative(0, cardTop)
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(MM.space.m)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = MM.space.m)
+            ) {
+                greetingSlot()
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+            ) {
+                bubbleSlot()
+                zuriSlot()
+            }
         }
+        heroSlot()
     }
 }
 
-/** The overlap block for the home list: greeting, bubble, Zuri and the hero card. Needs the companion to be shown. */
+/** The block for the home list: greeting, Zuri and the compact hero card. */
 @Composable
-internal fun HomeHeroBlock(item: LibraryItem, tiles: List<MeetingTile>, onOpen: () -> Unit, onTile: (TileAction) -> Unit) {
+internal fun HomeHeroBlock(
+    item: LibraryItem,
+    tiles: List<MeetingTile>,
+    onOpen: () -> Unit,
+    onTile: (TileAction) -> Unit
+) {
     val info = rememberGreeting()
     HeroWithZuri(
         greetingSlot = { GreetingText(info.greeting) },
         bubbleSlot = {},
         zuriSlot = { CompanionZuri(info.lateNight) },
         heroSlot = { LatestMeetingCard(item, tiles, onOpen, onTile) },
-        modifier = Modifier.fillMaxWidth().padding(top = MM.space.l)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = MM.space.m)
     )
 }
 
-
 /**
- * The one hero of the screen: the most recent recorded Work note. An illustrated sky sits behind it and its two most
- * useful insights sit on it as solid cards. [HeroWithZuri] places the companion above its top edge.
+ * The hero of the screen: the most recent recorded Work note.
+ * Renders an atmospheric vector sky/hill canvas driven by [TimeOfDaySky] colors, with a translucent
+ * readability wash ensuring contrast in both themes, a crisp badge, editorial title, and insight tiles.
  */
 @Composable
 internal fun LatestMeetingCard(
-    item: LibraryItem, tiles: List<MeetingTile>, onOpen: () -> Unit, onTile: (TileAction) -> Unit,
+    item: LibraryItem,
+    tiles: List<MeetingTile>,
+    onOpen: () -> Unit,
+    onTile: (TileAction) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val c = MM.colors
+    val appIdentity = LocalAppIdentity.current
     val note = item.note
     val whenMs = note.eventDate ?: note.createdAt
     val date = remember(whenMs) { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(whenMs)) }
-    val meta = listOfNotNull(date, item.durationMs?.let(NoteLabels::duration)).joinToString("  ·  ")
+    val durationText = item.durationMs?.let(NoteLabels::duration)
     val cards = heroCards(tiles)
-    val time = rememberSceneTime()
-    val scene = notesHeroScene(sky = c.accentWash, horizon = c.surface, hill = c.accent.copy(alpha = 0.32f), sun = c.gold)
+
+    val cal = remember { Calendar.getInstance() }
+    val sky = remember(cal, appIdentity.look) {
+        TimeOfDaySky.at(
+            cal.get(Calendar.HOUR_OF_DAY),
+            cal.get(Calendar.MINUTE),
+            warm = appIdentity.look == LookAndFeel.SANCTUARY
+        )
+    }
+    val skyTop = Color(sky.skyTop)
+    val skyBottom = Color(sky.skyBottom)
+    val sun = Color(sky.orbBody)
+    val hill = c.surfaceRaised.copy(alpha = if (c.isDark) 0.35f else 0.45f)
+    val scene = remember(skyTop, skyBottom, hill, sun) {
+        notesHeroScene(
+            sky = skyTop.copy(alpha = if (c.isDark) 0.30f else 0.22f),
+            horizon = skyBottom.copy(alpha = if (c.isDark) 0.22f else 0.16f),
+            hill = hill,
+            sun = sun.copy(alpha = if (c.isDark) 0.45f else 0.35f)
+        )
+    }
+    val sceneTime = rememberSceneTime()
+
     Box(
-        modifier.fillMaxWidth().heightIn(min = 300.dp).clip(MM.radius.card).background(c.accentWash)
+        modifier
+            .fillMaxWidth()
+            .clip(MM.radius.card)
+            .background(c.surfaceRaised)
+            .border(MMSize.hairline, c.borderSubtle, MM.radius.card)
             .clickable(role = Role.Button, onClick = onOpen)
     ) {
-        Canvas(Modifier.matchParentSize()) { scene(time.value) }
-        Column(Modifier.fillMaxWidth().padding(MM.space.l)) {
+        // Atmospheric vector scene canvas
+        Canvas(Modifier.matchParentSize()) {
+            scene(sceneTime.value)
+        }
+        // Translucent surface readability scrim guaranteeing contrast in both themes
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            c.surfaceRaised.copy(alpha = 0.82f),
+                            c.surfaceRaised.copy(alpha = 0.94f)
+                        )
+                    )
+                )
+        )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MM.space.l, vertical = MM.space.m)
+        ) {
             Row(
-                Modifier.background(c.surface.copy(alpha = 0.8f), MM.radius.pill).padding(horizontal = MM.space.m, vertical = MM.space.xs),
+                Modifier
+                    .background(c.accentWash, MM.radius.pill)
+                    .border(MMSize.hairline, c.accent.copy(alpha = 0.3f), MM.radius.pill)
+                    .padding(horizontal = MM.space.s, vertical = MM.space.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Rounded.Groups, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
                 Spacer(Modifier.width(MM.space.xs))
-                Text("Latest meeting", style = MM.type.caption, color = c.ink)
+                Text("Latest meeting", style = MM.type.caption, color = c.accent)
+                if (date.isNotBlank()) {
+                    Text("  ·  $date", style = MM.type.caption, color = c.inkSecondary)
+                }
             }
-            // Room for the companion, which sits in the top-right corner above this card.
-            Spacer(Modifier.height(96.dp))
-            Text(note.title.ifBlank { "Untitled note" }, style = MM.type.title, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(meta, style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.padding(top = MM.space.xs))
+
+            Text(
+                note.title.ifBlank { "Untitled note" },
+                style = MM.type.heading,
+                color = c.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = MM.space.s)
+            )
+
+            if (durationText != null) {
+                Text(
+                    durationText,
+                    style = MM.type.caption,
+                    color = c.inkSecondary,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+
             if (cards.isNotEmpty()) {
-                Spacer(Modifier.height(MM.space.l))
-                Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                Spacer(Modifier.height(MM.space.s))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     cards.forEach { tile ->
-                        InsightCard(tile.action.icon(), tile.label, tile.subtitle, { onTile(tile.action) }, Modifier.weight(1f))
+                        InsightCard(
+                            icon = tile.action.icon(),
+                            label = tile.label,
+                            sub = tile.subtitle,
+                            onClick = { onTile(tile.action) },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }
@@ -256,48 +485,130 @@ private fun TileAction.icon(): ImageVector = when (this) {
 }
 
 @Composable
-private fun InsightCard(icon: ImageVector, label: String, sub: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun InsightCard(
+    icon: ImageVector,
+    label: String,
+    sub: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val c = MM.colors
     Column(
-        modifier.clip(MM.radius.card).background(c.surfaceRaised, MM.radius.card)
-            .clickable(role = Role.Button, onClick = onClick).padding(MM.space.m)
+        modifier
+            .clip(MM.radius.small)
+            .background(c.surface, MM.radius.small)
+            .border(MMSize.hairline, c.borderSubtle, MM.radius.small)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = MM.space.s, vertical = MM.space.xs)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(28.dp).background(c.accentWash, MM.radius.small), contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
+            Box(
+                Modifier
+                    .size(22.dp)
+                    .background(c.accentWash, MM.radius.small),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = c.accent, modifier = Modifier.size(14.dp))
             }
             Spacer(Modifier.width(MM.space.xs))
             Text(label, style = MM.type.caption, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(sub, style = MM.type.secondary, color = c.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = MM.space.xs))
+        Text(
+            sub,
+            style = MM.type.secondary,
+            color = c.inkSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 2.dp)
+        )
     }
 }
 
 /** "Your Notes" with filters, sort and New. */
 @Composable
-internal fun NotesSectionHeader(extraFilters: Int, sort: NoteSort, onSort: (NoteSort) -> Unit, onFilters: () -> Unit, onNew: () -> Unit) {
+internal fun NotesSectionHeader(
+    extraFilters: Int,
+    sort: NoteSort,
+    onSort: (NoteSort) -> Unit,
+    onFilters: () -> Unit,
+    onNew: () -> Unit
+) {
     val c = MM.colors
-    Row(Modifier.fillMaxWidth().padding(top = MM.space.xl, bottom = MM.space.s), verticalAlignment = Alignment.CenterVertically) {
-        Text("Your Notes", style = MM.type.title, color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
-        IconButton(onClick = onFilters) {
-            Icon(
-                Icons.Rounded.Tune, if (extraFilters > 0) "Filters, $extraFilters on" else "Filters",
-                tint = if (extraFilters > 0) c.accent else c.inkSecondary
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = MM.space.m, bottom = MM.space.xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "Your Notes",
+            style = MM.type.title,
+            color = c.ink,
+            modifier = Modifier
+                .weight(1f)
+                .semantics { heading() }
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                onClick = onFilters,
+                shape = MM.radius.pill,
+                color = if (extraFilters > 0) c.accentWash else c.surfaceRaised,
+                border = BorderStroke(MMSize.hairline, if (extraFilters > 0) c.accent else c.borderSubtle),
+                modifier = Modifier.height(34.dp)
+            ) {
+                Row(
+                    Modifier.padding(horizontal = MM.space.s),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Rounded.Tune,
+                        contentDescription = if (extraFilters > 0) "Filters, $extraFilters on" else "Filters",
+                        tint = if (extraFilters > 0) c.accent else c.inkSecondary,
+                        modifier = Modifier.size(MMSize.iconSmall)
+                    )
+                    if (extraFilters > 0) {
+                        Spacer(Modifier.width(MM.space.xs))
+                        Text(
+                            "$extraFilters",
+                            style = MM.type.caption,
+                            color = c.accent
+                        )
+                    }
+                }
+            }
+
+            SortMenu(sort, onSort)
+
+            PrimaryButton(
+                text = "New",
+                onClick = onNew,
+                leadingIcon = Icons.Rounded.Add,
+                modifier = Modifier.height(34.dp)
             )
         }
-        SortMenu(sort, onSort)
-        PrimaryButton("New", onNew, leadingIcon = Icons.Rounded.Add)
     }
 }
 
 /** The chips row with icons. Which chips appear still comes from [LibraryChip]; types and tags live behind the filter button. */
 @Composable
 internal fun HomeChips(
-    query: LibraryQuery, showWork: Boolean, showFaith: Boolean,
-    onAll: () -> Unit, onChip: (LibraryChip) -> Unit, modifier: Modifier = Modifier
+    query: LibraryQuery,
+    showWork: Boolean,
+    showFaith: Boolean,
+    onAll: () -> Unit,
+    onChip: (LibraryChip) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val extra = query.types.size + if (query.tagId != null) 1 else 0
-    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+    Row(
+        modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(vertical = MM.space.xs),
+        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+    ) {
         IconChip("All", Icons.Rounded.GridView, selected = query.chips.isEmpty() && extra == 0, onClick = onAll)
         LibraryChip.entries
             .filter { (it != LibraryChip.WORK || showWork) && ((it != LibraryChip.FAITH && it != LibraryChip.BIBLE) || showFaith) }
@@ -317,62 +628,176 @@ internal fun HomeChips(
 private fun IconChip(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
     val c = MM.colors
     Row(
-        Modifier.heightIn(min = MMSize.minTouch).clip(MM.radius.pill)
-            .background(if (selected) c.accentWash else Color.Transparent, MM.radius.pill)
-            .border(1.dp, if (selected) c.accent else c.line, MM.radius.pill)
-            .clickable(role = Role.Button, onClick = onClick).semantics { this.selected = selected }
-            .padding(horizontal = MM.space.l),
+        Modifier
+            .heightIn(min = MMSize.minTouch)
+            .clip(MM.radius.pill)
+            .background(if (selected) c.accentWash else c.surfaceRaised, MM.radius.pill)
+            .border(MMSize.hairline, if (selected) c.accent else c.borderSubtle, MM.radius.pill)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { this.selected = selected }
+            .padding(horizontal = MM.space.m, vertical = MM.space.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, null, tint = if (selected) c.accent else c.inkSecondary, modifier = Modifier.size(MMSize.iconSmall))
-        Spacer(Modifier.width(MM.space.s))
+        Spacer(Modifier.width(MM.space.xs))
         Text(label, style = MM.type.caption, color = if (selected) c.accent else c.ink)
     }
 }
 
 /**
- * A note as a card: type tile, title (with a Latest pill), date and length, a two-line preview, a pin star and a chevron.
- * Light gets the 1 dp line border; dark is separated by the surface step alone (design system §4).
+ * A note as a card: leading space indicator bar, type badge, title, 2-line preview,
+ * balanced bottom metadata pills, and pin/lock badges.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun NoteCard(
-    model: NoteRowModel, tile: Color, selected: Boolean, showPin: Boolean,
-    onTogglePin: () -> Unit, onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier = Modifier
+    model: NoteRowModel,
+    tile: Color,
+    selected: Boolean,
+    showPin: Boolean,
+    onTogglePin: () -> Unit,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val c = MM.colors
-    val dark = c.background.luminance() < 0.5f
+    val dark = c.isDark
     val shape = MM.radius.card
-    val meta = listOf(model.typeLabel, model.durationLabel).filter { it.isNotBlank() }.joinToString("  ·  ")
     val tint = if (tile == c.inkFaint) c.accent else tile
+
     Row(
-        modifier.padding(vertical = MM.space.xs).fillMaxWidth().clip(shape)
+        modifier = modifier
+            .padding(vertical = MM.space.xs)
+            .fillMaxWidth()
+            .clip(shape)
             .background(if (selected) c.accentWash else c.surface, shape)
-            .then(if (dark) Modifier else Modifier.border(1.dp, c.line, shape))
+            .then(if (dark) Modifier else Modifier.border(MMSize.hairline, c.borderSubtle, shape))
             .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick)
-            .padding(start = MM.space.m, top = MM.space.m, bottom = MM.space.m, end = MM.space.s),
+            .padding(start = MM.space.s, top = MM.space.m, bottom = MM.space.m, end = MM.space.s),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(44.dp).background(tint.copy(alpha = 0.16f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-            Icon(model.typeIcon ?: Icons.Rounded.Description, null, tint = tint, modifier = Modifier.size(MMSize.icon))
-        }
-        Column(Modifier.weight(1f).padding(start = MM.space.m)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(model.title, style = MM.type.bodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                if (model.timeLabel.isNotBlank()) Text(model.timeLabel, style = MM.type.caption, color = c.inkMuted, modifier = Modifier.padding(start = MM.space.s))
-            }
-            if (meta.isNotBlank()) Text(meta, style = MM.type.caption, color = c.inkSecondary)
-            if (model.preview.isNotBlank()) Text(
-                model.preview, style = MM.type.secondary, color = c.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = MM.space.xs)
-            )
-        }
-        if (showPin) IconButton(onClick = onTogglePin) {
+        // Subtle leading vertical accent bar
+        Box(
+            Modifier
+                .width(MMSize.marker)
+                .height(44.dp)
+                .background(tint, MM.radius.pill)
+        )
+        Spacer(Modifier.width(MM.space.s))
+
+        // Space / type icon box
+        Box(
+            Modifier
+                .size(40.dp)
+                .background(tint.copy(alpha = 0.12f), MM.radius.small),
+            contentAlignment = Alignment.Center
+        ) {
             Icon(
-                if (model.pinned) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                if (model.pinned) "Unpin" else "Pin",
-                tint = if (model.pinned) c.gold else c.inkFaint
+                model.typeIcon ?: Icons.Rounded.Description,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(MMSize.iconSmall)
             )
+        }
+
+        // Content
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(start = MM.space.m)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    model.title,
+                    style = MM.type.bodyStrong,
+                    color = c.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (showPin && model.pinned) {
+                    Icon(
+                        Icons.Rounded.PushPin,
+                        contentDescription = "Pinned",
+                        tint = c.gold,
+                        modifier = Modifier
+                            .padding(start = MM.space.xs)
+                            .size(14.dp)
+                    )
+                }
+                if (model.isPrivate) {
+                    Icon(
+                        Icons.Rounded.Lock,
+                        contentDescription = "Private",
+                        tint = c.inkMuted,
+                        modifier = Modifier
+                            .padding(start = MM.space.xs)
+                            .size(14.dp)
+                    )
+                }
+            }
+
+            if (model.preview.isNotBlank()) {
+                Text(
+                    model.preview,
+                    style = MM.type.secondary,
+                    color = c.inkSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = MM.space.xs)
+                )
+            }
+
+            // Balanced bottom metadata row
+            Row(
+                Modifier.padding(top = MM.space.xs),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (model.timeLabel.isNotBlank()) {
+                    Text(model.timeLabel, style = MM.type.caption, color = c.inkMuted)
+                }
+                if (model.hasRecording && model.durationLabel.isNotBlank()) {
+                    Surface(
+                        shape = MM.radius.pill,
+                        color = c.surfaceRaised,
+                        border = BorderStroke(MMSize.hairline, c.borderSubtle)
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = MM.space.xs, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.Mic, null, tint = c.inkSecondary, modifier = Modifier.size(12.dp))
+                            Spacer(Modifier.width(2.dp))
+                            Text(model.durationLabel, style = MM.type.caption, color = c.inkSecondary)
+                        }
+                    }
+                }
+                if (model.typeLabel.isNotBlank()) {
+                    Surface(
+                        shape = MM.radius.pill,
+                        color = c.surfaceRaised,
+                        border = BorderStroke(MMSize.hairline, c.borderSubtle)
+                    ) {
+                        Text(
+                            model.typeLabel,
+                            style = MM.type.caption,
+                            color = c.inkSecondary,
+                            modifier = Modifier.padding(horizontal = MM.space.xs, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showPin) {
+            IconButton(onClick = onTogglePin) {
+                Icon(
+                    if (model.pinned) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                    contentDescription = if (model.pinned) "Unpin" else "Pin",
+                    tint = if (model.pinned) c.gold else c.inkFaint
+                )
+            }
         }
     }
 }

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Proud milestones and calm rhythms (docs/mvp/ZURI_EXPERIENCE.md sections 3.1 Proud, 5.7, 5.9, 6.1, 9; task Z-21).
+  Rules: one short line each, sentence case, no streaks, nothing that counts what didn't happen, no guilt.
+  Faith lines are joyful but reverent and never paraphrase scripture.
+-->
+<resources>
+    <!-- The small label above a milestone line. -->
+    <string name="companion_milestone_label">A milestone</string>
+
+    <!-- The tenth note kept. -->
+    <string name="companion_milestone_tenth_note">Ten notes kept.</string>
+    <string name="companion_milestone_tenth_note_sub">That\'s a lot worth remembering.</string>
+    <!-- Every study card that was due has been reviewed. -->
+    <string name="companion_milestone_cards_cleared">All caught up.</string>
+    <string name="companion_milestone_cards_cleared_sub">Every card that was due, reviewed. Nice work.</string>
+    <!-- Devotionals read on seven different days this month. -->
+    <string name="companion_milestone_devotionals">Seven days with the Word this month.</string>
+    <string name="companion_milestone_devotionals_sub">A quiet rhythm, kept.</string>
+    <!-- The last day of a Bible reading plan was read. -->
+    <string name="companion_milestone_reading_plan">You finished the reading plan.</string>
+    <string name="companion_milestone_reading_plan_sub">Every day of it, read.</string>
+    <!-- The first note (normally celebrated by First Keep instead; kept so every milestone has copy). -->
+    <string name="companion_milestone_first_note">Your first note is kept.</string>
+    <string name="companion_milestone_first_note_sub">Everything you said, kept.</string>
+
+    <!-- Closes the milestone card. -->
+    <string name="companion_milestone_done">Nice</string>
+    <!-- A suggestion only: it opens the share flow, and nothing is posted without a further tap. -->
+    <string name="companion_milestone_share">Share with your circle</string>
+    <!-- Read by screen readers when the card appears. %1$s: the milestone line, e.g. "Ten notes kept." -->
+    <string name="companion_milestone_announce">A milestone. %1$s</string>
+    <!-- Content description for the companion on the card. %1$s: the companion's name. -->
+    <string name="companion_milestone_companion_cd">%1$s, looking proud</string>
+
+    <!-- Calm rhythms: this week only, never shown under two. -->
+    <plurals name="companion_rhythm_faith_days">
+        <item quantity="one">%d day with the Word this week</item>
+        <item quantity="other">%d days with the Word this week</item>
+    </plurals>
+    <plurals name="companion_rhythm_study_days">
+        <item quantity="one">You reviewed %d day this week</item>
+        <item quantity="other">You reviewed %d days this week</item>
+    </plurals>
+    <plurals name="companion_rhythm_notes_kept">
+        <item quantity="one">%d note kept this week</item>
+        <item quantity="other">%d notes kept this week</item>
+    </plurals>
+</resources>

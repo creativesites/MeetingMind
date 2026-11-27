@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Per-app language configuration (Android 13+ / API 33+). See docs/mvp/ONE_PLACE.md -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="fr" />
+    <locale android:name="es" />
+    <locale android:name="pt" />
+    <locale android:name="sw" />
+    <locale android:name="ny" />
+    <locale android:name="sn" />
+    <locale android:name="zu" />
+    <locale android:name="bem" />
+</locale-config>

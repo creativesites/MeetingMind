@@ -53,16 +53,24 @@ class UsageStateTest {
         assertEquals("", UsageState(known = true).summary())
     }
 
-    @Test fun `each warning level shows once a period, for everyone, and only when plans exist`() {
+    @Test fun `each warning level shows once a period, for everyone, whatever billing is doing`() {
         val near = UsageState.fromHeaders(200, headers(*full))!!
-        assertEquals(PaywallTrigger.USAGE_NEAR_LIMIT, UsageWarning.next(near, true, null))
-        assertNull(UsageWarning.next(near, true, UsageWarning.tag(near, PaywallTrigger.USAGE_NEAR_LIMIT)))
-        assertNull(UsageWarning.next(near, false, null))
-        assertNull(UsageWarning.next(UsageState(), true, null))
+        assertEquals(PaywallTrigger.USAGE_NEAR_LIMIT, UsageWarning.next(near, null))
+        assertNull(UsageWarning.next(near, UsageWarning.tag(near, PaywallTrigger.USAGE_NEAR_LIMIT)))
+        assertNull(UsageWarning.next(UsageState(), null))
         val out = near.copy(exhausted = true)
-        assertEquals(PaywallTrigger.USAGE_EXHAUSTED, UsageWarning.next(out, true, UsageWarning.tag(near, PaywallTrigger.USAGE_NEAR_LIMIT)))
+        assertEquals(PaywallTrigger.USAGE_EXHAUSTED, UsageWarning.next(out, UsageWarning.tag(near, PaywallTrigger.USAGE_NEAR_LIMIT)))
         // A new period warns again.
-        assertEquals(PaywallTrigger.USAGE_NEAR_LIMIT, UsageWarning.next(near.copy(periodEndMs = 2000), true, UsageWarning.tag(near, PaywallTrigger.USAGE_NEAR_LIMIT)))
+        assertEquals(PaywallTrigger.USAGE_NEAR_LIMIT, UsageWarning.next(near.copy(periodEndMs = 2000), UsageWarning.tag(near, PaywallTrigger.USAGE_NEAR_LIMIT)))
+    }
+
+    @Test fun `the warning body only offers a plan when there is one`() {
+        val near = UsageState.fromHeaders(200, headers(*full))!!
+        val withPlans = UsageWarning.body(PaywallTrigger.USAGE_NEAR_LIMIT, near, paid = false, plansAvailable = true)
+        assertTrue(withPlans.contains("A plan with a larger allowance is available."))
+        val withoutPlans = UsageWarning.body(PaywallTrigger.USAGE_NEAR_LIMIT, near, paid = false, plansAvailable = false)
+        assertFalse(withoutPlans.contains("plan", ignoreCase = true))
+        assertTrue(withoutPlans.contains("You've used 80%"))
     }
 
     @Test fun `the managed url must be https`() {

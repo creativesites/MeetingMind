@@ -68,21 +68,37 @@ class PulseCardTest {
         show(PulseUi(coldStart = true), PulseActions(onRecord = { recorded++ }, onTemplates = { templates++ }))
         compose.onNodeWithText("Start with one conversation").assertIsDisplayed()
         compose.onNodeWithText("● Record a conversation").performClick()
-        compose.onNodeWithText("Use a template").performClick()
+        compose.onNodeWithText("Open Work").performClick()
         assertEquals(1 to 1, recorded to templates)
     }
 
-    @Test fun rowActionsAndAskAreWired() {
+    @Test fun rowVerbTapsNudgeAndTappingTheRowOpensIt() {
         val log = mutableListOf<String>()
         val row = AttentionRow(AttentionKind.THEY_OWE, "API keys", "Ana · open 6 days", personId = "ana", meetingId = "m1", actions = listOf(AttentionAction.PLAY, AttentionAction.NUDGE, AttentionAction.OPEN))
         show(PulseUi(attention = listOf(row), coldStart = false, changes = listOf(ChangeGroup("Other", null, null, listOf(ChangeLine("Decided: Use OAuth2", "i1", 1))))),
-            PulseActions(onPlay = { log += "play" }, onNudge = { log += "nudge" }, onOpenRow = { log += "open" }, onPlayChange = { log += "change:${it.text}" }, onAsk = { log += "ask" }))
-        compose.onNodeWithText("▶ Evidence").performClick()
+            PulseActions(onNudge = { log += "nudge" }, onOpenRow = { log += "open" }, onPlayChange = { log += "change:${it.text}" }, onAsk = { log += "ask" }))
         compose.onNodeWithText("Nudge").performClick()
-        compose.onNodeWithText("Open").performClick()
+        compose.onNodeWithText("API keys").performClick()
         compose.onNodeWithText("Decided: Use OAuth2").performClick()
         compose.onNodeWithText("Ask about my work").performClick()
-        assertEquals(listOf("play", "nudge", "open", "change:Decided: Use OAuth2", "ask"), log)
+        assertEquals(listOf("nudge", "open", "change:Decided: Use OAuth2", "ask"), log)
+    }
+
+    @Test fun aFailedRecordingIsInYourDayWithTryAgain() {
+        var retried: String? = null
+        show(PulseUi(coldStart = false, failed = listOf(PulseRecording("m9", "Commercial follow-up", "Recording didn't process · Today"))),
+            PulseActions(onRetry = { retried = it.meetingId }))
+        compose.onNodeWithText("Commercial follow-up").assertIsDisplayed()
+        compose.onNodeWithText("Try again").performClick()
+        assertEquals("m9", retried)
+    }
+
+    @Test fun toReviewRowsOfferReview() {
+        val wrapped = mutableListOf<Pair<String, Boolean>>()
+        show(PulseUi(coldStart = false, toReview = listOf(PulseRecording("m1", "Project Review", "Meeting · ready to wrap up"))),
+            PulseActions(onWrapUp = { r, followUp -> wrapped += r.meetingId to followUp }))
+        compose.onNodeWithText("Review").performClick()
+        assertEquals(listOf("m1" to false), wrapped)
     }
 
     @Test fun moreThanThreeChangesSummariseTheRestInWords() {

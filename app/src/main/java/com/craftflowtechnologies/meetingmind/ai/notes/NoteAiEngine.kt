@@ -29,6 +29,8 @@ enum class NoteAiTool(val label: String) {
     SUMMARIZE("Summarize"),
     ORGANIZE("Organize into sections"),
     EXTRACT_ACTIONS("Find action items"),
+    UNRESOLVED_GAPS("Open questions & gaps"),
+    FOLLOW_UP_BRIEF("Recap & follow-up"),
     ASK("Ask"),
     STUDY_GUIDE("Create discussion guide")
 }
@@ -85,7 +87,7 @@ class NoteAiEngine(
 
         val aliases = usable.mapIndexed { i, p -> "p${i + 1}" to p }.toMap()
         val prompt = NoteAiPrompts.build(tool, aliases, faith, question, sections)
-        val response = when (val r = languageModel.generate(prompt, maxOutputTokens)) {
+        val response = when (val r = languageModel.generateStructured(prompt, NoteAiPrompts.jsonSchema(tool), maxOutputTokens)) {
             is AiResult.Success -> r.value
             else -> return AiResult.Failed(r.describeFailure() ?: "\"${tool.label}\" could not run.")
         }
@@ -96,6 +98,8 @@ class NoteAiEngine(
     internal fun parse(tool: NoteAiTool, json: JSONObject, aliases: Map<String, SourcePassage>, sections: List<SectionSpec>): NoteAiOutcome = when (tool) {
         NoteAiTool.SUMMARIZE -> NoteAiOutcome.Points(items(json.optJSONArray("points"), aliases, verbatim = false))
         NoteAiTool.EXTRACT_ACTIONS -> NoteAiOutcome.Points(items(json.optJSONArray("actions"), aliases, verbatim = true))
+        NoteAiTool.UNRESOLVED_GAPS -> NoteAiOutcome.Points(items(json.optJSONArray("gaps"), aliases, verbatim = false))
+        NoteAiTool.FOLLOW_UP_BRIEF -> NoteAiOutcome.Points(items(json.optJSONArray("brief"), aliases, verbatim = false))
         NoteAiTool.ASK -> {
             val found = json.optBoolean("found", true)
             val sources = ids(json.optJSONArray("sources"), aliases)
@@ -162,7 +166,8 @@ class NoteAiEngine(
 
     private fun ids(array: JSONArray?, aliases: Map<String, SourcePassage>): List<String> = buildList {
         for (j in 0 until (array?.length() ?: 0)) {
-            val id = array!!.optString(j).trim()
+            val rawId = array!!.optString(j).trim().removePrefix("[").removeSuffix("]").trim()
+            val id = if (rawId in aliases) rawId else rawId.lowercase()
             if (id in aliases && id !in this) add(id)
         }
     }
@@ -192,10 +197,15 @@ class NoteAiEngine(
         }
 
         fun extractJsonObject(raw: String): JSONObject? {
-            val start = raw.indexOf('{')
-            val end = raw.lastIndexOf('}')
+            val cleaned = raw.trim()
+                .removePrefix("```json")
+                .removePrefix("```")
+                .removeSuffix("```")
+                .trim()
+            val start = cleaned.indexOf('{')
+            val end = cleaned.lastIndexOf('}')
             if (start < 0 || end <= start) return null
-            return try { JSONObject(raw.substring(start, end + 1)) } catch (e: JSONException) { null }
+            return try { JSONObject(cleaned.substring(start, end + 1)) } catch (e: JSONException) { null }
         }
     }
 }
@@ -257,6 +267,13 @@ You MUST:
             "List every task, follow-up or commitment the notes actually state — something someone is to do. " +
                 "Word each as a short action using the notes' own words. Put who and when in detail only if the notes say. " +
                 "Do not turn ideas, hopes or questions into tasks."
+        NoteAiTool.UNRESOLVED_GAPS ->
+            "List the open questions, unresolved decisions, blockers, and details still waiting on clarification in these notes. " +
+                "State what is missing or undecided cleanly and put who or what needs follow-up in detail if stated. " +
+                "Do not invent gaps that the notes clearly resolve."
+        NoteAiTool.FOLLOW_UP_BRIEF ->
+            "Write concise, share-ready recap and follow-up points from these notes: key outcomes settled, decisions made, " +
+                "and clear next steps (put owners and timing in detail if stated). At most 8 bullets, crisp and ready to send."
         NoteAiTool.ASK ->
             "Answer this question using only the passages: \"${question.orEmpty().trim()}\". " +
                 "Answer in two or three sentences. If the passages don't answer it, set found to false and leave answer empty."
@@ -278,7 +295,19 @@ You MUST:
     private fun schema(tool: NoteAiTool): String = when (tool) {
         NoteAiTool.SUMMARIZE -> """{"points":[{"text":"…","sources":["p1"]}]}"""
         NoteAiTool.EXTRACT_ACTIONS -> """{"actions":[{"text":"…","detail":"who or when, or empty","sources":["p2"]}]}"""
+        NoteAiTool.UNRESOLVED_GAPS -> """{"gaps":[{"text":"…","detail":"missing detail or owner, or empty","sources":["p1"]}]}"""
+        NoteAiTool.FOLLOW_UP_BRIEF -> """{"brief":[{"text":"…","detail":"owner or timing, or empty","sources":["p1"]}]}"""
         NoteAiTool.ASK -> """{"found":true,"answer":"…","sources":["p1","p3"]}"""
         NoteAiTool.ORGANIZE, NoteAiTool.STUDY_GUIDE -> """{"sections":[{"key":"section_key","items":[{"text":"…","sources":["p1"]}]}]}"""
+    }
+
+    /** Formal JSON Schema enforced at decoding time by cloud transports. */
+    fun jsonSchema(tool: NoteAiTool): String = when (tool) {
+        NoteAiTool.SUMMARIZE -> """{"type":"object","properties":{"points":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["text","sources"]}}},"required":["points"]}"""
+        NoteAiTool.EXTRACT_ACTIONS -> """{"type":"object","properties":{"actions":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"detail":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["text","sources"]}}},"required":["actions"]}"""
+        NoteAiTool.UNRESOLVED_GAPS -> """{"type":"object","properties":{"gaps":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"detail":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["text","sources"]}}},"required":["gaps"]}"""
+        NoteAiTool.FOLLOW_UP_BRIEF -> """{"type":"object","properties":{"brief":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"detail":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["text","sources"]}}},"required":["brief"]}"""
+        NoteAiTool.ASK -> """{"type":"object","properties":{"found":{"type":"boolean"},"answer":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["found","answer","sources"]}"""
+        NoteAiTool.ORGANIZE, NoteAiTool.STUDY_GUIDE -> """{"type":"object","properties":{"sections":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"title":{"type":"string"},"items":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}}},"required":["text","sources"]}}},"required":["key","items"]}}},"required":["sections"]}"""
     }
 }

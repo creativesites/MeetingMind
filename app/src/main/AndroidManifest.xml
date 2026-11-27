@@ -28,6 +28,11 @@
          offline transcriptions aren't paused with the screen off. The user decides. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- ML Kit's document scanner locks its own activity to portrait, which Play reads as a required
+         portrait screen and hides the app from tablets, desktops and XR. The app works in any
+         orientation, so portrait is optional. -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+
     <!-- Create: see whether WhatsApp or Instagram is installed, to offer direct sharing. -->
     <queries>
         <package android:name="com.whatsapp" />
@@ -48,6 +53,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:localeConfig="@xml/locales_config"
         android:theme="@style/Theme.MyApplication">
         <activity
             android:name=".MainActivity"
@@ -60,7 +66,7 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- The Work Inbox: text, links, PDFs, audio and images shared into the app. -->
+            <!-- The Work Inbox: text, links, PDFs, audio, images and video shared into the app. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -68,6 +74,7 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="audio/*" />
                 <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
@@ -76,13 +83,24 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="audio/*" />
                 <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <!-- Circles invite links: meetingmind://c/GRACE-7K2Q (replaces the old mindcircle:// link that carried a key) -->
+                <!-- Circles invite & open links: meetingmind://c/GRACE-7K2Q -->
                 <data android:scheme="meetingmind" android:host="c" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Clickable HTTPS App Links for WhatsApp, SMS, and web fallbacks -->
+                <data
+                    android:scheme="https"
+                    android:host="meetingmind.app"
+                    android:pathPrefix="/c" />
             </intent-filter>
         </activity>
 
@@ -96,7 +114,10 @@
         </service>
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="circles" />
+            android:value="circles_posts" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_zuri_glyph" />
 
         <service
             android:name="com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService"
@@ -152,6 +173,11 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_next_meeting_info" />
         </receiver>
+        <!-- Speaker separation runs here, so a crash in its native model cannot take down the app. -->
+        <service
+            android:name="com.craftflowtechnologies.meetingmind.ai.diarization.DiarizationService"
+            android:process=":diarizer"
+            android:exported="false" />
     </application>
 
 </manifest>

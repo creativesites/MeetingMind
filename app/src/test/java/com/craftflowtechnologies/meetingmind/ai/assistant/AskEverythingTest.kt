@@ -66,4 +66,27 @@ class AskEverythingTest {
         assertEquals(1, t.requests.size)
         assertTrue(r.value.text.startsWith("I couldn't find"))
     }
+
+    @Test fun confidentialSourcesAreNeverSentToTheCloudForAnAnswer() = runBlocking {
+        // Only the query expansion (the question alone) may go out; the sources must not.
+        val t = Script(listOf("{\"queries\":[\"grace\"]}", "Grace comes before effort [1]."))
+        val engine = AskEverythingEngine(
+            t, search = { q -> if (q == "grace") sources else emptyList() }, dateLabel = { "today" },
+            keepOnDevice = { found -> found.any { it.noteId == "n1" } }
+        )
+        val r = engine.ask("What did I note about grace?")
+        assertEquals(1, t.requests.size)
+        assertFalse(t.requests.any { it.prompt.contains("Sources:") })
+        assertTrue(r is AiResult.ModelUnavailable)
+    }
+
+    @Test fun nonConfidentialSourcesStillUseTheCloud() = runBlocking {
+        val t = Script(listOf("{\"queries\":[\"grace\"]}", "Grace comes before effort [1]."))
+        val engine = AskEverythingEngine(
+            t, search = { q -> if (q == "grace") sources else emptyList() }, dateLabel = { "today" },
+            keepOnDevice = { false }
+        )
+        assertTrue(engine.ask("What did I note about grace?") is AiResult.Success)
+        assertEquals(2, t.requests.size)
+    }
 }

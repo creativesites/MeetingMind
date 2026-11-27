@@ -3,7 +3,6 @@ package com.craftflowtechnologies.meetingmind.feature.today
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
-import com.craftflowtechnologies.meetingmind.ui.theme.forTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
 import androidx.compose.foundation.BorderStroke
@@ -35,9 +34,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.displayName
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -85,8 +86,8 @@ private fun SmallStart(icon: ImageVector, label: String, tag: String, onClick: (
 }
 
 /**
- * For someone new: what the app can do, as four small first steps that tick themselves off.
- * Replaces the empty calendar so Home never looks blank on day one.
+ * For someone new: what the app can do, as small first steps that tick themselves off, introduced by
+ * the companion (when there is one). Replaces the empty calendar so Home never looks blank on day one.
  */
 @Composable
 fun GettingStartedCard(
@@ -98,47 +99,66 @@ fun GettingStartedCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val look = LocalAppLook.current
+    val c = MM.colors
+    val showsCompanion = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible(
+        com.craftflowtechnologies.meetingmind.core.companion.CompanionPage.HOME
+    )
+    val settings by com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings()
+    val companionName = settings.form?.let { settings.displayName(it) }
     Column(
-        modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(24.dp))
-            .border(1.dp, Line, RoundedCornerShape(24.dp)).background(SurfaceBase).padding(18.dp).testTag("getting_started")
+        modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(MM.radius.card)
+            .border(1.dp, c.line, MM.radius.card).background(c.surfaceRaised).padding(MM.space.l).testTag("getting_started")
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (showsCompanion) {
+                com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot(
+                    com.craftflowtechnologies.meetingmind.core.companion.CompanionPage.HOME, 44.dp,
+                    state = com.craftflowtechnologies.meetingmind.core.companion.CompanionState.CURIOUS
+                )
+                Spacer(Modifier.width(MM.space.m))
+            }
             Column(Modifier.weight(1f)) {
-                Text(if (start.isNew) "Welcome — let's make it yours" else "Getting started", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text("${start.done} of ${start.steps} done", color = InkMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+                Text(
+                    when {
+                        start.isNew && showsCompanion && companionName != null -> "Hi, I'm $companionName. Let's make it yours"
+                        start.isNew -> "Welcome. Let's make it yours"
+                        else -> "Getting started"
+                    },
+                    style = MM.type.heading, color = c.ink
+                )
+                Text("${start.done} of ${start.steps} done", style = MM.type.secondary, color = c.inkMuted, modifier = Modifier.padding(top = MM.space.xs))
             }
-            Box(Modifier.size(30.dp).clip(CircleShape).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Close, contentDescription = "Hide getting started", tint = InkMuted, modifier = Modifier.size(18.dp))
+            Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onDismiss).testTag("getting_started_hide"), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Close, contentDescription = "Hide getting started", tint = c.inkMuted, modifier = Modifier.size(18.dp))
             }
         }
-        // Progress along the brand gradient.
-        Box(Modifier.padding(top = 12.dp, bottom = 6.dp).fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFFEEF2F6).forTheme())) {
-            Box(Modifier.fillMaxWidth(start.done.toFloat() / start.steps).height(6.dp).clip(RoundedCornerShape(3.dp)).background(look.accent))
+        // Progress in the person's accent.
+        Box(Modifier.padding(top = MM.space.m, bottom = MM.space.xs).fillMaxWidth().height(6.dp).clip(MM.radius.pill).background(c.surfaceSunk)) {
+            Box(Modifier.fillMaxWidth(start.done.toFloat() / start.steps).height(6.dp).clip(MM.radius.pill).background(c.accent))
         }
-        StartStep(Icons.Filled.Mic, "Record your first conversation", "A meeting, a class, a sermon — or just say hello to test it.", start.recorded, onRecord)
-        StartStep(Icons.AutoMirrored.Filled.NoteAdd, "Write a note", "Type, add photos or scripture. Recordings become notes too.", start.wrote, onNote)
-        StartStep(Icons.Filled.Event, "See your day", "Show your calendar here, and get a prep card before meetings.", start.calendar, onCalendar)
-        if (start.showsFaith) StartStep(Icons.Filled.WbSunny, "Read today's devotional", "Scripture, a reflection and a prayer — listen or share it.", start.devotional, onDevotional)
+        StartStep(Icons.Filled.Mic, "Record your first conversation", "A meeting, a class, a sermon, or just say hello to test it.", start.recorded, "start_record", onRecord)
+        StartStep(Icons.AutoMirrored.Filled.NoteAdd, "Write a note", "Type, add photos or scripture. Recordings become notes too.", start.wrote, "start_note", onNote)
+        StartStep(Icons.Filled.Event, "See your day", "Show your calendar here, and get a prep card before meetings.", start.calendar, "start_calendar", onCalendar)
+        if (start.showsFaith) StartStep(Icons.Filled.WbSunny, "Read today's devotional", "Scripture, a reflection and a prayer. Listen or share it.", start.devotional, "start_devotional", onDevotional)
     }
 }
 
 @Composable
-private fun StartStep(icon: ImageVector, title: String, line: String, done: Boolean, onClick: () -> Unit) {
-    val look = LocalAppLook.current
+private fun StartStep(icon: ImageVector, title: String, line: String, done: Boolean, tag: String, onClick: () -> Unit) {
+    val c = MM.colors
     Row(
-        Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(16.dp)).clickable(enabled = !done, onClick = onClick)
-            .background(if (done) Color(0xFFF8FAFC).forTheme() else Color(0xFFF4F6FB).forTheme()).padding(12.dp),
+        Modifier.fillMaxWidth().padding(top = MM.space.s).clip(MM.radius.card).clickable(enabled = !done, onClick = onClick)
+            .background(if (done) c.surface else c.surfaceSunk).padding(MM.space.m).testTag(tag),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(36.dp).clip(CircleShape).background(if (done) look.accent else Color.White),
+            Modifier.size(36.dp).clip(CircleShape).background(if (done) c.accent else c.surfaceRaised),
             contentAlignment = Alignment.Center
-        ) { Icon(if (done) Icons.Filled.Check else icon, contentDescription = null, tint = if (done) Color.White else look.accent, modifier = Modifier.size(18.dp)) }
-        Spacer(Modifier.width(12.dp))
+        ) { Icon(if (done) Icons.Filled.Check else icon, contentDescription = null, tint = if (done) c.onAccent else c.accent, modifier = Modifier.size(18.dp)) }
+        Spacer(Modifier.width(MM.space.m))
         Column(Modifier.weight(1f)) {
-            Text(title, color = if (done) InkMuted else Ink, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
-            if (!done) Text(line, color = InkMuted, fontSize = 12.5.sp, lineHeight = 17.sp)
+            Text(title, style = MM.type.bodyStrong, color = if (done) c.inkMuted else c.ink)
+            if (!done) Text(line, style = MM.type.secondary, color = c.inkMuted)
         }
     }
 }

@@ -56,7 +56,14 @@ data class MeetingEntity(
      * meaningful while [noteId] is set. Set on attach and backfilled by creation time; reordering
      * changes note-wide positions only, never this recording's local timestamps.
      */
-    @ColumnInfo(defaultValue = "0") val recordingOrder: Int = 0
+    @ColumnInfo(defaultValue = "0") val recordingOrder: Int = 0,
+    /**
+     * Where [title] came from (schema 28) — one of
+     * [com.craftflowtechnologies.meetingmind.core.model.TitleSource]'s names. Existing rows
+     * migrate to `AI`, so an upgrade never mass-retitles a library. A `USER` or `IMPORT` title is
+     * never replaced by a reprocess or a backfill.
+     */
+    @ColumnInfo(defaultValue = "AI") val titleSource: String = "AI"
 )
 
 @Entity(
@@ -378,4 +385,37 @@ data class VocabularyEntity(
     /** How many times this exact correction has been made/confirmed. */
     val frequency: Int,
     val lastConfirmedAt: Long
+)
+
+/**
+ * Non-destructive translation of a meeting's transcript, title, and summary (Phase P3).
+ *
+ * Stored as a separate entity alongside the verbatim transcript:
+ * the original spoken transcript in [TranscriptSegmentEntity] is never mutated or replaced.
+ */
+@Entity(
+    tableName = "transcript_translations",
+    foreignKeys = [
+        ForeignKey(
+            entity = MeetingEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["meetingId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["meetingId"]),
+        Index(value = ["meetingId", "targetLanguage"], unique = true)
+    ]
+)
+data class TranscriptTranslationEntity(
+    @PrimaryKey val id: String,
+    val meetingId: String,
+    val sourceLanguage: String,
+    val targetLanguage: String,
+    val translationEngine: String,
+    val translatedTitle: String? = null,
+    val translatedSummary: String? = null,
+    val translatedSegmentsJson: String = "[]",
+    val createdAt: Long = System.currentTimeMillis()
 )

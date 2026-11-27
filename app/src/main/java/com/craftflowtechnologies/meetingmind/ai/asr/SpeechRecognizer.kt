@@ -27,6 +27,18 @@ data class TranscriptionOptions(
 /** Supported local and regional languages with model resolution mapping. */
 object SupportedLanguages {
     const val ENGLISH = "en"
+    const val SPANISH = "es"
+    const val FRENCH = "fr"
+    const val PORTUGUESE = "pt"
+    const val GERMAN = "de"
+    const val ITALIAN = "it"
+    const val DUTCH = "nl"
+    const val JAPANESE = "ja"
+    const val KOREAN = "ko"
+    const val MANDARIN = "zh"
+    const val HINDI = "hi"
+    const val ARABIC = "ar"
+
     const val SHONA = "sna"
     const val NORTH_NDEBELE = "nde"
     const val BEMBA = "bem"
@@ -43,17 +55,40 @@ object SupportedLanguages {
     const val SETSWANA = "tsn"
     const val SWAHILI = "swa"
 
+    const val INDONESIAN = "id"
+    const val VIETNAMESE = "vi"
+    const val TURKISH = "tr"
+    const val RUSSIAN = "ru"
+    const val POLISH = "pl"
+
     val SOUTHERN_AFRICAN_LANGUAGES = listOf(
         SHONA, NORTH_NDEBELE, BEMBA, NYANJA, TONGA, LOZI,
         LUVALE, LUNDA, KAONDE, ZULU, XHOSA, AFRIKAANS, SESOTHO, SETSWANA, SWAHILI
     )
 
+    val TIER_A_INTERNATIONAL_LANGUAGES = listOf(
+        ENGLISH, SPANISH, FRENCH, PORTUGUESE, GERMAN, ITALIAN, DUTCH,
+        JAPANESE, KOREAN, MANDARIN, HINDI, ARABIC
+    )
+
+    val WHISPER_PREFERRED_LANGUAGES = listOf(
+        JAPANESE, KOREAN, MANDARIN, HINDI, ARABIC, INDONESIAN, VIETNAMESE
+    )
+
     fun isAfricanLanguage(languageCode: String): Boolean =
         SOUTHERN_AFRICAN_LANGUAGES.contains(languageCode.lowercase().trim())
 
-    fun defaultModelIdForLanguage(languageCode: String): String =
-        if (isAfricanLanguage(languageCode)) ModelCatalog.omnilingualAsr300mInt8.id
-        else ModelCatalog.parakeetTdtV3Int8.id
+    fun isWhisperPreferredLanguage(languageCode: String): Boolean =
+        WHISPER_PREFERRED_LANGUAGES.contains(languageCode.lowercase().trim())
+
+    fun defaultModelIdForLanguage(languageCode: String): String {
+        val code = languageCode.lowercase().trim()
+        return when {
+            isAfricanLanguage(code) -> ModelCatalog.omnilingualAsr300mInt8.id
+            isWhisperPreferredLanguage(code) -> ModelCatalog.whisperTurboInt8.id
+            else -> ModelCatalog.parakeetTdtV3Int8.id
+        }
+    }
 
     fun displayName(languageCode: String): String = when (languageCode.lowercase().trim()) {
         SHONA -> "Shona (chiShona)"
@@ -72,6 +107,22 @@ object SupportedLanguages {
         SETSWANA -> "Setswana"
         SWAHILI -> "Kiswahili"
         ENGLISH -> "English"
+        SPANISH -> "Spanish (Español)"
+        FRENCH -> "French (Français)"
+        PORTUGUESE -> "Portuguese (Português)"
+        GERMAN -> "German (Deutsch)"
+        ITALIAN -> "Italian (Italiano)"
+        DUTCH -> "Dutch (Nederlands)"
+        JAPANESE -> "Japanese (日本語)"
+        KOREAN -> "Korean (한국어)"
+        MANDARIN -> "Mandarin (中文)"
+        HINDI -> "Hindi (हिन्दी)"
+        ARABIC -> "Arabic (العربية)"
+        INDONESIAN -> "Indonesian (Bahasa Indonesia)"
+        VIETNAMESE -> "Vietnamese (Tiếng Việt)"
+        TURKISH -> "Turkish (Türkçe)"
+        RUSSIAN -> "Russian (Русский)"
+        POLISH -> "Polish (Polski)"
         else -> languageCode
     }
 }

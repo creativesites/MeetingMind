@@ -12,6 +12,12 @@ data class OutgoingMessage(val subject: String, val body: String)
 data class FollowUpLine(val text: String, val owner: String? = null, val dueAt: Long? = null, val dueText: String? = null)
 
 /**
+ * How long a follow-up is. A deterministic section filter, not a rewrite: Short leaves out the
+ * "Still open" questions; Detailed keeps every section. The words of each line never change.
+ */
+enum class FollowUpLength(val label: String) { SHORT("Short"), DETAILED("Detailed") }
+
+/**
  * Picks the channel a follow-up is offered on first (docs/PLAN_PROFESSIONAL.md §6.5). The other
  * channels always stay one tap away.
  */
@@ -52,7 +58,8 @@ object FollowUpWriter {
         val questions: List<FollowUpLine>,
         val senderName: String?,
         val settings: WorkSettings,
-        val tone: Tone = settings.tone
+        val tone: Tone = settings.tone,
+        val length: FollowUpLength = FollowUpLength.DETAILED
     )
 
     fun compose(input: Input, channel: Channel, now: Long = System.currentTimeMillis()): OutgoingMessage {
@@ -86,7 +93,9 @@ object FollowUpWriter {
                 who + t.text.trimEnd('.') + due(t)
             }
         )
-        section(if (tone == Tone.BRIEF) "Open" else "Still open", input.questions.map { it.text.trim().let { q -> if (q.endsWith("?")) q else "$q?" } })
+        if (input.length == FollowUpLength.DETAILED) {
+            section(if (tone == Tone.BRIEF) "Open" else "Still open", input.questions.map { it.text.trim().let { q -> if (q.endsWith("?")) q else "$q?" } })
+        }
         lines += ""
         lines += when (tone) {
             Tone.FORMAL -> "Please let me know if I have missed or misunderstood anything."

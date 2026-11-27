@@ -1,12 +1,22 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -16,9 +26,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.craftflowtechnologies.meetingmind.core.calendar.CalendarExporter
+import com.craftflowtechnologies.meetingmind.core.circles2.BringItem
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.EventDraft
 import com.craftflowtechnologies.meetingmind.core.circles2.Rsvp
@@ -33,6 +45,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -67,13 +80,49 @@ fun EventsSection(events: List<CircleEvent>, now: Long, onOpen: (CircleEvent) ->
 
 @Composable
 private fun EventRow(e: CircleEvent, onOpen: (CircleEvent) -> Unit) {
+    val context = LocalContext.current
     val where = e.location.takeIf { it.isNotBlank() }
     val sub = if (where != null) "${whenText(e.startsAt, e.timeZone)} · $where" else whenText(e.startsAt, e.timeZone)
+    val hasJoin = !e.cancelled && !e.onlineUrl.isNullOrBlank()
     ListRow(
         title = e.title,
         subtitle = sub,
         meta = if (e.cancelled) "Cancelled" else null,
         leading = { DayTile(e) },
+        trailing = if (hasJoin) {
+            {
+                Surface(
+                    shape = MM.radius.pill,
+                    color = MM.colors.accentWash,
+                    modifier = Modifier.clip(MM.radius.pill).clickable {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(e.onlineUrl))
+                            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        } catch (_: ActivityNotFoundException) {
+                        } catch (_: Throwable) {
+                        }
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Videocam,
+                            contentDescription = "Join event",
+                            tint = MM.colors.accent,
+                            modifier = Modifier.size(MMSize.iconSmall)
+                        )
+                        Text(
+                            "Join",
+                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = MM.colors.accent
+                        )
+                    }
+                }
+            }
+        } else null,
         onClick = { onOpen(e) }
     )
 }
@@ -83,25 +132,25 @@ private fun DayTile(e: CircleEvent) {
     Column(
         modifier = Modifier
             .size(width = 54.dp, height = 58.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(MM.radius.card)
             .background(CirclesPalette.AccentSoft),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
             dayPart(e.startsAt, e.timeZone, "MMM").uppercase(),
-            style = MM.type.overline.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+            style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
             color = CirclesPalette.Accent
         )
         Text(
             dayPart(e.startsAt, e.timeZone, "d"),
-            style = MM.type.heading.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+            style = MM.type.title.copy(fontWeight = FontWeight.Bold),
             color = CirclesPalette.AccentDeep
         )
     }
 }
 
-/** Details, who is coming, the person's own answer, and admin edit or cancel. */
+/** Details, who is coming, the person's own answer, what to bring, and admin edit or cancel. */
 @Composable
 fun EventSheet(
     event: CircleEvent,
@@ -111,9 +160,14 @@ fun EventSheet(
     onRsvp: (RsvpAnswer) -> Unit,
     onEdit: () -> Unit,
     onCancel: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** Claim (true) or release (false) a bring item. Release is for the holder, or an admin. */
+    onClaimBringItem: (itemId: String, claim: Boolean) -> Unit = { _, _ -> },
+    /** Work circles call the list a checklist. */
+    isWork: Boolean = false
 ) {
     val mine = rsvps.firstOrNull { it.uid == myUid }?.answer
+    val context = LocalContext.current
     var confirmCancel by remember { mutableStateOf(false) }
     CircleSheet(onDismiss) {
         Text(event.title, style = MM.type.title, color = MM.colors.ink)
@@ -121,6 +175,16 @@ fun EventSheet(
         if (event.location.isNotBlank()) Text(event.location, style = MM.type.body, color = MM.colors.ink)
         event.onlineUrl?.let { Text("Online: $it", style = MM.type.secondary, color = MM.colors.inkSecondary) }
         if (event.description.isNotBlank()) Text(event.description, style = MM.type.body, color = MM.colors.ink)
+        if (event.bringList.isNotEmpty()) {
+            BringListBlock(
+                title = if (isWork) "Checklist" else "What to bring",
+                items = event.bringList,
+                myUid = myUid,
+                isAdmin = isAdmin,
+                enabled = !event.cancelled,
+                onClaim = onClaimBringItem
+            )
+        }
         if (event.cancelled) {
             StatusLine(StatusKind.Warning, "This event was cancelled.")
         } else {
@@ -129,6 +193,32 @@ fun EventSheet(
             Text("$going going · $maybe maybe", style = MM.type.secondary, color = MM.colors.inkSecondary)
             Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 RsvpAnswer.entries.forEach { a -> MMChip(a.label, selected = mine == a, onClick = { onRsvp(a) }) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s), modifier = Modifier.fillMaxWidth()) {
+                SecondaryButton(
+                    "Add to calendar",
+                    onClick = {
+                        val intent = CalendarExporter.buildInsertEventIntent(
+                            title = event.title,
+                            description = event.description.ifBlank { null },
+                            startMs = event.startsAt,
+                            endMs = event.endsAt,
+                            location = event.location.ifBlank { null }
+                        )
+                        runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                if (!event.onlineUrl.isNullOrBlank()) {
+                    SecondaryButton(
+                        "Join link",
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(event.onlineUrl))
+                            runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
             if (isAdmin) {
                 SecondaryButton("Edit event", onEdit, modifier = Modifier.fillMaxWidth())
@@ -147,11 +237,102 @@ fun EventSheet(
     }
 }
 
+/** The most items on one event's list. The Worker refuses more. */
+internal const val BRING_MAX = 20
+private const val BRING_TEXT_MAX = 80
+
+/** The texts an edit form starts from, so saving an event never drops its list. */
+internal fun initialBringTexts(existing: CircleEvent?): List<String> = existing?.bringList?.map { it.text }.orEmpty()
+
+/** What the form sends: trimmed, capped, blanks dropped. */
+internal fun draftBringList(texts: List<String>): List<String> =
+    texts.map { it.trim().take(BRING_TEXT_MAX) }.filter { it.isNotEmpty() }.take(BRING_MAX)
+
+/** The line under a bring item: who has it, or that nobody does yet. */
+internal fun bringStatus(item: BringItem, myUid: String?): String = when {
+    item.claimedByUid == null -> "Nobody yet"
+    item.claimedByUid == myUid -> "You're bringing this"
+    else -> "${item.claimedByName?.takeIf { it.isNotBlank() } ?: "Someone"} is bringing it"
+}
+
+@Composable
+private fun BringListBlock(
+    title: String,
+    items: List<BringItem>,
+    myUid: String?,
+    isAdmin: Boolean,
+    enabled: Boolean,
+    onClaim: (itemId: String, claim: Boolean) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+        Text(title, style = MM.type.bodyStrong, color = MM.colors.ink)
+        MMCard {
+            items.forEachIndexed { idx, item ->
+                if (idx > 0) HorizontalDivider(color = MM.colors.line)
+                BringRow(item, myUid, isAdmin, enabled, onClaim)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BringRow(item: BringItem, myUid: String?, isAdmin: Boolean, enabled: Boolean, onClaim: (itemId: String, claim: Boolean) -> Unit) {
+    val mine = myUid != null && item.claimedByUid == myUid
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = MMSize.minTouch).padding(vertical = MM.space.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(item.text, style = MM.type.body, color = MM.colors.ink)
+            Text(bringStatus(item, myUid), style = MM.type.caption, color = MM.colors.inkSecondary)
+        }
+        if (enabled) {
+            when {
+                item.claimedByUid == null -> SecondaryButton("I'll bring it", { onClaim(item.id, true) })
+                mine || isAdmin -> TextAction("Release", { onClaim(item.id, false) })
+            }
+        }
+    }
+}
+
+private data class EventTemplate(val title: String, val durationMs: Long, val description: String)
+
 /** Create or edit an event. Times come from quick choices; the Worker checks the link and the zone. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> Unit, onDismiss: () -> Unit) {
+fun EventFormSheet(
+    existing: CircleEvent?,
+    nowMs: Long,
+    onSave: (EventDraft) -> Unit,
+    onDismiss: () -> Unit,
+    space: String = "faith"
+) {
     val zone = TimeZone.getDefault().id
+    val templates = remember(space) {
+        when (space.lowercase()) {
+            "work" -> listOf(
+                EventTemplate("Weekly Standup", 30 * 60_000L, "Quick round-robin: what's done, what's next, and blockers."),
+                EventTemplate("Sprint Review", 60 * 60_000L, "Walk through completed work and collect feedback."),
+                EventTemplate("Team Sync", 45 * 60_000L, "Alignment on priorities, goals, and team updates.")
+            )
+            "learning" -> listOf(
+                EventTemplate("Study Jam", 60 * 60_000L, "Focused study session with collaborative Q&A."),
+                EventTemplate("Mock Exam Prep", 60 * 60_000L, "Practice exam questions and review tricky topics."),
+                EventTemplate("Paper Review", 45 * 60_000L, "Discussion and breakdown of assigned reading or research paper.")
+            )
+            "faith" -> listOf(
+                EventTemplate("Prayer Night", 60 * 60_000L, "Gathering for praise, intercession, and fellowship."),
+                EventTemplate("Bible Study", 60 * 60_000L, "Reading, discussion, and practical application of the Word."),
+                EventTemplate("Service", 60 * 60_000L, "Worship service and message.")
+            )
+            else -> listOf(
+                EventTemplate("Monthly Hangout", 60 * 60_000L, "Casual catch-up and community social time."),
+                EventTemplate("Workshop", 60 * 60_000L, "Hands-on learning session and interactive discussion."),
+                EventTemplate("Community Call", 45 * 60_000L, "Open floor updates and community check-in.")
+            )
+        }
+    }
     val presets = remember(nowMs) {
         listOf(Calendar.WEDNESDAY to 19, Calendar.SUNDAY to 10, Calendar.SATURDAY to 9).map { (day, hour) -> nextAt(nowMs, zone, day, hour) }
     }
@@ -160,7 +341,9 @@ fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> 
     var location by remember { mutableStateOf(existing?.location.orEmpty()) }
     var link by remember { mutableStateOf(existing?.onlineUrl.orEmpty()) }
     var startAt by remember { mutableStateOf(existing?.startsAt ?: presets.first()) }
-    val duration = existing?.let { it.endsAt - it.startsAt }?.takeIf { it > 0 } ?: HOUR_MS
+    var duration by remember { mutableStateOf(existing?.let { it.endsAt - it.startsAt }?.takeIf { it > 0 } ?: HOUR_MS) }
+    // Starts from the event's own items, so saving an edit keeps the list and the claims on unchanged items.
+    val bring = remember { mutableStateListOf<String>().apply { addAll(initialBringTexts(existing)) } }
     var showDate by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
     val dateState = rememberDatePickerState(initialSelectedDateMillis = startAt)
@@ -183,10 +366,46 @@ fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> 
 
     CircleSheet(onDismiss) {
         Text(if (existing == null) "New event" else "Edit event", style = MM.type.title, color = MM.colors.ink)
+        if (existing == null) {
+            Text("Templates", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+            ) {
+                templates.forEach { tmpl ->
+                    MMChip(
+                        label = tmpl.title,
+                        selected = title == tmpl.title,
+                        onClick = {
+                            title = tmpl.title
+                            duration = tmpl.durationMs
+                            if (description.isBlank()) {
+                                description = tmpl.description
+                            }
+                        }
+                    )
+                }
+            }
+        }
         CircleField(title, { title = it.take(80) }, "Title", placeholder = "Breakfast at Café Lumen")
         CircleField(description, { description = it.take(1000) }, "Details (optional)", minLines = 2, maxLines = 5)
         CircleField(location, { location = it.take(200) }, "Where (optional)", placeholder = "214 Maple St")
         CircleField(link, { link = it.take(300) }, "Online link (optional)", placeholder = "https://")
+        Text(
+            if (space.equals("work", ignoreCase = true)) "Checklist (optional)" else "What to bring (optional)",
+            style = MM.type.bodyStrong,
+            color = MM.colors.ink
+        )
+        bring.forEachIndexed { idx, text ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                CircleField(text, { bring[idx] = it.take(BRING_TEXT_MAX) }, "Item ${idx + 1}", modifier = Modifier.weight(1f))
+                TextAction("Remove", { bring.removeAt(idx) })
+            }
+        }
+        if (bring.size < BRING_MAX) {
+            SecondaryButton("Add item", { bring.add("") }, modifier = Modifier.fillMaxWidth())
+        }
+        Text("${bring.size} of $BRING_MAX", style = MM.type.caption, color = MM.colors.inkMuted)
         Text("When", style = MM.type.bodyStrong, color = MM.colors.ink)
         Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
             presets.forEachIndexed { i, at ->
@@ -200,7 +419,14 @@ fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> 
         Text("${whenText(startAt, zone)} · shown in ${zone.replace('_', ' ')}", style = MM.type.secondary, color = MM.colors.inkSecondary)
         PrimaryButton(
             if (existing == null) "Add event" else "Save event",
-            { onSave(EventDraft(title.trim(), description.trim(), location.trim(), link.trim().ifBlank { null }, startAt, startAt + duration, zone)) },
+            {
+                onSave(
+                    EventDraft(
+                        title.trim(), description.trim(), location.trim(), link.trim().ifBlank { null }, startAt, startAt + duration, zone,
+                        bringList = draftBringList(bring.toList())
+                    )
+                )
+            },
             enabled = title.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         )

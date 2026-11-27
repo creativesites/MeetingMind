@@ -162,7 +162,8 @@ test("post photos: at most four, from this circle, uploaded by the poster, image
   const W = world();
   const id = await circle(W);
   const a = await uploadFile(W, "owner", id);
-  const b = await uploadFile(W, "owner", id, { kind: "file", mime: "application/pdf", data: pdf() });
+  const voiceData = new Uint8Array([0, 0, 0, 0x20, ...new TextEncoder().encode("ftyp"), ...Array(56).fill(1)]);
+  const b = await uploadFile(W, "owner", id, { kind: "voice", mime: "audio/mp4", data: voiceData });
   const att = (path, extra = {}) => ({ path, mime: "image/jpeg", bytes: 64, ...extra });
   // Photo-only post (empty body) is allowed when attachments are present
   const { postId } = await W.call("owner", "createPost", { circleId: id, type: "testimony", body: "", anonymous: false, attachments: [att(a, { w: 800, h: 600 })] });
@@ -174,7 +175,9 @@ test("post photos: at most four, from this circle, uploaded by the poster, image
 
   assert.equal((await W.err("owner", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [1, 2, 3, 4, 5].map(() => att(a)) })).code, "bad_request");
   assert.equal((await W.err("owner", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [att(`circles/other/media/${a.split("/").pop()}`)] })).code, "bad_request");
-  assert.equal((await W.err("owner", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [att(b)] })).code, "bad_request");
+  const voiceErr = await W.err("owner", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [att(b)] });
+  assert.equal(voiceErr.code, "bad_request");
+  assert.equal(voiceErr.message, "Posts can only include photos, videos, or PDFs.");
   await joinAs(W, "pat", id, "Pat");
   assert.equal((await W.err("pat", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [att(a)] })).status, 403);
   assert.equal((await W.err("owner", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [att(`circles/${id}/media/00000000-0000-4000-8000-000000000000`)] })).status, 404);
@@ -200,6 +203,19 @@ test("cover: an admin sets an uploaded image; members and non-images are refused
   assert.equal(W.db.dump(C(id)).coverPath, img);
   await W.call("owner", "updateCircle", { circleId: id, coverPath: null });
   assert.equal(W.db.dump(C(id)).coverPath, null);
+});
+
+test("cover: a picture from the app's image pack is stored as a reference; anything else that looks like one is refused", async () => {
+  const W = world();
+  const id = await circle(W);
+  await joinAs(W, "pat", id, "Pat");
+  await W.call("owner", "updateCircle", { circleId: id, coverPath: "pack:photo_206" });
+  assert.equal(W.db.dump(C(id)).coverPath, "pack:photo_206");
+  assert.equal((await W.err("pat", "updateCircle", { circleId: id, coverPath: "pack:photo_510" })).status, 403);
+  for (const badRef of ["pack:../secret", "pack:photo_", "pack:photo_12x", "pack:other_1", "PACK:photo_1"]) {
+    assert.equal((await W.err("owner", "updateCircle", { circleId: id, coverPath: badRef })).code, "bad_request", badRef);
+  }
+  assert.equal(W.db.dump(C(id)).coverPath, "pack:photo_206");
 });
 
 test("sweep: old unreferenced media goes; media a message, post, pending request or cover uses stays; recent media stays", async () => {
@@ -232,3 +248,34 @@ test("sweep: old unreferenced media goes; media a message, post, pending request
   assert.equal(W.r2.objs.has(orphan), false);
   for (const k of [inMessage, inPost, inPending, inCover, recent]) assert.equal(W.r2.objs.has(k), true, k);
 });
+
+test("checkPostAttachments: accepts PDF files and videos, preserving name and video durationMs", async () => {
+  const W = world();
+  const id = await circle(W);
+  const pdfPath = await uploadFile(W, "owner", id, { kind: "file", mime: "application/pdf", data: pdf() });
+  const vidData = new Uint8Array([0, 0, 0, 0x18, ...new TextEncoder().encode("ftypmp42"), ...Array(52).fill(2)]);
+  const vidPath = await uploadFile(W, "owner", id, { kind: "video", mime: "video/mp4", data: vidData });
+
+  const { postId } = await W.call("owner", "createPost", {
+    circleId: id,
+    type: "note",
+    body: "Study notes and recording",
+    anonymous: false,
+    attachments: [
+      { path: pdfPath, mime: "application/pdf", bytes: 64, name: "Lecture1.pdf" },
+      { path: vidPath, mime: "video/mp4", bytes: 64, durationMs: 25000, name: "Recording.mp4" },
+    ],
+  });
+
+  const post = W.db.dump(C(id) + `/posts/${postId}`);
+  assert.equal(post.attachments.length, 2);
+  assert.equal(post.attachments[0].kind, "file");
+  assert.equal(post.attachments[0].path, pdfPath);
+  assert.equal(post.attachments[0].name, "Lecture1.pdf");
+  assert.equal(post.attachments[1].kind, "video");
+  assert.equal(post.attachments[1].path, vidPath);
+  assert.equal(post.attachments[1].durationMs, 25000);
+  assert.equal(post.attachments[1].name, "Recording.mp4");
+  assert.deepEqual(post.attachmentPaths, [pdfPath, vidPath]);
+});
+

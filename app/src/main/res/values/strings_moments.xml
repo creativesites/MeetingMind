@@ -6,10 +6,10 @@
 -->
 <resources>
     <!-- First Keep -->
-    <string name="companion_moment_first_keep_headline">Your first note is ready.</string>
+    <string name="companion_moment_first_keep_headline">Your note is ready.</string>
     <!-- %1$s: the user's own name. -->
-    <string name="companion_moment_first_keep_headline_named">%1$s, your first note is ready.</string>
-    <string name="companion_moment_first_keep_headline_sermon">Your first sermon notes are ready.</string>
+    <string name="companion_moment_first_keep_headline_named">%1$s, your note is ready.</string>
+    <string name="companion_moment_first_keep_headline_sermon">Your sermon notes are ready.</string>
     <!-- Every-note First Keep (founder decision 9): a later note, not the first one. -->
     <string name="companion_moment_keep_headline">Your note is ready.</string>
     <string name="companion_moment_keep_headline_sermon">Your sermon notes are ready.</string>
@@ -24,7 +24,26 @@
     <string name="companion_moment_open_note">Open note</string>
     <string name="companion_moment_share">Share a moment</string>
     <!-- %1$s: note title. -->
-    <string name="companion_moment_first_keep_announcement">Your first note is ready. %1$s.</string>
+    <string name="companion_moment_first_keep_announcement">Your note is ready. %1$s.</string>
+    <!-- The note-opening reveal (OpenReveal): a headline and a sub line per kind of note. -->
+    <string name="moment_reveal_meeting_headline">Your meeting notes</string>
+    <string name="moment_reveal_meeting_sub">Decisions and next steps, in one place.</string>
+    <plurals name="moment_reveal_meeting_sub_actions">
+        <item quantity="one">%d action item, kept.</item>
+        <item quantity="other">%d action items, kept.</item>
+    </plurals>
+    <string name="moment_reveal_interview_headline">Your interview notes</string>
+    <string name="moment_reveal_interview_sub">Questions, answers and the best quotes.</string>
+    <string name="moment_reveal_lecture_headline">Your lecture notes</string>
+    <string name="moment_reveal_lecture_sub">Ready when you are to revise.</string>
+    <string name="moment_reveal_research_headline">Your research notes</string>
+    <string name="moment_reveal_research_sub">Findings, sources and questions, together.</string>
+    <string name="moment_reveal_sermon_headline">Your sermon notes</string>
+    <string name="moment_reveal_faith_headline">Your reflection</string>
+    <string name="moment_reveal_faith_sub">Every word, kept.</string>
+    <string name="moment_reveal_ideas_headline">Your ideas</string>
+    <string name="moment_reveal_ideas_sub">Every spark, kept.</string>
+    <string name="moment_reveal_personal_headline">Your note</string>
     <!-- The onboarding sample (hello) First Keep. -->
     <string name="companion_moment_hello_headline">Here\'s what a note looks like.</string>
     <string name="companion_moment_hello_example">Example</string>

@@ -5,7 +5,11 @@ import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.core.audio.AudioFormatConverter
 import com.craftflowtechnologies.meetingmind.core.audio.CloudAudio
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -63,6 +67,144 @@ class GeminiHttpTransport(
         if (result !is AiResult.Success) GeminiLog.add("✗ ${request.modelId}: ${(result as? AiResult.Failed)?.message ?: (result as? AiResult.ModelUnavailable)?.message ?: result.javaClass.simpleName}")
         result
     }
+
+    override fun stream(request: GeminiRequest): Flow<AiStreamEvent> = flow {
+        GeminiLog.attach(credentials.appContext)
+        val route = GeminiRoutes.resolve(credentials, baseUrl, managedUrl)
+        if (route == null) {
+            lastKnownConfigured = false
+            emit(
+                AiStreamEvent.Failed(
+                    AiResult.ModelUnavailable(
+                        request.modelId,
+                        "No Gemini API key is set. Add one in Settings to use Internet mode."
+                    )
+                )
+            )
+            return@flow
+        }
+        lastKnownConfigured = true
+
+        if (request.transcription != null) {
+            when (val res = execute(request)) {
+                is AiResult.Success -> {
+                    if (res.value.isNotEmpty()) emit(AiStreamEvent.TextDelta(res.value))
+                    emit(AiStreamEvent.Completed(text = res.value))
+                }
+                else -> emit(AiStreamEvent.Failed(res as AiResult<Nothing>))
+            }
+            return@flow
+        }
+
+        val startedAt = System.currentTimeMillis()
+        try {
+            val fileUri = request.audioFile?.let { file ->
+                coroutineContext.ensureActive()
+                when (val upload = uploadAudio(route, file, request)) {
+                    is AiResult.Success -> upload.value.first
+                    else -> {
+                        emit(AiStreamEvent.Failed(upload as AiResult<Nothing>))
+                        return@flow
+                    }
+                }
+            }
+            coroutineContext.ensureActive()
+
+            val body = buildGenerateBody(request, fileUri)
+            val httpRequest = route.builder("/v1beta/models/${request.modelId}:streamGenerateContent?alt=sse", operation = true)
+                .addHeader("Accept", "text/event-stream")
+                .post(body.toString().toRequestBody(JSON_MIME))
+                .build()
+
+            val hasMedia = fileUri != null || !request.externalMediaUri.isNullOrBlank()
+            val timeoutMs = request.timeoutMs ?: if (hasMedia) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS
+            val call = client.newBuilder().callTimeout(timeoutMs, TimeUnit.MILLISECONDS).build().newCall(httpRequest)
+            val cancelReg = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+            try {
+                call.execute().use { response ->
+                    UsageMeter.observe(response.code, response.headers)
+                    if (!response.isSuccessful) {
+                        val errBody = response.body?.string().orEmpty()
+                        val failure = describeHttpFailure(if (fileUri != null) "Analysing the recording" else "Writing", response.code, errBody)
+                        GeminiLog.add("Stream ${request.modelId} → HTTP ${response.code}")
+                        emit(AiStreamEvent.Failed(failure))
+                        return@flow
+                    }
+                    val source = response.body?.source() ?: run {
+                        emit(AiStreamEvent.Failed(AiResult.Failed("Gemini returned an empty stream.")))
+                        return@flow
+                    }
+                    val fullText = StringBuilder()
+                    val collectedCalls = mutableListOf<GeminiFunctionCall>()
+                    var lastUsage: GeminiUsage? = null
+                    var lastFinishReason: String? = null
+                    var ttftMs: Long? = null
+
+                    SseStreamReader.readEvents(source) { payload ->
+                        coroutineContext.ensureActive()
+                        val chunk = SseStreamReader.parseGeminiChunk(payload) ?: return@readEvents
+                        if (chunk.thoughtDelta.isNotEmpty()) {
+                            if (ttftMs == null) ttftMs = System.currentTimeMillis() - startedAt
+                            emit(AiStreamEvent.ThinkingDelta(chunk.thoughtDelta))
+                        }
+                        if (chunk.textDelta.isNotEmpty()) {
+                            if (ttftMs == null) ttftMs = System.currentTimeMillis() - startedAt
+                            fullText.append(chunk.textDelta)
+                            emit(AiStreamEvent.TextDelta(chunk.textDelta))
+                        }
+                        if (chunk.functionCalls.isNotEmpty()) {
+                            if (ttftMs == null) ttftMs = System.currentTimeMillis() - startedAt
+                            collectedCalls += chunk.functionCalls
+                            emit(AiStreamEvent.FunctionCalls(chunk.functionCalls))
+                        }
+                        chunk.usage?.let { lastUsage = it }
+                        chunk.finishReason?.let { lastFinishReason = it }
+                    }
+
+                    val finalText = fullText.toString()
+                    val durationMs = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
+                    val succeeded = !(finalText.isBlank() && collectedCalls.isEmpty())
+                    AiTelemetry.record(
+                        AiCallMetric(
+                            timestampMs = System.currentTimeMillis(),
+                            provider = if (route.managed) "Gemini Proxy" else "Gemini",
+                            modelId = request.modelId,
+                            streamed = true,
+                            ttftMs = ttftMs,
+                            durationMs = durationMs,
+                            promptTokens = lastUsage?.promptTokens ?: 0,
+                            cachedTokens = lastUsage?.cachedTokens ?: 0,
+                            outputTokens = lastUsage?.outputTokens ?: 0,
+                            success = succeeded
+                        )
+                    )
+
+                    if (!succeeded) {
+                        val reason = when (lastFinishReason) {
+                            "SAFETY", "RECITATION", "PROHIBITED_CONTENT" -> "Gemini stopped early ($lastFinishReason)."
+                            "MAX_TOKENS" -> "Gemini's answer was cut off (token limit reached)."
+                            else -> "Gemini returned no usable content."
+                        }
+                        emit(AiStreamEvent.Failed(AiResult.Failed(reason)))
+                    } else {
+                        emit(AiStreamEvent.Completed(finalText, collectedCalls.toList(), lastUsage, ttftMs))
+                    }
+                }
+            } finally {
+                cancelReg?.dispose()
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: java.io.InterruptedIOException) {
+            emit(AiStreamEvent.Failed(AiResult.Failed("Gemini took too long to answer. Check your connection and try again.", e)))
+        } catch (e: java.net.UnknownHostException) {
+            emit(AiStreamEvent.Failed(AiResult.Failed("No internet connection — couldn't reach Gemini.", e)))
+        } catch (e: java.io.IOException) {
+            emit(AiStreamEvent.Failed(AiResult.Failed("Couldn't reach Gemini: ${e.message ?: "network error"}", e)))
+        } catch (e: Exception) {
+            emit(AiStreamEvent.Failed(AiResult.Failed(e.message ?: "Gemini stream failed.", e)))
+        }
+    }.flowOn(Dispatchers.IO)
 
     private suspend fun executeLogged(request: GeminiRequest): AiResult<String> = withContext(Dispatchers.IO) {
         val route = GeminiRoutes.resolve(credentials, baseUrl, managedUrl)
@@ -265,27 +407,50 @@ class GeminiHttpTransport(
 
     // ── generateContent ──────────────────────────────────────────────────────────────────────
 
-    private suspend fun generateContent(route: GeminiRoute, request: GeminiRequest, fileUri: String?): AiResult<String> {
-        val parts = JSONArray().put(JSONObject().put("text", buildPrompt(request)))
-        if (fileUri != null) {
-            parts.put(
-                JSONObject().put(
-                    "file_data",
-                    JSONObject().put("mime_type", AUDIO_MIME).put("file_uri", fileUri)
-                )
-            )
-        }
+    private fun buildGenerateBody(request: GeminiRequest, fileUri: String?): JSONObject {
+        val contents = request.contentsJson?.let { runCatching { JSONArray(it) }.getOrNull() }
+            ?: run {
+                val parts = JSONArray()
+                val extUri = request.externalMediaUri?.takeIf { it.isNotBlank() }
+                if (extUri != null) {
+                    parts.put(
+                        JSONObject().put(
+                            "file_data",
+                            JSONObject().put("mime_type", request.externalMediaMimeType).put("file_uri", extUri)
+                        )
+                    )
+                }
+                parts.put(JSONObject().put("text", buildPrompt(request)))
+                if (fileUri != null) {
+                    parts.put(
+                        JSONObject().put(
+                            "file_data",
+                            JSONObject().put("mime_type", AUDIO_MIME).put("file_uri", fileUri)
+                        )
+                    )
+                }
+                JSONArray().put(JSONObject().put("role", "user").put("parts", parts))
+            }
 
         val generationConfig = JSONObject().put("temperature", request.temperature.toDouble())
+        request.maxOutputTokens?.let { generationConfig.put("maxOutputTokens", it) }
         if (request.responseSchema != null) {
             // Structured output, so nothing downstream has to parse prose. See
             // GeminiTranscriptParser and GeminiIntelligenceEngine's schemas.
             generationConfig.put("response_mime_type", "application/json")
             generationConfig.put("response_schema", JSONObject(request.responseSchema))
+        } else if (request.jsonOutput) {
+            generationConfig.put("response_mime_type", "application/json")
+        }
+        if (request.thinkingLevel != null || request.includeThoughts) {
+            val thinking = JSONObject()
+            request.thinkingLevel?.let { thinking.put("thinkingLevel", it.name) }
+            if (request.includeThoughts) thinking.put("includeThoughts", true)
+            generationConfig.put("thinkingConfig", thinking)
         }
 
         val body = JSONObject()
-            .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
+            .put("contents", contents)
             .put("generationConfig", generationConfig)
         if (request.systemInstruction.isNotBlank()) {
             body.put(
@@ -293,14 +458,31 @@ class GeminiHttpTransport(
                 JSONObject().put("parts", JSONArray().put(JSONObject().put("text", request.systemInstruction)))
             )
         }
+        request.cachedContent?.takeIf { it.isNotBlank() }?.let { body.put("cachedContent", it) }
+        request.toolsJson?.let { runCatching { JSONArray(it) }.getOrNull() }?.let { tools ->
+            body.put("tools", tools)
+            request.toolMode?.takeIf { it.isNotBlank() }?.let { mode ->
+                body.put(
+                    "toolConfig",
+                    JSONObject().put("functionCallingConfig", JSONObject().put("mode", mode))
+                )
+            }
+        }
+        return body
+    }
+
+    private suspend fun generateContent(route: GeminiRoute, request: GeminiRequest, fileUri: String?): AiResult<String> {
+        val body = buildGenerateBody(request, fileUri)
 
         val httpRequest = route.builder("/v1beta/models/${request.modelId}:generateContent", operation = true)
             .post(body.toString().toRequestBody(JSON_MIME))
             .build()
 
-        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: if (fileUri != null) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS, "${if (fileUri != null) "Analyse audio" else "Write"} with ${request.modelId}")
-        if (!reply.ok) return describeHttpFailure(if (fileUri != null) "Analysing the recording" else "Writing", reply.code, reply.body)
-        return extractText(reply.body)?.let { AiResult.Success(it) } ?: AiResult.Failed("Gemini returned no usable content.")
+        val hasMedia = fileUri != null || !request.externalMediaUri.isNullOrBlank()
+        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: if (hasMedia) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS, "${if (hasMedia) "Analyse media" else "Write"} with ${request.modelId}")
+        if (!reply.ok) return describeHttpFailure(if (hasMedia) "Analysing the recording" else "Writing", reply.code, reply.body)
+        return extractText(reply.body)?.let { AiResult.Success(it) }
+            ?: AiResult.Failed(describeEmptyResponse(reply.body))
     }
 
     /**
@@ -340,10 +522,10 @@ class GeminiHttpTransport(
             }
     }
 
-    /** A 500 or 503 is Gemini being busy: one more try after a pause, then the error stands. */
+    /** A transient 408/500/502/503/504 gets one more try after a pause, then the error stands. */
     private suspend fun sendWithRetry(request: Request, timeoutMs: Long, label: String): Reply {
         val first = send(request, timeoutMs, label)
-        if (first.code != 500 && first.code != 503) return first
+        if (first.code !in RETRYABLE_HTTP_CODES) return first
         kotlinx.coroutines.delay(RETRY_DELAY_MS)
         return send(request, timeoutMs, "$label (retry)")
     }
@@ -362,6 +544,20 @@ class GeminiHttpTransport(
             append(request.vocabularyHints.joinToString(", "))
         }
     }
+
+    private fun describeEmptyResponse(responseBody: String): String = runCatching {
+        val root = JSONObject(responseBody)
+        val blockReason = root.optJSONObject("promptFeedback")?.optString("blockReason")?.takeIf { it.isNotBlank() }
+        val finishReason = root.optJSONArray("candidates")?.optJSONObject(0)?.optString("finishReason")?.takeIf { it.isNotBlank() }
+        when {
+            blockReason != null -> "Gemini blocked this request ($blockReason)."
+            finishReason == "SAFETY" || finishReason == "RECITATION" || finishReason == "PROHIBITED_CONTENT" ->
+                "Gemini stopped early ($finishReason)."
+            finishReason == "MAX_TOKENS" -> "Gemini's answer was cut off (token limit reached). Try a shorter selection."
+            finishReason != null && finishReason != "STOP" -> "Gemini returned no usable content ($finishReason)."
+            else -> "Gemini returned no usable content."
+        }
+    }.getOrDefault("Gemini returned no usable content.")
 
     private fun extractText(responseBody: String): String? = try {
         val candidates = JSONObject(responseBody).optJSONArray("candidates")
@@ -385,21 +581,24 @@ class GeminiHttpTransport(
      * when there is one, because it is usually more specific than anything guessed from a code.
      */
     private fun describeHttpFailure(stage: String, code: Int, body: String?): AiResult<Nothing> {
+        val rawBody = body.orEmpty()
+        val parsed = GeminiErrors.fromHttp(code, rawBody)
         val serverMessage = try {
-            JSONObject(body.orEmpty()).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
+            JSONObject(rawBody).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
         } catch (e: org.json.JSONException) {
             null
         }
         // Never log the body: a failed transcription request's error can echo prompt content.
         Log.w(TAG, "$stage failed with HTTP $code")
-        return when (code) {
-            400 -> AiResult.Failed("$stage failed: Gemini rejected the request. ${serverMessage.orEmpty()}".trim())
-            401, 403 -> AiResult.Failed(
-                "$stage failed: your Gemini API key was rejected. Check it in Settings. ${serverMessage.orEmpty()}".trim()
+        return when {
+            parsed.kind == GeminiErrorKind.AUTH -> AiResult.Failed(
+                "$stage failed: your Gemini API key was rejected. Check it in Settings. ${serverMessage.orEmpty()}".trim(), retryable = false
             )
-            402 -> AiResult.Failed("$stage needs a MeetingMind plan. See Plans in Settings, or process this recording offline.")
-            429 -> AiResult.Failed("$stage failed: the cloud allowance or quota is used up. Try again later, or process this recording offline.")
-            in 500..599 -> AiResult.Failed("$stage failed: Gemini is unavailable right now. Try again shortly.")
+            code == 400 -> AiResult.Failed("$stage failed: Gemini rejected the request. ${serverMessage.orEmpty()}".trim(), retryable = false)
+            code == 402 -> AiResult.Failed("$stage needs a MeetingMind plan. See Plans in Settings, or process this recording offline.", retryable = false)
+            // A quota reached now may well have room again shortly, so this one stays retryable.
+            code == 429 -> AiResult.Failed("$stage failed: the cloud allowance or quota is used up. Try again later, or process this recording offline.")
+            code in 500..599 -> AiResult.Failed("$stage failed: Gemini is unavailable right now. Try again shortly.")
             else -> AiResult.Failed("$stage failed (HTTP $code). ${serverMessage.orEmpty()}".trim())
         }
     }
@@ -478,6 +677,7 @@ class GeminiHttpTransport(
         private const val SHORT_TIMEOUT_MS = 30_000L
         private const val TEXT_TIMEOUT_MS = 3 * 60_000L
         private const val LONG_TIMEOUT_MS = 10 * 60_000L
+        private val RETRYABLE_HTTP_CODES = setOf(408, 500, 502, 503, 504)
         internal var RETRY_DELAY_MS = 2_000L
 
         /** Generous timeouts: a meeting chunk is a large upload and transcription is not fast. */

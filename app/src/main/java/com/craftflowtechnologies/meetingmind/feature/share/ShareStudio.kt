@@ -130,6 +130,7 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
     var lastStyle by remember { mutableStateOf(ImageStyle.LANDSCAPE) }
     var currentTheme by remember { mutableStateOf(request.theme) }
     var showThemeEdit by remember { mutableStateOf(false) }
+    var includeAppLink by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
 
@@ -168,9 +169,22 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
     fun send(target: ShareTarget) {
         if (sending) return
         sending = true
+        val caption = if (includeAppLink) {
+            com.craftflowtechnologies.meetingmind.core.share.AppLinks.shortCaptionWithLink(request.caption)
+        } else {
+            request.caption
+        }
         scope.launch {
-            val file = withContext(Dispatchers.Default) { ShareActions.saveToCache(context, ShareCardRenderer.render(context, request.content, style)) }
-            message = runCatching { ShareActions.send(context, file, target, request.caption) }.getOrElse { "Couldn't open that app." }
+            // Rendering and saving the card can fail (disk full, out of memory): say so, never crash.
+            val file = try {
+                withContext(Dispatchers.Default) { ShareActions.saveToCache(context, ShareCardRenderer.render(context, request.content, style)) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                sending = false
+                throw e
+            } catch (t: Throwable) {
+                null
+            }
+            message = if (file == null) "Couldn't make the card. Try again." else runCatching { ShareActions.send(context, file, target, caption) }.getOrElse { "Couldn't open that app." }
             sending = false
         }
     }
@@ -267,7 +281,10 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
                 Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Shade", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.width(56.dp))
                     Slider(value = style.scrim, onValueChange = { style = style.copy(scrim = it) }, valueRange = 0f..0.8f, modifier = Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = Gold, activeTrackColor = Gold))
-                    Chip("Mark", style.watermark) { style = style.copy(watermark = !style.watermark) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Chip("App link", includeAppLink) { includeAppLink = !includeAppLink }
+                        Chip("Mark", style.watermark) { style = style.copy(watermark = !style.watermark) }
+                    }
                 }
                 Text("The source and translation are always printed on the card.", fontSize = 11.5.sp, color = InkMuted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
             }
@@ -275,7 +292,17 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
                 Target("WhatsApp", Color(0xFF25D366), "W") { send(ShareTarget.WHATSAPP) }
                 Target("Instagram", Color(0xFFE1306C), "IG") { send(ShareTarget.INSTAGRAM_STORY) }
                 TargetIcon("Save", Icons.Filled.Download) { send(ShareTarget.SAVE) }
-                request.audioPath?.let { path -> TargetIcon("Audio", Icons.Filled.GraphicEq) { message = ShareActions.shareAudio(context, File(path), request.caption) } }
+                request.audioPath?.let { path ->
+                    val audioCaption = if (includeAppLink) {
+                        com.craftflowtechnologies.meetingmind.core.share.AppLinks.shortCaptionWithLink(request.caption)
+                    } else {
+                        request.caption
+                    }
+                    TargetIcon("Audio", Icons.Filled.GraphicEq) {
+                        // The audio file may have been removed since the card opened.
+                        message = runCatching { ShareActions.shareAudio(context, File(path), audioCaption) }.getOrElse { "Couldn't share the audio. It may have been removed." }
+                    }
+                }
                 TargetIcon("More", Icons.Filled.Share) { send(ShareTarget.ANY) }
             }
         }

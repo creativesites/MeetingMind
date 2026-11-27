@@ -21,11 +21,9 @@ class WorkPageLogicTest {
         id, title, "", null, RecordingType.MEETING, at, false, false, false, NoteTranscriptStatus.None, 0, Cursor(at, id)
     )
 
-    @Test fun `opens on Today with meetings or things that need you, otherwise Notes`() {
-        assertEquals(WorkSegment.TODAY, defaultSegment(meetingsToday = 1, needsYou = 0))
-        assertEquals(WorkSegment.TODAY, defaultSegment(meetingsToday = 0, needsYou = 2))
-        assertEquals(WorkSegment.TODAY, defaultSegment(meetingsToday = 3, needsYou = 2))
-        assertEquals(WorkSegment.NOTES, defaultSegment(meetingsToday = 0, needsYou = 0))
+    @Test fun `the panes follow the in-vertical bar order, after Home`() {
+        assertEquals(listOf("pulse", "tasks", "notes", "projects", "decisions"), WorkSegment.entries.map { it.barKey })
+        assertEquals(WorkSegment.PULSE, WorkSegment.entries.first())
     }
 
     @Test fun `Meetings and My notes exclude each other, other chips stack`() {

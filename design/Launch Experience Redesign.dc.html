@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MeetingMind 1.0 — Launch Experience Redesign (for founder approval)</title>
+<meta name="design_doc_mode" content="canvas">
+<!-- Self-contained design artifact, same canvas conventions as the other design/*.dc.html files:
+     numbered turns, id badges, #id deep links. Frames are drawn at 360 dp, the narrowest supported
+     width, so every layout here is proven at the floor. Every phone is live: tap through it.
+     "Reset" under a frame restores its first screen. Companion doc: design/launch-experience-audit.md -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:#EDEEF2;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#1a1a1a;-webkit-font-smoothing:antialiased}
+/* ── canvas chrome ── */
+.dv-top{position:sticky;top:0;z-index:50;background:rgba(237,238,242,.94);backdrop-filter:blur(8px);border-bottom:1px solid rgba(0,0,0,.08);padding:10px 40px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dv-top b{font:600 13px "Helvetica Neue",sans-serif;margin-right:12px}
+.dv-top a{font:500 12px "Helvetica Neue",sans-serif;color:#333;text-decoration:none;padding:6px 8px;border-radius:6px}
+.dv-top a:hover{background:rgba(0,0,0,.06)}
+.dv-intro{padding:40px 40px 10px;max-width:1240px}
+.dv-intro h1{font:600 30px/1.15 "Helvetica Neue",sans-serif;letter-spacing:-.6px;margin:0 0 10px}
+.dv-intro p,.dv-sec p.lead{font:14px/1.6 "Helvetica Neue",sans-serif;color:rgba(0,0,0,.66);margin:0 0 10px;max-width:920px}
+.dv-gate{display:inline-flex;gap:8px;align-items:center;background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:8px;padding:8px 12px;font:600 12px "Helvetica Neue",sans-serif;margin:6px 0 16px}
+.dv-gate i{width:8px;height:8px;border-radius:50%;background:#D97706;display:inline-block}
+.dv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;margin:16px 0}
+.dv-card{background:#fff;border-radius:10px;padding:14px 16px;border:1px solid rgba(0,0,0,.07)}
+.dv-card h3{margin:0 0 6px;font:600 13px "Helvetica Neue",sans-serif}
+.dv-card p,.dv-card li{font:12.5px/1.55 "Helvetica Neue",sans-serif;color:rgba(0,0,0,.66);margin:0}
+.dv-card ul{margin:0;padding-left:16px}
+.dv-sec{padding:34px 40px 10px;border-top:1px solid rgba(0,0,0,.08);margin-top:24px}
+.dv-sec h2{font:600 22px/1.2 "Helvetica Neue",sans-serif;letter-spacing:-.3px;margin:0 0 6px}
+.dv-sec h2 small{font:600 11px ui-monospace,Menlo,monospace;color:rgba(0,0,0,.4);margin-right:8px;letter-spacing:.5px}
+.frames{display:flex;flex-wrap:wrap;gap:34px 28px;margin-top:22px;align-items:flex-start}
+.fr{width:376px;scroll-margin-top:70px}
+.fr:target .ph{box-shadow:0 0 0 4px #5B5BD6,0 30px 60px rgba(0,0,0,.25)}
+.cap{margin-top:12px}
+.cap .t{display:flex;gap:8px;align-items:center;font:600 14px "Helvetica Neue",sans-serif}
+.id{font:600 11px ui-monospace,Menlo,monospace;background:#1a1a1a;color:#fff;border-radius:5px;padding:2px 6px;text-decoration:none}
+.cap p,.cap li{font:12.5px/1.55 "Helvetica Neue",sans-serif;color:rgba(0,0,0,.66);margin:6px 0 0}
+.cap ul{margin:6px 0 0;padding-left:16px}
+.cap .rs{font:500 12px "Helvetica Neue",sans-serif;color:#5B5BD6;background:none;border:0;padding:0;cursor:pointer;margin-left:auto}
+.flag{display:inline-block;font:600 10px ui-monospace,monospace;padding:1px 5px;border-radius:4px;background:#FEF3C7;color:#92400E;margin-left:4px}
+.flag.r{background:#FEE2E2;color:#991B1B}.flag.g{background:#DCFCE7;color:#166534}
+/* journeys */
+.jr{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0 4px}
+.jr b{font:600 12px "Helvetica Neue",sans-serif;width:150px}
+.jr a{font:12px "Helvetica Neue",sans-serif;background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:6px;padding:5px 8px;color:#1a1a1a;text-decoration:none}
+.jr a:hover{border-color:#5B5BD6}
+.jr span{color:rgba(0,0,0,.35)}
+table.dv{border-collapse:collapse;font:12.5px/1.5 "Helvetica Neue",sans-serif;background:#fff;border-radius:8px;overflow:hidden;margin-top:12px;max-width:1100px}
+table.dv td,table.dv th{border-bottom:1px solid rgba(0,0,0,.07);padding:8px 12px;text-align:left;vertical-align:top}
+table.dv th{background:#F6F6F8;font-weight:600}
+.statbars{display:flex;gap:30px;flex-wrap:wrap;margin-top:16px}
+.statbars>div{width:360px}
+.statbars h4{font:600 12px "Helvetica Neue",sans-serif;margin:0 0 6px}
+.statbars .scrn{height:auto;border-radius:14px}
+
+/* ═══════════ the phone (Midnight Graphite tokens from ui/theme/Tokens.kt) ═══════════ */
+.ph{--bg:#0C111B;--surf:#121A27;--raised:#192434;--sunk:#080D15;--canvas:#0F1622;--track:#202C3C;--ink:#F0F3F8;--ink2:#B7C0CF;--muted:#8995A8;--faint:#536176;--line:#2A3749;--line2:#202C3A;--acc:#9B9CF6;--accw:rgba(155,156,246,.15);--ok:#4ADE80;--warn:#FBBF24;--dan:#F87171;--gold:#E0B25A;--sp1:#9B9CF6;--sp2:#C39AF0;--sp3:#4FD1A5;--sp4:#F2B447;--rec:#FF6369;
+  width:376px;height:776px;background:#05070B;border-radius:40px;padding:8px;box-shadow:0 30px 60px rgba(0,0,0,.25),inset 0 0 0 1px #2b2f38;position:relative}
+.statbars{--bg:#0C111B;--surf:#121A27;--track:#202C3C;--ink:#F0F3F8;--ink2:#B7C0CF;--muted:#8995A8;--line:#2A3749;--line2:#202C3A;--acc:#9B9CF6;--accw:rgba(155,156,246,.15)}
+.scrn{position:relative;width:360px;height:760px;border-radius:32px;overflow:hidden;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,system-ui,sans-serif}
+.sb{height:30px;display:flex;justify-content:space-between;align-items:center;padding:0 22px;font:500 13px Inter,sans-serif;color:var(--ink);position:relative;z-index:3}
+.sb::after{content:"";position:absolute;left:50%;top:8px;width:16px;height:16px;border-radius:50%;background:#000;transform:translateX(-50%)}
+.vp{position:absolute;top:30px;left:0;right:0;bottom:0}
+.ov{position:absolute;inset:30px 0 0 0;pointer-events:none;z-index:5}
+.ov.on{pointer-events:auto}
+.s{height:100%;display:flex;flex-direction:column;animation:scr .24s ease-out}
+.body{flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+.body::-webkit-scrollbar{display:none}
+@keyframes scr{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
+/* type */
+.h1{font:600 28px/1.15 Outfit,Inter,sans-serif;letter-spacing:-.3px;margin:0}
+.h2{font:600 22px/1.25 Outfit,Inter,sans-serif;margin:0}
+.h3{font:600 16px/1.35 Inter,sans-serif;margin:0}
+.p{font:15px/1.5 Inter,sans-serif;color:var(--ink2);margin:0}
+.sm{font:13px/1.45 Inter,sans-serif;color:var(--ink2)}
+.xs{font:12px/1.4 Inter,sans-serif;color:var(--muted)}
+.m{color:var(--muted)}.a{color:var(--acc)}.ok{color:var(--ok)}.wr{color:var(--warn)}.dn{color:var(--dan)}
+.ovl{font:600 11px/1.3 Inter,sans-serif;letter-spacing:.7px;text-transform:uppercase;color:var(--muted)}
+.b{font-weight:600;color:var(--ink)}
+.pad{padding-left:20px;padding-right:20px}
+.g4{height:4px}.g8{height:8px}.g12{height:12px}.g16{height:16px}.g20{height:20px}.g24{height:24px}.g32{height:32px}
+.row{display:flex;align-items:center;gap:12px}.rowt{display:flex;align-items:flex-start;gap:12px}
+.f1{flex:1;min-width:0}
+.sp{justify-content:space-between}
+/* controls */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;border-radius:16px;background:var(--ink);color:var(--bg);font:600 15px Inter,sans-serif;border:0;width:100%;cursor:pointer;padding:0 16px;text-align:center}
+.btn.sec{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.btn.acc{background:var(--acc);color:#111113}
+.btn.sm2{min-height:40px;width:auto;border-radius:12px;font-size:13px;padding:0 14px}
+.btn.dng{background:var(--dan);color:#1a0505}
+.btn:active{transform:scale(.985)}
+.lk{color:var(--acc);font:600 14px Inter,sans-serif;background:none;border:0;min-height:44px;cursor:pointer;padding:0 4px}
+.lk.m{color:var(--ink2)}
+.ib{width:48px;height:48px;border-radius:24px;border:0;background:none;color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;position:relative}
+.ib .dot{position:absolute;top:9px;right:9px;min-width:16px;height:16px;border-radius:8px;background:var(--acc);color:#111;font:700 10px/16px Inter;text-align:center;padding:0 4px}
+.hdr{display:flex;align-items:center;min-height:56px;padding:0 4px;gap:2px}
+.hdr .ht{flex:1;font:600 17px Inter,sans-serif;padding-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--surf);border:1px solid var(--line2);border-radius:18px;padding:16px}
+.card.sunk{background:var(--canvas)}
+.card.acc{background:linear-gradient(160deg,rgba(155,156,246,.18),rgba(155,156,246,.05));border-color:rgba(155,156,246,.35)}
+.card.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.35)}
+.card.dang{background:rgba(248,113,113,.08);border-color:rgba(248,113,113,.35)}
+.tag{display:inline-flex;align-items:center;gap:4px;font:600 11px/1 Inter,sans-serif;padding:5px 8px;border-radius:99px;background:var(--track);color:var(--ink2);white-space:nowrap}
+.t-rec{background:var(--accw);color:var(--acc)}.t-lt{background:rgba(74,222,128,.12);color:var(--ok)}.t-hq{background:rgba(224,178,90,.15);color:var(--gold)}
+.t-in{background:rgba(74,222,128,.12);color:var(--ok)}.t-nc{background:rgba(248,113,113,.12);color:var(--dan)}.t-cl{background:rgba(155,156,246,.12);color:var(--acc)}.t-dv{background:rgba(79,209,165,.12);color:var(--sp3)}
+.chip{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:12px;cursor:pointer;min-height:48px;background:var(--surf);font:500 14px Inter,sans-serif;color:var(--ink)}
+.chip.on{border-color:var(--acc);background:var(--accw)}
+.chip .ck{margin-left:auto;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--faint);flex:none;display:flex;align-items:center;justify-content:center}
+.chip.on .ck{background:var(--acc);border-color:var(--acc);color:#111}
+.chip.on .ck::after{content:"✓";font:700 12px Inter}
+.pill{display:inline-flex;white-space:nowrap;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:0 14px;min-height:40px;font:500 13px Inter;cursor:pointer;color:var(--ink);background:var(--surf)}
+.pill.on{border-color:var(--acc);background:var(--accw);color:var(--ink)}
+.pills{display:flex;flex-wrap:wrap;gap:8px}
+.opt{border:1px solid var(--line);border-radius:18px;padding:16px;cursor:pointer;background:var(--surf);position:relative}
+.opt.on{border-color:var(--acc);background:linear-gradient(var(--accw),var(--accw)),var(--surf)}
+.opt.dis{opacity:.55;cursor:not-allowed}
+.rd{width:22px;height:22px;border-radius:50%;border:2px solid var(--faint);flex:none;position:relative}
+.on>.row .rd,.on>.rowt .rd,.opt.on .rd{border-color:var(--acc)}
+.opt.on .rd::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--acc)}
+.sw{width:46px;height:28px;border-radius:14px;background:var(--track);position:relative;flex:none;cursor:pointer;transition:.2s}
+.sw::after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:var(--ink2);transition:.2s}
+.sw.on{background:var(--acc)}.sw.on::after{left:21px;background:#111}
+.bar{height:6px;border-radius:3px;background:var(--track);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--acc);width:var(--w,0%);border-radius:3px}
+.bar.go>i{animation:grow var(--t,5s) ease-out forwards}
+.bar.ok>i{background:var(--ok)}.bar.wr>i{background:var(--warn)}
+@keyframes grow{from{width:var(--from,0%)}to{width:var(--w)}}
+.li{display:flex;align-items:center;gap:14px;min-height:60px;padding:8px 16px;cursor:pointer}
+.li+.li{border-top:1px solid var(--line2)}
+.li .ic{color:var(--ink2)}
+.li .tt{font:500 15px/1.3 Inter;color:var(--ink)}
+.li .st{font:13px/1.35 Inter;color:var(--muted);margin-top:2px}
+.li .vl{font:13px Inter;color:var(--muted);white-space:nowrap}
+.grp{background:var(--surf);border:1px solid var(--line2);border-radius:18px;overflow:hidden}
+.gh{font:600 12px Inter;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:18px 24px 8px}
+.ic{width:22px;height:22px;flex:none;display:inline-block;vertical-align:middle}
+.ic svg{width:100%;height:100%;display:block}
+.ic.s16{width:16px;height:16px}.ic.s18{width:18px;height:18px}.ic.s28{width:28px;height:28px}.ic.s32{width:32px;height:32px}
+.bub{width:44px;height:44px;border-radius:14px;background:var(--track);display:flex;align-items:center;justify-content:center;flex:none;color:var(--ink)}
+.bub.acc{background:var(--accw);color:var(--acc)}.bub.ok{background:rgba(74,222,128,.12);color:var(--ok)}.bub.wr{background:rgba(251,191,36,.12);color:var(--warn)}.bub.dn{background:rgba(248,113,113,.12);color:var(--dan)}.bub.dv{background:rgba(79,209,165,.12);color:var(--sp3)}
+.foot{padding:12px 20px 18px;background:linear-gradient(to top,var(--bg) 70%,rgba(12,17,27,0));display:flex;flex-direction:column;gap:6px}
+.dots{display:flex;gap:6px}.dots i{height:4px;flex:1;border-radius:2px;background:var(--track)}.dots i.on{background:var(--acc)}
+/* bottom bars */
+.bn{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line2);background:var(--bg);padding:6px 4px 10px;flex:none}
+.bn a{display:flex;flex-direction:column;align-items:center;gap:4px;min-height:56px;justify-content:center;cursor:pointer;color:var(--muted);font:500 11.5px/1.1 Inter;text-decoration:none;min-width:0}
+.bn a span:last-child{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px}
+.bn a .pl{width:56px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center}
+.bn a.on{color:var(--ink)}.bn a.on .pl{background:var(--accw);color:var(--acc)}
+.bn a.new .pl{background:var(--acc);color:#111;width:52px;height:36px;border-radius:14px}
+.wb{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line2);padding:6px 4px 10px;background:var(--bg);flex:none}
+.wb a{display:flex;flex-direction:column;align-items:center;gap:4px;min-height:56px;justify-content:center;color:var(--muted);font:500 11.5px Inter;cursor:pointer;min-width:0}
+.wb a span:last-child{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wb a.on{color:var(--ink)}.wb a.on .pl{background:var(--accw);color:var(--acc)}
+.wb a .pl{width:56px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center}
+/* sheets */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.6);animation:fd .2s}
+.sh{position:absolute;left:0;right:0;bottom:0;background:var(--raised);border-radius:26px 26px 0 0;padding:10px 20px 20px;max-height:90%;overflow-y:auto;animation:up .28s cubic-bezier(.2,.8,.2,1);scrollbar-width:none}
+.sh .hd{width:36px;height:4px;border-radius:2px;background:var(--faint);margin:0 auto 14px}
+@keyframes up{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+@keyframes fd{from{opacity:0}to{opacity:1}}
+/* motion helpers */
+.seq>*{opacity:0;animation:fu .5s ease-out forwards;animation-delay:var(--d,0s)}
+@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.wave{display:flex;align-items:center;gap:3px;height:44px}
+.wave i{width:4px;border-radius:2px;background:var(--acc);height:100%;transform:scaleY(.3);animation:wv 1.1s ease-in-out infinite;animation-delay:var(--d)}
+@keyframes wv{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+.pulse{width:10px;height:10px;border-radius:50%;background:var(--rec);animation:pl 1.4s infinite}
+@keyframes pl{0%{box-shadow:0 0 0 0 rgba(255,99,105,.6)}100%{box-shadow:0 0 0 12px rgba(255,99,105,0)}}
+.spin{width:18px;height:18px;border-radius:50%;border:2.5px solid var(--track);border-top-color:var(--acc);animation:rt .9s linear infinite;flex:none}
+@keyframes rt{to{transform:rotate(360deg)}}
+.pop{animation:pp .6s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes pp{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+.skel{background:linear-gradient(90deg,var(--track) 0%,#2a3a50 50%,var(--track) 100%);background-size:200% 100%;animation:sk 1.4s infinite;border-radius:8px}
+@keyframes sk{from{background-position:200% 0}to{background-position:-200% 0}}
+.tip{background:var(--acc);color:#111113;border-radius:14px;padding:12px 14px;font:500 13.5px/1.4 Inter;position:relative;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.tip b{font-weight:600}
+.tip .x{background:none;border:0;font:600 13px Inter;color:#111;cursor:pointer;padding:6px 0 0;min-height:32px}
+.tip::after{content:"";position:absolute;width:12px;height:12px;background:var(--acc);transform:rotate(45deg);left:var(--ax,28px)}
+.tip.dn::after{bottom:-6px}.tip.upa::after{top:-6px}
+.hide{display:none}.show{display:block!important}
+.spk{font:600 12.5px Inter}
+.seg{display:flex;background:var(--track);border-radius:12px;padding:3px}
+.seg a{flex:1;text-align:center;font:500 13px Inter;padding:9px 4px;border-radius:9px;color:var(--ink2);cursor:pointer}
+.seg a.on{background:var(--raised);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.tbl{width:100%;border-collapse:collapse;font:13px/1.4 Inter}
+.tbl td{padding:10px 6px;border-bottom:1px solid var(--line2);vertical-align:top;color:var(--ink2)}
+.tbl td:first-child{color:var(--muted);width:34%}
+.tbl th{font:600 12px Inter;color:var(--ink);text-align:left;padding:6px}
+.meter{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--track)}
+.big{font-size:1.3em}
+.note-anno{position:absolute;left:8px;right:8px;bottom:8px;background:rgba(251,191,36,.95);color:#1a1200;font:600 11px/1.35 Inter;border-radius:10px;padding:8px 10px;z-index:9}
+.over{position:relative}
+.recbtn{width:84px;height:84px;border-radius:50%;background:var(--rec);display:flex;align-items:center;justify-content:center;margin:0 auto;box-shadow:0 0 0 8px rgba(255,99,105,.15);cursor:pointer;color:#fff}
+</style>
+</head>
+<body>
+
+<div class="dv-top">
+  <b>MeetingMind 1.0 · Launch experience</b>
+  <a href="#journeys">Journeys</a><a href="#t1">1 Onboarding</a><a href="#t2">2 Offline setup</a><a href="#t3">3 Model management</a>
+  <a href="#t4">4 First use</a><a href="#t5">5 Paywall</a><a href="#t6">6 Navigation · Work · Settings</a><a href="#t7">7 States</a><a href="#decisions">Decisions</a>
+</div>
+
+<div class="dv-intro">
+  <div class="dv-gate"><i></i> Awaiting founder approval. Nothing here is implemented.</div>
+  <h1>Get people to their first real note, then sell what they now understand</h1>
+  <p>This canvas pairs with <b>design/launch-experience-audit.md</b>, which holds the audit, the evidence and the file:line citations. Every phone below is live: tap buttons, chips and links. Frames are drawn at <b>360 dp</b>, the narrowest phone we support, in the existing Midnight Graphite tokens (Inter and Outfit). Turns run in journey order.</p>
+  <p>Honesty rule for this canvas: every capability shown exists in the code today, or is marked <span class="flag">needs build</span>. Prices are the <b>live Play Console prices</b>; the app always renders whatever Play returns. Allowance numbers are the live proxy table (free 30 min and 30 AI actions, Pro 20 h and 1,200, Church 60 h and 4,000). In the app they are read from the proxy, never hardcoded.</p>
+  <div class="dv-grid">
+    <div class="dv-card"><h3>1 · Zero downloads to first value</h3><p>Internet mode is pre-selected and saved. On-device AI is a guided, optional setup after onboarding, never a gate.</p></div>
+    <div class="dv-card"><h3>2 · One model per job</h3><p>Three plain jobs: Speech to text, Who spoke, and Summaries &amp; Ask. The user's languages pick the speech model. Any extra download must state the job it does.</p></div>
+    <div class="dv-card"><h3>3 · Offer at the moment of need</h3><p>No paywall in onboarding. A quiet card after the first <i>successful</i> note. Feature sheets when a locked feature is in hand. At the limit, "Process on this phone" sits beside "Upgrade".</p></div>
+    <div class="dv-card"><h3>4 · Settings in the bar</h3><p>Today · Notes · ＋ · {your space} · Settings. Plan, AI and privacy are each in one place. Developer rows go to debug builds.</p></div>
+    <div class="dv-card"><h3>5 · Say exactly what leaves the phone</h3><p>Each processing choice states where audio and text go, including the DeepSeek text backup. The Search privacy leak gets fixed first (audit §11).</p></div>
+  </div>
+</div>
+
+<!-- ═════════════ JOURNEYS ═════════════ -->
+<div class="dv-sec" id="journeys">
+  <h2><small>J</small>User journeys</h2>
+  <p class="lead">Each step links to its frame. The current onboarding is 6–8 screens and asks for 9 decisions. The proposal is 4 screens and asks for 2 (what you record, how it should think).</p>
+  <div class="jr"><b>New user (default)</b><a href="#1a">Welcome</a><span>→</span><a href="#1b">What will you record?</a><span>→</span><a href="#1c">See it work</a><span>→</span><a href="#1d">How should it think? (Internet)</a><span>→</span><a href="#1e">Home · first note</a><span>→</span><a href="#4a">New recording</a><span>→</span><a href="#4c">Recording</a><span>→</span><a href="#4d">Processing + notify primer</a><span>→</span><a href="#4e">Notes + value card</a></div>
+  <div class="jr"><b>"Record something now"</b><a href="#1a">Welcome</a><span>→</span><a href="#1d">How should it think?</a><span>→</span><a href="#1f">Microphone</a><span>→</span><a href="#4c">Recording</a><span>→</span><a href="#4d">Processing</a></div>
+  <div class="jr"><b>Privacy-first</b><a href="#1d">On this phone</a><span>→</span><a href="#1e">Home · finish setup card</a><span>→</span><a href="#2a">Why on this phone</a><span>→</span><a href="#2b">Languages</a><span>→</span><a href="#2c">Your setup</a><span>→</span><a href="#2e">Downloading</a><span>→</span><a href="#2f">Ready · process here?</a></div>
+  <div class="jr"><b>Running out</b><a href="#5d">Recording · 6 min left</a><span>→</span><a href="#5e">Allowance used: on phone / upgrade / wait</a><span>→</span><a href="#5f">Plan &amp; billing</a></div>
+  <div class="jr"><b>Locked feature</b><a href="#5a">Autopilot sheet</a><span>→</span><a href="#5b">Plans</a><span>→</span><a href="#5h">Purchase result</a><span>→</span><a href="#5g">Pro · Plan &amp; billing</a></div>
+  <div class="jr"><b>Model housekeeping</b><a href="#3a">On-device AI</a><span>→</span><a href="#3d">Change speech model</a><span>→</span><a href="#3b">Replace or keep both</a><span>→</span><a href="#3c">Remove, with consequences</a></div>
+</div>
+
+<!-- ═════════════ TURN 1 ═════════════ -->
+<div class="dv-sec" id="t1">
+  <h2><small>TURN 1</small>Onboarding: four screens, outcome first</h2>
+  <p class="lead">Removed from onboarding: the companion pick (moves to a "meet your companion" card after the first note, D4), the outcomes and work-profile questions, name, Bible and reading plan (moved to Faith's first open), the model catalogue, and the bundled permissions. Every string is a resource, and the sample is translated too.</p>
+  <div class="frames">
+    <div class="fr" id="1a"><div class="ph" data-start="1a"></div><div class="cap"><div class="t"><a class="id" href="#1a">1a</a>Welcome<button class="rs" data-reset>Reset</button></div>
+      <ul><li>A looping demo shows the outcome: voice → speakers → notes. No feature list.</li><li>The language pill stays (Bemba users choose before reading).</li><li>Two exits. "Record something now" skips straight to 1d.</li><li>Motion: transcript lines rise in sequence at 400 ms steps. Reduced-motion shows the final state.</li></ul></div></div>
+    <div class="fr" id="1b"><div class="ph" data-start="1b"></div><div class="cap"><div class="t"><a class="id" href="#1b">1b</a>What will you record?<button class="rs" data-reset>Reset</button></div>
+      <ul><li>One multi-select question replaces goals, outcomes, work profile and name.</li><li>It maps to spaces, as today, and picks the sample and paywall wording.</li><li>Skip keeps every space on.</li></ul></div></div>
+    <div class="fr" id="1c"><div class="ph" data-start="1c"></div><div class="cap"><div class="t"><a class="id" href="#1c">1c</a>See it work<button class="rs" data-reset>Reset</button></div>
+      <ul><li>The existing sample, pre-set from 1b and now localised.</li><li>Speakers show as coloured names, so diarization is explained by seeing it, never by the word.</li><li>Tap "What did we decide?" to see a cited answer.</li></ul></div></div>
+    <div class="fr" id="1d"><div class="ph" data-start="1d"></div><div class="cap"><div class="t"><a class="id" href="#1d">1d</a>How should MeetingMind think?<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Internet is pre-selected <b>and saved</b> (D1). This fixes the current OFFLINE/INTERNET conflict.</li><li>Plain trade-offs: where audio goes, downloads, signal, speed.</li><li>"On this phone" never shows a catalogue here. It sets up after onboarding (2a).</li><li>"What's the difference?" opens a side-by-side sheet, including what always needs the internet and the DeepSeek text backup <span class="flag">D10</span>.</li></ul></div></div>
+    <div class="fr" id="1e"><div class="ph" data-start="1e"></div><div class="cap"><div class="t"><a class="id" href="#1e">1e</a>Home after onboarding<button class="rs" data-reset>Reset</button></div>
+      <ul><li>One job on screen: make your first note. Record, import, or replay the sample.</li><li>A 3-step getting-started checklist (dismissible) replaces the 6-stop coach-mark tour.</li><li>Shown only if "On this phone" was picked: a non-blocking "Finish on-device setup" card.</li><li>Settings is now in the bar (6a).</li></ul></div></div>
+    <div class="fr" id="1f"><div class="ph" data-start="1f"></div><div class="cap"><div class="t"><a class="id" href="#1f">1f</a>Microphone, asked in context<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Shown on the first record tap (or here on the Record-now route), right before Android's dialog.</li><li>Says where audio goes for the mode chosen in 1d.</li><li>Notifications are asked later, on the processing screen (4d), when there is something to notify about.</li></ul></div></div>
+  </div>
+</div>
+
+<!-- ═════════════ TURN 2 ═════════════ -->
+<div class="dv-sec" id="t2">
+  <h2><small>TURN 2</small>On-device AI setup wizard</h2>
+  <p class="lead">One path replaces today's two (Setup "three small jobs" and the AI engine catalogue). Languages pick the speech model, so the wizard and <code>ProcessingScheduler</code> follow one shared rule. Memory gates use the catalogue's existing <code>minimumRamMb</code> (today informational only). Example phone: 6 GB of memory, 41 GB free. All sizes are from <code>ModelCatalog.kt</code>.</p>
+  <div class="frames">
+    <div class="fr" id="2a"><div class="ph" data-start="2a"></div><div class="cap"><div class="t"><a class="id" href="#2a">2a</a>Why on this phone?<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Honest scope: what works offline, what still needs the internet (YouTube import, live voice, AI images), and what it costs.</li><li>Entry points: the Home card, Settings → AI &amp; privacy, and "Process on this phone" offers.</li></ul></div></div>
+    <div class="fr" id="2b"><div class="ph" data-start="2b"></div><div class="cap"><div class="t"><a class="id" href="#2b">2b</a>Languages pick the speech model<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Pre-filled from the app language and 1b.</li><li>The live hint says which model covers the selection, and when one model covers all of it.</li><li>No auto-detect claim: language ID isn't built (<code>autoDetectLanguage</code> has no reader).</li></ul></div></div>
+    <div class="fr" id="2c"><div class="ph" data-start="2c"></div><div class="cap"><div class="t"><a class="id" href="#2c">2c</a>Your setup: three jobs, one model each<button class="rs" data-reset>Reset</button></div>
+      <ul><li>The smallest useful set is recommended. Extras are opt-in and labelled with the job they add.</li><li>Silero VAD is folded into Speech to text: a helper, not a choice (fixes it appearing as a speech model).</li><li>Total size, free space after install, Wi-Fi only <b>on</b> by default (D7).</li><li>Tap "Change" on Summaries &amp; Ask to see the comparison sheet.</li></ul></div></div>
+    <div class="fr" id="2d"><div class="ph" data-start="2d"></div><div class="cap"><div class="t"><a class="id" href="#2d">2d</a>Not enough space<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Caught before download (the repository check exists today; the UI is new).</li><li>Offers the real way out: the Lightweight summaries model, or freeing space.</li></ul></div></div>
+    <div class="fr" id="2e"><div class="ph" data-start="2e"></div><div class="cap"><div class="t"><a class="id" href="#2e">2e</a>Downloading<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Per-job progress over the existing WorkManager download (resume, SHA-256, retries).</li><li>"Checked and installed" means the checksum passed.</li><li>The user is never held here: "Use MeetingMind while this finishes".</li></ul></div></div>
+    <div class="fr" id="2g"><div class="ph" data-start="2g"></div><div class="cap"><div class="t"><a class="id" href="#2g">2g</a>Interrupted · waiting for Wi-Fi<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Keeps the partial download (HTTP Range resume exists).</li><li>Says how much is left, and offers mobile data as an explicit choice.</li></ul></div></div>
+    <div class="fr" id="2f"><div class="ph" data-start="2f"></div><div class="cap"><div class="t"><a class="id" href="#2f">2f</a>Ready: process here?<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Finishing the downloads doesn't silently flip the mode. The user chooses.</li><li>Says where to change it later.</li></ul></div></div>
+  </div>
+</div>
+
+<!-- ═════════════ TURN 3 ═════════════ -->
+<div class="dv-sec" id="t3">
+  <h2><small>TURN 3</small>On-device AI management</h2>
+  <p class="lead">Replaces the "AI engine" list. It shows jobs, not a catalogue, and keeps the device strip and technical details one tap down. Every destructive action states its consequence. Removing a model never touches recordings, transcripts or notes (verified: models live only in <code>filesDir/models</code>).</p>
+  <div class="frames">
+    <div class="fr" id="3a"><div class="ph" data-start="3a"></div><div class="cap"><div class="t"><a class="id" href="#3a">3a</a>On-device AI<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Storage bar, the three jobs with the active model, and "Also on this phone" with "Remove to free X".</li><li>A paused download shows inline Resume and Discard.</li><li>Tap Remove or Change to see 3c and 3d.</li></ul></div></div>
+    <div class="fr" id="3d"><div class="ph" data-start="3d"></div><div class="cap"><div class="t"><a class="id" href="#3d">3d</a>Choose a speech model<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Tags: Recommended · Lightweight · Higher accuracy · Installed · Not suited to this phone.</li><li>Each row says which languages it serves, which explains the per-language switching that today happens silently.</li></ul></div></div>
+    <div class="fr" id="3b"><div class="ph" data-start="3b"></div><div class="cap"><div class="t"><a class="id" href="#3b">3b</a>Replace or keep both<button class="rs" data-reset>Reset</button></div>
+      <ul><li>No silent duplicates: a second model for a job asks "Replace" (default) or "Keep both", with the storage cost.</li><li>The old model is removed only after the new one verifies.</li></ul></div></div>
+    <div class="fr" id="3c"><div class="ph" data-start="3c"></div><div class="cap"><div class="t"><a class="id" href="#3c">3c</a>Remove, with consequences<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Today the trash icon deletes immediately, with no confirmation.</li><li>The sheet says what stays, what stops working, and what still works in Internet mode.</li></ul></div></div>
+  </div>
+</div>
+
+<!-- ═════════════ TURN 4 ═════════════ -->
+<div class="dv-sec" id="t4">
+  <h2><small>TURN 4</small>First recording, first result</h2>
+  <p class="lead">Each first-time hint appears once, at the moment it is useful, and is dismissible. The recorder tells you in advance where processing happens and what it uses.</p>
+  <div class="frames">
+    <div class="fr" id="4a"><div class="ph" data-start="4a"></div><div class="cap"><div class="t"><a class="id" href="#4a">4a</a>New recording<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Type, spoken language and number of speakers. Speaker count feeds diarization's <code>expectedSpeakerCount</code>.</li><li>A processing line shows mode and allowance left, with Change.</li><li>The first tap on Record shows the mic primer (sheet).</li></ul></div></div>
+    <div class="fr" id="4c"><div class="ph" data-start="4c"></div><div class="cap"><div class="t"><a class="id" href="#4c">4c</a>Recording, first time<button class="rs" data-reset>Reset</button></div>
+      <ul><li>A calm screen with one hint: Marker.</li><li>Stop is the largest control (80 dp). Marker and Pause are 64 dp.</li></ul></div></div>
+    <div class="fr" id="4d"><div class="ph" data-start="4d"></div><div class="cap"><div class="t"><a class="id" href="#4d">4d</a>Processing + notification primer<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Each stage is tagged Internet or This phone, so the privacy claim is visible.</li><li>The notification permission is asked here, the first time there's something worth notifying.</li></ul></div></div>
+    <div class="fr" id="4e"><div class="ph" data-start="4e"></div><div class="cap"><div class="t"><a class="id" href="#4e">4e</a>Notes + first-result value card<button class="rs" data-reset>Reset</button></div>
+      <ul><li>The upgrade moment is an inline card at the <b>end</b> of the first successful note, not a dialog 2.5 s in.</li><li>It only appears when notes completed from a real recording, never on failures or the sample.</li><li>The copy uses this recording's real length and the live allowance.</li></ul></div></div>
+    <div class="fr" id="4f"><div class="ph" data-start="4f"></div><div class="cap"><div class="t"><a class="id" href="#4f">4f</a>Transcript with speakers<button class="rs" data-reset>Reset</button></div>
+      <ul><li>A speaker strip with a one-time hint: "Tap a speaker to put a name to the voice".</li><li>Markers appear inline in the transcript.</li></ul></div></div>
+  </div>
+</div>
+
+<!-- ═════════════ TURN 5 ═════════════ -->
+<div class="dv-sec" id="t5">
+  <h2><small>TURN 5</small>Paywall and upgrade moments</h2>
+  <p class="lead">One scrolling page replaces the 3-page flow, with the price always visible in the button. Contextual sheets explain a single feature. At the limit, the free path ("process on this phone", "wait until 1 Dec") is shown as an equal choice. Frequency: at most one app-initiated prompt a week. Three dismissals of a kind silence it for 30 days. Taps the user starts never count.</p>
+  <div class="frames">
+    <div class="fr" id="5a"><div class="ph" data-start="5a"></div><div class="cap"><div class="t"><a class="id" href="#5a">5a</a>Locked feature: Autopilot<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Explains the one feature, with a preview, then names the plans that include it.</li><li>"Not now" returns to the note. It does not start the cooldown (today it mutes the first-result offer for 7 days).</li><li>"Pro and Church" assumes D6. Today BYOK includes Autopilot too.</li></ul></div></div>
+    <div class="fr" id="5b"><div class="ph" data-start="5b"></div><div class="cap"><div class="t"><a class="id" href="#5b">5b</a>Plans: personalised, one page<button class="rs" data-reset>Reset</button></div>
+      <ul><li>The headline follows 1b (this is the Meetings version).</li><li>"Free, what you have" comes before "Pro adds", with real numbers.</li><li>The launch-offer line appears only when Play returns the offer. The renewal date is spelled out.</li><li>Restore, Terms, Privacy and Other plans are always visible.</li></ul></div></div>
+    <div class="fr" id="5d"><div class="ph" data-start="5d"></div><div class="cap"><div class="t"><a class="id" href="#5d">5d</a>Approaching the limit<button class="rs" data-reset>Reset</button></div>
+      <ul><li>A quiet line on the recorder, not a dialog.</li><li>It says what happens to a long recording before it happens.</li></ul></div></div>
+    <div class="fr" id="5e"><div class="ph" data-start="5e"></div><div class="cap"><div class="t"><a class="id" href="#5e">5e</a>Allowance used<button class="rs" data-reset>Reset</button></div>
+      <ul><li>The recording is always saved.</li><li>Three honest routes: this phone (or set it up), upgrade, wait for the reset.</li><li>Today this is an "OK" dialog with no on-phone path <span class="flag">needs build</span>.</li></ul></div></div>
+    <div class="fr" id="5f"><div class="ph" data-start="5f"></div><div class="cap"><div class="t"><a class="id" href="#5f">5f</a>Plan &amp; billing (Free)<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Usage with the reset date (UTC month). Restore lives here too.</li><li>"What happens if I cancel?" answered in-app.</li></ul></div></div>
+    <div class="fr" id="5g"><div class="ph" data-start="5g"></div><div class="cap"><div class="t"><a class="id" href="#5g">5g</a>Plan &amp; billing (Pro, payment issue)<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Shows the grace state from <code>EntitlementState.GRACE</code>, with the fix in Google Play.</li><li>Manage opens Play subscriptions. No in-app cancel (Play rule).</li></ul></div></div>
+    <div class="fr" id="5h"><div class="ph" data-start="5h"></div><div class="cap"><div class="t"><a class="id" href="#5h">5h</a>Purchase results<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Success returns to the feature that was asked for, now unlocked.</li><li>Use the buttons to see Failed (nothing charged), Pending (polls, as today) and Restore with nothing found.</li></ul></div></div>
+  </div>
+</div>
+
+<!-- ═════════════ TURN 6 ═════════════ -->
+<div class="dv-sec" id="t6">
+  <h2><small>TURN 6</small>Navigation, Work and Settings</h2>
+  <p class="lead">The "To review" overlap is a layout bug with a known cause. <code>ProfessionalHome.kt:246</code> floats the tile up 38 dp into a header that reserved no room (<code>showTile = false</code>). Fix: put the tile in the list flow. Every bar uses equal-width items with one-line labels and 48 dp targets. Nothing grows a fixed-height chip.</p>
+  <div class="statbars" id="6a">
+    <div><h4><a class="id" href="#6a">6a</a> Today: 3 fixed + 2 space slots, Settings in the avatar menu</h4><div class="scrn"><div class="bn" data-a="today" data-set="old"></div></div></div>
+    <div><h4>Proposed: Settings takes the second space slot (D3)</h4><div class="scrn"><div class="bn" data-a="today"></div></div></div>
+    <div><h4>Work bar today: Home + 5, selected chip grows (≈390 dp with "Decisions" at 360 dp)</h4><div class="scrn"><div class="wb" data-a="decisions" data-set="old"></div></div></div>
+    <div><h4>Proposed Work bar: 5 equal destinations, Home moves to the header back arrow (D11)</h4><div class="scrn"><div class="wb" data-a="decisions"></div></div></div>
+  </div>
+  <div class="frames">
+    <div class="fr" id="6b0"><div class="ph" data-start="6b0"></div><div class="cap"><div class="t"><a class="id" href="#6b0">6b0</a>Work home today (reproduced)<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Rebuilt from the code, not a screenshot: the 76 dp tile pulled up 38 dp over the mode caption.</li><li>Seven 48 dp quick tiles with clipped 11 sp labels. The Up next button is ≈36 dp tall.</li></ul></div></div>
+    <div class="fr" id="6b"><div class="ph" data-start="6b"></div><div class="cap"><div class="t"><a class="id" href="#6b">6b</a>Work home, fixed<button class="rs" data-reset>Reset</button></div>
+      <ul><li>Up next and To review are separate cards in the flow. No offsets.</li><li>Quick actions: 4 + More at 64 dp. "At a glance" is a 2×2 grid whose labels wrap.</li><li>Type from <code>MM.type</code> only. No 9.5–11 sp literals.</li></ul></div></div>
+    <div class="fr" id="6c"><div class="ph" data-start="6c"></div><div class="cap"><div class="t"><a class="id" href="#6c">6c</a>Work space with the new Work bar<button class="rs" data-reset>Reset</button></div>
+      <ul><li>The back arrow in the header returns Home. The bar holds only Work's own five places.</li><li>Labels stay one line. Bar labels cap their scale at 1.15× (Material practice) so they never fold.</li></ul></div></div>
+    <div class="fr" id="6d"><div class="ph" data-start="6d"></div><div class="cap"><div class="t"><a class="id" href="#6d">6d</a>Settings tab<button class="rs" data-reset>Reset</button></div>
+      <ul><li>The account card carries the plan and this month's usage.</li><li>9 groups, each a single place: no row reachable from 3–4 places as today.</li><li>Developer rows (Gemini log, benchmark, test onboarding and paywall) go to debug builds only.</li></ul></div></div>
+    <div class="fr" id="6e"><div class="ph" data-start="6e"></div><div class="cap"><div class="t"><a class="id" href="#6e">6e</a>AI &amp; privacy<button class="rs" data-reset>Reset</button></div>
+      <ul><li>The one place to switch processing, with a plain "what leaves your phone" panel for each mode.</li><li>Confidential Work projects always stay on the phone (<code>WorkPrivacy</code>, exists).</li><li>"Search stays on this phone" holds only after audit fix §11.1 <span class="flag r">privacy fix first</span>.</li></ul></div></div>
+    <div class="fr" id="6f"><div class="ph" data-start="6f"></div><div class="cap"><div class="t"><a class="id" href="#6f">6f</a>Stress: French at 1.3× text<button class="rs" data-reset>Reset</button></div>
+      <ul><li>The same Work home, with longer strings and larger type: cards grow, labels wrap, nothing overlaps.</li><li>Bar labels ellipsise only past 1.15×. Each item keeps a full content description.</li></ul></div></div>
+  </div>
+</div>
+
+<!-- ═════════════ TURN 7 ═════════════ -->
+<div class="dv-sec" id="t7">
+  <h2><small>TURN 7</small>Empty, loading and error states</h2>
+  <p class="lead">One pattern for all of them: what happened, whether anything was lost (almost always: no), and what you can do now. The free path is always among the actions.</p>
+  <div class="frames">
+    <div class="fr" id="7a"><div class="ph" data-start="7a"></div><div class="cap"><div class="t"><a class="id" href="#7a">7a</a>Empty Notes<button class="rs" data-reset>Reset</button></div><ul><li>Two real actions and a reminder of what MeetingMind makes.</li></ul></div></div>
+    <div class="fr" id="7b"><div class="ph" data-start="7b"></div><div class="cap"><div class="t"><a class="id" href="#7b">7b</a>Loading<button class="rs" data-reset>Reset</button></div><ul><li>Skeletons in the final layout, so nothing jumps when content lands.</li></ul></div></div>
+    <div class="fr" id="7c"><div class="ph" data-start="7c"></div><div class="cap"><div class="t"><a class="id" href="#7c">7c</a>No connection (Internet mode)<button class="rs" data-reset>Reset</button></div><ul><li>Saved and queued, with the on-phone option.</li></ul></div></div>
+    <div class="fr" id="7d"><div class="ph" data-start="7d"></div><div class="cap"><div class="t"><a class="id" href="#7d">7d</a>Transcription failed<button class="rs" data-reset>Reset</button></div><ul><li>Plain cause, audio safe, retry or switch to this phone.</li></ul></div></div>
+    <div class="fr" id="7e"><div class="ph" data-start="7e"></div><div class="cap"><div class="t"><a class="id" href="#7e">7e</a>No speech heard<button class="rs" data-reset>Reset</button></div><ul><li>The note still gets its moment (PRODUCT.md), and a likely reason is offered.</li></ul></div></div>
+    <div class="fr" id="7f"><div class="ph" data-start="7f"></div><div class="cap"><div class="t"><a class="id" href="#7f">7f</a>Own key not working (BYOK)<button class="rs" data-reset>Reset</button></div><ul><li>Names the provider's answer, with no jargon. Two ways forward.</li></ul></div></div>
+  </div>
+</div>
+
+<!-- ═════════════ DECISIONS ═════════════ -->
+<div class="dv-sec" id="decisions">
+  <h2><small>D</small>Decisions for you, and what needs architecture work</h2>
+  <table class="dv">
+    <tr><th>#</th><th>Decision</th><th>Recommendation</th></tr>
+    <tr><td>D1</td><td>Default processing for new users</td><td>Internet, pre-selected and saved, with disclosure on 1d</td></tr>
+    <tr><td>D2</td><td>Live Play prices ($12.99 / $99.99 / $199.99 Pro · $4.99 BYOK · $49.99 Church) vs positioning ($10 / $30 Pro+ / $5 / $80)</td><td>Keep live prices for closed testing. Decide before production (a Play Console change, not code)</td></tr>
+    <tr><td>D3</td><td>Settings takes the second space slot</td><td>Yes</td></tr>
+    <tr><td>D4</td><td>Companion, Bible and reading plan leave onboarding</td><td>Yes: first-note card and Faith first-open card</td></tr>
+    <tr><td>D5</td><td>Pro+ exists only in the proxy</td><td>Remove for 1.0</td></tr>
+    <tr><td>D6</td><td>BYOK currently = Pro minus allowance</td><td>BYOK = own key + connected apps. Autopilot and Deep synthesis move to Pro and Church</td></tr>
+    <tr><td>D7</td><td>Wi-Fi only on by default for offline setup</td><td>Yes</td></tr>
+    <tr><td>D8</td><td>Live trials vs the spec's "no trial"</td><td>Keep the Pro yearly first-year price, drop the BYOK 3-month trial, decide Pro monthly</td></tr>
+    <tr><td>D9</td><td>Analytics vendor (logcat only today)</td><td>Firebase Analytics behind the existing facade, with an opt-out and no content</td></tr>
+    <tr><td>D10</td><td>DeepSeek text backup in Internet mode</td><td>Keep and disclose, or remove to keep "Google only"</td></tr>
+    <tr><td>D11</td><td>Work bar: Home moves to the header back arrow, 5 equal places</td><td>Yes</td></tr>
+    <tr><td>D12</td><td>Four allowance tables disagree</td><td>Use the live one (30 min / 30 · 20 h / 1,200 · 60 h / 4,000)</td></tr>
+  </table>
+  <table class="dv">
+    <tr><th>Needs architecture work</th><th>Why</th></tr>
+    <tr><td><code>ModelRoles</code>: jobs → candidates → tags, from catalogue + device</td><td>Drives 2c, 2d, 3a and 3d. Also a shared language → speech-model rule used by both the wizard and <code>ProcessingScheduler</code></td></tr>
+    <tr><td><code>ModelCapability.VAD</code> for Silero</td><td>Stops it being offered as a speech model</td></tr>
+    <tr><td>Per-kind paywall frequency in <code>PaywallPolicy</code></td><td>Reuses the stored dismissal count. User-started opens don't count</td></tr>
+    <tr><td>"Process this recording on the phone" at the allowance limit</td><td>The pipeline already falls back per region. It needs an explicit, consented per-recording path</td></tr>
+    <tr><td><code>MMBottomBar</code> shared by the app bar and Work bar</td><td>Equal-width items, one-line labels, label scale cap</td></tr>
+    <tr><td>Analytics events (audit §12) + opt-out</td><td>The facade exists. Only the vendor sink is new (D9)</td></tr>
+    <tr><td>No Room schema change</td><td>Everything above is preferences and UI</td></tr>
+  </table>
+  <p class="lead" style="margin-top:16px"><b>Fix before closed testing, separately (asks your yes):</b> the Search embeddings privacy leak in On-device mode, Silero as a speech model, the first-result offer firing on any meeting, model delete with no confirmation, and the wrong "needs your own Gemini key" copy. Details in the audit, §11.</p>
+</div>
+<div style="height:80px"></div>
+
+<!-- ═══════════════════════════ SCREEN TEMPLATES ═══════════════════════════ -->
+
+<!-- 1a Welcome -->
+<template id="s-1a"><div class="s"><div class="body">
+  <div class="row sp pad" style="padding-top:8px"><span class="ovl">MeetingMind</span><button class="pill" data-sheet="lang"><i class="ic s16" data-i="globe"></i>English</button></div>
+  <div class="pad"><div class="card" style="margin-top:14px;padding:16px 16px 14px;background:linear-gradient(170deg,#192434,#121A27)">
+    <div class="row sp"><span class="xs">● Recording · Team sync</span><span class="xs">04:12</span></div>
+    <div class="wave" style="margin:8px 0 10px"><i style="--d:0s"></i><i style="--d:.1s"></i><i style="--d:.25s"></i><i style="--d:.4s"></i><i style="--d:.15s"></i><i style="--d:.3s"></i><i style="--d:.05s"></i><i style="--d:.35s"></i><i style="--d:.2s"></i><i style="--d:.45s"></i><i style="--d:.12s"></i><i style="--d:.28s"></i><i style="--d:.08s"></i><i style="--d:.38s"></i><i style="--d:.18s"></i><i style="--d:.32s"></i><i style="--d:.02s"></i><i style="--d:.22s"></i><i style="--d:.42s"></i><i style="--d:.1s"></i><i style="--d:.3s"></i><i style="--d:.16s"></i><i style="--d:.36s"></i><i style="--d:.06s"></i><i style="--d:.26s"></i><i style="--d:.4s"></i><i style="--d:.14s"></i><i style="--d:.24s"></i><i style="--d:.34s"></i><i style="--d:.04s"></i></div>
+    <div class="seq" style="display:flex;flex-direction:column;gap:7px">
+      <div class="sm" style="--d:.4s"><span class="spk" style="color:var(--sp1)">Amara</span> Can we still launch on the 24th?</div>
+      <div class="sm" style="--d:.8s"><span class="spk" style="color:var(--sp2)">Tendai</span> QA needs one more week.</div>
+      <div class="sm" style="--d:1.2s"><span class="spk" style="color:var(--sp1)">Amara</span> Then it's 3 March. I'll tell the pilots.</div>
+      <div style="--d:1.8s;margin-top:4px" class="row"><span class="tag t-rec"><i class="ic s16" data-i="spark"></i>1 decision</span><span class="tag t-rec">1 action · Amara</span></div>
+    </div>
+  </div></div>
+  <div class="pad" style="margin-top:26px">
+    <h1 class="h1">Record it.<br>Understand it.<br>Keep it.</h1>
+    <div class="g12"></div>
+    <p class="p">MeetingMind turns meetings, sermons and lectures into transcripts that know who spoke, plus notes you can ask questions.</p>
+    <div class="g16"></div>
+    <div class="row xs" style="gap:16px;flex-wrap:wrap"><span class="row" style="gap:6px"><i class="ic s16" data-i="users"></i>Who said what</span><span class="row" style="gap:6px"><i class="ic s16" data-i="spark"></i>Notes and answers</span><span class="row" style="gap:6px"><i class="ic s16" data-i="lock"></i>Private when you want</span></div>
+  </div>
+</div>
+<div class="foot"><button class="btn" data-go="1b">Get started</button><button class="btn sec" data-go="1d">Record something now</button><div class="xs" style="text-align:center;margin-top:4px">Free to use. No account needed.</div></div></div></template>
+
+<template id="s-lang"><div class="hd"></div><h2 class="h2">App language</h2><div class="g12"></div>
+  <div data-grp>
+  <div class="li opt on" data-pick style="border:0;background:none;padding:8px 0"><div class="f1 tt">English</div></div>
+  <div class="li" data-pick style="padding:8px 0"><div class="f1 tt">Ichibemba</div></div>
+  <div class="li" data-pick style="padding:8px 0"><div class="f1 tt">Chichewa / Chinyanja</div></div>
+  <div class="li" data-pick style="padding:8px 0"><div class="f1 tt">ChiShona</div></div>
+  <div class="li" data-pick style="padding:8px 0"><div class="f1 tt">isiZulu</div></div>
+  <div class="li" data-pick style="padding:8px 0"><div class="f1 tt">Kiswahili · Français · Português · Español</div></div></div>
+  <div class="g12"></div><button class="btn" data-close>Done</button></template>
+
+<!-- 1b Use case -->
+<template id="s-1b"><div class="s"><div class="row sp" style="padding:8px 12px 0 20px"><div class="dots" style="width:90px"><i class="on"></i><i></i><i></i></div><button class="lk m" data-go="1c">Skip</button></div><div class="body pad">
+  <div class="g12"></div><h2 class="h2">What will you record?</h2><div class="g8"></div>
+  <p class="p">Pick any. We'll set up your spaces and show you the right examples. You can change this any time.</p><div class="g20"></div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div class="chip on" data-tog><span class="bub acc" style="width:38px;height:38px"><i class="ic" data-i="brief"></i></span><div><div class="b">Meetings</div><div class="xs">Teams, clients, one-to-ones</div></div><span class="ck"></span></div>
+    <div class="chip" data-tog><span class="bub" style="width:38px;height:38px;color:var(--gold)"><i class="ic" data-i="cross"></i></span><div><div class="b">Church &amp; sermons</div><div class="xs">Services, Bible study, prayer</div></div><span class="ck"></span></div>
+    <div class="chip" data-tog><span class="bub dv" style="width:38px;height:38px"><i class="ic" data-i="cap"></i></span><div><div class="b">Lectures &amp; study</div><div class="xs">Classes, talks, revision</div></div><span class="ck"></span></div>
+    <div class="chip" data-tog><span class="bub" style="width:38px;height:38px"><i class="ic" data-i="mic"></i></span><div><div class="b">Interviews</div><div class="xs">Research, journalism, hiring</div></div><span class="ck"></span></div>
+    <div class="chip" data-tog><span class="bub" style="width:38px;height:38px"><i class="ic" data-i="chat"></i></span><div><div class="b">Conversations</div><div class="xs">Family, mentoring, everyday</div></div><span class="ck"></span></div>
+    <div class="chip" data-tog><span class="bub" style="width:38px;height:38px"><i class="ic" data-i="pen"></i></span><div><div class="b">Voice notes</div><div class="xs">Ideas and reminders to yourself</div></div><span class="ck"></span></div>
+  </div><div class="g16"></div></div>
+<div class="foot"><button class="btn" data-go="1c">Continue</button></div></div></template>
+
+<!-- 1c Sample -->
+<template id="s-1c"><div class="s"><div class="row sp" style="padding:8px 12px 0 8px"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="dots" style="width:90px"><i class="on"></i><i class="on"></i><i></i></div><button class="lk m" data-go="1d">Skip</button></div><div class="body pad">
+  <div class="row sp"><h2 class="h2">See it work</h2><span class="tag">Example</span></div><div class="g8"></div>
+  <p class="sm">An example recording becoming notes. Nothing here is recorded or sent anywhere.</p><div class="g12"></div>
+  <div class="seg" data-grp><a class="on" data-pick>Meeting</a><a data-pick>Sermon</a><a data-pick>Lecture</a></div><div class="g12"></div>
+  <div class="card"><div class="row"><span class="bub acc" style="width:36px;height:36px;border-radius:18px"><i class="ic s18" data-i="pause"></i></span><div class="f1"><div class="b" style="font-size:14px">Launch check-in</div><div class="bar go" style="--w:62%;--t:6s;margin-top:6px"><i></i></div></div><span class="xs">1:12</span></div>
+    <div class="g12"></div><div class="seq" style="display:flex;flex-direction:column;gap:9px">
+      <div class="sm" style="--d:.2s"><span class="spk" style="color:var(--sp1)">Amara</span> · 0:04<br>Can we still launch on the 24th?</div>
+      <div class="sm" style="--d:.9s"><span class="spk" style="color:var(--sp2)">Tendai</span> · 0:11<br>Honestly, QA needs another week.</div>
+      <div class="sm" style="--d:1.6s"><span class="spk" style="color:var(--sp1)">Amara</span> · 0:42<br>Then launch moves to 3 March. I'll tell the pilot churches on Monday.</div>
+      <div class="sm" style="--d:2.3s"><span class="spk" style="color:var(--sp3)">Joseph</span> · 0:55<br>I'll draft that note today.</div>
+    </div></div>
+  <div class="g12"></div>
+  <div class="card seq"><div style="--d:2.8s"><div class="ovl">Notes · written by AI</div><div class="g8"></div>
+    <div class="sm"><b>Decision</b>: launch moves to 3 March so QA can finish.</div><div class="g8"></div>
+    <div class="sm"><b>Actions</b><br>☐ Amara: tell the pilot churches, Monday<br>☐ Joseph: draft the delay note, today</div></div></div>
+  <div class="g12"></div>
+  <button class="pill" data-rev=".ans"><i class="ic s16" data-i="spark"></i>What did we decide?</button>
+  <div class="card ans hide" style="margin-top:10px;border-color:rgba(155,156,246,.35)"><div class="sm">Launch moves to <b>3 March</b>, so QA has another week. <span class="tag t-rec">▶ 0:42</span></div><div class="xs" style="margin-top:6px">Answers come only from what was said.</div></div>
+  <div class="g16"></div></div>
+<div class="foot"><button class="btn" data-go="1d">Make it mine</button></div></div></template>
+
+<!-- 1d Mode -->
+<template id="s-1d"><div class="s"><div class="row sp" style="padding:8px 12px 0 8px"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="dots" style="width:90px"><i class="on"></i><i class="on"></i><i class="on"></i></div><span style="width:48px"></span></div><div class="body pad">
+  <h2 class="h2">How should MeetingMind think?</h2><div class="g8"></div>
+  <p class="p">Recording always works, even with no signal. This is about where your audio becomes text and notes.</p><div class="g16"></div>
+  <div data-grp style="display:flex;flex-direction:column;gap:12px">
+  <div class="opt on" data-pick><div class="row"><span class="bub acc"><i class="ic" data-i="cloud"></i></span><div class="f1"><div class="b">Over the internet</div><span class="tag t-rec" style="margin-top:4px">Recommended to start</span></div><span class="rd"></span></div>
+    <div class="g12"></div><div class="sm" style="display:flex;flex-direction:column;gap:6px">
+      <div class="row" style="gap:8px"><i class="ic s16 ok" data-i="check"></i>Works right away. Nothing to download.</div>
+      <div class="row" style="gap:8px"><i class="ic s16 ok" data-i="check"></i>Fast, accurate transcripts and notes</div>
+      <div class="rowt" style="gap:8px"><i class="ic s16" data-i="cloud" style="margin-top:2px"></i><span>Audio is sent to Google's Gemini AI through MeetingMind. Results are saved on this phone.</span></div>
+      <div class="rowt" style="gap:8px"><i class="ic s16" data-i="clock" style="margin-top:2px"></i><span>Free each month: 30 minutes of transcription and 30 AI actions</span></div>
+    </div></div>
+  <div class="opt" data-pick><div class="row"><span class="bub dv"><i class="ic" data-i="phone"></i></span><div class="f1"><div class="b">On this phone</div><span class="tag t-dv" style="margin-top:4px">Most private</span></div><span class="rd"></span></div>
+    <div class="g12"></div><div class="sm" style="display:flex;flex-direction:column;gap:6px">
+      <div class="row" style="gap:8px"><i class="ic s16 ok" data-i="check"></i>Audio and notes never leave your phone</div>
+      <div class="row" style="gap:8px"><i class="ic s16 ok" data-i="check"></i>Works with no signal once set up</div>
+      <div class="rowt" style="gap:8px"><i class="ic s16" data-i="down" style="margin-top:2px"></i><span>One download of 1.3–2.3 GB. We'll guide you after this.</span></div>
+      <div class="rowt" style="gap:8px"><i class="ic s16" data-i="clock" style="margin-top:2px"></i><span>Slower, and quality depends on your phone</span></div>
+    </div></div>
+  </div>
+  <div class="g8"></div><button class="lk" data-sheet="1d-sh">What's the difference?</button>
+  <div class="xs">Switch any time in Settings → AI &amp; privacy.</div><div class="g16"></div></div>
+<div class="foot"><button class="btn" data-go="1e">Continue</button></div></div></template>
+
+<template id="s-1d-sh"><div class="hd"></div><h2 class="h2">Internet or this phone?</h2><div class="g12"></div>
+  <table class="tbl"><tr><th></th><th>Internet</th><th>This phone</th></tr>
+  <tr><td>Where audio goes</td><td>Google Gemini, via MeetingMind</td><td>Stays on the phone</td></tr>
+  <tr><td>Needs signal to process</td><td>Yes</td><td>No</td></tr>
+  <tr><td>Download</td><td>None</td><td>1.3–2.3 GB, once</td></tr>
+  <tr><td>Speed</td><td>Fast</td><td>Depends on your phone</td></tr>
+  <tr><td>Cost</td><td>Free monthly allowance. Pro has more</td><td>Free, no limit</td></tr>
+  <tr><td>Who spoke</td><td>Yes</td><td>Yes</td></tr></table>
+  <div class="g12"></div><div class="card sunk"><div class="sm"><b>Always needs the internet:</b> YouTube import, live voice conversations and AI images.</div><div class="g8"></div><div class="sm"><b>Backup:</b> if Google's AI can't answer, text (never audio) may go to DeepSeek, our backup provider. <span class="tag">D10</span></div></div>
+  <div class="g16"></div><button class="btn" data-close>Got it</button></template>
+
+<!-- 1e Home first use -->
+<template id="s-1e"><div class="s"><div class="body">
+  <div class="row sp" style="padding:6px 8px 0 20px"><div><div class="xs">Tuesday 17 November</div><div class="h2" style="font-size:24px">Good afternoon</div></div><div class="row" style="gap:0"><button class="ib"><i class="ic" data-i="search"></i></button><button class="ib" style="width:40px;height:40px;border-radius:20px;background:var(--track);font:600 14px Inter;color:var(--ink)">A</button></div></div>
+  <div class="pad"><div class="g16"></div>
+  <div class="card acc" style="padding:20px"><div class="ovl" style="color:var(--acc)">Your first note</div><div class="g8"></div><div class="h3" style="font-size:19px;font-family:Outfit">Record a meeting, a sermon or a lecture</div><div class="g8"></div><div class="sm">Press record and put your phone down. MeetingMind writes the transcript and the notes.</div><div class="g16"></div>
+    <div class="row" style="gap:16px"><div class="recbtn" style="width:64px;height:64px;margin:0" data-go="4a"><i class="ic s28" data-i="mic"></i></div><div class="f1" style="display:flex;flex-direction:column;gap:2px"><button class="lk" style="text-align:left;padding:0;min-height:36px" data-go="4a">Start recording</button><button class="lk m" style="text-align:left;padding:0;min-height:36px"><i class="ic s16" data-i="upload"></i> Import audio</button></div></div></div>
+  <div class="g12"></div>
+  <div class="card"><div class="row sp"><div class="b">Getting started</div><span class="xs">0 of 3</span></div><div class="g12"></div>
+    <div style="display:flex;flex-direction:column;gap:12px" class="sm">
+      <div class="row" style="gap:10px"><span class="rd"></span>Record or import something</div>
+      <div class="row" style="gap:10px"><span class="rd"></span>Read your notes and transcript</div>
+      <div class="row" style="gap:10px"><span class="rd"></span>Ask a question about it</div></div>
+    <div class="row sp" style="margin-top:6px"><button class="lk" data-go="1c">Replay the example</button><button class="lk m">Hide</button></div></div>
+  <div class="g12"></div>
+  <div class="card"><div class="row"><span class="bub dv"><i class="ic" data-i="phone"></i></span><div class="f1"><div class="b" style="font-size:14px">Finish on-device setup</div><div class="xs">You chose "On this phone" · 2.0 GB</div></div><button class="btn sm2 sec" data-go="2a">Set up</button></div></div>
+  <div class="xs" style="margin-top:6px;padding:0 4px">(Shown only to people who picked "On this phone" in 1d.)</div>
+  <div class="g16"></div></div>
+</div><div class="bn" data-a="today"></div></div></template>
+
+<!-- 1f Mic primer -->
+<template id="s-1f"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button></div><div class="body pad" style="display:flex;flex-direction:column;justify-content:center">
+  <div class="bub acc pop" style="width:72px;height:72px;border-radius:24px"><i class="ic s32" data-i="mic"></i></div><div class="g24"></div>
+  <h2 class="h2">MeetingMind needs your microphone to record</h2><div class="g12"></div>
+  <p class="p">It only listens while a recording is on, and you'll always see it in your notifications.</p><div class="g12"></div>
+  <div class="card sunk"><div class="rowt" style="gap:10px"><i class="ic s18 a" data-i="cloud"></i><div class="sm">You chose <b>Over the internet</b>: when you stop, the audio is sent to Google's Gemini through MeetingMind to make your notes. The recording itself stays on this phone.</div></div></div>
+</div><div class="foot"><button class="btn" data-go="4c">Allow microphone</button><div class="xs" style="text-align:center">Android will ask you next.</div><button class="lk m" data-go="1e">Not now</button></div></div></template>
+
+<!-- 2a Why -->
+<template id="s-2a"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">On-device AI</div><div class="xs" style="padding-right:16px">1 of 4</div></div><div class="body pad">
+  <h2 class="h2">Run MeetingMind on this phone</h2><div class="g8"></div><p class="p">Download the AI once, and your recordings become transcripts and notes with no internet. Nothing leaves your phone.</p><div class="g16"></div>
+  <div class="card"><div class="ovl">Works with no signal</div><div class="g12"></div><div class="sm" style="display:flex;flex-direction:column;gap:9px">
+    <div class="row" style="gap:10px"><i class="ic s18 ok" data-i="check"></i>Transcripts of your recordings</div>
+    <div class="row" style="gap:10px"><i class="ic s18 ok" data-i="check"></i>Who spoke when</div>
+    <div class="row" style="gap:10px"><i class="ic s18 ok" data-i="check"></i>Summaries, decisions and action items</div>
+    <div class="row" style="gap:10px"><i class="ic s18 ok" data-i="check"></i>Asking questions about a recording</div>
+    <div class="row" style="gap:10px"><i class="ic s18 ok" data-i="check"></i>Searching your notes</div></div></div>
+  <div class="g12"></div>
+  <div class="card"><div class="ovl">Still needs the internet</div><div class="g8"></div><div class="sm">YouTube import · live voice conversations · AI images</div></div>
+  <div class="g12"></div>
+  <div class="card"><div class="ovl">What it costs</div><div class="g8"></div><div class="sm" style="display:flex;flex-direction:column;gap:6px"><div class="row" style="gap:10px"><i class="ic s18" data-i="db"></i>1.3–2.3 GB of storage</div><div class="row" style="gap:10px"><i class="ic s18" data-i="clock"></i>Slower than the internet on most phones</div><div class="row" style="gap:10px"><i class="ic s18" data-i="bolt"></i>Uses battery while it works</div></div></div><div class="g16"></div>
+</div><div class="foot"><button class="btn" data-go="2b">Continue</button><button class="lk m" data-go="1e">Not now</button></div></div></template>
+
+<!-- 2b Languages -->
+<template id="s-2b"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">On-device AI</div><div class="xs" style="padding-right:16px">2 of 4</div></div><div class="body pad">
+  <h2 class="h2">What languages do you record in?</h2><div class="g8"></div><p class="p">This decides which speech model you need. Pick every language you record in.</p><div class="g16"></div>
+  <div class="pills"><span class="pill on" data-tog>English</span><span class="pill on" data-tog>Bemba</span><span class="pill" data-tog>Nyanja</span><span class="pill" data-tog>Shona</span><span class="pill" data-tog>Ndebele</span><span class="pill" data-tog>Tonga</span><span class="pill" data-tog>Lozi</span><span class="pill" data-tog>Zulu</span><span class="pill" data-tog>Xhosa</span><span class="pill" data-tog>Swahili</span><span class="pill" data-tog>Afrikaans</span><span class="pill" data-tog>French</span><span class="pill" data-tog>Portuguese</span><span class="pill" data-tog>Spanish</span><span class="pill" data-tog>Chinese</span><span class="pill" data-tog>Hindi</span><span class="pill" data-tog>Arabic</span><span class="pill" data-tog>More…</span></div>
+  <div class="g16"></div>
+  <div class="card acc"><div class="rowt" style="gap:10px"><i class="ic s18 a" data-i="spark"></i><div class="sm"><b>One speech model covers English and Bemba.</b> Omnilingual understands 1,600+ languages. You can add an English-only model later for the best English accuracy.</div></div></div><div class="g16"></div>
+</div><div class="foot"><button class="btn" data-go="2c">See my setup</button></div></div></template>
+
+<!-- 2c Your setup -->
+<template id="s-2c"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">On-device AI</div><div class="xs" style="padding-right:16px">3 of 4</div></div><div class="body pad">
+  <h2 class="h2">Your setup</h2><div class="g4"></div><div class="xs">This phone: 6 GB memory · 41.2 GB free</div><div class="g16"></div>
+  <div class="card"><div class="row"><span class="bub acc"><i class="ic" data-i="wave"></i></span><div class="f1"><div class="ovl">Speech to text</div><div class="b">Omnilingual 300M</div></div><button class="lk" data-sheet="3d-sh">Change</button></div>
+    <div class="g8"></div><div class="sm">Turns speech into text in English, Bemba and 1,600+ other languages.</div><div class="g8"></div><div class="row" style="gap:6px"><span class="tag t-rec">Recommended</span><span class="tag">366 MB</span></div>
+    <div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line2)"><div class="f1"><div class="sm"><b>Add Parakeet</b> for the best English</div><div class="xs">Optional · English and European languages · +671 MB</div></div><span class="sw" data-tog></span></div></div>
+  <div class="g12"></div>
+  <div class="card"><div class="row"><span class="bub dv"><i class="ic" data-i="users"></i></span><div class="f1"><div class="ovl">Who spoke</div><div class="b">Speaker separation</div></div></div>
+    <div class="g8"></div><div class="sm">Tells voices apart so your transcript shows who said what. Trained mostly on English voices.</div><div class="g8"></div><div class="row" style="gap:6px"><span class="tag t-rec">Needed for speaker names</span><span class="tag">37 MB</span></div></div>
+  <div class="g12"></div>
+  <div class="card"><div class="row"><span class="bub" style="color:var(--gold)"><i class="ic" data-i="spark"></i></span><div class="f1"><div class="ovl">Summaries &amp; Ask</div><div class="b">Qwen 2.5 · 1.5B</div></div><button class="lk" data-sheet="2c-sh">Change</button></div>
+    <div class="g8"></div><div class="sm">Writes summaries and action items, and answers questions about a recording.</div><div class="g8"></div><div class="row" style="gap:6px"><span class="tag t-rec">Recommended for 6 GB</span><span class="tag">1.6 GB</span></div></div>
+  <div class="g12"></div>
+  <div class="row card sunk"><div class="f1"><div class="sm b">Download on Wi-Fi only</div><div class="xs">Recommended for large downloads</div></div><span class="sw on" data-tog></span></div><div class="g16"></div>
+</div><div class="foot"><div class="row sp xs"><span>Total download</span><span><b style="color:var(--ink)">2.0 GB</b> · 39.2 GB free after</span></div><button class="btn" data-go="2e">Download 2.0 GB</button><button class="lk m" data-go="1e">Skip. Keep using the internet</button></div></div></template>
+
+<template id="s-2c-sh"><div class="hd"></div><h2 class="h2">Summaries &amp; Ask</h2><div class="g4"></div><div class="sm">You need one. Picking another replaces this choice. Nothing is downloaded until you confirm.</div><div class="g16"></div>
+  <div data-grp style="display:flex;flex-direction:column;gap:10px">
+  <div class="opt" data-pick><div class="row"><div class="f1"><div class="b">Qwen 2.5 · 0.5B</div><div class="xs">Quick, shorter summaries</div></div><span class="rd"></span></div><div class="row" style="gap:6px;margin-top:8px"><span class="tag t-lt">Lightweight</span><span class="tag">547 MB</span></div></div>
+  <div class="opt on" data-pick><div class="row"><div class="f1"><div class="b">Qwen 2.5 · 1.5B</div><div class="xs">Good summaries and answers on most phones</div></div><span class="rd"></span></div><div class="row" style="gap:6px;margin-top:8px"><span class="tag t-rec">Recommended</span><span class="tag">1.6 GB</span></div></div>
+  <div class="opt" data-pick><div class="row"><div class="f1"><div class="b">Step-by-step (R1 Distill 1.5B)</div><div class="xs">Thinks through a question before answering. Slower.</div></div><span class="rd"></span></div><div class="row" style="gap:6px;margin-top:8px"><span class="tag">Slower</span><span class="tag">1.8 GB</span></div></div>
+  <div class="opt dis"><div class="row"><div class="f1"><div class="b">Phi-4 Mini</div><div class="xs">Highest quality. Needs a phone with more than 6 GB of memory.</div></div><span class="rd"></span></div><div class="row" style="gap:6px;margin-top:8px"><span class="tag t-nc">Not suited to this phone</span><span class="tag">3.9 GB</span></div></div>
+  </div><div class="g16"></div><button class="btn" data-close>Use this</button></template>
+
+<!-- 2d not enough space -->
+<template id="s-2d"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">On-device AI</div><div class="xs" style="padding-right:16px">3 of 4</div></div><div class="body pad">
+  <h2 class="h2">Your setup</h2><div class="g4"></div><div class="xs">This phone: 6 GB memory · <span class="wr">1.2 GB free</span></div><div class="g16"></div>
+  <div class="card warn"><div class="rowt" style="gap:10px"><i class="ic wr" data-i="alert"></i><div><div class="b">Not enough space</div><div class="sm" style="margin-top:4px">This setup needs 2.0 GB and your phone has 1.2 GB free.</div></div></div>
+    <div class="g12"></div><button class="btn sm2" style="width:100%" data-go="2e">Use Lightweight summaries · 0.95 GB total</button><div class="g8"></div><button class="btn sm2 sec" style="width:100%">Free up space in Android settings</button></div>
+  <div class="g12"></div>
+  <div class="card" style="opacity:.75"><div class="row"><span class="bub acc"><i class="ic" data-i="wave"></i></span><div class="f1"><div class="ovl">Speech to text</div><div class="b">Omnilingual 300M · 366 MB</div></div></div></div><div class="g8"></div>
+  <div class="card" style="opacity:.75"><div class="row"><span class="bub dv"><i class="ic" data-i="users"></i></span><div class="f1"><div class="ovl">Who spoke</div><div class="b">Speaker separation · 37 MB</div></div></div></div><div class="g8"></div>
+  <div class="card" style="opacity:.75"><div class="row"><span class="bub" style="color:var(--gold)"><i class="ic" data-i="spark"></i></span><div class="f1"><div class="ovl">Summaries &amp; Ask</div><div class="b">Qwen 2.5 · 1.5B · 1.6 GB</div></div></div></div>
+  <div class="g16"></div><div class="xs">You can also skip summaries on this phone: transcripts and speakers need only 0.4 GB.</div><div class="g16"></div>
+</div><div class="foot"><button class="btn" style="opacity:.4">Download 2.0 GB</button><button class="lk m" data-go="1e">Skip. Keep using the internet</button></div></div></template>
+
+<!-- 2e Downloading -->
+<template id="s-2e"><div class="s"><div class="hdr"><div class="ht" style="padding-left:16px">On-device AI</div><div class="xs" style="padding-right:16px">4 of 4</div></div><div class="body pad">
+  <h2 class="h2">Setting things up</h2><div class="g8"></div><div class="row sp sm"><span>1.1 of 2.0 GB · on Wi-Fi</span><span class="b">55%</span></div><div class="g8"></div><div class="bar go" style="--from:40%;--w:55%;--t:3s"><i></i></div><div class="g20"></div>
+  <div class="grp">
+    <div class="li"><span class="bub ok" style="width:36px;height:36px"><i class="ic s18" data-i="check"></i></span><div class="f1"><div class="tt">Speech to text</div><div class="st">Checked and installed · 366 MB</div></div></div>
+    <div class="li"><span class="bub ok" style="width:36px;height:36px"><i class="ic s18" data-i="check"></i></span><div class="f1"><div class="tt">Who spoke</div><div class="st">Checked and installed · 37 MB</div></div></div>
+    <div class="li"><div class="spin" style="width:36px;height:36px;border-width:3px"></div><div class="f1"><div class="tt">Summaries &amp; Ask</div><div class="st">0.7 of 1.6 GB</div><div class="bar go" style="--from:30%;--w:44%;--t:3s;margin-top:6px"><i></i></div></div><button class="ib"><i class="ic" data-i="pause"></i></button></div>
+  </div><div class="g16"></div>
+  <div class="card sunk"><div class="rowt" style="gap:10px"><i class="ic s18" data-i="bell"></i><div class="sm">This keeps going if you leave the app, and picks up where it stopped if the connection drops. We'll let you know when it's ready.</div></div></div>
+  <div class="g12"></div><button class="lk" data-go="2f">(Preview: finished →)</button>
+</div><div class="foot"><button class="btn sec" data-go="1e">Use MeetingMind while this finishes</button></div></div></template>
+
+<!-- 2g interrupted -->
+<template id="s-2g"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">On-device AI</div></div><div class="body pad">
+  <h2 class="h2">Waiting for Wi-Fi</h2><div class="g8"></div><p class="p">Your progress is saved. The download continues by itself when you're on Wi-Fi.</p><div class="g16"></div>
+  <div class="grp">
+    <div class="li"><span class="bub ok" style="width:36px;height:36px"><i class="ic s18" data-i="check"></i></span><div class="f1"><div class="tt">Speech to text</div><div class="st">Checked and installed</div></div></div>
+    <div class="li"><span class="bub ok" style="width:36px;height:36px"><i class="ic s18" data-i="check"></i></span><div class="f1"><div class="tt">Who spoke</div><div class="st">Checked and installed</div></div></div>
+    <div class="li"><span class="bub wr" style="width:36px;height:36px"><i class="ic s18" data-i="wifi"></i></span><div class="f1"><div class="tt">Summaries &amp; Ask</div><div class="st">Paused at 44% · 0.9 GB left</div><div class="bar wr" style="--w:44%;margin-top:6px"><i></i></div></div></div>
+  </div><div class="g12"></div>
+  <div class="card dang"><div class="rowt" style="gap:10px"><i class="ic dn" data-i="alert"></i><div class="f1"><div class="b">One file didn't check out</div><div class="sm" style="margin-top:4px">It was damaged in transit, so we discarded it. Nothing was installed from it.</div><div class="g8"></div><button class="btn sm2 sec"><i class="ic s16" data-i="refresh"></i>Try again</button></div></div></div>
+  <div class="g12"></div><div class="xs">You can already transcribe and see speakers on this phone. Summaries use the internet until this finishes.</div>
+</div><div class="foot"><button class="btn sec">Use mobile data instead · 0.9 GB</button></div></div></template>
+
+<!-- 2f Ready -->
+<template id="s-2f"><div class="s"><div class="body pad" style="padding-top:40px">
+  <div class="bub ok pop" style="width:76px;height:76px;border-radius:38px"><i class="ic s32" data-i="check"></i></div><div class="g20"></div>
+  <h2 class="h2">On-device AI is ready</h2><div class="g8"></div><p class="p">Checked and installed: Speech to text, Who spoke, and Summaries &amp; Ask (2.0 GB).</p><div class="g24"></div>
+  <div class="b">Process new recordings on this phone?</div><div class="g12"></div>
+  <div data-grp style="display:flex;flex-direction:column;gap:10px">
+  <div class="opt on" data-pick><div class="row"><span class="bub dv" style="width:38px;height:38px"><i class="ic" data-i="phone"></i></span><div class="f1"><div class="b">Yes, on this phone</div><div class="xs">Private, no allowance used, slower</div></div><span class="rd"></span></div></div>
+  <div class="opt" data-pick><div class="row"><span class="bub acc" style="width:38px;height:38px"><i class="ic" data-i="cloud"></i></span><div class="f1"><div class="b">Keep using the internet</div><div class="xs">Faster. On-device is used when you're offline</div></div><span class="rd"></span></div></div>
+  </div><div class="g12"></div><div class="xs">Change any time in Settings → AI &amp; privacy.</div>
+</div><div class="foot"><button class="btn" data-go="1e">Done</button></div></div></template>
+
+<!-- 3a Manage -->
+<template id="s-3a"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">On-device AI</div><button class="ib"><i class="ic" data-i="help"></i></button></div><div class="body pad">
+  <div class="card"><div class="row sp"><div class="b">Storage</div><div class="xs">41.2 GB free</div></div><div class="g8"></div>
+    <div class="meter"><i style="width:9%;background:var(--acc)"></i><i style="width:49%;background:#3a4a62"></i></div><div class="g8"></div>
+    <div class="row xs" style="gap:14px"><span><b class="a">■</b> MeetingMind AI 3.1 GB</span><span><b style="color:#3a4a62">■</b> Other</span></div></div>
+  <div class="g12"></div>
+  <div class="grp"><div class="li" data-go="6e"><i class="ic" data-i="phone"></i><div class="f1"><div class="tt">Processing</div><div class="st">On this phone</div></div><i class="ic s18" data-i="chev"></i></div></div>
+  <div class="gh" style="padding-left:4px">Jobs</div>
+  <div class="grp">
+    <div class="li" data-sheet="3d-sh"><span class="bub acc" style="width:38px;height:38px"><i class="ic" data-i="wave"></i></span><div class="f1"><div class="tt">Speech to text</div><div class="st">Omnilingual 300M · English, Bemba + 1,600 · 366 MB</div></div><span class="tag t-in">Active</span></div>
+    <div class="li"><span class="bub dv" style="width:38px;height:38px"><i class="ic" data-i="users"></i></span><div class="f1"><div class="tt">Who spoke</div><div class="st">Speaker separation · 37 MB</div></div><span class="tag t-in">Active</span></div>
+    <div class="li" data-sheet="2c-sh"><span class="bub" style="width:38px;height:38px;color:var(--gold)"><i class="ic" data-i="spark"></i></span><div class="f1"><div class="tt">Summaries &amp; Ask</div><div class="st">Qwen 2.5 · 1.5B · 1.6 GB</div></div><span class="tag t-in">Active</span></div>
+  </div>
+  <div class="gh" style="padding-left:4px">Also on this phone</div>
+  <div class="grp">
+    <div class="li"><div class="f1"><div class="tt">Parakeet 0.6B</div><div class="st">Speech to text · not in use · 671 MB</div></div><button class="btn sm2 sec" data-sheet="3c-sh">Remove</button></div>
+    <div class="li"><div class="f1"><div class="tt">Whisper Turbo</div><div class="st">Paused at 63% · resumes where it stopped</div><div class="bar wr" style="--w:63%;margin-top:6px"><i></i></div></div><button class="ib"><i class="ic" data-i="play"></i></button><button class="ib"><i class="ic" data-i="x"></i></button></div>
+  </div><div class="g12"></div>
+  <div class="xs">Removing a model never deletes your recordings, transcripts or notes.</div><div class="g8"></div>
+  <div class="row sp"><button class="lk" data-go="2a">Run setup again</button><button class="lk m">Technical details</button></div><div class="g16"></div>
+</div></div></template>
+
+<template id="s-3c-sh"><div class="hd"></div><div class="bub dn"><i class="ic" data-i="trash"></i></div><div class="g12"></div><h2 class="h2">Remove Parakeet?</h2><div class="g4"></div><div class="sm">Frees 671 MB.</div><div class="g16"></div>
+  <div class="sm" style="display:flex;flex-direction:column;gap:10px">
+    <div class="rowt" style="gap:10px"><i class="ic s18 ok" data-i="check"></i><span>Your recordings, transcripts and notes stay exactly as they are.</span></div>
+    <div class="rowt" style="gap:10px"><i class="ic s18 ok" data-i="check"></i><span>Speech to text keeps working with Omnilingual 300M.</span></div>
+    <div class="rowt" style="gap:10px"><i class="ic s18" data-i="info"></i><span>English recordings will use Omnilingual on this phone, which may be a little less accurate for English.</span></div></div>
+  <div class="g20"></div><button class="btn dng" data-close>Remove</button><div class="g8"></div><button class="btn sec" data-close>Keep</button></template>
+
+<!-- 3d speech sheet (as screen + sheet) -->
+<template id="s-3d-sh"><div class="hd"></div><h2 class="h2">Speech to text</h2><div class="g4"></div><div class="sm">You need one for each group of languages you record in. Your languages: English, Bemba.</div><div class="g16"></div>
+  <div data-grp style="display:flex;flex-direction:column;gap:10px">
+  <div class="opt on" data-pick><div class="row"><div class="f1"><div class="b">Omnilingual 300M</div><div class="xs">1,600+ languages, including Bemba, Nyanja, Shona, Zulu and English</div></div><span class="rd"></span></div><div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><span class="tag t-in">✓ Installed</span><span class="tag t-rec">Recommended for you</span><span class="tag">366 MB</span></div></div>
+  <div class="opt" data-pick data-sheet="3b-sh"><div class="row"><div class="f1"><div class="b">Omnilingual 1B</div><div class="xs">The same languages, more accurate, slower</div></div><span class="rd"></span></div><div class="row" style="gap:6px;margin-top:8px"><span class="tag t-hq">Higher accuracy</span><span class="tag">1.0 GB</span></div></div>
+  <div class="opt" data-pick><div class="row"><div class="f1"><div class="b">Parakeet 0.6B</div><div class="xs">English and 24 European languages</div></div><span class="rd"></span></div><div class="row" style="gap:6px;margin-top:8px"><span class="tag t-in">✓ Installed</span><span class="tag">Best for English</span><span class="tag">671 MB</span></div></div>
+  <div class="opt" data-pick><div class="row"><div class="f1"><div class="b">Whisper Turbo</div><div class="xs">For Chinese, Japanese, Korean, Hindi, Arabic and more</div></div><span class="rd"></span></div><div class="row" style="gap:6px;margin-top:8px"><span class="tag">Not needed for your languages</span><span class="tag">1.0 GB</span></div></div>
+  <div class="opt dis"><div class="row"><div class="f1"><div class="b">Whisper Large v3</div><div class="xs">99+ languages, most accurate Whisper</div></div><span class="rd"></span></div><div class="row" style="gap:6px;margin-top:8px"><span class="tag t-nc">Too slow for this phone</span><span class="tag">1.8 GB</span></div></div>
+  </div><div class="g16"></div><button class="btn" data-close>Done</button></template>
+<template id="s-3d"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">On-device AI</div></div><div class="body pad" style="opacity:.5"><div class="card"><div class="b">Speech to text</div><div class="xs">Omnilingual 300M</div></div></div><div class="ov-auto" data-autosheet="3d-sh"></div></div></template>
+
+<template id="s-3b-sh"><div class="hd"></div><h2 class="h2">Replace or keep both?</h2><div class="g4"></div><div class="sm">Omnilingual 1B and Omnilingual 300M do the same job for the same languages. You only need one.</div><div class="g16"></div>
+  <div data-grp style="display:flex;flex-direction:column;gap:10px">
+  <div class="opt on" data-pick><div class="row"><div class="f1"><div class="b">Replace</div><div class="xs">Remove 300M once 1B is checked and installed. Frees 366 MB.</div></div><span class="rd"></span></div></div>
+  <div class="opt" data-pick><div class="row"><div class="f1"><div class="b">Keep both</div><div class="xs">Uses 1.4 GB in total. Only the active one is used.</div></div><span class="rd"></span></div></div>
+  </div><div class="g16"></div><button class="btn" data-close>Download Omnilingual 1B · 1.0 GB</button><div class="g8"></div><button class="btn sec" data-close>Cancel</button></template>
+<template id="s-3b"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">On-device AI</div></div><div class="body pad" style="opacity:.5"><div class="card"><div class="b">Speech to text</div></div></div><div data-autosheet="3b-sh"></div></div></template>
+<template id="s-3c"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">On-device AI</div></div><div class="body pad" style="opacity:.5"><div class="card"><div class="b">Also on this phone</div><div class="xs">Parakeet 0.6B</div></div></div><div data-autosheet="3c-sh"></div></div></template>
+
+<!-- 4a New recording -->
+<template id="s-4a"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="x"></i></button><div class="ht">New recording</div></div><div class="body pad">
+  <div class="ovl">What is it?</div><div class="g8"></div>
+  <div class="pills" data-grp><span class="pill on" data-pick><i class="ic s16" data-i="brief"></i>Meeting</span><span class="pill" data-pick><i class="ic s16" data-i="cross"></i>Sermon</span><span class="pill" data-pick><i class="ic s16" data-i="cap"></i>Lecture</span><span class="pill" data-pick>Interview</span><span class="pill" data-pick>Other</span></div><div class="g20"></div>
+  <div class="grp">
+    <div class="li"><i class="ic" data-i="globe"></i><div class="f1"><div class="tt">Language spoken</div><div class="st">Picks the right speech model</div></div><span class="vl">English ▾</span></div>
+    <div class="li"><i class="ic" data-i="users"></i><div class="f1"><div class="tt">People speaking</div><div class="st">Helps tell voices apart</div></div><span class="vl">Not sure ▾</span></div>
+    <div class="li"><i class="ic a" data-i="cloud"></i><div class="f1"><div class="tt">Processed over the internet</div><div class="st">30 free minutes left this month</div></div><span class="lk" style="font-size:13px">Change</span></div>
+  </div>
+  <div class="g32"></div>
+  <div class="recbtn" data-sheet="4b-sh"><i class="ic s32" data-i="mic"></i></div><div class="g12"></div>
+  <div class="b" style="text-align:center">Start recording</div><div class="xs" style="text-align:center;margin-top:4px">Recording works with no signal. Keep going with the screen off.</div>
+</div></div></template>
+<template id="s-4b-sh"><div class="hd"></div><div class="bub acc"><i class="ic" data-i="mic"></i></div><div class="g12"></div><h2 class="h2">Allow the microphone</h2><div class="g8"></div>
+  <div class="sm">MeetingMind listens only while a recording is on, and you'll always see it in your notifications. The audio is saved on this phone. Because you use Internet mode, it is sent to Google's Gemini through MeetingMind when you stop, to make your notes.</div>
+  <div class="g20"></div><button class="btn" data-go="4c">Continue</button><div class="xs" style="text-align:center;margin-top:8px">Android will ask you next.</div></template>
+
+<!-- 4c Recording -->
+<template id="s-4c"><div class="s"><div class="hdr"><button class="ib"><i class="ic" data-i="back"></i></button><div class="ht row" style="gap:8px"><span class="pulse"></span>Recording · Meeting</div></div><div class="body pad" style="display:flex;flex-direction:column">
+  <div class="g32"></div><div style="text-align:center;font:500 52px/1 Outfit,Inter;letter-spacing:1px">12:48</div><div class="g8"></div><div class="xs" style="text-align:center">English · over the internet when you stop</div>
+  <div class="g24"></div><div class="wave" style="height:80px;justify-content:center;gap:4px"><i style="--d:0s"></i><i style="--d:.2s"></i><i style="--d:.4s"></i><i style="--d:.1s"></i><i style="--d:.3s"></i><i style="--d:.5s"></i><i style="--d:.15s"></i><i style="--d:.35s"></i><i style="--d:.05s"></i><i style="--d:.25s"></i><i style="--d:.45s"></i><i style="--d:.12s"></i><i style="--d:.32s"></i><i style="--d:.22s"></i><i style="--d:.42s"></i><i style="--d:.08s"></i><i style="--d:.28s"></i><i style="--d:.38s"></i></div>
+  <div style="flex:1"></div>
+  <div class="tip dn rhint" style="--ax:52px"><b>Something worth finding later?</b> Tap Marker and it's flagged in your transcript.<br><button class="x" data-rev=".rhint" data-hide>Got it</button></div>
+  <div class="g16"></div>
+  <div class="row" style="justify-content:space-around;padding-bottom:22px">
+    <div style="text-align:center"><button class="ib" style="width:64px;height:64px;border-radius:32px;background:var(--track)"><i class="ic" data-i="flag"></i></button><div class="xs" style="margin-top:6px">Marker</div></div>
+    <div style="text-align:center"><button class="ib" style="width:80px;height:80px;border-radius:40px;background:var(--rec);color:#fff" data-go="4d"><i class="ic s28" data-i="stop"></i></button><div class="xs" style="margin-top:6px">Stop</div></div>
+    <div style="text-align:center"><button class="ib" style="width:64px;height:64px;border-radius:32px;background:var(--track)"><i class="ic" data-i="pause"></i></button><div class="xs" style="margin-top:6px">Pause</div></div>
+  </div></div></div></template>
+
+<!-- 4d Processing -->
+<template id="s-4d"><div class="s"><div class="hdr"><button class="ib" data-go="1e"><i class="ic" data-i="back"></i></button><div class="ht">Product sync</div></div><div class="body pad">
+  <h2 class="h2">Turning your recording into notes</h2><div class="g8"></div><div class="xs">24 min · Meeting · English</div><div class="g20"></div>
+  <div class="grp">
+    <div class="li"><span class="bub ok" style="width:36px;height:36px"><i class="ic s18" data-i="check"></i></span><div class="f1"><div class="tt">Sending securely</div></div><span class="tag t-cl">Internet</span></div>
+    <div class="li"><div class="spin" style="width:36px;height:36px;border-width:3px"></div><div class="f1"><div class="tt">Writing the transcript</div><div class="bar go" style="--from:20%;--w:68%;--t:4s;margin-top:6px"><i></i></div></div><span class="tag t-cl">Internet</span></div>
+    <div class="li" style="opacity:.6"><span class="bub" style="width:36px;height:36px"><i class="ic s18" data-i="users"></i></span><div class="f1"><div class="tt">Who spoke</div></div><span class="tag t-cl">Internet</span></div>
+    <div class="li" style="opacity:.6"><span class="bub" style="width:36px;height:36px"><i class="ic s18" data-i="spark"></i></span><div class="f1"><div class="tt">Notes, decisions, actions</div></div><span class="tag t-cl">Internet</span></div>
+  </div><div class="g16"></div>
+  <div class="card acc nprim"><div class="rowt" style="gap:12px"><span class="bub acc"><i class="ic" data-i="bell"></i></span><div class="f1"><div class="b">Want a nudge when it's ready?</div><div class="sm" style="margin-top:4px">We'll only notify you about your own recordings and downloads.</div><div class="row" style="margin-top:10px;gap:8px"><button class="btn sm2" data-rev=".nprim" data-hide>Notify me</button><button class="btn sm2 sec" data-rev=".nprim" data-hide>No thanks</button></div></div></div></div>
+  <div class="g12"></div><button class="lk" data-go="4e">(Preview: notes ready →)</button>
+</div><div class="foot"><button class="btn sec" data-go="1e">Keep using MeetingMind</button></div></div></template>
+
+<!-- 4e Result -->
+<template id="s-4e"><div class="s"><div class="hdr"><button class="ib" data-go="1e"><i class="ic" data-i="back"></i></button><div class="ht">Product sync</div><button class="ib"><i class="ic" data-i="more"></i></button></div>
+  <div class="pad"><div class="xs">Today 14:00 · 24 min · 3 speakers · processed over the internet</div><div class="g12"></div><div class="seg" data-grp><a class="on" data-pick>Notes</a><a data-pick data-go="4f">Transcript</a><a data-pick>Ask</a></div></div>
+  <div class="body pad"><div class="g12"></div>
+  <div class="card"><div class="ovl">Summary</div><div class="g8"></div><div class="sm">The team agreed to move the launch to 3 March so QA can finish regression testing. Pilot churches will be told on Monday.</div></div><div class="g12"></div>
+  <div class="card"><div class="ovl">Decisions</div><div class="g8"></div><div class="sm">● Launch moves to 3 March <span class="tag t-rec">▶ 08:42</span></div></div><div class="g12"></div>
+  <div class="card"><div class="row sp"><div class="ovl">Action items</div><button class="lk" style="font-size:12.5px;min-height:32px" data-sheet="5a-sh"><i class="ic s16" data-i="spark"></i> Autopilot</button></div><div class="g8"></div><div class="sm" style="display:flex;flex-direction:column;gap:8px"><span>☐ Amara: tell the pilot churches · Mon</span><span>☐ Joseph: draft the delay note · today</span><span>☐ Tendai: share the QA plan · Wed</span></div></div>
+  <div class="row xs" style="margin:8px 4px 0;gap:6px"><i class="ic s16" data-i="spark"></i>Written by AI · <span class="a">Report this</span></div>
+  <div class="g16"></div>
+  <div class="card acc vcard"><div class="row sp"><span class="ovl" style="color:var(--acc)">Nice work</span><button class="ib" style="width:36px;height:36px" data-rev=".vcard" data-hide><i class="ic s18" data-i="x"></i></button></div>
+    <div class="h3" style="font-family:Outfit;font-size:18px">24 minutes of meeting, done.</div><div class="g8"></div>
+    <div class="sm">You have 6 free internet minutes left this month. Pro gives you <b>20 hours</b> a month, and Autopilot turns action items like these into tasks for you to check.</div><div class="g12"></div>
+    <div class="row" style="gap:8px"><button class="btn sm2" data-go="5b">See what Pro adds</button><button class="btn sm2 sec" data-rev=".vcard" data-hide>Not now</button></div></div>
+  <div class="g16"></div></div></div></template>
+
+<!-- 4f Transcript -->
+<template id="s-4f"><div class="s"><div class="hdr"><button class="ib" data-go="1e"><i class="ic" data-i="back"></i></button><div class="ht">Product sync</div><button class="ib"><i class="ic" data-i="search"></i></button></div>
+  <div class="pad"><div class="seg" data-grp><a data-pick data-go="4e">Notes</a><a class="on" data-pick>Transcript</a><a data-pick>Ask</a></div><div class="g12"></div>
+  <div class="row" style="gap:8px;overflow:hidden"><span class="pill"><b style="color:var(--sp1)">●</b>Speaker 1</span><span class="pill"><b style="color:var(--sp2)">●</b>Speaker 2</span><span class="pill"><b style="color:var(--sp3)">●</b>Speaker 3</span></div>
+  <div class="g8"></div><div class="tip upa shint" style="--ax:40px">Tap a speaker to put a name to the voice. Every line they said updates.<br><button class="x" data-rev=".shint" data-hide>Got it</button></div></div>
+  <div class="body pad"><div class="g12"></div><div style="display:flex;flex-direction:column;gap:14px">
+    <div><div class="row xs" style="gap:8px"><span class="spk" style="color:var(--sp1)">Speaker 1</span>08:31</div><div class="p" style="color:var(--ink)">Can we still hit the 24th, or are we kidding ourselves?</div></div>
+    <div><div class="row xs" style="gap:8px"><span class="spk" style="color:var(--sp2)">Speaker 2</span>08:36</div><div class="p" style="color:var(--ink)">Regression isn't done. I'd want one more week, minimum.</div></div>
+    <div class="card sunk" style="padding:10px 12px"><div class="row xs" style="gap:8px;color:var(--warn)"><i class="ic s16" data-i="flag"></i>Your marker · 08:42</div></div>
+    <div><div class="row xs" style="gap:8px"><span class="spk" style="color:var(--sp1)">Speaker 1</span>08:42</div><div class="p" style="color:var(--ink)">Then launch moves to 3 March. I'll tell the pilot churches on Monday.</div></div>
+    <div><div class="row xs" style="gap:8px"><span class="spk" style="color:var(--sp3)">Speaker 3</span>08:55</div><div class="p" style="color:var(--ink)">I'll draft the note today and send it to you first.</div></div>
+  </div><div class="g16"></div></div></div></template>
+
+<!-- 5a Autopilot sheet over notes -->
+<template id="s-5a"><div class="s" style="opacity:.55"><div class="hdr"><button class="ib"><i class="ic" data-i="back"></i></button><div class="ht">Product sync</div></div><div class="body pad"><div class="card"><div class="ovl">Action items</div><div class="g8"></div><div class="sm">☐ Amara: tell the pilot churches<br>☐ Joseph: draft the delay note</div></div></div></div><div data-autosheet="5a-sh"></div></template>
+<template id="s-5a-sh"><div class="hd"></div><div class="bub acc"><i class="ic" data-i="spark"></i></div><div class="g12"></div><h2 class="h2">Autopilot</h2><div class="g8"></div>
+  <div class="sm">After each meeting, Autopilot turns the action items into tasks and drafts the follow-ups. Everything waits in Wrap-up for you to check. Nothing is sent without you.</div><div class="g16"></div>
+  <div class="card sunk"><div class="ovl">From this meeting it would prepare</div><div class="g8"></div><div class="sm" style="display:flex;flex-direction:column;gap:6px"><span>✓ 3 tasks with owners and due dates</span><span>✓ A follow-up note to the pilot churches</span><span>✓ The decision logged to the project</span></div></div>
+  <div class="g12"></div><div class="xs">Included in Pro and Church. <span class="tag">D6</span></div><div class="g16"></div>
+  <button class="btn" data-go="5b">See plans</button><div class="g8"></div><button class="btn sec" data-close data-go="4e">Not now</button></template>
+
+<!-- 5b Paywall -->
+<template id="s-5b"><div class="s"><div class="row sp" style="padding:4px 4px 0 20px"><span class="ovl">For your meetings</span><button class="ib" data-go="back"><i class="ic" data-i="x"></i></button></div><div class="body pad">
+  <h1 class="h1" style="font-size:26px">Be in the meeting, not taking notes about it</h1><div class="g8"></div><p class="sm">You're on the free plan. Here's what you have, and what Pro adds.</p><div class="g16"></div>
+  <div class="card sunk"><div class="ovl">Free · what you have now</div><div class="g8"></div><div class="sm" style="display:flex;flex-direction:column;gap:6px">
+    <span>✓ Unlimited recording, and on-device processing</span><span>✓ 30 min of internet transcription and 30 AI actions a month</span><span>✓ Speakers, Ask, search, export, Circles</span></div></div><div class="g12"></div>
+  <div class="card acc"><div class="ovl" style="color:var(--acc)">Pro adds</div><div class="g8"></div><div class="sm" style="display:flex;flex-direction:column;gap:7px;color:var(--ink)">
+    <span class="rowt" style="gap:8px"><i class="ic s18 a" data-i="clock"></i><span><b>20 hours</b> of internet transcription and 1,200 AI actions a month</span></span>
+    <span class="rowt" style="gap:8px"><i class="ic s18 a" data-i="spark"></i><span><b>Autopilot</b>: tasks and follow-ups drafted after every meeting</span></span>
+    <span class="rowt" style="gap:8px"><i class="ic s18 a" data-i="book"></i><span><b>Deep synthesis</b>: themes and answers across many notes</span></span>
+    <span class="rowt" style="gap:8px"><i class="ic s18 a" data-i="link"></i><span><b>Connected apps</b>: send tasks to your task manager</span></span>
+    <span class="rowt" style="gap:8px"><i class="ic s18 a" data-i="key"></i><span>Use your own Google AI key if you want</span></span></div></div>
+  <div class="g16"></div>
+  <div data-grp style="display:flex;flex-direction:column;gap:10px">
+    <div class="opt on" data-pick><div class="row"><span class="rd"></span><div class="f1"><div class="row" style="gap:8px"><span class="b">Yearly</span><span class="tag t-rec">Best value</span></div><div class="xs">$8.33 a month, billed yearly</div></div><div style="text-align:right"><div class="b">$99.99</div><div class="xs">/ year</div></div></div>
+      <div class="xs a" style="margin:8px 0 0 34px">Launch offer: first year $69.99 (shown only when Play returns it)</div></div>
+    <div class="opt" data-pick><div class="row"><span class="rd"></span><div class="f1"><div class="b">Monthly</div><div class="xs">Cancel any time</div></div><div style="text-align:right"><div class="b">$12.99</div><div class="xs">/ month</div></div></div></div>
+    <div class="opt" data-pick><div class="row"><span class="rd"></span><div class="f1"><div class="b">Lifetime</div><div class="xs">One payment, never renews</div></div><div style="text-align:right"><div class="b">$199.99</div><div class="xs">once</div></div></div></div>
+  </div><div class="g12"></div>
+  <button class="lk" data-sheet="5c-sh">Other plans: own key (BYOK) or Church</button>
+  <div class="g8"></div><div class="xs">Prices come from Google Play for your country.</div><div class="g16"></div>
+</div><div class="foot"><button class="btn" data-go="5h">Continue · $99.99 a year</button><div class="xs" style="text-align:center">Renews on 17 Nov 2027 at $99.99 until you cancel in Google Play. If you cancel, your notes stay and you return to the free plan.</div><div class="row" style="justify-content:center;gap:4px"><button class="lk m" style="font-size:12.5px">Restore purchases</button><span class="xs">·</span><button class="lk m" style="font-size:12.5px">Terms</button><span class="xs">·</span><button class="lk m" style="font-size:12.5px">Privacy</button></div></div></div></template>
+<template id="s-5c-sh"><div class="hd"></div><h2 class="h2">Other plans</h2><div class="g12"></div>
+  <div class="card"><div class="row sp"><div class="b">BYOK</div><div class="b">$4.99<span class="xs"> / month</span></div></div><div class="g4"></div><div class="xs">or $44.99 / year</div><div class="g8"></div><div class="sm">You have your own Google AI key and pay Google directly. There's no MeetingMind allowance. Includes connected apps. <span class="tag">D6</span></div></div><div class="g12"></div>
+  <div class="card"><div class="row sp"><div class="b">Church</div><div class="b">$49.99<span class="xs"> / month</span></div></div><div class="g4"></div><div class="xs">or $499.99 / year</div><div class="g8"></div><div class="sm">Everything in Pro, plus sermon packs shared to your church circle, and 60 hours with 4,000 AI actions a month.</div></div>
+  <div class="g16"></div><button class="btn sec" data-close>Back to Pro</button></template>
+
+<!-- 5d Approaching limit -->
+<template id="s-5d"><div class="s"><div class="hdr"><button class="ib"><i class="ic" data-i="x"></i></button><div class="ht">New recording</div></div><div class="body pad">
+  <div class="pills"><span class="pill on"><i class="ic s16" data-i="brief"></i>Meeting</span><span class="pill">Sermon</span><span class="pill">Lecture</span></div><div class="g16"></div>
+  <div class="card warn"><div class="rowt" style="gap:10px"><i class="ic wr" data-i="clock"></i><div class="f1"><div class="b">6 internet minutes left this month</div><div class="sm" style="margin-top:4px">If this runs longer, we'll finish it on this phone, or it waits until your minutes reset on 1 December. Your recording is always saved.</div><div class="row" style="gap:6px;margin-top:8px"><button class="lk" style="font-size:13px;padding:0" data-go="5b">See plans</button><span class="xs">·</span><button class="lk" style="font-size:13px;padding:0" data-go="2a">Set up this phone</button></div></div></div></div>
+  <div class="g16"></div><div class="grp"><div class="li"><i class="ic" data-i="globe"></i><div class="f1 tt">Language spoken</div><span class="vl">English ▾</span></div><div class="li"><i class="ic a" data-i="cloud"></i><div class="f1"><div class="tt">Processed over the internet</div><div class="st">24 of 30 minutes used · resets 1 Dec</div></div></div></div>
+  <div class="g32"></div><div class="recbtn" data-go="5e"><i class="ic s32" data-i="mic"></i></div><div class="g12"></div><div class="b" style="text-align:center">Start recording</div>
+</div></div></template>
+
+<!-- 5e Allowance used -->
+<template id="s-5e"><div class="s" style="opacity:.55"><div class="hdr"><div class="ht" style="padding-left:16px">Sunday service</div></div><div class="body pad"><div class="h2">Saved · 1 h 12 min</div></div></div><div data-autosheet="5e-sh"></div></template>
+<template id="s-5e-sh"><div class="hd"></div><h2 class="h2">You've used this month's 30 free minutes</h2><div class="g8"></div><div class="sm">Your 1 h 12 min recording is saved. How should we turn it into notes?</div><div class="g16"></div>
+  <div data-grp style="display:flex;flex-direction:column;gap:10px">
+  <div class="opt on" data-pick><div class="row"><span class="bub dv" style="width:38px;height:38px"><i class="ic" data-i="phone"></i></span><div class="f1"><div class="b">Process on this phone</div><div class="xs">Free and private · slower · uses your installed models</div></div><span class="rd"></span></div></div>
+  <div class="opt" data-pick><div class="row"><span class="bub acc" style="width:38px;height:38px"><i class="ic" data-i="star"></i></span><div class="f1"><div class="b">Upgrade to Pro</div><div class="xs">20 hours a month · from $8.33/mo</div></div><span class="rd"></span></div></div>
+  <div class="opt" data-pick><div class="row"><span class="bub" style="width:38px;height:38px"><i class="ic" data-i="clock"></i></span><div class="f1"><div class="b">Wait until 1 December</div><div class="xs">We'll process it then, automatically</div></div><span class="rd"></span></div></div>
+  </div><div class="g8"></div><div class="xs">No on-device AI yet? The first option becomes "Set up this phone · 2.0 GB".</div><div class="g16"></div><button class="btn" data-close>Continue</button></template>
+
+<!-- 5f Plan & billing free -->
+<template id="s-5f"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">Plan &amp; billing</div></div><div class="body pad">
+  <div class="card"><div class="row sp"><div><div class="ovl">Your plan</div><div class="h2">Free</div></div><span class="tag">Since 17 Nov</span></div><div class="g16"></div>
+    <div class="row sp sm"><span>Internet transcription</span><span class="b">24 of 30 min</span></div><div class="bar wr" style="--w:80%;margin-top:6px"><i></i></div><div class="g12"></div>
+    <div class="row sp sm"><span>AI actions</span><span class="b">12 of 30</span></div><div class="bar" style="--w:40%;margin-top:6px"><i></i></div><div class="g12"></div>
+    <div class="xs">Resets on 1 December. On-device processing is never counted.</div></div>
+  <div class="g12"></div><button class="btn" data-go="5b">See what Pro adds</button><div class="g16"></div>
+  <div class="grp">
+    <div class="li"><i class="ic" data-i="refresh"></i><div class="f1"><div class="tt">Restore purchases</div><div class="st">Bought on another phone? Same Google account</div></div></div>
+    <div class="li" data-rev=".cxl"><i class="ic" data-i="help"></i><div class="f1"><div class="tt">What happens if I cancel?</div></div><i class="ic s18" data-i="chev"></i></div>
+  </div>
+  <div class="card sunk cxl hide" style="margin-top:10px"><div class="sm">Your recordings, transcripts and notes stay. Pro features stop at the end of the period you paid for, and you're back to the free monthly allowance.</div></div><div class="g16"></div>
+</div></div></template>
+
+<!-- 5g Pro grace -->
+<template id="s-5g"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">Plan &amp; billing</div></div><div class="body pad">
+  <div class="card dang"><div class="rowt" style="gap:10px"><i class="ic dn" data-i="alert"></i><div class="f1"><div class="b">Google Play couldn't take your payment</div><div class="sm" style="margin-top:4px">Pro keeps working while Google retries. Update your payment method to keep it.</div><div class="g8"></div><button class="btn sm2">Fix in Google Play</button></div></div></div><div class="g12"></div>
+  <div class="card"><div class="row sp"><div><div class="ovl">Your plan</div><div class="h2">Pro · Yearly</div></div><span class="tag t-rec">Active</span></div><div class="g4"></div><div class="xs">Renews 17 Nov 2027 · $99.99</div><div class="g16"></div>
+    <div class="row sp sm"><span>Internet transcription</span><span class="b">3 h 10 m of 20 h</span></div><div class="bar" style="--w:16%;margin-top:6px"><i></i></div><div class="g12"></div>
+    <div class="row sp sm"><span>AI actions</span><span class="b">210 of 1,200</span></div><div class="bar" style="--w:18%;margin-top:6px"><i></i></div><div class="g8"></div><div class="xs">Resets on 1 December</div></div><div class="g16"></div>
+  <div class="grp">
+    <div class="li"><i class="ic" data-i="card"></i><div class="f1"><div class="tt">Manage subscription</div><div class="st">Change plan or cancel in Google Play</div></div><i class="ic s18" data-i="chev"></i></div>
+    <div class="li"><i class="ic" data-i="refresh"></i><div class="f1"><div class="tt">Restore purchases</div></div></div>
+    <div class="li"><i class="ic" data-i="key"></i><div class="f1"><div class="tt">Your own Google AI key</div><div class="st">Optional · uses your Google billing, not your allowance</div></div><i class="ic s18" data-i="chev"></i></div>
+  </div><div class="g16"></div></div></div></template>
+
+<!-- 5h Purchase result -->
+<template id="s-5h"><div class="s"><div class="body pad" style="padding-top:44px">
+  <div class="bub ok pop" style="width:76px;height:76px;border-radius:38px"><i class="ic s32" data-i="check"></i></div><div class="g20"></div>
+  <h2 class="h2">Welcome to Pro</h2><div class="g8"></div><p class="p">You now have 20 hours of internet transcription and 1,200 AI actions a month. Your yearly plan renews on 17 Nov 2027.</p><div class="g20"></div>
+  <div class="card"><div class="row"><span class="bub acc"><i class="ic" data-i="spark"></i></span><div class="f1"><div class="b">Autopilot is ready</div><div class="xs">For "Product sync" and every meeting after it</div></div></div></div>
+  <div class="g24"></div><div class="ovl">Other outcomes (preview)</div><div class="g8"></div>
+  <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm2 sec" data-sheet="5h-fail">Failed</button><button class="btn sm2 sec" data-sheet="5h-pend">Pending</button><button class="btn sm2 sec" data-sheet="5h-rest">Restore: none found</button></div>
+</div><div class="foot"><button class="btn" data-go="4e">Set up Autopilot</button></div></div></template>
+<template id="s-5h-fail"><div class="hd"></div><div class="bub dn"><i class="ic" data-i="alert"></i></div><div class="g12"></div><h2 class="h2">The purchase didn't go through</h2><div class="g8"></div><div class="sm">Google Play declined the payment. You haven't been charged, and nothing has changed in MeetingMind.</div><div class="g20"></div><button class="btn" data-close>Try again</button><div class="g8"></div><button class="btn sec" data-close>Not now</button></template>
+<template id="s-5h-pend"><div class="hd"></div><div class="spin" style="width:40px;height:40px;border-width:4px"></div><div class="g12"></div><h2 class="h2">Waiting for Google Play</h2><div class="g8"></div><div class="sm">Some payment methods take a few minutes. Keep using MeetingMind. Pro switches on as soon as Google confirms.</div><div class="g20"></div><button class="btn sec" data-close>OK</button></template>
+<template id="s-5h-rest"><div class="hd"></div><h2 class="h2">No purchases found</h2><div class="g8"></div><div class="sm">We couldn't find an active MeetingMind subscription on the Google account this phone uses. If you bought it with another account, switch accounts in Google Play and try again.</div><div class="g20"></div><button class="btn sec" data-close>OK</button></template>
+
+<!-- 6b0 Work home BEFORE (reproduced) -->
+<template id="s-6b0"><div class="s"><div class="body over">
+  <div style="height:300px;background:linear-gradient(180deg,#1b2a4a,#121A27);padding:6px 20px 0">
+    <div class="row sp"><div><div class="xs">Tuesday 17 Nov</div><div class="h2">Good afternoon</div></div><div class="row" style="gap:0"><button class="ib"><i class="ic" data-i="search"></i></button><button class="ib"><i class="ic" data-i="inbox"></i></button></div></div>
+    <div style="height:110px"></div>
+    <div style="height:46px;border-radius:23px;background:rgba(255,255,255,.08);display:flex;align-items:center;padding:0 16px;font:500 13px Inter">Work ⇄ Everything</div>
+    <div style="margin-top:8px;font:600 15px Outfit">Work is showing · meetings and tasks</div><div class="xs">Next: Everything, with Faith</div>
+  </div>
+  <div style="height:54px;padding:0 24px;position:relative"><div class="card" style="position:relative;top:-38px;min-height:76px;padding:12px;display:flex;align-items:center;gap:10px;background:#192434;box-shadow:0 10px 24px rgba(0,0,0,.5)"><div class="f1" style="min-width:0"><div class="ovl" style="font-size:10px">To review · 3 meetings</div><div class="b" style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Budget review with finance</div></div><span style="font:600 13px Inter;background:var(--ink);color:var(--bg);border-radius:99px;padding:9px 14px">Review</span></div></div>
+  <div style="display:flex;padding:10px 12px 0">
+    <div style="flex:1;text-align:center"><div style="width:46px;height:46px;margin:auto;border-radius:14px;background:var(--track)"></div><div style="font:500 11px Inter;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Record</div></div>
+    <div style="flex:1;text-align:center"><div style="width:46px;height:46px;margin:auto;border-radius:14px;background:var(--track)"></div><div style="font:500 11px Inter;margin-top:4px">Task</div></div>
+    <div style="flex:1;text-align:center"><div style="width:46px;height:46px;margin:auto;border-radius:14px;background:var(--track)"></div><div style="font:500 11px Inter;margin-top:4px">Inbox</div></div>
+    <div style="flex:1;text-align:center"><div style="width:46px;height:46px;margin:auto;border-radius:14px;background:var(--track)"></div><div style="font:500 11px Inter;margin-top:4px">Ask</div></div>
+    <div style="flex:1;text-align:center"><div style="width:46px;height:46px;margin:auto;border-radius:14px;background:var(--track)"></div><div style="font:500 11px Inter;margin-top:4px">Brief</div></div>
+    <div style="flex:1;text-align:center"><div style="width:46px;height:46px;margin:auto;border-radius:14px;background:var(--track)"></div><div style="font:500 11px Inter;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Revi…</div></div>
+    <div style="flex:1;text-align:center"><div style="width:46px;height:46px;margin:auto;border-radius:14px;background:var(--track)"></div><div style="font:500 11px Inter;margin-top:4px">New</div></div>
+  </div>
+  <div class="note-anno" style="bottom:auto;top:276px">⚠ The tile is pulled up 38 dp (<code>offset(y=-38.dp)</code>) over the mode caption, because <code>showTile=false</code> reserved no room.</div>
+</div><div class="bn" data-a="today" data-set="old"></div></div></template>
+
+<!-- 6b Work home AFTER -->
+<template id="s-6b"><div class="s"><div class="body">
+  <div style="background:linear-gradient(180deg,#1b2a4a 0%,#0C111B 100%);padding:6px 8px 18px 20px">
+    <div class="row sp"><div><div class="xs">Tuesday 17 Nov</div><div class="h2">Good afternoon, Amara</div></div><div class="row" style="gap:0"><button class="ib"><i class="ic" data-i="search"></i></button><button class="ib"><i class="ic" data-i="inbox"></i><span class="dot">2</span></button></div></div>
+    <div class="g12"></div><div class="sm" style="padding-right:12px">3 meetings · 5 tasks due · 2 follow-ups to send</div>
+  </div>
+  <div class="pad" style="display:flex;flex-direction:column;gap:12px">
+    <div class="card"><div class="row"><span class="bub acc"><i class="ic" data-i="clock"></i></span><div class="f1"><div class="ovl">Up next · 14:00</div><div class="b">Product sync</div><div class="xs">with Tendai, Joseph and 2 more</div></div></div><div class="g12"></div><div class="row" style="gap:8px"><button class="btn sm2 sec" style="flex:1">Prepare</button><button class="btn sm2" style="flex:1" data-go="4a">Record</button></div></div>
+    <div class="card"><div class="row sp"><div class="b">To review</div><span class="tag">3</span></div><div class="g8"></div>
+      <div class="row" style="min-height:48px"><div class="f1"><div class="sm b">Budget review with finance</div><div class="xs">4 action items to confirm</div></div><i class="ic s18 m" data-i="chev"></i></div>
+      <div class="row" style="min-height:48px;border-top:1px solid var(--line2)"><div class="f1"><div class="sm b">Hiring panel · Thursday</div><div class="xs">2 decisions to confirm</div></div><i class="ic s18 m" data-i="chev"></i></div></div>
+    <div class="row" style="justify-content:space-between">
+      <div style="flex:1;min-width:0;text-align:center"><div class="bub" style="width:52px;height:52px;margin:auto;border-radius:18px;color:var(--rec)"><i class="ic" data-i="mic"></i></div><div class="xs" style="margin-top:6px;color:var(--ink2)">Record</div></div>
+      <div style="flex:1;min-width:0;text-align:center"><div class="bub" style="width:52px;height:52px;margin:auto;border-radius:18px"><i class="ic" data-i="task"></i></div><div class="xs" style="margin-top:6px;color:var(--ink2)">Task</div></div>
+      <div style="flex:1;min-width:0;text-align:center"><div class="bub" style="width:52px;height:52px;margin:auto;border-radius:18px"><i class="ic" data-i="spark"></i></div><div class="xs" style="margin-top:6px;color:var(--ink2)">Ask</div></div>
+      <div style="flex:1;min-width:0;text-align:center"><div class="bub" style="width:52px;height:52px;margin:auto;border-radius:18px"><i class="ic" data-i="notes"></i></div><div class="xs" style="margin-top:6px;color:var(--ink2)">Brief</div></div>
+      <div style="flex:1;min-width:0;text-align:center"><div class="bub" style="width:52px;height:52px;margin:auto;border-radius:18px"><i class="ic" data-i="more"></i></div><div class="xs" style="margin-top:6px;color:var(--ink2)">More</div></div>
+    </div>
+    <div><div class="ovl" style="padding:4px 4px 8px">At a glance</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="card" style="padding:14px"><div class="h2">5</div><div class="sm">Due today</div></div><div class="card" style="padding:14px"><div class="h2">2</div><div class="sm">Waiting on others</div></div>
+      <div class="card" style="padding:14px"><div class="h2">2</div><div class="sm">Follow-ups to send</div></div><div class="card" style="padding:14px"><div class="h2">4</div><div class="sm">Decided this week</div></div></div></div>
+    <div class="g8"></div></div>
+</div><div class="bn" data-a="today"></div></div></template>
+
+<!-- 6c Work tasks with Work bar -->
+<template id="s-6c"><div class="s"><div class="hdr"><button class="ib" data-go="6b"><i class="ic" data-i="back"></i></button><div class="ht">Work · Tasks</div><button class="ib"><i class="ic" data-i="search"></i></button><button class="ib"><i class="ic" data-i="plus"></i></button><button class="ib"><i class="ic" data-i="more"></i></button></div>
+  <div class="body pad"><div class="pills" data-grp><span class="pill on" data-pick>Today</span><span class="pill" data-pick>Upcoming</span><span class="pill" data-pick>Waiting on</span></div><div class="g12"></div>
+  <div class="grp">
+    <div class="li"><span class="rd"></span><div class="f1"><div class="tt">Tell the pilot churches about 3 March</div><div class="st">Product sync · due Mon</div></div></div>
+    <div class="li"><span class="rd"></span><div class="f1"><div class="tt">Draft the delay note</div><div class="st">Product sync · due today</div></div></div>
+    <div class="li"><span class="rd"></span><div class="f1"><div class="tt">Share the QA plan with Amara and the pilot coordinators</div><div class="st">Product sync · due Wed · Waiting on Tendai</div></div></div>
+    <div class="li"><span class="rd"></span><div class="f1"><div class="tt">Confirm the Q1 budget lines</div><div class="st">Budget review · due Fri</div></div></div>
+  </div><div class="g16"></div></div><div class="wb" data-a="tasks"></div></div></template>
+
+<!-- 6d Settings tab -->
+<template id="s-6d"><div class="s"><div class="hdr"><div class="ht" style="font:600 24px Outfit;padding-left:16px">Settings</div><button class="ib"><i class="ic" data-i="search"></i></button></div><div class="body pad">
+  <div class="card" data-go="5f" style="cursor:pointer"><div class="row"><div style="width:48px;height:48px;border-radius:24px;background:var(--accw);color:var(--acc);display:flex;align-items:center;justify-content:center;font:600 18px Outfit">A</div><div class="f1"><div class="b">Amara Phiri</div><div class="xs">Free plan</div></div><i class="ic s18 m" data-i="chev"></i></div>
+    <div class="g12"></div><div class="row sp xs"><span>Internet minutes this month</span><span>24 of 30</span></div><div class="bar wr" style="--w:80%;margin-top:6px"><i></i></div></div>
+  <div class="gh" style="padding-left:4px">AI &amp; privacy</div>
+  <div class="grp"><div class="li" data-go="6e"><i class="ic" data-i="cloud"></i><div class="f1"><div class="tt">How MeetingMind processes</div><div class="st">Over the internet</div></div><i class="ic s18" data-i="chev"></i></div>
+    <div class="li" data-go="3a"><i class="ic" data-i="phone"></i><div class="f1"><div class="tt">On-device AI</div><div class="st">Not set up · 2.0 GB</div></div><i class="ic s18" data-i="chev"></i></div></div>
+  <div class="gh" style="padding-left:4px">Recording</div>
+  <div class="grp"><div class="li"><i class="ic" data-i="globe"></i><div class="f1"><div class="tt">Recording language</div><div class="st">English</div></div></div><div class="li"><i class="ic" data-i="users"></i><div class="f1"><div class="tt">Speakers &amp; transcripts</div><div class="st">Speaker detection, cleanup, filler words</div></div></div><div class="li"><i class="ic" data-i="notes"></i><div class="f1"><div class="tt">Note style</div></div></div></div>
+  <div class="gh" style="padding-left:4px">You</div>
+  <div class="grp"><div class="li"><i class="ic" data-i="bell"></i><div class="f1 tt">Notifications</div></div><div class="li"><i class="ic" data-i="brief"></i><div class="f1"><div class="tt">Spaces</div><div class="st">Work, Learning, Faith</div></div></div><div class="li"><i class="ic" data-i="sun"></i><div class="f1"><div class="tt">Appearance &amp; language</div><div class="st">English · Dark · Default text</div></div></div></div>
+  <div class="gh" style="padding-left:4px">Account</div>
+  <div class="grp"><div class="li" data-go="5f"><i class="ic" data-i="card"></i><div class="f1"><div class="tt">Plan &amp; billing</div><div class="st">Free · see plans</div></div></div><div class="li"><i class="ic" data-i="shield"></i><div class="f1"><div class="tt">Privacy &amp; data</div><div class="st">App lock, backup, what leaves your phone</div></div></div><div class="li"><i class="ic" data-i="help"></i><div class="f1"><div class="tt">Help &amp; about</div><div class="st">Show me around · version 1.0 (49)</div></div></div></div>
+  <div class="g16"></div></div><div class="bn" data-a="settings"></div></div></template>
+
+<!-- 6e AI & privacy -->
+<template id="s-6e"><div class="s"><div class="hdr"><button class="ib" data-go="back"><i class="ic" data-i="back"></i></button><div class="ht">AI &amp; privacy</div></div><div class="body pad">
+  <div class="ovl">How MeetingMind processes</div><div class="g8"></div>
+  <div data-grp style="display:flex;flex-direction:column;gap:10px">
+  <div class="opt on" data-pick><div class="row"><span class="bub acc" style="width:38px;height:38px"><i class="ic" data-i="cloud"></i></span><div class="f1"><div class="b">Over the internet</div><div class="xs">Fast · uses your monthly allowance</div></div><span class="rd"></span></div></div>
+  <div class="opt" data-pick><div class="row"><span class="bub dv" style="width:38px;height:38px"><i class="ic" data-i="phone"></i></span><div class="f1"><div class="b">On this phone</div><div class="xs">Private · needs setup (2.0 GB)</div></div><span class="rd"></span></div></div></div>
+  <div class="g16"></div>
+  <div class="card sunk"><div class="ovl">What leaves your phone</div><div class="g8"></div><div class="sm" style="display:flex;flex-direction:column;gap:8px">
+    <div class="rowt" style="gap:8px"><i class="ic s16 a" data-i="cloud"></i><span><b>Internet:</b> audio and transcripts go to Google's Gemini through MeetingMind to make transcripts and notes. Text-only backup: DeepSeek. <span class="tag">D10</span></span></div>
+    <div class="rowt" style="gap:8px"><i class="ic s16" data-i="phone" style="color:var(--sp3)"></i><span><b>On this phone:</b> nothing. Transcription, speakers, notes and search run on the phone. <span class="tag t-nc">after fix §11.1</span></span></div>
+    <div class="rowt" style="gap:8px"><i class="ic s16" data-i="lock"></i><span>Confidential Work projects always stay on this phone.</span></div></div></div>
+  <div class="g16"></div>
+  <div class="grp"><div class="li" data-go="3a"><i class="ic" data-i="chip"></i><div class="f1"><div class="tt">On-device AI</div><div class="st">Models, storage, setup</div></div><i class="ic s18" data-i="chev"></i></div>
+    <div class="li"><i class="ic" data-i="key"></i><div class="f1"><div class="tt">Your own Google AI key</div><div class="st">Pro, BYOK and Church</div></div><i class="ic s18" data-i="lock"></i></div>
+    <div class="li"><i class="ic" data-i="lock"></i><div class="f1 tt">App lock</div><span class="sw"></span></div></div><div class="g16"></div>
+</div></div></template>
+
+<!-- 6f stress French 1.3x -->
+<template id="s-6f"><div class="s"><div class="body big">
+  <div style="background:linear-gradient(180deg,#1b2a4a 0%,#0C111B 100%);padding:6px 8px 16px 20px"><div class="row sp"><div class="f1"><div class="xs">Mardi 17 novembre</div><div class="h2">Bon après-midi, Amara</div></div><button class="ib"><i class="ic" data-i="search"></i></button></div></div>
+  <div class="pad" style="display:flex;flex-direction:column;gap:12px">
+    <div class="card"><div class="ovl">À suivre · 14:00</div><div class="b">Point produit hebdomadaire</div><div class="xs">avec Tendai, Joseph et 2 autres personnes</div><div class="g12"></div><div style="display:flex;flex-direction:column;gap:8px"><button class="btn sm2 sec">Préparer la réunion</button><button class="btn sm2">Enregistrer</button></div></div>
+    <div class="card"><div class="row sp"><div class="b">À relire</div><span class="tag">3</span></div><div class="g8"></div><div class="sm b">Revue budgétaire avec la finance</div><div class="xs">4 actions à confirmer</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="card" style="padding:12px"><div class="h2">5</div><div class="sm">À faire aujourd'hui</div></div><div class="card" style="padding:12px"><div class="h2">2</div><div class="sm">En attente d'autres personnes</div></div></div>
+  </div></div><div class="bn" data-a="today" data-lang="fr"></div></div></template>
+
+<!-- 7a empty -->
+<template id="s-7a"><div class="s"><div class="hdr"><div class="ht" style="font:600 24px Outfit;padding-left:16px">Notes</div><button class="ib"><i class="ic" data-i="search"></i></button></div><div class="body pad" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
+  <div class="bub acc" style="width:80px;height:80px;border-radius:28px"><i class="ic s32" data-i="notes"></i></div><div class="g20"></div><h2 class="h2">No notes yet</h2><div class="g8"></div><p class="p">Record a meeting, sermon or lecture, or import audio you already have. Your transcripts and notes will live here.</p><div class="g20"></div>
+  <button class="btn" data-go="4a" style="width:220px"><i class="ic s18" data-i="mic"></i>Record</button><div class="g8"></div><button class="btn sec" style="width:220px"><i class="ic s18" data-i="upload"></i>Import audio</button>
+</div><div class="bn" data-a="notes"></div></div></template>
+<!-- 7b loading -->
+<template id="s-7b"><div class="s"><div class="hdr"><div class="ht" style="font:600 24px Outfit;padding-left:16px">Notes</div></div><div class="body pad" style="display:flex;flex-direction:column;gap:12px">
+  <div class="skel" style="height:40px;border-radius:12px"></div>
+  <div class="card"><div class="skel" style="height:14px;width:40%"></div><div class="g8"></div><div class="skel" style="height:18px;width:80%"></div><div class="g8"></div><div class="skel" style="height:12px;width:95%"></div></div>
+  <div class="card"><div class="skel" style="height:14px;width:30%"></div><div class="g8"></div><div class="skel" style="height:18px;width:70%"></div><div class="g8"></div><div class="skel" style="height:12px;width:90%"></div></div>
+  <div class="card"><div class="skel" style="height:14px;width:45%"></div><div class="g8"></div><div class="skel" style="height:18px;width:60%"></div><div class="g8"></div><div class="skel" style="height:12px;width:85%"></div></div>
+</div><div class="bn" data-a="notes"></div></div></template>
+<!-- 7c no connection -->
+<template id="s-7c"><div class="s"><div class="hdr"><button class="ib"><i class="ic" data-i="back"></i></button><div class="ht">Product sync</div></div><div class="body pad">
+  <div class="card warn"><div class="rowt" style="gap:10px"><i class="ic wr" data-i="wifi"></i><div class="f1"><div class="b">No connection</div><div class="sm" style="margin-top:4px">Your recording is saved on this phone. We'll start making notes as soon as you're back online.</div></div></div></div><div class="g16"></div>
+  <div class="ovl">Or</div><div class="g8"></div>
+  <div class="opt"><div class="row"><span class="bub dv" style="width:38px;height:38px"><i class="ic" data-i="phone"></i></span><div class="f1"><div class="b">Make notes on this phone now</div><div class="xs">Needs on-device AI · 2.0 GB, set up on Wi-Fi</div></div><i class="ic s18" data-i="chev"></i></div></div>
+  <div class="g16"></div><div class="grp"><div class="li"><i class="ic" data-i="play"></i><div class="f1"><div class="tt">Listen to the recording</div><div class="st">24 min · saved 14:24</div></div></div></div>
+</div></div></template>
+<!-- 7d failed -->
+<template id="s-7d"><div class="s"><div class="hdr"><button class="ib"><i class="ic" data-i="back"></i></button><div class="ht">Sunday service</div></div><div class="body pad">
+  <div class="card dang"><div class="rowt" style="gap:10px"><i class="ic dn" data-i="alert"></i><div class="f1"><div class="b">We couldn't finish this transcript</div><div class="sm" style="margin-top:4px">Google's AI stopped answering partway through. Your audio is safe on this phone, and the first 38 minutes are already transcribed.</div></div></div></div><div class="g16"></div>
+  <button class="btn"><i class="ic s18" data-i="refresh"></i>Try again</button><div class="g8"></div><button class="btn sec"><i class="ic s18" data-i="phone"></i>Finish on this phone</button><div class="g12"></div><button class="lk m">Report a problem</button>
+</div></div></template>
+<!-- 7e silent -->
+<template id="s-7e"><div class="s"><div class="hdr"><button class="ib"><i class="ic" data-i="back"></i></button><div class="ht">Recording · 3 min</div></div><div class="body pad">
+  <div class="bub" style="width:64px;height:64px;border-radius:22px"><i class="ic s28" data-i="mic"></i></div><div class="g16"></div><h2 class="h2">We didn't hear anyone speak</h2><div class="g8"></div><p class="p">This recording is 3 minutes long but quiet the whole way through. The microphone may have been covered, or the phone was in a pocket.</p><div class="g20"></div>
+  <button class="btn sec"><i class="ic s18" data-i="play"></i>Listen to it</button><div class="g8"></div><button class="btn sec">Keep it as a note</button><div class="g8"></div><button class="btn sec" style="color:var(--dan)">Delete</button>
+</div></div></template>
+<!-- 7f byok -->
+<template id="s-7f"><div class="s"><div class="hdr"><button class="ib"><i class="ic" data-i="back"></i></button><div class="ht">Lecture 4 · Organic chemistry</div></div><div class="body pad">
+  <div class="card warn"><div class="rowt" style="gap:10px"><i class="ic wr" data-i="key"></i><div class="f1"><div class="b">Your Google AI key didn't work</div><div class="sm" style="margin-top:4px">Google said the key isn't valid. Your recording is saved and nothing was sent.</div></div></div></div><div class="g16"></div>
+  <button class="btn">Check my key</button><div class="g8"></div><button class="btn sec"><i class="ic s18" data-i="phone"></i>Process on this phone instead</button>
+</div></div></template>
+
+<script>
+/* ── icons (24 grid, stroke) ── */
+const P={home:"M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",notes:"M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5",plus:"M12 5v14M5 12h14",brief:"M4 8h16v11H4zM9 8V5h6v3M4 13h16",
+gear:"M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z",
+mic:"M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM19 11a7 7 0 0 1-14 0M12 18v3",cloud:"M17.5 19H8a5 5 0 1 1 1.2-9.9A6 6 0 0 1 20.5 11 4 4 0 0 1 17.5 19z",phone:"M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2",
+check:"M5 12l5 5L20 7",chev:"M9 6l6 6-6 6",back:"M15 6l-6 6 6 6",x:"M6 6l12 12M18 6L6 18",down:"M12 4v12M7 11l5 5 5-5M5 20h14",wifi:"M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01",lock:"M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4",
+spark:"M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z",users:"M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6",
+book:"M4 5a2 2 0 0 1 2-2h6v17H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-6v17h6a2 2 0 0 1 2 2z",cross:"M12 3v18M7 8h10",cap:"M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5M22 9v6",chat:"M4 5h16v11H9l-5 4z",wave:"M3 12h1M7 8v8M11 5v14M15 9v6M19 7v10",
+alert:"M12 3l10 18H2zM12 10v5M12 18h.01",play:"M7 4l13 8-13 8z",pause:"M7 4h4v16H7zM13 4h4v16h-4z",flag:"M5 21V4h11l-2 4 2 4H5",search:"M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4",inbox:"M3 13l3-8h12l3 8v6H3zM3 13h5l1 2h6l1-2h5",
+bell:"M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4",globe:"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18",chip:"M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4",
+trash:"M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",refresh:"M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",clock:"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2",task:"M4 4h16v16H4zM8 12l3 3 5-6",folder:"M3 6h6l2 2h10v11H3z",
+decide:"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12l3 3 5-6",star:"M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z",user:"M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",card:"M3 6h18v12H3zM3 10h18",
+db:"M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",shield:"M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z",
+help:"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01",info:"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5h.01",more:"M5 12h.01M12 12h.01M19 12h.01",stop:"M7 7h10v10H7z",
+upload:"M12 20V8M7 13l5-5 5 5M5 4h14",pen:"M4 20l4-1L19 8l-3-3L5 16zM14 6l3 3",link:"M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
+key:"M8 15a4 4 0 1 1 0-8 4 4 0 0 1 0 8zM12 11h9M18 11v3M15 11v2",sun:"M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",bolt:"M13 2L4 14h7l-1 8 9-12h-7z"};
+function svg(n){const d=P[n]||P.info;const w=n==='more'?3:1.8;return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`}
+const NAV={en:[['today','home','Today','1e'],['notes','notes','Notes','7a'],['new','plus','New','4a'],['work','brief','Work','6c'],['settings','gear','Settings','6d']],
+  fr:[['today','home',"Aujourd’hui",'1e'],['notes','notes','Notes','7a'],['new','plus','Nouveau','4a'],['work','brief','Travail','6c'],['settings','gear','Réglages','6d']],
+  old:[['today','home','Today'],['notes','notes','Notes'],['new','plus','New'],['work','brief','Work'],['learn','cap','Learn']]};
+const WB={en:[['pulse','spark','Pulse'],['tasks','task','Tasks','6c'],['notes','notes','Notes'],['projects','folder','Projects'],['decisions','decide','Decisions']]};
+function hydrate(root){
+  root.querySelectorAll('.ic[data-i]').forEach(e=>{if(!e.firstChild)e.innerHTML=svg(e.dataset.i)});
+  root.querySelectorAll('.bn').forEach(b=>{if(b.dataset.done)return;b.dataset.done=1;const set=b.dataset.set==='old'?NAV.old:(NAV[b.dataset.lang]||NAV.en);
+    b.innerHTML=set.map(([k,i,l,g])=>`<a class="${k===b.dataset.a?'on':''} ${k==='new'?'new':''}" ${g?`data-go="${g}"`:''} aria-label="${l}"><span class="pl">${svg(i)}</span><span>${k==='new'&&b.dataset.set==='old'?'New':l}</span></a>`).join('').replace(/<svg/g,'<span class="ic">$&').replace(/<\/svg>/g,'</svg></span>')});
+  root.querySelectorAll('.wb').forEach(b=>{if(b.dataset.done)return;b.dataset.done=1;
+    if(b.dataset.set==='old'){b.style.cssText='display:flex;gap:2px;padding:8px 16px 12px;align-items:center;overflow:hidden;white-space:nowrap';
+      b.innerHTML=`<span class="ib" style="width:44px;height:44px"><span class="ic">${svg("home")}</span></span>`+WB.en.map(([k,i,l])=>k===b.dataset.a?`<span style="height:44px;border-radius:22px;background:var(--accw);color:var(--acc);display:flex;align-items:center;gap:6px;padding:0 13px;font:600 13px Inter;flex:none"><span class="ic s18">${svg(i)}</span>${l}</span>`:`<span class="ib" style="width:44px;height:44px;color:var(--muted)"><span class="ic">${svg(i)}</span></span>`).join('')+`<span style="font:600 11px Inter;color:#F87171;margin-left:6px">← overflows 360</span>`;return}
+    b.innerHTML=WB.en.map(([k,i,l,g])=>`<a class="${k===b.dataset.a?'on':''}" ${g?`data-go="${g}"`:''}><span class="pl"><span class="ic">${svg(i)}</span></span><span>${l}</span></a>`).join('')});
+}
+function tpl(id){return document.getElementById('s-'+id)}
+function show(ph,id,push){const t=tpl(id);if(!t){console.warn('no screen',id);return}
+  const vp=ph.querySelector('.vp'),ov=ph.querySelector('.ov');if(push&&ph._cur)ph._hist.push(ph._cur);
+  vp.replaceChildren(t.content.cloneNode(true));ov.innerHTML='';ov.classList.remove('on');ph._cur=id;hydrate(vp);
+  const auto=vp.querySelector('[data-autosheet]');if(auto)sheet(ph,auto.dataset.autosheet,true)}
+function sheet(ph,id,sticky){const t=tpl(id);if(!t)return;const ov=ph.querySelector('.ov');
+  ov.innerHTML=`<div class="scrim" ${sticky?'':'data-close'}></div><div class="sh"></div>`;ov.querySelector('.sh').appendChild(t.content.cloneNode(true));ov.classList.add('on');hydrate(ov)}
+document.querySelectorAll('.ph').forEach(ph=>{ph.innerHTML='<div class="scrn"><div class="sb"><span>9:41</span><span class="ic s16">'+svg('wifi')+'</span></div><div class="vp"></div><div class="ov"></div></div>';ph._hist=[];show(ph,ph.dataset.start)});
+hydrate(document);
+document.addEventListener('click',e=>{
+  const rs=e.target.closest('[data-reset]');if(rs){const ph=rs.closest('.fr').querySelector('.ph');ph._hist=[];show(ph,ph.dataset.start);return}
+  const ph=e.target.closest('.ph');if(!ph)return;
+  const pk=e.target.closest('[data-pick]');if(pk&&!pk.classList.contains('dis')){const g=pk.closest('[data-grp]');if(g)g.querySelectorAll('[data-pick]').forEach(x=>x.classList.remove('on'));pk.classList.add('on')}
+  const tg=e.target.closest('[data-tog]');if(tg)tg.classList.toggle('on');
+  const rv=e.target.closest('[data-rev]');if(rv){const el=ph.querySelector(rv.dataset.rev);if(el){if(rv.hasAttribute('data-hide'))el.style.display='none';else el.classList.toggle('show')}}
+  const sh=e.target.closest('[data-sheet]');if(sh){sheet(ph,sh.dataset.sheet);return}
+  const go=e.target.closest('[data-go]');if(go){const id=go.dataset.go;if(id==='back'){const p=ph._hist.pop();if(p)show(ph,p,false);else{const ov=ph.querySelector('.ov');ov.innerHTML='';ov.classList.remove('on')}}else show(ph,id,true);return}
+  const cl=e.target.closest('[data-close]');if(cl){const ov=ph.querySelector('.ov');
+    const isAuto=ph.querySelector('.vp [data-autosheet]');if(isAuto&&!cl.classList.contains('scrim')&&ph._hist.length){show(ph,ph._hist.pop(),false);return}
+    ov.innerHTML='';ov.classList.remove('on')}
+});
+if(location.hash){const t=document.getElementById(location.hash.slice(1));if(t)setTimeout(()=>t.scrollIntoView(),100)}
+</script>
+</body>
+</html>

@@ -8,7 +8,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter
 import com.craftflowtechnologies.meetingmind.ai.cloud.UsageState
 import com.craftflowtechnologies.meetingmind.core.analytics.Analytics
@@ -24,8 +29,8 @@ import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManag
  */
 object UsageWarning {
     /** The warning to show now, or null if there is none or this level was already shown this period. */
-    fun next(usage: UsageState, billingConfigured: Boolean, warnedTag: String?): PaywallTrigger? {
-        if (!billingConfigured || !usage.known) return null
+    fun next(usage: UsageState, warnedTag: String?): PaywallTrigger? {
+        if (!usage.known) return null
         val level = when {
             usage.atLimit -> PaywallTrigger.USAGE_EXHAUSTED
             usage.nearLimit -> PaywallTrigger.USAGE_NEAR_LIMIT
@@ -39,12 +44,17 @@ object UsageWarning {
     fun title(level: PaywallTrigger) =
         if (level == PaywallTrigger.USAGE_EXHAUSTED) "This month's cloud allowance is used up" else "Most of this month's cloud allowance is used"
 
-    fun body(level: PaywallTrigger, usage: UsageState, paid: Boolean): String {
-        val change = if (paid) "You can switch to a plan with a larger allowance." else "A plan with a larger allowance is available."
+    /** Never promises a plan this build cannot sell. */
+    fun body(level: PaywallTrigger, usage: UsageState, paid: Boolean, plansAvailable: Boolean = true): String {
+        val change = when {
+            !plansAvailable -> ""
+            paid -> " You can switch to a plan with a larger allowance."
+            else -> " A plan with a larger allowance is available."
+        }
         return if (level == PaywallTrigger.USAGE_EXHAUSTED)
-            "Cloud processing resumes when it resets. $change Your notes, and processing on this phone, aren't affected."
+            "Cloud processing resumes when it resets.$change Your notes, and processing on this phone, aren't affected."
         else
-            "You've used ${(usage.fraction * 100).toInt().coerceAtMost(99)}%. You can keep going until it runs out. $change"
+            "You've used ${(usage.fraction * 100).toInt().coerceAtMost(99)}%. You can keep going until it runs out.$change Your notes, and processing on this phone, aren't affected."
     }
 }
 
@@ -61,17 +71,29 @@ fun UsageAlertHost(onOpenPlans: (PaywallTrigger) -> Unit) {
 
     LaunchedEffect(usage, saved?.usageWarned, saved != null) {
         if (saved == null || showing != null) return@LaunchedEffect
-        val level = UsageWarning.next(usage, billing.configured, saved.usageWarned) ?: return@LaunchedEffect
+        // The heads-up is information for everyone, including a build with no plans to sell.
+        val level = UsageWarning.next(usage, saved.usageWarned) ?: return@LaunchedEffect
         prefsManager.markUsageWarned(UsageWarning.tag(usage, level))
         Analytics.track(if (level == PaywallTrigger.USAGE_EXHAUSTED) Events.USAGE_LIMIT_REACHED else Events.USAGE_WARNING, "plan" to usage.plan)
         showing = level
     }
     showing?.let { level ->
-        UpgradeDialog(
-            title = UsageWarning.title(level),
-            body = UsageWarning.body(level, usage, owned.isPaid),
-            onSeePlans = { showing = null; onOpenPlans(level) },
-            onNotNow = { showing = null }
-        )
+        if (billing.configured) {
+            UpgradeDialog(
+                title = UsageWarning.title(level),
+                body = UsageWarning.body(level, usage, owned.isPaid, plansAvailable = true),
+                onSeePlans = { showing = null; onOpenPlans(level) },
+                onNotNow = { showing = null }
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = { showing = null },
+                title = { Text(UsageWarning.title(level)) },
+                text = { Text(UsageWarning.body(level, usage, owned.isPaid, plansAvailable = false)) },
+                confirmButton = {
+                    TextButton(onClick = { showing = null }, modifier = Modifier.testTag("usage_ok")) { Text("OK") }
+                }
+            )
+        }
     }
 }

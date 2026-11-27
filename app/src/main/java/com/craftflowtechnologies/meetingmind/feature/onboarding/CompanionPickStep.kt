@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.onboarding
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -76,34 +80,46 @@ fun CompanionPickStep(
     LaunchedEffect(nodForm) { if (nodForm != null) { delay(700); nodForm = null } }
     val forceCanvas = LocalCompanionForceCanvas.current || !interacted
 
+    val c = MM.colors
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            stringResource(R.string.companion_onboarding_step1_title), style = MM.type.title, color = com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite,
-            textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.m).testTag("onboarding_companion_title")
+            stringResource(R.string.companion_onboarding_step1_title), style = MM.type.display, color = c.ink,
+            textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.l).testTag("onboarding_companion_title")
         )
         Text(
-            stringResource(R.string.companion_onboarding_step1_body), style = MM.type.body, color = Color.White.copy(alpha = 0.7f),
+            stringResource(R.string.companion_onboarding_step1_body), style = MM.type.body, color = c.inkSecondary,
             textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.s)
         )
 
-        // The live preview.
-        Box(Modifier.padding(top = MM.space.xl).size(PreviewSize), contentAlignment = Alignment.Center) {
-            if (selected != null) {
-                CompositionLocalProvider(LocalCompanionForceCanvas provides forceCanvas) {
-                    Companion(
-                        form = selected, state = CompanionState.IDLE, size = PreviewSize,
-                        variant = if (nodForm == selected) CompanionVariant.Nod else CompanionVariant.Normal,
-                        contentDescription = stringResource(CompanionRoster.displayName(selected))
-                    )
-                }
-            } else {
-                Box(Modifier.size(PickSize + MM.space.l).border(MMSize.hairline, Color.White.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(MMSize.icon))
+        // The live preview, on a lifted disc in the accent's soft light.
+        Box(
+            Modifier.padding(top = MM.space.xl).size(PreviewSize + MM.space.xxl * 2)
+                .background(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.18f), Brand.Violet.copy(alpha = 0.06f), Color.Transparent)), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                Modifier.size(PreviewSize + MM.space.xl)
+                    .shadow(MM.elevation.floating, CircleShape, ambientColor = c.accent, spotColor = c.accent)
+                    .clip(CircleShape).background(c.surface).border(MMSize.hairline, c.lineSoft, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                if (selected != null) {
+                    CompositionLocalProvider(LocalCompanionForceCanvas provides forceCanvas) {
+                        Companion(
+                            form = selected, state = CompanionState.IDLE, size = PreviewSize,
+                            variant = if (nodForm == selected) CompanionVariant.Nod else CompanionVariant.Normal,
+                            contentDescription = stringResource(CompanionRoster.displayName(selected))
+                        )
+                    }
+                } else {
+                    Box(Modifier.size(PickSize + MM.space.l).border(MMSize.hairline, c.line, CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Mic, contentDescription = null, tint = c.inkMuted, modifier = Modifier.size(MMSize.icon))
+                    }
                 }
             }
         }
         Text(
-            stringResource(lineFor(selected)), style = MM.type.bodyStrong, color = com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite,
+            stringResource(lineFor(selected)), style = MM.type.bodyStrong, color = c.ink,
             textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.m).testTag("onboarding_companion_line")
         )
 
@@ -127,13 +143,13 @@ fun CompanionPickStep(
                 onClick = { interacted = true; nodForm = null; onSelect(null) }
             ) {
                 Box(Modifier.size(PickSize), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(MMSize.icon))
+                    Icon(Icons.Filled.Mic, contentDescription = null, tint = c.inkMuted, modifier = Modifier.size(MMSize.icon))
                 }
             }
         }
         Text(
-            stringResource(R.string.companion_onboarding_step1_footnote), style = MM.type.caption, color = Color.White.copy(alpha = 0.55f),
-            textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.l, bottom = MM.space.l)
+            stringResource(R.string.companion_onboarding_step1_footnote), style = MM.type.caption, color = c.inkMuted,
+            textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.l, bottom = MM.space.s)
         )
     }
 }
@@ -142,17 +158,22 @@ fun CompanionPickStep(
 private fun Pick(
     selected: Boolean, tag: String, label: String, modifier: Modifier, onClick: () -> Unit, face: @Composable () -> Unit
 ) {
+    val c = MM.colors
     Surface(
         shape = MM.radius.card,
-        color = if (selected) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.06f),
-        border = if (selected) BorderStroke(MMSize.hairline, Brand.Cyan) else null,
+        color = if (selected) c.surfaceRaised else c.surface,
+        border = BorderStroke(if (selected) 1.5.dp else MMSize.hairline, if (selected) c.accent else c.line),
+        shadowElevation = if (selected) MMSize.hairline * 4 else 0.dp,
         modifier = modifier.heightIn(min = MMSize.minTouch).testTag(tag)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
     ) {
-        Column(Modifier.padding(vertical = MM.space.s, horizontal = MM.space.xs), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier.background(if (selected) c.accentWash else Color.Transparent).padding(vertical = MM.space.s, horizontal = MM.space.xs),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             face()
             Text(
-                label, style = MM.type.caption, color = if (selected) com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite else Color.White.copy(alpha = 0.7f),
+                label, style = MM.type.caption, color = if (selected) c.ink else c.inkSecondary,
                 textAlign = TextAlign.Center, maxLines = 2, modifier = Modifier.padding(top = MM.space.xs)
             )
         }

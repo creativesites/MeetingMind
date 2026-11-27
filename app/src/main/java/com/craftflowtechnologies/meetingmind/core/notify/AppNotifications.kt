@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 sealed interface DeepLink {
     data class Processing(val meetingId: String) : DeepLink
     data class Recording(val meetingId: String) : DeepLink
+    /** The recorder, for the recording in progress (its ongoing notification). */
+    data object LiveRecording : DeepLink
     data object Models : DeepLink
     data object Bible : DeepLink
     data object Devotional : DeepLink
@@ -35,6 +37,8 @@ sealed interface DeepLink {
     data class RecordEvent(val eventKey: String, val title: String, val workflow: String) : DeepLink
     /** The weekly review. */
     data object WeeklyReview : DeepLink
+    /** The Learning vertical. */
+    data object Learn : DeepLink
 }
 
 /**
@@ -59,6 +63,7 @@ object DeepLinks {
         _pending.value = when (target) {
             "processing" -> meeting?.let { DeepLink.Processing(it) }
             "recording" -> meeting?.let { DeepLink.Recording(it) }
+            "live_recording" -> DeepLink.LiveRecording
             "models" -> DeepLink.Models
             "bible" -> DeepLink.Bible
             "devotional" -> DeepLink.Devotional
@@ -68,6 +73,7 @@ object DeepLinks {
             "tasks" -> DeepLink.Tasks
             "inbox" -> DeepLink.Inbox
             "work" -> DeepLink.WorkSpace
+            "learn" -> DeepLink.Learn
             "review" -> DeepLink.WeeklyReview
             "prepare" -> DeepLink.Prepare(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getLongExtra("b", 0), intent.getLongExtra("e", 0), intent.getStringExtra("p").orEmpty(), intent.getStringExtra("m").orEmpty())
             "record_event" -> DeepLink.RecordEvent(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getStringExtra("w").orEmpty())
@@ -80,6 +86,7 @@ object DeepLinks {
         val (target, meeting) = when (link) {
             is DeepLink.Processing -> "processing" to link.meetingId
             is DeepLink.Recording -> "recording" to link.meetingId
+            DeepLink.LiveRecording -> "live_recording" to null
             DeepLink.Models -> "models" to null
             DeepLink.Bible -> "bible" to null
             DeepLink.Devotional -> "devotional" to null
@@ -89,6 +96,7 @@ object DeepLinks {
             DeepLink.Tasks -> "tasks" to null
             DeepLink.Inbox -> "inbox" to null
             DeepLink.WorkSpace -> "work" to null
+            DeepLink.Learn -> "learn" to null
             DeepLink.WeeklyReview -> "review" to null
             is DeepLink.Prepare -> "prepare" to link.eventKey
             is DeepLink.RecordEvent -> "record_event" to link.eventKey
@@ -341,6 +349,11 @@ object AppNotifications {
         val (heading, text, link) = when (outcome) {
             Outcome.READY -> Triple("$title is ready.", null, DeepLink.Recording(meetingId))
             Outcome.NEEDS_MODEL -> Triple("Recording saved", "Install the speech model to transcribe “$title”.", DeepLink.Models)
+            Outcome.NEEDS_LANGUAGE_MODEL -> Triple(
+                "Transcript ready",
+                "“$title” has its words, but no summary or action items. Download a language model to get them.",
+                DeepLink.Models
+            )
             Outcome.FAILED -> Triple("Couldn’t finish “$title”", detail ?: "Tap to try again.", DeepLink.Processing(meetingId))
         }
         post(
@@ -350,7 +363,7 @@ object AppNotifications {
                     when (outcome) {
                         Outcome.FAILED -> android.R.drawable.stat_notify_error
                         Outcome.READY -> com.craftflowtechnologies.meetingmind.R.drawable.ic_zuri_glyph
-                        Outcome.NEEDS_MODEL -> android.R.drawable.stat_sys_download_done
+                        Outcome.NEEDS_MODEL, Outcome.NEEDS_LANGUAGE_MODEL -> android.R.drawable.stat_sys_download_done
                     }
                 )
                 .setContentTitle(heading)
@@ -362,7 +375,8 @@ object AppNotifications {
         )
     }
 
-    enum class Outcome { READY, NEEDS_MODEL, FAILED }
+    /** NEEDS_LANGUAGE_MODEL: the transcript is saved and complete, only the summary step was skipped. */
+    enum class Outcome { READY, NEEDS_MODEL, NEEDS_LANGUAGE_MODEL, FAILED }
 
     /**
      * What a note-ready notification says (signature moments §9, ZURI_EXPERIENCE §5.8). [voiced] is the one

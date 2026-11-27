@@ -29,6 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.common.Formatters
@@ -101,7 +104,9 @@ fun OverviewStepper(
      * "already available" entries (Phase 15 §7) — consumed once via [LaunchedEffect] so it
      * doesn't fight the user's own subsequent swipes. */
     jumpTo: OverviewStepTarget? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The recording, so a report of the summary can respect its privacy. */
+    meetingId: String? = null
 ) {
     val steps = remember(showDecisionsStep, showTasksStep, showQuestionsStep) {
         buildOverviewSteps(showDecisionsStep, showTasksStep, showQuestionsStep)
@@ -117,7 +122,16 @@ fun OverviewStepper(
 
     Column(modifier = modifier.fillMaxSize()) {
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth()) { page ->
-            Column(modifier = Modifier.fillMaxSize().padding(horizontal = 30.dp)) {
+            // Pages swipe sideways, and each page scrolls down on its own, so a long summary or a
+            // long list of decisions is never cut off (founder, 2026-11-18).
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 30.dp)
+                    .padding(bottom = 24.dp)
+                    .testTag("overview_page_$page")
+            ) {
                 Text(
                     text = "${page + 1} OF ${steps.size}",
                     style = RecordingPageType.stepCounter,
@@ -125,7 +139,7 @@ fun OverviewStepper(
                 )
                 Spacer(modifier = Modifier.height(26.dp))
                 when (steps[page]) {
-                    OverviewStepTarget.WHAT_HAPPENED -> WhatHappenedStep(summary, openQuestionCount)
+                    OverviewStepTarget.WHAT_HAPPENED -> WhatHappenedStep(summary, openQuestionCount, meetingId)
                     OverviewStepTarget.DECISIONS -> DecisionsStep(decisions, segments, speakers, onPlayFrom)
                     OverviewStepTarget.TASKS -> TasksStep(actionItems, onToggleActionItem, onAddTask)
                     OverviewStepTarget.QUESTIONS -> QuestionsStep(questions, segments, onPlayFrom)
@@ -152,8 +166,17 @@ private fun spellCount(n: Int): String = when (n) {
 }
 
 @Composable
-private fun WhatHappenedStep(summary: String?, openQuestionCount: Int) {
-    Text(text = "What happened", style = RecordingPageType.stepHeading)
+private fun WhatHappenedStep(summary: String?, openQuestionCount: Int, meetingId: String? = null) {
+    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(text = "What happened", style = RecordingPageType.stepHeading, modifier = Modifier.weight(1f))
+        if (!summary.isNullOrBlank()) {
+            com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                    com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.MEETING_SUMMARY, summary, meetingId = meetingId
+                )
+            })
+        }
+    }
     Spacer(modifier = Modifier.height(20.dp))
     Text(
         text = summary?.takeIf { it.isNotBlank() } ?: "No summary was generated for this recording.",

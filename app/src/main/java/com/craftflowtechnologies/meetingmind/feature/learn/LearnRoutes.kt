@@ -39,7 +39,7 @@ private val ListenSpeeds = listOf(1f, 1.25f, 1.5f, 1.75f, 2f, 0.75f)
  */
 fun NavGraphBuilder.learnGraph(navController: NavController, onSearch: () -> Unit) {
 
-    composable(Routes.LEARN) {
+    composable(Routes.STUDY_HOME) {
         val vm: StudyHomeViewModel = viewModel()
         val state by vm.state.collectAsState()
         val context = LocalContext.current
@@ -47,24 +47,24 @@ fun NavGraphBuilder.learnGraph(navController: NavController, onSearch: () -> Uni
         androidx.compose.runtime.LaunchedEffect(Unit) { vm.refresh() }
         StudyHomeScreen(
             state = state,
-            onStartRound = { navController.navigate(Routes.practiceRoute()) },
-            onPractiseAnyway = { navController.navigate(Routes.practiceRoute()) },
+            onStartRound = { navController.navigate(Routes.studyPracticeRoute()) },
+            onPractiseAnyway = { navController.navigate(Routes.studyPracticeRoute()) },
             onLater = { navController.popBackStack() },
             onOpenLesson = { sessionId ->
                 scope.launch {
                     val noteId = StudyServices.forApp(context.applicationContext as Application).learning.getSession(sessionId)?.noteId
-                    if (noteId != null) navController.navigate(Routes.lessonRoute(noteId))
+                    if (noteId != null) navController.navigate(Routes.studyLessonRoute(noteId))
                 }
             },
             onOpenCourse = { navController.navigate(Routes.NOTES) },
-            onOpenAllIdeas = { navController.navigate(Routes.practiceRoute()) },
+            onOpenAllIdeas = { navController.navigate(Routes.studyPracticeRoute()) },
             onSearch = onSearch,
             onRecordLecture = { navController.navigate(Routes.recordTypeRoute(RecordingType.LECTURE)) },
             onImportLecture = { navController.navigate(Routes.IMPORT) }
         )
     }
 
-    composable(Routes.LESSON, arguments = listOf(navArgument("noteId") { type = NavType.StringType })) { entry ->
+    composable(Routes.STUDY_LESSON, arguments = listOf(navArgument("noteId") { type = NavType.StringType })) { entry ->
         val noteId = entry.arguments?.getString("noteId").orEmpty()
         val app = LocalContext.current.applicationContext as Application
         val vm: LessonViewModel = viewModel(key = "lesson-$noteId", factory = viewModelFactory { initializer { LessonViewModel(app, noteId) } })
@@ -85,11 +85,11 @@ fun NavGraphBuilder.learnGraph(navController: NavController, onSearch: () -> Uni
             onExplain = { id, mode -> vm.explain(id, mode) },
             onQuizConcept = { conceptId ->
                 openConcept = null
-                navController.navigate(Routes.practiceRoute(state.sessionId.ifBlank { null }, conceptId))
+                navController.navigate(Routes.studyPracticeRoute(state.sessionId.ifBlank { null }, conceptId))
             },
             onReportConcept = { openConcept = null },
-            onListen = { navController.navigate(Routes.listenRoute(noteId)) },
-            onPractice = { navController.navigate(Routes.practiceRoute(state.sessionId.ifBlank { null })) },
+            onListen = { navController.navigate(Routes.studyListenRoute(noteId)) },
+            onPractice = { navController.navigate(Routes.studyPracticeRoute(state.sessionId.ifBlank { null })) },
             onAsk = { readAloud = false; navController.navigate(Routes.noteRoute(noteId)) },
             onGenerate = vm::generate,
             onFixAudio = { state.meetingId?.let { navController.navigate(Routes.meetingDetailRoute(it)) } }
@@ -97,7 +97,7 @@ fun NavGraphBuilder.learnGraph(navController: NavController, onSearch: () -> Uni
         if (readAloud) ReadToMeSheet(noteId, onDismiss = { readAloud = false })
     }
 
-    composable(Routes.LISTEN, arguments = listOf(navArgument("noteId") { type = NavType.StringType })) { entry ->
+    composable(Routes.STUDY_LISTEN, arguments = listOf(navArgument("noteId") { type = NavType.StringType })) { entry ->
         val noteId = entry.arguments?.getString("noteId").orEmpty()
         val app = LocalContext.current.applicationContext as Application
         val vm: ListenViewModel = viewModel(key = "listen-$noteId", factory = viewModelFactory { initializer { ListenViewModel(app, noteId) } })
@@ -122,7 +122,7 @@ fun NavGraphBuilder.learnGraph(navController: NavController, onSearch: () -> Uni
     }
 
     composable(
-        Routes.PRACTICE,
+        Routes.STUDY_PRACTICE,
         arguments = listOf(
             navArgument("session") { type = NavType.StringType; nullable = true; defaultValue = null },
             navArgument("concept") { type = NavType.StringType; nullable = true; defaultValue = null }
@@ -153,7 +153,7 @@ fun NavGraphBuilder.learnGraph(navController: NavController, onSearch: () -> Uni
             onOpenNextStep = { step ->
                 cs.launch {
                     val noteId = StudyServices.forApp(context.applicationContext as Application).learning.getSession(step.sessionId)?.noteId
-                    if (noteId != null) navController.navigate(Routes.lessonRoute(noteId)) { popUpTo(Routes.PRACTICE) { inclusive = true } }
+                    if (noteId != null) navController.navigate(Routes.studyLessonRoute(noteId)) { popUpTo(Routes.STUDY_PRACTICE) { inclusive = true } }
                 }
             },
             onMakeCard = {

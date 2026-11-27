@@ -20,12 +20,14 @@ data class IntegrationPreferencesState(
         SafStorageProvider.ID
     ),
     val notifyMeProviderIds: Set<String> = emptySet(),
-    val confidentialEmailOptIn: Boolean = false
+    val confidentialEmailOptIn: Boolean = false,
+    val pinnedVaultTreeUri: String? = null,
+    val pinnedVaultName: String? = null
 )
 
 /**
  * Manages local persistence for integration toggles, user interest taps ("Notify me"),
- * and confidential profile opt-in states.
+ * confidential profile opt-in states, and pinned vault tree URIs.
  */
 class IntegrationPreferences(private val context: Context) {
 
@@ -37,11 +39,15 @@ class IntegrationPreferences(private val context: Context) {
         )
         val notifyMe = prefs[KEY_NOTIFY_ME_PROVIDERS] ?: emptySet()
         val confidentialOptIn = prefs[KEY_CONFIDENTIAL_OPT_IN] ?: false
+        val pinnedUri = prefs[KEY_PINNED_VAULT_TREE_URI]
+        val pinnedName = prefs[KEY_PINNED_VAULT_NAME]
 
         IntegrationPreferencesState(
             enabledProviderIds = enabled,
             notifyMeProviderIds = notifyMe,
-            confidentialEmailOptIn = confidentialOptIn
+            confidentialEmailOptIn = confidentialOptIn,
+            pinnedVaultTreeUri = pinnedUri,
+            pinnedVaultName = pinnedName
         )
     }
 
@@ -63,6 +69,21 @@ class IntegrationPreferences(private val context: Context) {
                 current.remove(providerId)
             }
             prefs[KEY_ENABLED_PROVIDERS] = current
+        }
+    }
+
+    suspend fun setPinnedVault(treeUri: String?, name: String?) {
+        context.integrationsDataStore.edit { prefs ->
+            if (treeUri != null) {
+                prefs[KEY_PINNED_VAULT_TREE_URI] = treeUri
+            } else {
+                prefs.remove(KEY_PINNED_VAULT_TREE_URI)
+            }
+            if (name != null) {
+                prefs[KEY_PINNED_VAULT_NAME] = name
+            } else {
+                prefs.remove(KEY_PINNED_VAULT_NAME)
+            }
         }
     }
 
@@ -92,5 +113,7 @@ class IntegrationPreferences(private val context: Context) {
         private val KEY_ENABLED_PROVIDERS = stringSetPreferencesKey("enabled_providers")
         private val KEY_NOTIFY_ME_PROVIDERS = stringSetPreferencesKey("notify_me_providers")
         private val KEY_CONFIDENTIAL_OPT_IN = booleanPreferencesKey("confidential_email_opt_in")
+        private val KEY_PINNED_VAULT_TREE_URI = androidx.datastore.preferences.core.stringPreferencesKey("pinned_vault_tree_uri")
+        private val KEY_PINNED_VAULT_NAME = androidx.datastore.preferences.core.stringPreferencesKey("pinned_vault_name")
     }
 }

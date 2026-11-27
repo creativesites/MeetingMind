@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy
+import com.craftflowtechnologies.meetingmind.core.model.NotePolishMode
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -26,6 +27,9 @@ import kotlinx.coroutines.flow.map
  * the default; no other code needs to move.
  */
 val DEFAULT_TRANSCRIPT_CLEANUP_MODE = TranscriptCleanupMode.MODERATE
+
+/** Default post-transcription note formatting & AI polish mode. */
+val DEFAULT_NOTE_POLISH_MODE = NotePolishMode.DEEP
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "meetmind_preferences")
 
@@ -43,6 +47,11 @@ data class AppPreferencesState(
     val cloudSyncEnabled: Boolean = false,
     val themeMode: String = "DARK",
     val selectedLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+    val aiResponseLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+    val summaryLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+    val translationTargetLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+    val autoDetectLanguage: Boolean = false,
+    val appLanguage: String? = null,
     val appearance: com.craftflowtechnologies.meetingmind.ui.theme.Appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance(),
     /** Display-only: hides "uh"/"um"-style hesitation noise in the transcript. The verbatim ASR
      * text is always what's stored, so toggling this back off restores it exactly, with no
@@ -50,6 +59,8 @@ data class AppPreferencesState(
     val cleanFillerWords: Boolean = true,
     /** How interventionist AI transcript cleanup is allowed to be. See [TranscriptCleanupMode]. */
     val transcriptCleanupMode: TranscriptCleanupMode = DEFAULT_TRANSCRIPT_CLEANUP_MODE,
+    /** How recordings are turned into structured, formatted notes after transcription. See [NotePolishMode]. */
+    val notePolishMode: NotePolishMode = DEFAULT_NOTE_POLISH_MODE,
     /** Which engine decides speaker assignments. See [DiarizationStrategy]. */
     val diarizationStrategy: DiarizationStrategy = DiarizationStrategy.AUTO,
     /** How recordings are processed. Defaults to the private, on-device profile — MeetingMind
@@ -137,6 +148,11 @@ class UserPreferencesManager(private val context: Context) {
 
     private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
     private val SELECTED_LANGUAGE = stringPreferencesKey("selected_language")
+    private val AI_RESPONSE_LANGUAGE = stringPreferencesKey("ai_response_language")
+    private val SUMMARY_LANGUAGE = stringPreferencesKey("summary_language")
+    private val TRANSLATION_TARGET_LANGUAGE = stringPreferencesKey("translation_target_language")
+    private val AUTO_DETECT_LANGUAGE = booleanPreferencesKey("auto_detect_language")
+    private val APP_LANGUAGE = stringPreferencesKey("app_language")
     private val SELECTED_ASR_MODEL = stringPreferencesKey("selected_asr_model")
     private val SELECTED_LLM_MODEL = stringPreferencesKey("selected_llm_model")
     private val BATTERY_SAVER = booleanPreferencesKey("battery_saver")
@@ -148,6 +164,7 @@ class UserPreferencesManager(private val context: Context) {
     private val APPEARANCE = stringPreferencesKey("appearance")
     private val CLEAN_FILLER_WORDS = booleanPreferencesKey("clean_filler_words")
     private val TRANSCRIPT_CLEANUP_MODE = stringPreferencesKey("transcript_cleanup_mode")
+    private val NOTE_POLISH_MODE = stringPreferencesKey("note_polish_mode")
     private val DIARIZATION_STRATEGY = stringPreferencesKey("diarization_strategy")
     private val PROCESSING_PROFILE = stringPreferencesKey("processing_profile")
     private val USER_NAME = stringPreferencesKey("user_name")
@@ -257,6 +274,11 @@ class UserPreferencesManager(private val context: Context) {
             cloudSyncEnabled = prefs[CLOUD_SYNC_ENABLED] ?: false,
             themeMode = prefs[THEME_MODE] ?: "DARK",
             selectedLanguage = prefs[SELECTED_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+            aiResponseLanguage = prefs[AI_RESPONSE_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+            summaryLanguage = prefs[SUMMARY_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+            translationTargetLanguage = prefs[TRANSLATION_TARGET_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+            autoDetectLanguage = prefs[AUTO_DETECT_LANGUAGE] ?: false,
+            appLanguage = prefs[APP_LANGUAGE],
             appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance.decode(prefs[APPEARANCE], existingInstall = prefs[ONBOARDING_COMPLETED] == true),
             cleanFillerWords = prefs[CLEAN_FILLER_WORDS] ?: true,
             // A stored value from a future/renamed enum constant falls back to the current default
@@ -265,6 +287,9 @@ class UserPreferencesManager(private val context: Context) {
             transcriptCleanupMode = prefs[TRANSCRIPT_CLEANUP_MODE]?.let {
                 runCatching { TranscriptCleanupMode.valueOf(it) }.getOrNull()
             } ?: DEFAULT_TRANSCRIPT_CLEANUP_MODE,
+            notePolishMode = prefs[NOTE_POLISH_MODE]?.let {
+                runCatching { NotePolishMode.valueOf(it) }.getOrNull()
+            } ?: DEFAULT_NOTE_POLISH_MODE,
             diarizationStrategy = prefs[DIARIZATION_STRATEGY]?.let {
                 runCatching { DiarizationStrategy.valueOf(it) }.getOrNull()
             } ?: DiarizationStrategy.AUTO,
@@ -347,7 +372,7 @@ class UserPreferencesManager(private val context: Context) {
     }
 
     suspend fun setSpaces(spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) {
-        context.dataStore.edit { it[SPACES] = spaces.ifEmpty { setOf(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL) }.map { s -> s.name }.toSet() }
+        context.dataStore.edit { it[SPACES] = spaces.ifEmpty { com.craftflowtechnologies.meetingmind.core.identity.AppIdentity.DEFAULT_SPACES }.map { s -> s.name }.toSet() }
     }
 
     suspend fun setLook(look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) {
@@ -415,8 +440,29 @@ class UserPreferencesManager(private val context: Context) {
                 if (current != ModelCatalog.omnilingualAsr1bInt8.id) {
                     it[SELECTED_ASR_MODEL] = ModelCatalog.omnilingualAsr300mInt8.id
                 }
+            } else if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isWhisperPreferredLanguage(languageCode)) {
+                val current = it[SELECTED_ASR_MODEL]
+                if (current != ModelCatalog.whisperLargeV3Int8.id) {
+                    it[SELECTED_ASR_MODEL] = ModelCatalog.whisperTurboInt8.id
+                }
             }
         }
+    }
+
+    suspend fun setAiResponseLanguage(languageCode: String) {
+        context.dataStore.edit { it[AI_RESPONSE_LANGUAGE] = languageCode }
+    }
+
+    suspend fun setSummaryLanguage(languageCode: String) {
+        context.dataStore.edit { it[SUMMARY_LANGUAGE] = languageCode }
+    }
+
+    suspend fun setTranslationTargetLanguage(languageCode: String) {
+        context.dataStore.edit { it[TRANSLATION_TARGET_LANGUAGE] = languageCode }
+    }
+
+    suspend fun setAutoDetectLanguage(enabled: Boolean) {
+        context.dataStore.edit { it[AUTO_DETECT_LANGUAGE] = enabled }
     }
 
     suspend fun setSelectedAsrModel(modelId: String) {
@@ -455,6 +501,10 @@ class UserPreferencesManager(private val context: Context) {
         context.dataStore.edit { it[TRANSCRIPT_CLEANUP_MODE] = mode.name }
     }
 
+    suspend fun setNotePolishMode(mode: NotePolishMode) {
+        context.dataStore.edit { it[NOTE_POLISH_MODE] = mode.name }
+    }
+
     suspend fun setLastRecordingType(type: com.craftflowtechnologies.meetingmind.core.model.RecordingType) {
         context.dataStore.edit { it[LAST_RECORDING_TYPE] = type.name }
     }
@@ -478,5 +528,12 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setHomeHeroDisplayMode(mode: HomeHeroDisplayMode) {
         context.dataStore.edit { it[HOME_HERO_DISPLAY_MODE] = mode.name }
+    }
+
+    suspend fun setAppLanguage(tag: String?) {
+        context.dataStore.edit {
+            val trimmed = tag?.trim()
+            if (trimmed.isNullOrEmpty()) it.remove(APP_LANGUAGE) else it[APP_LANGUAGE] = trimmed
+        }
     }
 }

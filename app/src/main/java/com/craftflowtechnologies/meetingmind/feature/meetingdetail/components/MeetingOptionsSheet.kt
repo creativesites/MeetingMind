@@ -51,6 +51,8 @@ fun MeetingOptionsSheet(
     reCleanEnabled: Boolean,
     /** Shown only for sermons: re-runs the sermon notes from the stored transcript. */
     onRetrySermonNotes: (() -> Unit)? = null,
+    /** Shown only for sermons: packages key points, scripture and discussion guide for church circles. */
+    onShareSermonPack: (() -> Unit)? = null,
     onCopyMarkdownSummary: () -> Unit,
     onShareSummary: () -> Unit,
     onShareTranscript: () -> Unit,
@@ -85,6 +87,9 @@ fun MeetingOptionsSheet(
             )
             onRetrySermonNotes?.let { retry ->
                 OptionRow(icon = Icons.Default.Refresh, label = "Retry sermon notes", onClick = { onDismiss(); retry() })
+            }
+            onShareSermonPack?.let { sharePack ->
+                OptionRow(icon = Icons.Default.Share, label = "Share Sermon Pack to Circle…", onClick = { onDismiss(); sharePack() })
             }
             OptionRow(icon = Icons.Default.ContentCopy, label = "Copy Markdown Summary", onClick = { onDismiss(); onCopyMarkdownSummary() })
 

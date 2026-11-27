@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.feature.meetingdetail.components
 
 import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,10 +24,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,6 +41,8 @@ import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.ai.tools.ToolOutcome
 import com.craftflowtechnologies.meetingmind.ai.tools.ToolRunResult
 import com.craftflowtechnologies.meetingmind.core.common.Formatters
+import com.craftflowtechnologies.meetingmind.core.ui.mm.AiCopyButton
+import com.craftflowtechnologies.meetingmind.feature.notes.editor.MarkdownTextPreview
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
@@ -41,6 +51,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.LineFaint
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 
 /**
@@ -70,7 +81,7 @@ fun ToolResultSheet(
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         containerColor = SurfaceBase
     ) {
-        Column(modifier = Modifier.testTag("tool_result_sheet")) {
+        Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().animateContentSize().testTag("tool_result_sheet")) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -152,22 +163,31 @@ private fun RevisionBody(
         )
     }
 
+    var applied by remember(outcome) { mutableStateOf(false) }
+
     Row(
         modifier = Modifier.fillMaxWidth().padding(24.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Button(
-            onClick = { onApply(outcome) },
+            onClick = { if (!applied) { applied = true; onApply(outcome) } },
+            enabled = !applied,
             colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.weight(1f).testTag("tool_result_apply")
+            modifier = Modifier.weight(1f).heightIn(min = MMSize.minTouch).testTag("tool_result_apply")
         ) {
-            Text("Apply ${outcome.edits.size} change${if (outcome.edits.size == 1) "" else "s"}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                if (applied) "Applying…" else "Apply ${outcome.edits.size} change${if (outcome.edits.size == 1) "" else "s"}",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         }
         OutlinedButton(
             onClick = onDismiss,
+            enabled = !applied,
             shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, Line)
+            border = BorderStroke(1.dp, Line),
+            modifier = Modifier.heightIn(min = MMSize.minTouch)
         ) {
             Text("Discard", fontSize = 14.sp, color = InkSecondary)
         }
@@ -189,7 +209,13 @@ private fun FindingsBody(outcome: ToolOutcome.Findings, onJumpTo: (String, Long?
                     .fillMaxWidth()
                     .then(
                         if (citation != null) {
-                            Modifier.clickable { onJumpTo(citation, finding.startMs) }
+                            Modifier
+                                .clickable(role = Role.Button) { onJumpTo(citation, finding.startMs) }
+                                .semantics {
+                                    contentDescription = finding.startMs?.let {
+                                        "Jump to transcript at ${Formatters.formatDurationHms(it)}: ${finding.text}"
+                                    } ?: "Jump to transcript: ${finding.text}"
+                                }
                         } else Modifier
                     )
                     .padding(horizontal = 24.dp, vertical = 14.dp)
@@ -232,30 +258,23 @@ private fun DocumentBody(outcome: ToolOutcome.TextDocument, onCopy: (String) -> 
                 color = SurfaceSunk,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)
             ) {
-                Text(
-                    text = outcome.markdown,
-                    fontSize = 14.sp,
-                    lineHeight = 22.sp,
-                    color = InkSecondary,
-                    modifier = Modifier.padding(16.dp)
-                )
+                MarkdownTextPreview(outcome.markdown, modifier = Modifier.padding(16.dp))
             }
         }
     }
     Row(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-        Button(
-            onClick = { onCopy(outcome.markdown) },
-            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().testTag("tool_result_copy")
-        ) {
-            Text("Copy", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        }
+        AiCopyButton(
+            text = outcome.markdown,
+            compact = false,
+            modifier = Modifier.fillMaxWidth().testTag("tool_result_copy"),
+            onCopied = { onCopy(outcome.markdown) }
+        )
     }
 }
 
 @Composable
 private fun TitleBody(outcome: ToolOutcome.TitleSuggestion, onApply: (String) -> Unit, onDismiss: () -> Unit) {
+    var applied by remember(outcome) { mutableStateOf(false) }
     Text(
         text = outcome.title,
         fontSize = 19.sp,
@@ -268,14 +287,21 @@ private fun TitleBody(outcome: ToolOutcome.TitleSuggestion, onApply: (String) ->
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Button(
-            onClick = { onApply(outcome.title) },
+            onClick = { if (!applied) { applied = true; onApply(outcome.title) } },
+            enabled = !applied,
             colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.weight(1f).testTag("tool_result_apply_title")
+            modifier = Modifier.weight(1f).heightIn(min = MMSize.minTouch).testTag("tool_result_apply_title")
         ) {
-            Text("Use this title", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (applied) "Applying…" else "Use this title", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
-        OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Line)) {
+        OutlinedButton(
+            onClick = onDismiss,
+            enabled = !applied,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, Line),
+            modifier = Modifier.heightIn(min = MMSize.minTouch)
+        ) {
             Text("Keep current", fontSize = 14.sp, color = InkSecondary)
         }
     }

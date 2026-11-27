@@ -40,20 +40,99 @@ import org.json.JSONObject
 class TranscriptToolEngine(
     private val languageModel: LanguageModel,
     private val engineName: String,
-    private val maxOutputTokens: Int = DEFAULT_MAX_OUTPUT_TOKENS
+    private val maxOutputTokens: Int = DEFAULT_MAX_OUTPUT_TOKENS,
+    private val contextLengthTokens: Int = DEFAULT_CONTEXT_TOKENS,
+    private val actualEngineName: () -> String = { engineName }
 ) {
 
     suspend fun run(
         tool: TranscriptAiToolType,
         segments: List<TranscriptSegment>,
-        cleanupProfile: TranscriptCleanupProfile? = null
+        cleanupProfile: TranscriptCleanupProfile? = null,
+        targetLanguageDisplay: String? = null
     ): AiResult<ToolOutcome> {
         if (segments.isEmpty()) {
             return AiResult.Failed("There is nothing in the selected part of the transcript to work on.")
         }
 
-        val prompt = TranscriptToolPrompts.build(tool, segments)
-        val response = when (val generated = languageModel.generate(prompt, maxOutputTokens)) {
+        val shape = TranscriptToolPrompts.outputShapeFor(tool)
+        val schema = TranscriptToolPrompts.schemaFor(tool)
+        // Reserve ~1600 tokens for fidelity contract, instructions, schema, and model output so
+        // local 4K-context models (and any cloud->local fallback) stay safely within budget.
+        val effectiveContextTokens = contextLengthTokens.coerceAtLeast(MIN_CONTEXT_TOKENS)
+        val budgetTokens = (effectiveContextTokens - RESERVED_OVERHEAD_TOKENS).coerceAtLeast(MIN_INPUT_TOKENS)
+        val maxTranscriptChars = (budgetTokens * CHARS_PER_TOKEN).coerceAtMost(MAX_SINGLE_CHUNK_CHARS)
+
+        val chunks = chunkSegments(segments, shape, maxTranscriptChars)
+        if (chunks.size == 1) {
+            return runSingleBatch(tool, chunks.first(), shape, schema, cleanupProfile, targetLanguageDisplay)
+        }
+
+        return when (shape) {
+            TranscriptToolPrompts.OutputShape.REVISION -> {
+                val edits = mutableListOf<SegmentEdit>()
+                var rejected = 0
+                var lastFailure: AiResult<ToolOutcome>? = null
+                for (batch in chunks) {
+                    when (val r = runSingleBatch(tool, batch, shape, schema, cleanupProfile, targetLanguageDisplay)) {
+                        is AiResult.Success -> {
+                            val rev = r.value as ToolOutcome.TranscriptRevision
+                            edits += rev.edits
+                            rejected += rev.rejectedCount
+                        }
+                        else -> lastFailure = r
+                    }
+                }
+                if (edits.isEmpty() && rejected == 0 && lastFailure != null) lastFailure
+                else AiResult.Success(ToolOutcome.TranscriptRevision(edits, rejected))
+            }
+            TranscriptToolPrompts.OutputShape.FINDINGS -> {
+                val allFindings = mutableListOf<ToolFinding>()
+                val seen = HashSet<String>()
+                var lastFailure: AiResult<ToolOutcome>? = null
+                for (batch in chunks) {
+                    when (val r = runSingleBatch(tool, batch, shape, schema, cleanupProfile, targetLanguageDisplay)) {
+                        is AiResult.Success -> {
+                            val list = (r.value as ToolOutcome.Findings).items
+                            for (f in list) {
+                                if (seen.add(f.text.lowercase())) allFindings += f
+                            }
+                        }
+                        else -> lastFailure = r
+                    }
+                }
+                if (allFindings.isEmpty() && lastFailure != null) lastFailure
+                else AiResult.Success(ToolOutcome.Findings(allFindings))
+            }
+            TranscriptToolPrompts.OutputShape.DOCUMENT -> {
+                val parts = mutableListOf<String>()
+                var lastFailure: AiResult<ToolOutcome>? = null
+                for (batch in chunks) {
+                    when (val r = runSingleBatch(tool, batch, shape, schema, cleanupProfile, targetLanguageDisplay)) {
+                        is AiResult.Success -> parts += (r.value as ToolOutcome.TextDocument).markdown
+                        else -> lastFailure = r
+                    }
+                }
+                if (parts.isEmpty()) lastFailure ?: AiResult.Failed("\"${tool.label}\" produced nothing.")
+                else AiResult.Success(ToolOutcome.TextDocument(parts.joinToString("\n\n")))
+            }
+            TranscriptToolPrompts.OutputShape.TITLE -> {
+                runSingleBatch(tool, chunks.first(), shape, schema, cleanupProfile, targetLanguageDisplay)
+            }
+        }
+    }
+
+    private suspend fun runSingleBatch(
+        tool: TranscriptAiToolType,
+        batch: List<TranscriptSegment>,
+        shape: TranscriptToolPrompts.OutputShape,
+        schema: String,
+        cleanupProfile: TranscriptCleanupProfile?,
+        targetLanguageDisplay: String?
+    ): AiResult<ToolOutcome> {
+        val prompt = TranscriptToolPrompts.build(tool, batch, targetLanguageDisplay)
+        val perCallMaxTokens = if (contextLengthTokens <= 4096) maxOutputTokens.coerceAtMost(1024) else maxOutputTokens
+        val response = when (val generated = languageModel.generateStructured(prompt, schema, perCallMaxTokens)) {
             is AiResult.Success -> generated.value
             else -> return AiResult.Failed(
                 generated.describeFailure() ?: "\"${tool.label}\" could not run."
@@ -63,12 +142,48 @@ class TranscriptToolEngine(
         val json = extractJsonObject(response)
             ?: return AiResult.Failed("\"${tool.label}\" returned a result that could not be read.")
 
-        return when (TranscriptToolPrompts.outputShapeFor(tool)) {
-            TranscriptToolPrompts.OutputShape.REVISION -> parseRevision(json, segments, cleanupProfile)
-            TranscriptToolPrompts.OutputShape.FINDINGS -> parseFindings(json, segments)
+        return when (shape) {
+            TranscriptToolPrompts.OutputShape.REVISION -> parseRevision(json, batch, cleanupProfile)
+            TranscriptToolPrompts.OutputShape.FINDINGS -> parseFindings(json, batch)
             TranscriptToolPrompts.OutputShape.DOCUMENT -> parseDocument(json, tool)
             TranscriptToolPrompts.OutputShape.TITLE -> parseTitle(json, tool)
         }
+    }
+
+    private fun chunkSegments(
+        segments: List<TranscriptSegment>,
+        shape: TranscriptToolPrompts.OutputShape,
+        maxChars: Int
+    ): List<List<TranscriptSegment>> {
+        if (shape == TranscriptToolPrompts.OutputShape.TITLE) {
+            val sampled = mutableListOf<TranscriptSegment>()
+            var chars = 0
+            // Include opening, middle, and closing segments so a 4K local model gets full arc for a title.
+            val step = (segments.size / 18).coerceAtLeast(1)
+            val candidates = segments.filterIndexed { index, _ -> index == 0 || index == segments.lastIndex || index % step == 0 }
+            for (seg in candidates) {
+                val len = (seg.cleanedText ?: seg.text).length + 40
+                if (sampled.isNotEmpty() && chars + len > maxChars) break
+                sampled += seg
+                chars += len
+            }
+            return listOf(sampled.ifEmpty { listOf(segments.first()) })
+        }
+        val batches = mutableListOf<List<TranscriptSegment>>()
+        var current = mutableListOf<TranscriptSegment>()
+        var chars = 0
+        for (seg in segments) {
+            val lineLen = (seg.cleanedText ?: seg.text).length + 48
+            if (current.isNotEmpty() && chars + lineLen > maxChars) {
+                batches += current
+                current = mutableListOf()
+                chars = 0
+            }
+            current += seg
+            chars += lineLen
+        }
+        if (current.isNotEmpty()) batches += current
+        return batches
     }
 
     // ── Parsing and validation ───────────────────────────────────────────────────────────────
@@ -87,7 +202,8 @@ class TranscriptToolEngine(
             val item = array!!.optJSONObject(i) ?: continue
             // A revision for a segment that is not in scope is discarded outright: applying it
             // somewhere plausible would edit text the user did not ask to have edited.
-            val segment = byId[item.optString("segmentId")] ?: continue
+            val rawSegId = item.optString("segmentId").trim().removePrefix("[").removeSuffix("]").trim()
+            val segment = byId[rawSegId] ?: continue
             val proposed = item.optString("text").trim()
             if (proposed.isEmpty()) continue
 
@@ -121,7 +237,7 @@ class TranscriptToolEngine(
             val citedIds = item.optJSONArray("sourceSegmentIds")
             val resolved = buildList {
                 for (j in 0 until (citedIds?.length() ?: 0)) {
-                    val id = citedIds!!.optString(j)
+                    val id = citedIds!!.optString(j).trim().removePrefix("[").removeSuffix("]").trim()
                     if (id.isNotBlank() && validIds.containsKey(id)) add(id)
                 }
             }
@@ -160,21 +276,32 @@ class TranscriptToolEngine(
      * failure, never partially salvaged into a half-result that looks complete.
      */
     internal fun extractJsonObject(raw: String): JSONObject? {
-        val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
+        val cleaned = raw.trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        val start = cleaned.indexOf('{')
+        val end = cleaned.lastIndexOf('}')
         if (start < 0 || end <= start) return null
         return try {
-            JSONObject(raw.substring(start, end + 1))
+            JSONObject(cleaned.substring(start, end + 1))
         } catch (e: JSONException) {
             null
         }
     }
 
-    fun engineId(): String = engineName
+    fun engineId(): String = actualEngineName()
 
     private companion object {
         /** Notes and outlines are the longest outputs any of these tools produce. */
         const val DEFAULT_MAX_OUTPUT_TOKENS = 2048
+        const val DEFAULT_CONTEXT_TOKENS = 32_000
+        const val MIN_CONTEXT_TOKENS = 2048
+        const val RESERVED_OVERHEAD_TOKENS = 1800
+        const val MIN_INPUT_TOKENS = 700
+        const val CHARS_PER_TOKEN = 4
+        const val MAX_SINGLE_CHUNK_CHARS = 18_000
     }
 }
 

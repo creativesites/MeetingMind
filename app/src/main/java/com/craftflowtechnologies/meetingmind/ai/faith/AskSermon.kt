@@ -17,15 +17,6 @@ object AskSermon {
 
     private val MARKER = Regex("\\[(\\d{1,2}:\\d{2}(?::\\d{2})?)\\]")
 
-    /** Voice-of-God phrasing in the answer's own voice. Reporting ("he said God told him") is fine. */
-    private val AUTHORITY = listOf(
-        Regex("\\bthus says the lord\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bGod is (telling|saying to|calling) you\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bthe Lord (is )?(says|saying) to you\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bI (prophesy|declare) (over|that|to) you\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bGod (has revealed|wants me to tell you)\\b", RegexOption.IGNORE_CASE)
-    )
-
     /** The label the transcript and the answer chips share — "mm:ss", or "hh:mm:ss" past an hour. */
     fun marker(ms: Long): String = Formatters.formatDurationHms(ms)
 
@@ -56,12 +47,8 @@ object AskSermon {
             val seg = byLabel[key]
             if (seg != null) { cited[key] = seg; "[$key]" } else { dropped += m.groupValues[1]; "" }
         }
-        val violations = mutableListOf<String>()
-        text = sentences(text).filter { s ->
-            val bad = AUTHORITY.any { it.containsMatchIn(s) } && !reported(s)
-            if (bad) violations += s.trim()
-            !bad
-        }.joinToString("")
+        val violations = FaithAuthorityGuard.violations(text)
+        text = FaithAuthorityGuard.clean(text)
         text = text.replace(Regex("[ \\t]+([.,;:!?])"), "$1").replace(Regex("[ \\t]{2,}"), " ").trim()
         val notCovered = Regex("(doesn'?t|does not|didn'?t|did not) (seem to )?(cover|mention|say|address)", RegexOption.IGNORE_CASE).containsMatchIn(text)
         return Grounded(text, cited.values.toList(), dropped, violations, notCovered)
@@ -72,12 +59,4 @@ object AskSermon {
         val parts = label.split(":").map { it.toInt() }
         return if (parts.size == 3) "%02d:%02d:%02d".format(parts[0], parts[1], parts[2]) else "%02d:%02d".format(parts[0], parts[1])
     }
-
-    /** "He said God told him…" reports the speaker; "Thus says the Lord" is never a report. */
-    private fun reported(sentence: String) =
-        !Regex("\\bthus says\\b", RegexOption.IGNORE_CASE).containsMatchIn(sentence) &&
-            Regex("\\b(he|she|they|the (preacher|speaker|pastor)|[A-Z][a-z]+) (said|says|told|shared|described|explained)\\b").containsMatchIn(sentence)
-
-    private fun sentences(text: String): List<String> =
-        Regex("[^.!?\\n]*(?:[.!?]+|\\n|$)").findAll(text).map { it.value }.filter { it.isNotEmpty() }.toList()
 }

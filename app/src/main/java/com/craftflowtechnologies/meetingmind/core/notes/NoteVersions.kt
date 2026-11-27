@@ -184,7 +184,9 @@ class NoteVersionRepository(
 
     suspend fun load(versionId: String): NoteSnapshot? = withContext(Dispatchers.IO) {
         val v = dao.getById(versionId) ?: return@withContext null
-        NoteSnapshot(v.title, VersionCodec.decode(v.blocks, v.noteId))
+        // A damaged saved version reads as missing rather than crashing the history sheet.
+        val blocks = runCatching { VersionCodec.decode(v.blocks, v.noteId) }.getOrNull() ?: return@withContext null
+        NoteSnapshot(v.title, blocks)
     }
 
     /**
@@ -193,8 +195,9 @@ class NoteVersionRepository(
      */
     suspend fun restore(versionId: String): NoteSnapshot? = withContext(Dispatchers.IO) {
         val v = dao.getById(versionId) ?: return@withContext null
+        // Decode first: a damaged version is refused before anything about the note changes.
+        val restored = runCatching { VersionCodec.decode(v.blocks, v.noteId) }.getOrNull() ?: return@withContext null
         snapshot(v.noteId, VersionReason.BEFORE_RESTORE)
-        val restored = VersionCodec.decode(v.blocks, v.noteId)
         notes.saveBlocks(v.noteId, restored)
         if (notes.getNote(v.noteId)?.title != v.title) notes.renameNote(v.noteId, v.title)
         NoteSnapshot(v.title, restored)

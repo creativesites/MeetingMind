@@ -53,6 +53,11 @@ class PaywallPolicyTest {
         assertTrue(PaywallTrigger.parse(null) == PaywallTrigger.SETTINGS)
     }
 
+    @Test fun `production is the default and enforces the paywall`() {
+        assertTrue(PaywallPolicy.shouldShow(PaywallTrigger.FIRST_RESULT, on, free, PaywallState(), now))
+        assertFalse(PaywallPolicy.shouldShow(PaywallTrigger.FIRST_RESULT, on, free, PaywallState(), now, TieringMode.CLOSED_TESTING))
+    }
+
     @Test fun `closed testing mode suppresses unasked paywalls but allows opening from settings`() {
         assertFalse(PaywallPolicy.shouldShow(PaywallTrigger.FIRST_RESULT, on, free, PaywallState(), now, TieringMode.CLOSED_TESTING))
         assertFalse(PaywallPolicy.shouldShow(PaywallTrigger.PREMIUM_ACTION, on, free, PaywallState(), now, TieringMode.CLOSED_TESTING))

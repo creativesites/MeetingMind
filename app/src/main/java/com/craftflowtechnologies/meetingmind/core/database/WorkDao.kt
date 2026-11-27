@@ -21,6 +21,9 @@ private const val WORK_NOTE_FILTERS = """AND (:kindMode = 0 OR (:kindMode = 1 AN
 private const val WORK_OPEN_TASK_SCOPE = """t.deletedAt IS NULL AND t.doneAt IS NULL
     AND (t.space = 'WORK' OR t.meetingId IN (SELECT id FROM meetings WHERE recordingType IN (:types)))"""
 
+/** What one project needs follow-through on: the counts behind its status line (Work › Projects). */
+data class ProjectItemCounts(val projectId: String, val pastDuePromises: Int, val openRisks: Int, val pendingDecisions: Int)
+
 /** A decision or question with the recording it came from, for the logs across all work. */
 data class FindingRow(
     val id: String,
@@ -69,11 +72,30 @@ interface WorkDao {
     @Query("SELECT * FROM meetings WHERE status = 'READY' AND reviewedAt IS NULL ORDER BY createdAt DESC")
     fun observeUnreviewed(): Flow<List<MeetingEntity>>
 
+    /**
+     * Recordings that need the person to act: processing ended in an error, a local model must be installed
+     * (MODEL_REQUIRED), or a recording has sat in the queue since before [queuedBefore]. Work lists them under
+     * Needs you. The audio is safe in all three, so the row offers Try again or Open.
+     */
+    @Query("""SELECT * FROM meetings
+        WHERE status IN ('ERROR', 'MODEL_REQUIRED') OR (status = 'QUEUED' AND updatedAt < :queuedBefore)
+        ORDER BY createdAt DESC LIMIT 10""")
+    fun observeFailed(queuedBefore: Long): Flow<List<MeetingEntity>>
+
     @Query("UPDATE meetings SET reviewedAt = :at WHERE id = :meetingId")
     suspend fun setReviewed(meetingId: String, at: Long?)
 
     @Query("SELECT * FROM meetings WHERE recordingType IN (:types) ORDER BY createdAt DESC LIMIT :limit")
     fun observeByTypes(types: List<String>, limit: Int): Flow<List<MeetingEntity>>
+
+    /**
+     * The latest Work recordings in every state (recording, processing, saved, ready, failed), from the moment the
+     * row exists: a Work recording type, or a recording whose note is filed in a Work space or project notebook.
+     */
+    @Query("""SELECT * FROM meetings WHERE createdAt >= :since AND (recordingType IN (:types)
+        OR noteId IN (SELECT id FROM notes WHERE deletedAt IS NULL AND notebookId IN (SELECT id FROM notebooks WHERE kind = 'PROJECT' OR space = 'WORK')))
+        ORDER BY createdAt DESC LIMIT :limit""")
+    fun observeRecentWorkMeetings(types: List<String>, since: Long, limit: Int): Flow<List<MeetingEntity>>
 
     // Findings
 
@@ -244,6 +266,22 @@ interface WorkDao {
     /** Last edit per notebook, in one grouped query. */
     @Query("SELECT notebookId AS notebookId, MAX(updatedAt) AS lastAt FROM notes WHERE deletedAt IS NULL AND notebookId IS NOT NULL GROUP BY notebookId")
     fun observeNotebookActivity(): Flow<List<NotebookActivity>>
+
+    /**
+     * Per project, the counts that decide its status (Work › Projects): promises past due, risks still open and
+     * decisions not yet confirmed. Only reviewed items count, as everywhere else in Work.
+     */
+    @Query("""SELECT projectId AS projectId,
+        COALESCE(SUM(CASE WHEN kind = 'COMMITMENT' AND status = 'OPEN' AND dueAt IS NOT NULL AND dueAt < :startOfToday THEN 1 ELSE 0 END), 0) AS pastDuePromises,
+        COALESCE(SUM(CASE WHEN kind = 'RISK' AND status NOT IN ('CLOSED', 'CANCELLED', 'SUPERSEDED', 'REVERSED', 'COMPLETED', 'ANSWERED', 'DROPPED') THEN 1 ELSE 0 END), 0) AS openRisks,
+        COALESCE(SUM(CASE WHEN kind = 'DECISION' AND status = 'PROPOSED' THEN 1 ELSE 0 END), 0) AS pendingDecisions
+        FROM items WHERE deletedAt IS NULL AND reviewed = 1 AND projectId IS NOT NULL GROUP BY projectId""")
+    fun observeProjectItemCounts(startOfToday: Long): Flow<List<ProjectItemCounts>>
+
+    /** Live items of one kind (for example REQUIREMENT), newest first, for the Decisions pane's chips. */
+    @Query("""SELECT * FROM items WHERE deletedAt IS NULL AND reviewed = 1 AND kind = :kind
+        AND status NOT IN ('CLOSED', 'CANCELLED', 'SUPERSEDED', 'REVERSED') ORDER BY createdAt DESC LIMIT :limit""")
+    fun observeItemsOfKind(kind: String, limit: Int): Flow<List<ItemEntity>>
 
     // ---- Indicators for one page of notes (bounded by the page's ids).
 

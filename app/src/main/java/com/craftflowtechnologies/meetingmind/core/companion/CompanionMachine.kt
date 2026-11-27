@@ -218,7 +218,7 @@ object CompanionPresence {
     /** Pages that still show the companion under "Big moments". */
     private val BigMoments = setOf(
         CompanionPage.RECORDING, CompanionPage.PROCESSING, CompanionPage.NOTE_READY, CompanionPage.FIRST_RECORDING,
-        CompanionPage.WORRIED, CompanionPage.MILESTONE
+        CompanionPage.WORRIED, CompanionPage.MILESTONE, CompanionPage.ASK
     )
 
     fun visibleOn(page: CompanionPage, settings: CompanionSettings, clock: LocalClock): Boolean {

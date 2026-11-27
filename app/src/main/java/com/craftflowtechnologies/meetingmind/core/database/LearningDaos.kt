@@ -24,6 +24,15 @@ interface LearningSessionDao {
     @Query("SELECT * FROM learning_sessions ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<LearningSessionEntity>>
 
+    @Query("SELECT * FROM learning_sessions ORDER BY updatedAt DESC")
+    suspend fun getAllSessions(): List<LearningSessionEntity>
+
+    @Query("SELECT * FROM learning_sessions WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<String>): List<LearningSessionEntity>
+
+    @Query("SELECT * FROM learning_sessions WHERE noteId IN (:noteIds)")
+    suspend fun getByNoteIds(noteIds: List<String>): List<LearningSessionEntity>
+
     @Query("SELECT * FROM learning_sessions WHERE id = :id")
     fun observeById(id: String): Flow<LearningSessionEntity?>
 
@@ -54,11 +63,23 @@ interface LearningConceptDao {
     @Query("SELECT * FROM learning_concepts WHERE sessionId = :sessionId AND isDismissed = 0")
     suspend fun getBySession(sessionId: String): List<LearningConceptEntity>
 
+    @Query("SELECT * FROM learning_concepts WHERE sessionId IN (:sessionIds) AND isDismissed = 0 ORDER BY createdAt ASC")
+    suspend fun getBySessions(sessionIds: List<String>): List<LearningConceptEntity>
+
     @Query("SELECT * FROM learning_concepts WHERE isDismissed = 0 ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<LearningConceptEntity>>
 
+    @Query("SELECT * FROM learning_concepts WHERE isDismissed = 0 ORDER BY updatedAt DESC")
+    suspend fun getAllActive(): List<LearningConceptEntity>
+
     @Query("DELETE FROM learning_concepts WHERE id = :id")
     suspend fun delete(id: String)
+
+    @Query("DELETE FROM learning_concepts WHERE sessionId = :sessionId")
+    suspend fun deleteConceptsBySession(sessionId: String)
+
+    @Query("DELETE FROM learning_concepts WHERE sessionId = :sessionId AND isUserEdited = 0")
+    suspend fun deleteNonEditedConceptsBySession(sessionId: String)
 }
 
 @Dao
@@ -81,6 +102,9 @@ interface LearningActivityDao {
     @Query("SELECT * FROM learning_activities WHERE sessionId = :sessionId AND isDismissed = 0 ORDER BY createdAt ASC")
     suspend fun getBySession(sessionId: String): List<LearningActivityEntity>
 
+    @Query("SELECT * FROM learning_activities WHERE sessionId IN (:sessionIds) AND isDismissed = 0 ORDER BY createdAt ASC")
+    suspend fun getBySessions(sessionIds: List<String>): List<LearningActivityEntity>
+
     @Query("SELECT * FROM learning_activities WHERE sessionId = :sessionId AND isDiagnostic = 1 AND isDismissed = 0")
     fun observeDiagnosticBySession(sessionId: String): Flow<List<LearningActivityEntity>>
 
@@ -98,6 +122,9 @@ interface LearningActivityDao {
 
     @Query("DELETE FROM learning_activities WHERE id = :id")
     suspend fun delete(id: String)
+
+    @Query("DELETE FROM learning_activities WHERE sessionId = :sessionId")
+    suspend fun deleteActivitiesBySession(sessionId: String)
 }
 
 @Dao
@@ -113,6 +140,15 @@ interface ActivityAttemptDao {
 
     @Query("SELECT * FROM activity_attempts WHERE sessionId = :sessionId ORDER BY createdAt ASC")
     suspend fun getBySession(sessionId: String): List<ActivityAttemptEntity>
+
+    @Query("SELECT * FROM activity_attempts WHERE sessionId IN (:sessionIds) ORDER BY createdAt ASC")
+    suspend fun getBySessions(sessionIds: List<String>): List<ActivityAttemptEntity>
+
+    @Query("SELECT * FROM activity_attempts WHERE createdAt >= :since ORDER BY createdAt ASC")
+    suspend fun getRecentAttemptsSince(since: Long): List<ActivityAttemptEntity>
+
+    @Query("SELECT * FROM activity_attempts WHERE createdAt >= :since ORDER BY createdAt ASC")
+    fun observeRecentAttemptsSince(since: Long): Flow<List<ActivityAttemptEntity>>
 
     @Query("SELECT * FROM activity_attempts WHERE sessionId = :sessionId ORDER BY createdAt DESC")
     fun observeBySession(sessionId: String): Flow<List<ActivityAttemptEntity>>
@@ -162,6 +198,54 @@ interface ReviewScheduleDao {
     @Query("SELECT * FROM review_schedules WHERE sessionId = :sessionId")
     suspend fun getBySession(sessionId: String): List<ReviewScheduleEntity>
 
+    @Query("SELECT * FROM review_schedules WHERE sessionId IN (:sessionIds)")
+    suspend fun getBySessions(sessionIds: List<String>): List<ReviewScheduleEntity>
+
+    @Query("SELECT * FROM review_schedules")
+    fun observeAll(): Flow<List<ReviewScheduleEntity>>
+
+    @Query("SELECT * FROM review_schedules")
+    suspend fun getAll(): List<ReviewScheduleEntity>
+
+    @Query("UPDATE review_schedules SET isPaused = :isPaused, updatedAt = :updatedAt WHERE sessionId = :sessionId")
+    suspend fun setPausedBySession(sessionId: String, isPaused: Boolean, updatedAt: Long)
+
     @Query("DELETE FROM review_schedules WHERE activityId = :activityId")
     suspend fun deleteByActivity(activityId: String)
+}
+
+@Dao
+interface LearningGoalDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(goal: LearningGoalEntity)
+
+    @Update
+    suspend fun update(goal: LearningGoalEntity)
+
+    @Query("SELECT * FROM learning_goals WHERE id = :id")
+    suspend fun getById(id: String): LearningGoalEntity?
+
+    @Query("SELECT * FROM learning_goals WHERE id = :id")
+    fun observeById(id: String): Flow<LearningGoalEntity?>
+
+    @Query("SELECT * FROM learning_goals ORDER BY examDateMs ASC")
+    fun observeAll(): Flow<List<LearningGoalEntity>>
+
+    @Query("SELECT * FROM learning_goals ORDER BY examDateMs ASC")
+    suspend fun getAll(): List<LearningGoalEntity>
+
+    @Query("SELECT * FROM learning_goals WHERE notebookId = :notebookId ORDER BY examDateMs ASC")
+    fun observeByNotebook(notebookId: String): Flow<List<LearningGoalEntity>>
+
+    @Query("SELECT * FROM learning_goals WHERE notebookId = :notebookId ORDER BY examDateMs ASC")
+    suspend fun getByNotebook(notebookId: String): List<LearningGoalEntity>
+
+    @Query("SELECT * FROM learning_goals WHERE examDateMs >= :now ORDER BY examDateMs ASC")
+    suspend fun getUpcoming(now: Long): List<LearningGoalEntity>
+
+    @Query("SELECT * FROM learning_goals WHERE examDateMs >= :now ORDER BY examDateMs ASC")
+    fun observeUpcoming(now: Long): Flow<List<LearningGoalEntity>>
+
+    @Query("DELETE FROM learning_goals WHERE id = :id")
+    suspend fun delete(id: String)
 }

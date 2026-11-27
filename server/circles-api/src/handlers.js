@@ -5,16 +5,17 @@ import { hmacHex } from "./crypto.js";
 import { parseServiceAccount } from "./google.js";
 import { pushToUsers } from "./fcm.js";
 import { hit, check, record } from "./ratelimit.js";
-import { createUploadTicket, sendMessage, deleteMedia, checkPostAttachments, checkCover } from "./media.js";
+import { createUploadTicket, sendMessage, deleteMedia, checkPostAttachments, checkCover, avatarField, removeAvatar } from "./media.js";
 import {
   LIMITS, RATE, REACTIONS, POST_TYPES, TEMPLATES, validId, cleanText, cleanVerseRef, normalizeSettings,
   generateCode, extractCodes, CHAT, shapePoll, shapeCelebration, clampInvite, joinDecision, canInvite, isAdmin, canModerate, shapePost, publishFromPending, assertNoAuthorLeak,
-  cleanTitle, cleanEvent, RSVP_STATES,
+  cleanTitle, cleanEvent, RSVP_STATES, DECISION_STATUSES, cleanBringList, isWorkCircle,
 } from "./logic.js";
 
 const C = (id) => `circles/${id}`;
 const forbidden = () => new ApiError(403, "not_a_member", "You're not a member of this circle.");
 const notFound = (what = "That") => new ApiError(404, "not_found", `${what} wasn't found.`);
+const bad = (code, msg) => new ApiError(400, code, msg);
 
 function newId() {
   const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -54,20 +55,74 @@ async function notifyAdmins(ctx, circleId, message) {
   const ms = await ctx.db.query({ parent: C(circleId), collection: "members", where: [["role", "in", ["owner", "admin"]]], limit: 50 });
   return pushToUsers({ db: ctx.db, fcm: ctx.fcm, uids: ms.map((m) => m.id), message, max: maxPush(ctx) });
 }
+async function shouldSendThrottledPush(kv, key, nowMs, cooldownMs = 20_000) {
+  if (!kv) return true;
+  try {
+    const last = parseInt((await kv.get(key)) || "0", 10) || 0;
+    if (last > 0 && nowMs - last < cooldownMs) return false;
+    await kv.put(key, String(nowMs), { expirationTtl: 60 });
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function postNotificationBody(post) {
+  if (post.anonymous) return "Someone shared a prayer request";
+  const who = post.authorName || "Someone";
+  switch (post.type) {
+    case "testimony": return `${who} shared a testimony`;
+    case "prayer": return `${who} shared a prayer request`;
+    case "devotional": return `${who} shared a devotional`;
+    case "encouragement": return `${who} shared a word of encouragement`;
+    case "study": return `${who} shared a study note`;
+    case "announcement": return `${who} posted an announcement`;
+    case "verse": return post.verseRef ? `${who} shared ${post.verseRef}` : `${who} shared a scripture verse`;
+    case "task": return `${who} added a task`;
+    case "decision": return `${who} logged a decision`;
+    case "brief": return `${who} shared a brief`;
+    case "standup": return `${who} posted an update`;
+    case "blocker": return `${who} flagged a blocker`;
+    default: return `${who} shared something new`;
+  }
+}
+
 const postMsg = (circleName, post, id, circleId) => ({
   title: circleName,
-  body: post.anonymous ? "Someone shared a prayer request" : `${post.authorName} shared something new`,
+  body: postNotificationBody(post),
   data: { kind: "post", circleId, postId: id },
 });
 
 // ---------- circles ----------
+const SPACE_BY_TEMPLATE = {
+  project_team: "work",
+  client_engagement: "work",
+  exec_board: "work",
+  department: "work",
+  custom_work: "work",
+  study_group: "learning",
+  course_cohort: "learning",
+  exam_prep_room: "learning",
+  custom_learning: "learning",
+  friends_group: "general",
+  community_club: "general",
+  book_club: "general",
+  custom_general: "general",
+};
+
 async function createCircle(ctx) {
   const b = ctx.body;
   const template = typeof b.template === "string" ? b.template : "";
   if (!TEMPLATES[template]) throw new ApiError(400, "bad_request", "Unknown template");
+  const rawSpace = typeof b.space === "string" ? b.space.trim().toLowerCase() : "";
+  const mappedSpace = rawSpace === "community" ? "general" : rawSpace;
+  const space = (mappedSpace === "work" || mappedSpace === "learning" || mappedSpace === "general" || mappedSpace === "faith")
+    ? mappedSpace
+    : (SPACE_BY_TEMPLATE[template] || "faith");
   const nm = cleanText(b.name, "name", { max: LIMITS.nameMax });
-  const vocab = cleanText(b.vocab, "vocab", { min: 0, max: 40, optional: true }) ?? "Circle";
-  const settings = normalizeSettings(b.settings, template);
+  const defaultVocab = space === "work" ? "Team" : space === "learning" ? "Study group" : space === "general" ? "Group" : "Circle";
+  const vocab = cleanText(b.vocab, "vocab", { min: 0, max: 40, optional: true }) ?? defaultVocab;
+  const settings = normalizeSettings(b.settings, template, space);
   const description = cleanText(b.description, "description", { min: 0, max: LIMITS.descriptionMax, optional: true }) ?? "";
   const displayName = name(b.displayName);
   // Older app builds do not send a key yet; keep them working, while newer builds
@@ -91,8 +146,8 @@ async function createCircle(ctx) {
     const n = meta?.data.circleCount || 0;
     if (n >= LIMITS.circlesPerUser) throw new ApiError(409, "too_many_circles", "You're in the maximum of 10 circles. Leave one to create another.");
     return [
-      w.create(C(id), { name: nm, template, vocab, description, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
-      w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false }),
+      w.create(C(id), { name: nm, template, space, vocab, description, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
+      w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false, ...avatarField(meta) }),
       userMetaWrite(ctx.uid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), id] }),
       w.create(idempotencyPath, { circleId: id, createdAt: ctx.now }),
     ];
@@ -110,7 +165,8 @@ async function updateCircle(ctx) {
   if (ctx.body.vocab !== undefined) data.vocab = cleanText(ctx.body.vocab, "vocab", { max: 40 });
   if (ctx.body.description !== undefined) data.description = cleanText(ctx.body.description, "description", { min: 0, max: LIMITS.descriptionMax });
   if (ctx.body.coverPath !== undefined) data.coverPath = await checkCover(ctx, id, ctx.body.coverPath ?? null);
-  if (ctx.body.settings !== undefined) data.settings = normalizeSettings({ ...circle.settings, ...ctx.body.settings }, circle.template);
+  const space = circle.space || circle.settings?.space || "faith";
+  if (ctx.body.settings !== undefined) data.settings = normalizeSettings({ ...circle.settings, ...ctx.body.settings }, circle.template, space);
   if (!Object.keys(data).length) throw new ApiError(400, "bad_request", "Nothing to change");
   await ctx.db.commit([w.update(C(id), data)]);
   return {};
@@ -124,6 +180,59 @@ async function myCircles(ctx) {
   return { circleIds: ids.filter((_, i) => members[i]) };
 }
 
+const ROLE_RANK = { owner: 3, admin: 2, member: 1 };
+
+/**
+ * Moves the circles of the guest (anonymous) account this phone used before signing in over to the signed-in account.
+ * Signing in with a Google account that already exists switches the phone to that account; without this, a circle made
+ * before sign-in would stay with the abandoned guest account and vanish from the list. The caller proves it held the
+ * guest account with that account's ID token, taken just before switching (valid for an hour). Membership, ownership
+ * and the circle list move; the only thing removed is the guest's member record, which the new one replaces.
+ */
+async function adoptGuestCircles(ctx) {
+  const token = ctx.body.guestToken;
+  if (typeof token !== "string" || !token) throw new ApiError(400, "bad_request", "Missing guestToken");
+  let guest;
+  try { guest = await ctx.verifyToken(token); } catch { throw new ApiError(403, "forbidden", "That earlier sign-in couldn't be confirmed."); }
+  if (guest?.claims?.firebase?.sign_in_provider !== "anonymous") throw new ApiError(403, "forbidden", "Only a guest sign-in can be moved.");
+  if (guest.uid === ctx.uid) return { moved: [], skipped: [] };
+  await hit(ctx.kv, `rl:adopt:${ctx.uid}`, RATE.createCircle);
+  const guestMeta = await ctx.db.get(`userMeta/${guest.uid}`);
+  const ids = (guestMeta?.data.circleIds || []).slice(0, LIMITS.circlesPerUser);
+  const moved = new Set();
+  const skipped = new Set();
+  for (const id of ids) {
+    await ctx.db.runTx(async (tx) => {
+      moved.delete(id); skipped.delete(id);
+      const circle = await tx.get(C(id));
+      const old = await tx.get(`${C(id)}/members/${guest.uid}`);
+      const mine = await tx.get(`${C(id)}/members/${ctx.uid}`);
+      const myMeta = await tx.get(`userMeta/${ctx.uid}`);
+      const gMeta = await tx.get(`userMeta/${guest.uid}`);
+      if (!circle || circle.data.closed || !old) return [];
+      const myIds = myMeta?.data.circleIds || [];
+      if (!mine && myIds.length >= LIMITS.circlesPerUser) { skipped.add(id); return []; }
+      const writes = [w.del(`${C(id)}/members/${guest.uid}`)];
+      const circleUpdate = {};
+      if (circle.data.ownerUid === guest.uid) circleUpdate.ownerUid = ctx.uid;
+      if (mine) {
+        // Already a member: keep the stronger role, and the circle has one member fewer.
+        if ((ROLE_RANK[old.data.role] || 0) > (ROLE_RANK[mine.data.role] || 0)) writes.push(w.update(`${C(id)}/members/${ctx.uid}`, { role: old.data.role }));
+        circleUpdate.memberCount = Math.max(1, (circle.data.memberCount || 1) - 1);
+      } else {
+        writes.push(w.create(`${C(id)}/members/${ctx.uid}`, { ...old.data, ...avatarField(myMeta) }));
+        writes.push(userMetaWrite(ctx.uid, { circleCount: myIds.length + 1, circleIds: [...myIds.filter((x) => x !== id), id] }));
+      }
+      if (Object.keys(circleUpdate).length) writes.push(w.update(C(id), circleUpdate));
+      const gIds = (gMeta?.data.circleIds || []).filter((x) => x !== id);
+      writes.push(userMetaWrite(guest.uid, { circleCount: gIds.length, circleIds: gIds }));
+      moved.add(id);
+      return writes;
+    });
+  }
+  return { moved: [...moved], skipped: [...skipped] };
+}
+
 // ---------- invites ----------
 async function createInvite(ctx) {
   const id = str(ctx.body, "circleId");
@@ -132,8 +241,9 @@ async function createInvite(ctx) {
   const { days, uses } = clampInvite(ctx.body);
   await hit(ctx.kv, `rl:createInvite:${ctx.uid}`, RATE.createInvite);
   const expiresAt = new Date(ctx.now.getTime() + days * 86_400_000);
+  const space = circle.space || circle.settings?.space || "faith";
   for (let i = 0; i < 6; i++) {
-    const code = generateCode();
+    const code = generateCode(undefined, space);
     try {
       await ctx.db.commit([w.create(`invites/${code}`, { circleId: id, createdBy: ctx.uid, expiresAt, maxUses: uses, uses: 0, revoked: false, createdAt: ctx.now })]);
       return { code, expiresAt: expiresAt.toISOString(), maxUses: uses };
@@ -142,6 +252,43 @@ async function createInvite(ctx) {
     }
   }
   throw new ApiError(503, "try_again", "Couldn't make a code just now. Try again.");
+}
+
+async function createEmailInvite(ctx) {
+  const id = str(ctx.body, "circleId");
+  const emailRaw = ctx.body.email;
+  if (typeof emailRaw !== "string" || !/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(emailRaw.trim())) {
+    throw new ApiError(400, "bad_request", "A valid email address is required.");
+  }
+  const email = emailRaw.trim().toLowerCase();
+  if (email.length > 120) throw new ApiError(400, "bad_request", "Email is too long.");
+  const { circle, member } = await load(ctx, id);
+  if (!canInvite(member.role, circle.settings)) throw new ApiError(403, "forbidden", "Only admins can invite to this circle.");
+  const { days, uses } = clampInvite(ctx.body);
+  await hit(ctx.kv, `rl:createInvite:${ctx.uid}`, RATE.createInvite);
+  const expiresAt = new Date(ctx.now.getTime() + days * 86_400_000);
+  const space = circle.space || circle.settings?.space || "faith";
+  for (let i = 0; i < 6; i++) {
+    const code = generateCode(undefined, space);
+    try {
+      await ctx.db.commit([
+        w.create(`invites/${code}`, {
+          circleId: id,
+          email,
+          createdBy: ctx.uid,
+          expiresAt,
+          maxUses: uses,
+          uses: 0,
+          revoked: false,
+          createdAt: ctx.now
+        })
+      ]);
+      return { code, email, expiresAt: expiresAt.toISOString(), maxUses: uses };
+    } catch (e) {
+      if (!(e instanceof FirestoreError && e.code === "ALREADY_EXISTS")) throw e;
+    }
+  }
+  throw new ApiError(503, "try_again", "Couldn't make an email invite just now. Try again.");
 }
 
 async function revokeInvite(ctx) {
@@ -190,7 +337,7 @@ async function join(ctx) {
         return [w.create(requestPath, { displayName, createdAt: ctx.now, inviteCode: code })];
       }
       return [
-        w.create(`${C(invite.circleId)}/members/${ctx.uid}`, { role: "member", displayName, joinedAt: ctx.now, muted: false }),
+        w.create(`${C(invite.circleId)}/members/${ctx.uid}`, { role: "member", displayName, joinedAt: ctx.now, muted: false, ...avatarField(meta) }),
         w.update(C(invite.circleId), { memberCount: circle.memberCount + 1 }),
         w.update(`invites/${code}`, {}, { inc: { uses: 1 } }),
         userMetaWrite(ctx.uid, { circleCount: (meta?.data.circleCount || 0) + 1, circleIds: [...(meta?.data.circleIds || []), invite.circleId] }),
@@ -204,7 +351,56 @@ async function join(ctx) {
   return result;
 }
 
+/**
+ * What an invite code is for, before the person joins. No membership, counter or invite writes. Shares the join
+ * failure budget and the same codes (not_found, revoked, expired, full) as join.
+ */
+async function previewInvite(ctx) {
+  const codes = extractCodes(String(ctx.body.code ?? ""));
+  await check(ctx.kv, `rl:joinfail:u:${ctx.uid}`, RATE.joinFailUser);
+  await check(ctx.kv, `rl:joinfail:ip:${ctx.ip}`, RATE.joinFailIp);
+  const failed = async (code, msg, status = 409) => {
+    await Promise.all([record(ctx.kv, `rl:joinfail:u:${ctx.uid}`, RATE.joinFailUser), record(ctx.kv, `rl:joinfail:ip:${ctx.ip}`, RATE.joinFailIp)]);
+    return new ApiError(status, code, msg);
+  };
+  let found = null;
+  for (const c of codes) { const d = await ctx.db.get(`invites/${c}`); if (d) { found = d; break; } }
+  if (!found) throw await failed("not_found", "That code wasn't found. Check it and try again.", 404);
+  const invite = found.data;
+  const circleDoc = await ctx.db.get(C(invite.circleId));
+  const circle = circleDoc?.data;
+  const err = joinDecision({
+    invite, nowMs: ctx.now.getTime(), memberCount: circle?.memberCount ?? 0, userCircleCount: 0,
+    alreadyMember: false, circleClosed: !circle || circle.closed,
+  });
+  if (err) throw await failed(err[0], err[1], err[0] === "not_found" ? 404 : err[0] === "expired" || err[0] === "revoked" ? 410 : 409);
+  const inviter = invite.createdBy ? await ctx.db.get(`${C(invite.circleId)}/members/${invite.createdBy}`) : null;
+  return {
+    circleId: invite.circleId,
+    name: circle.name,
+    space: circle.space || circle.settings?.space || "faith",
+    template: circle.template ?? null,
+    memberCount: circle.memberCount ?? 0,
+    coverPath: circle.coverPath ?? null,
+    inviterName: inviter?.data.displayName ?? null,
+  };
+}
+
 // ---------- membership ----------
+/** Owner and admins mark a person as external (outside the organisation). Work circles only. */
+async function setExternal(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const targetUid = str(ctx.body, "uid");
+  if (typeof ctx.body.external !== "boolean") throw bad("bad_request", "external must be true or false");
+  const { circle, member } = await load(ctx, circleId);
+  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can mark people as external.");
+  if (!isWorkCircle(circle)) throw new ApiError(409, "not_work_circle", "External members are only for work circles.");
+  const target = await ctx.db.get(`${C(circleId)}/members/${targetUid}`);
+  if (!target) throw notFound("That person");
+  await ctx.db.commit([w.update(`${C(circleId)}/members/${targetUid}`, { external: ctx.body.external })]);
+  return {};
+}
+
 /** An admin lets a waiting person in (approve) or turns them away (reject). */
 async function decideJoin(ctx) {
   const circleId = str(ctx.body, "circleId");
@@ -228,7 +424,7 @@ async function decideJoin(ctx) {
     const code = request.data.inviteCode;
     const inviteDoc = code ? await tx.get(`invites/${code}`) : null;
     const writes = [
-      w.create(`${C(circleId)}/members/${targetUid}`, { role: "member", displayName: request.data.displayName, joinedAt: ctx.now, muted: false }),
+      w.create(`${C(circleId)}/members/${targetUid}`, { role: "member", displayName: request.data.displayName, joinedAt: ctx.now, muted: false, ...avatarField(meta) }),
       w.update(C(circleId), { memberCount: circle.memberCount + 1 }),
       w.del(requestPath),
       userMetaWrite(targetUid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), circleId] }),
@@ -285,9 +481,10 @@ async function createEvent(ctx) {
   const { member } = await load(ctx, circleId);
   if (!canModerate(member.role)) throw new ApiError(403, "forbidden", "Only admins and moderators can add events.");
   const event = cleanEvent(ctx.body);
+  const bringList = cleanBringList(ctx.body.bringList);
   const id = newId();
   await ctx.db.commit([w.create(`${C(circleId)}/events/${id}`, {
-    ...event, status: "scheduled", createdBy: ctx.uid, createdByName: member.displayName, createdAt: ctx.now, updatedAt: ctx.now,
+    ...event, bringList, status: "scheduled", createdBy: ctx.uid, createdByName: member.displayName, createdAt: ctx.now, updatedAt: ctx.now,
   })]);
   return { eventId: id };
 }
@@ -306,7 +503,9 @@ async function updateEvent(ctx) {
   const current = await liveEvent(ctx, circleId, eventId);
   if (current.data.status === "cancelled") throw new ApiError(409, "event_cancelled", "This event was cancelled.");
   const event = cleanEvent({ ...current.data, ...ctx.body });
-  await ctx.db.commit([w.update(`${C(circleId)}/events/${eventId}`, { ...event, updatedAt: ctx.now })]);
+  const prior = Array.isArray(current.data.bringList) ? current.data.bringList : [];
+  const bringList = ctx.body.bringList === undefined ? prior : cleanBringList(ctx.body.bringList, prior);
+  await ctx.db.commit([w.update(`${C(circleId)}/events/${eventId}`, { ...event, bringList, updatedAt: ctx.now })]);
   return {};
 }
 
@@ -331,6 +530,40 @@ async function rsvp(ctx) {
   await ctx.db.commit([w.set(`${C(circleId)}/events/${eventId}/rsvps/${ctx.uid}`, {
     status: ctx.body.status, displayName: member.displayName, updatedAt: ctx.now,
   })]);
+  return {};
+}
+
+/**
+ * The Table: any member claims an unclaimed bring item, or releases their own claim. Admins may release anyone's.
+ * The claim is read and written in one transaction, so two people can't both bring the same thing.
+ */
+async function claimBringItem(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const eventId = str(ctx.body, "eventId");
+  const itemId = str(ctx.body, "itemId");
+  if (typeof ctx.body.claim !== "boolean") throw bad("bad_request", "claim must be true or false");
+  const { member } = await load(ctx, circleId);
+  const eventPath = `${C(circleId)}/events/${eventId}`;
+  await ctx.db.runTx(async (tx) => {
+    const ev = await tx.get(eventPath);
+    if (!ev) throw notFound("That event");
+    if (ev.data.status === "cancelled") throw new ApiError(409, "event_cancelled", "This event was cancelled.");
+    const items = Array.isArray(ev.data.bringList) ? ev.data.bringList : [];
+    const idx = items.findIndex((x) => x.id === itemId);
+    if (idx === -1) throw notFound("That item");
+    const holder = items[idx].claimedByUid || null;
+    let next;
+    if (ctx.body.claim) {
+      if (holder === ctx.uid) return [];
+      if (holder) throw new ApiError(409, "already_claimed", "Someone already said they'd bring that.");
+      next = items.map((x, i) => (i === idx ? { ...x, claimedByUid: ctx.uid, claimedByName: member.displayName } : x));
+    } else {
+      if (!holder) return [];
+      if (holder !== ctx.uid && !isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only the person who claimed it, or an admin, can release it.");
+      next = items.map((x, i) => (i === idx ? { id: x.id, text: x.text } : x));
+    }
+    return [w.update(eventPath, { bringList: next })];
+  });
   return {};
 }
 
@@ -397,11 +630,39 @@ async function createPost(ctx) {
   const b = ctx.body;
   const circleId = str(b, "circleId");
   const { circle, member } = await load(ctx, circleId);
+
+  // Idempotency check: if client provides a requestId, repeat calls return the existing post
+  const requestId = b.requestId == null ? null
+    : typeof b.requestId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(b.requestId)
+      ? b.requestId.toLowerCase() : null;
+  if (requestId) {
+    const idempotencyPath = `userMeta/${ctx.uid}/postRequests/${requestId}`;
+    const prior = await ctx.db.get(idempotencyPath);
+    if (prior?.data?.postId) return { postId: prior.data.postId, status: prior.data.status ?? "published" };
+  }
+
   const hasPhotos = Array.isArray(b.attachments) && b.attachments.length > 0;
   const body = cleanText(b.body ?? "", "body", { min: hasPhotos ? 0 : 1, max: LIMITS.bodyMax });
   const verseRef = cleanVerseRef(b.verseRef);
   if (b.type === "announcement" && !isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can post announcements.");
-  const { pending, post, authorDoc } = shapePost({ type: b.type, body, verseRef, anonymous: b.anonymous === true ? true : b.anonymous === false ? false : undefined, uid: ctx.uid, authorName: member.displayName, settings: circle.settings, now: ctx.now });
+  const { pending, post, authorDoc } = shapePost({
+    type: b.type,
+    body,
+    verseRef,
+    anonymous: b.anonymous === true ? true : b.anonymous === false ? false : undefined,
+    uid: ctx.uid,
+    authorName: member.displayName,
+    settings: circle.settings,
+    now: ctx.now,
+    meta: b.meta
+  });
+  // A new decision may replace a live decision in this circle; that one is marked replaced in the same write.
+  const replacesPostId = post.meta?.replacesPostId ?? null;
+  if (replacesPostId) {
+    const old = await livePost(ctx, circleId, replacesPostId);
+    if (old.type !== "decision") throw bad("bad_request", "Only a decision can be replaced.");
+    if (old.meta?.decisionStatus === "replaced") throw new ApiError(409, "already_replaced", "That decision was already replaced.");
+  }
   await hit(ctx.kv, `rl:createPost:${ctx.uid}`, RATE.createPost);
   const attachments = await checkPostAttachments(ctx, circleId, b.attachments);
   const id = newId();
@@ -410,10 +671,21 @@ async function createPost(ctx) {
   // attachmentPaths lets the media sweep find which photos a post still uses.
   if (attachments.length) { doc.attachments = attachments; doc.attachmentPaths = attachments.map((a) => a.path); }
   if (post.anonymous) assertNoAuthorLeak(doc, ctx.uid);
-  await ctx.db.commit([
+
+  const writes = [
     w.create(`${C(circleId)}/postAuthors/${id}`, authorDoc),
     w.create(`${C(circleId)}/${pending ? "pending" : "posts"}/${id}`, doc),
-  ]);
+  ];
+  if (replacesPostId) writes.push(w.update(`${C(circleId)}/posts/${replacesPostId}`, { "meta.decisionStatus": "replaced", "meta.replacedByPostId": id }));
+  if (requestId) {
+    writes.push(w.set(`userMeta/${ctx.uid}/postRequests/${requestId}`, {
+      postId: id,
+      circleId,
+      status: pending ? "pending" : "published",
+      createdAt: ctx.now
+    }));
+  }
+  await ctx.db.commit(writes);
   ctx.defer(pending
     ? notifyAdmins(ctx, circleId, { title: circle.name, body: "A prayer request is waiting for approval", data: { kind: "pending", circleId } })
     : notifyMembers(ctx, circleId, ctx.uid, postMsg(circle.name, post, id, circleId)));
@@ -473,18 +745,104 @@ async function addUpdate(ctx) {
 
 async function markAnswered(ctx) {
   const circleId = str(ctx.body, "circleId"); const postId = str(ctx.body, "postId");
-  const { circle } = await load(ctx, circleId);
-  await requireAuthor(ctx, circleId, postId);
+  const { circle, member } = await load(ctx, circleId);
   const post = await livePost(ctx, circleId, postId);
-  if (post.type !== "prayer") throw new ApiError(400, "bad_request", "Only prayer requests can be answered.");
-  if (post.status === "answered") return {};
-  await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { status: "answered", answeredAt: ctx.now })]);
-  ctx.defer((async () => {
-    const prayers = await ctx.db.query({ parent: `${C(circleId)}/posts/${postId}`, collection: "prayers", limit: LIMITS.membersPerCircle });
-    await pushToUsers({ db: ctx.db, fcm: ctx.fcm, uids: prayers.map((p) => p.id).filter((u) => u !== ctx.uid), max: maxPush(ctx),
-      message: { title: circle.name, body: "A prayer you prayed for was answered", data: { kind: "answered", circleId, postId } } });
-  })());
+
+  if (post.type === "prayer") {
+    await requireAuthor(ctx, circleId, postId);
+    if (post.status === "answered") return {};
+    await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { status: "answered", answeredAt: ctx.now })]);
+    ctx.defer((async () => {
+      const prayers = await ctx.db.query({ parent: `${C(circleId)}/posts/${postId}`, collection: "prayers", limit: LIMITS.membersPerCircle });
+      await pushToUsers({ db: ctx.db, fcm: ctx.fcm, uids: prayers.map((p) => p.id).filter((u) => u !== ctx.uid), max: maxPush(ctx),
+        message: { title: circle.name, body: "A prayer you prayed for was answered", data: { kind: "answered", circleId, postId } } });
+    })());
+    return {};
+  }
+
+  if (post.type === "task" || post.type === "blocker") {
+    const auth = await ctx.db.get(`${C(circleId)}/postAuthors/${postId}`);
+    const isAuthor = auth?.data?.authorUid === ctx.uid || post.authorUid === ctx.uid;
+    const isAssignee = Boolean(post.meta?.assigneeUid && post.meta.assigneeUid === ctx.uid);
+    const isMod = canModerate(member.role);
+    if (!isAuthor && !isAssignee && !isMod) {
+      throw new ApiError(403, "forbidden", "Only the creator, assignee, or a moderator can update status.");
+    }
+    if (post.status === "answered") return {};
+    await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { status: "answered", answeredAt: ctx.now })]);
+    return {};
+  }
+
+  throw new ApiError(400, "bad_request", "Only prayer requests, tasks, or blockers can be resolved.");
+}
+
+async function setWorkStatus(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const postId = str(ctx.body, "postId");
+  const status = ctx.body.status;
+  if (!["open", "in_progress", "answered"].includes(status)) {
+    throw bad("bad_request", "Unknown status.");
+  }
+  const { member } = await load(ctx, circleId);
+  const post = await livePost(ctx, circleId, postId);
+  if (post.type !== "task" && post.type !== "blocker") {
+    throw new ApiError(400, "bad_request", "Only tasks or blockers have a workflow status.");
+  }
+  const auth = await ctx.db.get(`${C(circleId)}/postAuthors/${postId}`);
+  const isAuthor = auth?.data?.authorUid === ctx.uid || post.authorUid === ctx.uid;
+  const isAssignee = Boolean(post.meta?.assigneeUid && post.meta.assigneeUid === ctx.uid);
+  const isMod = canModerate(member.role);
+  if (!isAuthor && !isAssignee && !isMod) {
+    throw new ApiError(403, "forbidden", "Only the creator, assignee, or a moderator can update status.");
+  }
+  await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, {
+    status,
+    answeredAt: status === "answered" ? ctx.now : null,
+  })]);
   return {};
+}
+
+/** A decision's status. The post's author, an admin or a moderator may change it. Decision posts only. */
+async function setDecisionStatus(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const postId = str(ctx.body, "postId");
+  const status = ctx.body.status;
+  if (!DECISION_STATUSES.includes(status)) throw bad("bad_request", "Unknown decision status.");
+  const { member } = await load(ctx, circleId);
+  const post = await livePost(ctx, circleId, postId);
+  if (post.type !== "decision") throw bad("bad_request", "Only decisions have a status.");
+  const auth = await ctx.db.get(`${C(circleId)}/postAuthors/${postId}`);
+  const isAuthor = auth?.data?.authorUid === ctx.uid || post.authorUid === ctx.uid;
+  if (!isAuthor && !canModerate(member.role)) {
+    throw new ApiError(403, "forbidden", "Only the author, an admin or a moderator can change a decision's status.");
+  }
+  // Dotted paths merge into meta, so the other meta fields are left alone.
+  await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { "meta.decisionStatus": status })]);
+  return {};
+}
+
+async function toggleChecklistItem(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  await load(ctx, circleId);
+  const postId = cleanText(ctx.body.postId, "postId", { max: 80 });
+  const itemId = cleanText(ctx.body.itemId, "itemId", { max: 40 });
+  const post = await livePost(ctx, circleId, postId);
+  const checklist = Array.isArray(post.meta?.checklist) ? post.meta.checklist : [];
+  const targetIndex = checklist.findIndex((item) => item.id === itemId);
+  if (targetIndex === -1) throw notFound("That checklist item");
+  const currentItem = checklist[targetIndex];
+  const nextDone = typeof ctx.body.done === "boolean" ? ctx.body.done : !currentItem.done;
+  const updatedChecklist = checklist.map((item, idx) =>
+    idx === targetIndex ? { ...item, done: nextDone } : item
+  );
+  const updatedMeta = { ...(post.meta || {}), checklist: updatedChecklist };
+  const postPath = `${C(circleId)}/posts/${postId}`;
+  if (typeof ctx.db.update === "function") {
+    await ctx.db.update(postPath, { meta: updatedMeta });
+  } else {
+    await ctx.db.commit([w.update(postPath, { meta: updatedMeta })]);
+  }
+  return { ok: true, checklist: updatedChecklist };
 }
 
 async function deletePost(ctx) {
@@ -549,15 +907,26 @@ async function react(ctx) {
 /** Clients write comments directly (rules); this recomputes the counters from the truth. Idempotent. */
 async function syncCounts(ctx) {
   const circleId = str(ctx.body, "circleId"); const postId = str(ctx.body, "postId");
-  await load(ctx, circleId);
+  const { circle, member } = await load(ctx, circleId);
   const post = await livePost(ctx, circleId, postId);
   const last = post.countsSyncedAt instanceof Date ? post.countsSyncedAt.getTime() : 0;
   if (ctx.now.getTime() - last < 20_000) return { counts: post.counts };
   const parent = `${C(circleId)}/posts/${postId}`;
   const comments = await ctx.db.count({ parent, collection: "comments" });
+  const prevComments = post.counts?.comments || 0;
   const reactions = {};
   for (const k of REACTIONS) reactions[k] = await ctx.db.count({ parent, collection: "reactions", where: [["kind", "==", k]] });
   await ctx.db.commit([w.update(parent, { "counts.comments": comments, "counts.reactions": reactions, countsSyncedAt: ctx.now })]);
+  if (comments > prevComments && ctx.defer) {
+    ctx.defer((async () => {
+      if (!(await shouldSendThrottledPush(ctx.kv, `push:comment:${circleId}:${postId}`, ctx.now.getTime(), 20_000))) return;
+      await notifyMembers(ctx, circleId, ctx.uid, {
+        title: circle.name,
+        body: `${member.displayName} commented on a post`,
+        data: { kind: "comment", circleId, postId },
+      });
+    })());
+  }
   return { counts: { ...post.counts, comments, reactions } };
 }
 
@@ -569,7 +938,7 @@ async function syncCounts(ctx) {
  */
 async function commentAsAuthor(ctx) {
   const circleId = str(ctx.body, "circleId"); const postId = str(ctx.body, "postId");
-  await load(ctx, circleId);
+  const { circle } = await load(ctx, circleId);
   await requireAuthor(ctx, circleId, postId);
   const post = await livePost(ctx, circleId, postId);
   if (!post.anonymous) throw new ApiError(400, "bad_request", "Comment on your own named post the normal way.");
@@ -584,6 +953,16 @@ async function commentAsAuthor(ctx) {
   const id = newId();
   const doc = { body: text, displayName: "Requester", author: true, parentId, createdAt: ctx.now };
   await ctx.db.commit([w.create(`${C(circleId)}/posts/${postId}/comments/${id}`, doc)]);
+  if (ctx.defer) {
+    ctx.defer((async () => {
+      if (!(await shouldSendThrottledPush(ctx.kv, `push:comment:${circleId}:${postId}`, ctx.now.getTime(), 20_000))) return;
+      await notifyMembers(ctx, circleId, ctx.uid, {
+        title: circle.name,
+        body: "Someone added a reply on a prayer request",
+        data: { kind: "comment", circleId, postId },
+      });
+    })());
+  }
   return { commentId: id };
 }
 
@@ -616,7 +995,13 @@ function systemMessage(ctx, member, fields) {
 async function createPoll(ctx) {
   const circleId = str(ctx.body, "circleId");
   const { circle, member } = await load(ctx, circleId);
-  const shaped = shapePoll(ctx.body);
+  const shaped = shapePoll({
+    ...ctx.body,
+    closesAt: ctx.body.closesAt ?? null,
+    correctOptionId: ctx.body.correctOptionId ?? null,
+    correctIndex: ctx.body.correctIndex ?? null,
+    explanation: ctx.body.explanation ?? null,
+  });
   await hit(ctx.kv, `rl:createPoll:${ctx.uid}`, RATE.createPoll);
   const pollId = newId(); const messageId = newId();
   await ctx.db.commit([
@@ -717,12 +1102,31 @@ async function unregisterToken(ctx) {
   return {};
 }
 
+/** Throttled chat push notification invoked after a member sends a Firestore chat message. */
+async function notifyChat(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const { circle, member } = await load(ctx, circleId);
+  const hasMentions = ctx.body.hasMentions === true;
+  if (!hasMentions && !(await shouldSendThrottledPush(ctx.kv, `push:chat:${circleId}`, ctx.now.getTime(), 25_000))) {
+    return { notified: false };
+  }
+  if (ctx.defer) {
+    ctx.defer(notifyMembers(ctx, circleId, ctx.uid, {
+      title: circle.name,
+      body: hasMentions ? `${member.displayName} mentioned someone in chat` : `${member.displayName} sent a message`,
+      data: { kind: "chat", circleId },
+    }));
+  }
+  return { notified: true };
+}
+
 export const HANDLERS = {
-  createCircle, updateCircle, createInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
-  createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, deletePost,
-  prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken,
-  createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
-  decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp,
-  createUploadTicket, sendMessage, deleteMedia,
+  createCircle, updateCircle, createInvite, createEmailInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
+  createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, setWorkStatus, toggleChecklistItem, deletePost,
+  prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken, notifyChat,
+  createPoll, closePoll, startChain, celebrate, myCircles, adoptGuestCircles, reportMessage,
+  decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp, claimBringItem,
+  setExternal, setDecisionStatus, previewInvite,
+  createUploadTicket, sendMessage, deleteMedia, removeAvatar,
 };
 export { POST_TYPES };

@@ -154,6 +154,15 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         )
     }
 
+    init {
+        // Reopened while a recording is still going (swiped away, or its notification tapped):
+        // bind straight away so the screen shows that recording instead of asking for a new one.
+        if (MeetingRecordingService.capturing.value) ensureBound()
+    }
+
+    /** The running recording's title, once bound. */
+    fun liveTitle(): String? = _boundService.value?.liveTitle
+
     fun startRecording(title: String, context: com.craftflowtechnologies.meetingmind.core.model.RecordingContext) {
         meetingTitle = title
         this.recordingContext = context
@@ -183,14 +192,36 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         _boundService.value?.discardRecording()
     }
 
-    fun finishRecording(onComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit) {
+    fun finishRecording(
+        onComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit,
+        onDiscardedOrEmpty: () -> Unit = {}
+    ) {
         val service = _boundService.value ?: return
-        service.stopRecording { meetingId, file, duration ->
+        service.stopRecording { meetingId, file, duration, persisted ->
             val marks = com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.take()
             viewModelScope.launch {
-                // The recording exists now, so its marks can be kept on its note.
-                if (file != null) runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(getApplication()), meetingId, marks) }
-                if (file != null) onComplete(meetingId, file.absolutePath, duration)
+                when {
+                    // The row is durable: open the recording and keep its marks on its note.
+                    persisted && file != null -> {
+                        runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(getApplication()), meetingId, marks) }
+                        onComplete(meetingId, file.absolutePath, duration)
+                    }
+                    // The audio is complete but the row could not be written. Never open a
+                    // recording that has no row: say what actually happened, and leave it in the
+                    // recovery journal so the next launch offers it again.
+                    file != null -> {
+                        android.widget.Toast.makeText(
+                            getApplication(),
+                            "Your recording is saved on this phone, but it couldn't be added to your notes yet. We'll offer it to you the next time you open MeetingMind.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                        onDiscardedOrEmpty()
+                    }
+                    else -> {
+                        android.widget.Toast.makeText(getApplication(), "Recording was too short to save", android.widget.Toast.LENGTH_SHORT).show()
+                        onDiscardedOrEmpty()
+                    }
+                }
             }
         }
     }
@@ -265,6 +296,15 @@ fun RecordingScreen(
     var showDiscardDialog by remember { mutableStateOf(false) }
     var hasStarted by remember { mutableStateOf(false) }
 
+    // A recording already running (the screen was reopened mid-recording): show it, skip the picker.
+    LaunchedEffect(state) {
+        if (!typeChosen && (state == com.craftflowtechnologies.meetingmind.core.audio.RecordingState.RECORDING || state == com.craftflowtechnologies.meetingmind.core.audio.RecordingState.PAUSED)) {
+            viewModel.liveTitle()?.let { meetingTitle = it }
+            hasStarted = true
+            typeChosen = true
+        }
+    }
+
     LaunchedEffect(hasAudioPermission, typeChosen) {
         if (typeChosen && hasAudioPermission && !hasStarted) {
             hasStarted = true
@@ -331,11 +371,12 @@ fun RecordingScreen(
             if (state == RecordingState.RECORDING) viewModel.pauseRecording()
             else if (state == RecordingState.PAUSED) viewModel.resumeRecording()
         },
-        onFinish = { viewModel.finishRecording { meetingId, path, dur -> onRecordingComplete(meetingId, path, dur) } },
+        onFinish = { viewModel.finishRecording(onComplete = { meetingId, path, dur -> onRecordingComplete(meetingId, path, dur) }, onDiscardedOrEmpty = onNavigateBack) },
         marks = marks,
         onAction = { action, text -> viewModel.mark(action.kind, text) },
         onUndoMark = viewModel::undoMark,
-        consentReminder = isWork && workSettings.consentReminder && selectedSpeakerCount != 1
+        consentReminder = isWork && workSettings.consentReminder && selectedSpeakerCount != 1,
+        firstRecordingCoach = true
     )
 
     if (showDiscardDialog) {
@@ -461,10 +502,13 @@ private fun RecordingTypePickerScreen(
             Column(Modifier.padding(horizontal = MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 Text("Spoken language", style = MM.type.heading, color = c.ink)
                 Text(
-                    text = if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(selectedLanguage)) {
-                        "${com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(selectedLanguage)} · Uses African & Multilingual pack"
-                    } else {
-                        "Language used for offline transcription"
+                    text = when {
+                        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(selectedLanguage) ->
+                            "${com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(selectedLanguage)} · Uses African & Multilingual pack"
+                        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isWhisperPreferredLanguage(selectedLanguage) ->
+                            "${com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(selectedLanguage)} · Uses Whisper Multilingual pack"
+                        else ->
+                            "${com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(selectedLanguage)} · Uses English & European pack"
                     },
                     style = MM.type.caption,
                     color = c.inkMuted

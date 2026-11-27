@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.imePadding
@@ -55,6 +54,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingUiState
 import com.craftflowtechnologies.meetingmind.core.biblestudy.NeedPassages
 import com.craftflowtechnologies.meetingmind.core.biblestudy.QuestionBank
 import com.craftflowtechnologies.meetingmind.core.biblestudy.SessionKind
@@ -113,12 +113,36 @@ fun GuidedSessionScreen(
     val study by reader.study.collectAsStateWithLifecycle()
     var pickNote by remember { mutableStateOf(false) }
     var readAloud by remember { mutableStateOf(false) }
+    val coordinator = remember(context) { com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.coordinator(context) }
+    val coordinatorState by coordinator.state.collectAsStateWithLifecycle()
+
+    val request = ui.request
+    val expectedPassageId = remember(request, ui.bibleId) {
+        request?.passage?.let { p ->
+            com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(
+                ScriptureReference(p.book, p.chapter),
+                ui.bibleId
+            )
+        }
+    }
+
+    // If tapping Read aloud requires voice disclosure, voice selection, or error recovery, open ReadToMeSheet automatically.
+    LaunchedEffect(coordinatorState, expectedPassageId) {
+        val id = expectedPassageId ?: return@LaunchedEffect
+        val needsSheet = when (val st = coordinatorState) {
+            is ReadingUiState.NeedsDisclosure -> st.noteId == id
+            is ReadingUiState.NeedsChoice -> st.noteId == id
+            is ReadingUiState.Failed -> st.noteId == id
+            is ReadingUiState.Locked -> true
+            else -> false
+        }
+        if (needsSheet) readAloud = true
+    }
 
     fun copy(label: String, text: String) {
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(label, text))
         Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
     }
-    val request = ui.request
     BackHandler { onClose() }
     GuidedSessionContent(
         ui, reading,
@@ -141,9 +165,9 @@ fun GuidedSessionScreen(
             onOpenJournalEntry = onOpenNote
         )
     )
-    if (readAloud) request?.let { r ->
+    if (readAloud) expectedPassageId?.let { id ->
         com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
-            com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(r.passage, null), onDismiss = { readAloud = false }
+            id, onDismiss = { readAloud = false }
         )
     }
     study?.let { st ->
@@ -183,7 +207,7 @@ fun GuidedSessionContent(ui: GuidedUi, reading: ReadAloudState, actions: Session
                 // One segment per step: filled up to the current step, so progress reads at a glance.
                 Row(Modifier.fillMaxWidth().padding(top = MM.space.xs), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     session.steps.forEachIndexed { i, _ ->
-                        Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(4.dp)).background(if (i <= session.index) c.accent else c.track))
+                        Box(Modifier.weight(1f).height(4.dp).clip(MM.radius.small).background(if (i <= session.index) c.accent else c.track))
                     }
                 }
             }
@@ -223,7 +247,7 @@ private fun MethodChooser(actions: SessionActions, modifier: Modifier) {
         Text("How would you like to study it?", style = MM.type.title, color = c.ink)
         Text("Pick once. We'll remember it for next time.", style = MM.type.secondary, color = c.inkSecondary)
         MMCard(onClick = { actions.onChooseMethod(SessionKind.SOAP) }, modifier = Modifier.testTag("method_soap")) {
-            Box(Modifier.clip(RoundedCornerShape(50)).background(c.accentWash).padding(horizontal = 10.dp, vertical = 4.dp)) {
+            Box(Modifier.clip(MM.radius.pill).background(c.accentWash).padding(horizontal = 10.dp, vertical = 4.dp)) {
                 Text("Recommended ✓", style = MM.type.caption, color = c.accent)
             }
             Text("SOAP", style = MM.type.heading, color = c.ink)
@@ -280,7 +304,12 @@ private fun PinnedPassage(ready: SessionLoad.Ready, startExpanded: Boolean, acti
             Spacer(Modifier.weight(1f))
             TextAction("Copy", onClick = actions.onCopyPassage, modifier = Modifier.testTag("session_copy_passage"))
         }
-        Text(ready.attribution.substringBefore(" · "), style = MM.type.caption, color = c.inkMuted)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(ready.attribution.substringBefore(" · "), style = MM.type.caption, color = c.inkMuted)
+            if (rows.isNotEmpty()) {
+                Text("Tap a verse to read from there", style = MM.type.caption, color = c.inkMuted)
+            }
+        }
     }
 }
 
@@ -319,12 +348,12 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
         StepType.READ -> {
             Text(if (ui.canListen) "Read it, or listen" else "Read it", style = MM.type.heading, color = c.ink)
             Text("Read it once for what it says, and once for what stands out.", style = MM.type.secondary, color = c.inkSecondary)
-            if (ui.canListen) ListenButton(reading, actions)
+            if (ui.canListen) ListenButton(ui, reading, actions)
         }
         StepType.SCRIPTURE -> {
             Text("Scripture", style = MM.type.heading, color = c.ink)
             Text("Read the passage slowly. The next step asks what you notice.", style = MM.type.secondary, color = c.inkSecondary)
-            if (ui.canListen) ListenButton(reading, actions)
+            if (ui.canListen) ListenButton(ui, reading, actions)
         }
         StepType.OBSERVE, StepType.APPLY, StepType.VERSE -> {
             if (step.type == StepType.VERSE && step.verse != null) {
@@ -359,17 +388,36 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
     }
 }
 
-/** Reads the passage aloud, or pauses it. Shown on the reading steps only when the chapter has audio. */
+/** Reads the passage aloud, pauses/resumes it, shows preload status, and exposes Read to Me controls. */
 @Composable
-private fun ListenButton(reading: ReadAloudState, actions: SessionActions) {
-    SecondaryButton(
-        when {
-            reading.playing -> "Pause reading"
-            reading.active -> "Resume reading"
-            else -> "Read aloud"
-        },
-        onClick = actions.onListen, modifier = Modifier.testTag("session_read_aloud")
-    )
+private fun ListenButton(ui: GuidedUi, reading: ReadAloudState, actions: SessionActions) {
+    val c = MM.colors
+    Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+        SecondaryButton(
+            when {
+                reading.playing -> "Pause reading"
+                reading.active -> "Resume reading"
+                else -> "Read aloud"
+            },
+            onClick = actions.onListen,
+            modifier = Modifier.testTag("session_read_aloud")
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            val statusText = when {
+                reading.playing && reading.verse != null -> "Playing verse ${reading.verse}"
+                reading.playing -> "Playing passage…"
+                ui.audioPreloaded -> "Audio ready offline"
+                ui.audioPreloading -> "Preloading passage audio…"
+                else -> "Tap any verse above to jump in"
+            }
+            Text(statusText, style = MM.type.caption, color = if (ui.audioPreloaded || reading.playing) c.accent else c.inkMuted)
+            TextAction("Voice & player", onClick = actions.onReadAloud)
+        }
+    }
 }
 
 /** A free-text answer, always optional. Typing here saves it to the journal on the first keystroke. */
@@ -398,6 +446,18 @@ private fun Suggested(help: StepHelp?, onUse: ((String) -> Unit)?) {
         help.loading -> Text("Zuri is thinking of questions…", style = MM.type.caption, color = c.inkMuted)
         help.line != null -> StatusLine(StatusKind.Info, help.line, modifier = Modifier.testTag("session_ai_line"))
         else -> Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            // Play's AI-content policy: what Zuri suggested can be reported.
+            if (help.fromAi && (help.context.isNotEmpty() || help.questions.isNotEmpty())) {
+                androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("Suggested by AI", style = MM.type.caption, color = c.inkMuted, modifier = Modifier.weight(1f))
+                    com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                        com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                            com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.BIBLE_STUDY,
+                            (help.context.map { it.text } + help.questions).joinToString("\n")
+                        )
+                    })
+                }
+            }
             if (help.context.isNotEmpty()) {
                 Text("Background, suggested by AI", style = MM.type.caption, color = c.inkMuted)
                 SelectionContainer {
@@ -440,6 +500,7 @@ private fun Close(ui: GuidedUi, session: SessionState, actions: SessionActions) 
         ui.addedTo?.let { StatusLine(StatusKind.Info, "Added to $it.") }
         var listening by remember { mutableStateOf(false) }
         ui.savedNoteId?.let { id ->
+            SecondaryButton("Open created note", onClick = { actions.onOpenJournalEntry(id) }, modifier = Modifier.testTag("session_open_note"))
             SecondaryButton("Listen to my study", onClick = { listening = true }, modifier = Modifier.testTag("session_listen_study"))
             if (listening) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(id, onDismiss = { listening = false })
         }
@@ -447,7 +508,7 @@ private fun Close(ui: GuidedUi, session: SessionState, actions: SessionActions) 
         TextAction("Copy my notes", onClick = actions.onCopyNotes)
     } else {
         Text("That's the reading", style = MM.type.title, color = c.ink)
-        Text("You didn't write anything, so nothing was saved.", style = MM.type.secondary, color = c.inkSecondary)
+        Text("You didn't write anything, so no blank note was created.", style = MM.type.secondary, color = c.inkSecondary)
     }
     PrimaryButton("Done", onClick = actions.onNext, modifier = Modifier.testTag("session_done"))
     if (session.index > 0) TextAction("Back", onClick = actions.onBack)

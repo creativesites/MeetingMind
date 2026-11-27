@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.res.stringResource
 import com.craftflowtechnologies.meetingmind.R
@@ -251,6 +252,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setNotePolishMode(mode: com.craftflowtechnologies.meetingmind.core.model.NotePolishMode) {
+        viewModelScope.launch {
+            userPrefs.setNotePolishMode(mode)
+        }
+    }
+
     fun setProcessingProfile(profile: com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile) {
         viewModelScope.launch {
             userPrefs.setProcessingProfile(profile)
@@ -270,7 +277,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun setSpaces(spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) = viewModelScope.launch { userPrefs.setSpaces(spaces) }
+    fun setSpaces(spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) = viewModelScope.launch { com.craftflowtechnologies.meetingmind.core.navigation.SpaceSchedules.setSpaces(getApplication(), spaces) }
     fun setLook(look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) = viewModelScope.launch { userPrefs.setLook(look) }
     fun setCardStyle(style: com.craftflowtechnologies.meetingmind.core.identity.CardStyle) = viewModelScope.launch { userPrefs.setCardStyle(style) }
     fun setAvatar(uri: android.net.Uri) = viewModelScope.launch {
@@ -331,6 +338,7 @@ private class SettingsActions(
     val onOpenSetup: () -> Unit,
     val onOpenDataBackup: () -> Unit,
     val onOpenAppearance: () -> Unit,
+    val onOpenLanguage: () -> Unit,
     val onOpenWork: () -> Unit,
     val onOpenIntegrations: () -> Unit,
     val onOpenRecipes: () -> Unit,
@@ -395,6 +403,7 @@ fun SettingsScreen(
     onOpenSetup: () -> Unit = {},
     onOpenDataBackup: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
+    onOpenLanguage: () -> Unit = {},
     onOpenWork: () -> Unit = {},
     onOpenIntegrations: () -> Unit = {},
     onOpenRecipes: () -> Unit = {},
@@ -420,7 +429,10 @@ fun SettingsScreen(
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showSpaces by remember { mutableStateOf(false) }
     var showCrashReport by remember { mutableStateOf(false) }
-    var crashReport by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.pending(context)) }
+    // Diagnostics are always available, so the row is always listed. The report is rebuilt on open.
+    var crashReport by remember {
+        mutableStateOf<String?>(com.craftflowtechnologies.meetingmind.core.diagnostics.DiagnosticsReport.build(context, com.craftflowtechnologies.meetingmind.BuildConfig.VERSION_NAME))
+    }
     var showLook by remember { mutableStateOf(false) }
     var showBibleVersions by remember { mutableStateOf(false) }
     val avatarPicker = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -438,7 +450,7 @@ fun SettingsScreen(
     }
 
     val actions = SettingsActions(
-        onNavigateToModels, onOpenBible, onOpenSetup, onOpenDataBackup, onOpenAppearance, onOpenWork, onOpenIntegrations,
+        onNavigateToModels, onOpenBible, onOpenSetup, onOpenDataBackup, onOpenAppearance, onOpenLanguage, onOpenWork, onOpenIntegrations,
         onOpenRecipes, onOpenCompanion, onReplayTour, onOpenSubscription, onOpenOnboarding,
         editName = { showEditNameDialog = true },
         pickAvatar = { avatarPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
@@ -460,8 +472,8 @@ fun SettingsScreen(
     if (showSpaces) {
         androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showSpaces = false }, containerColor = MM.colors.surfaceRaised) {
             Column(Modifier.padding(horizontal = MM.space.l).padding(bottom = MM.space.xl)) {
-                Text("What's MeetingMind for you?", style = MM.type.title, color = MM.colors.ink)
-                Text("Only these spaces show in Home, Notes and Record.", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.m))
+                Text("Your spaces", style = MM.type.title, color = MM.colors.ink)
+                Text("Choose what MeetingMind is for. Tap a space to turn it on or off.", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.m))
                 com.craftflowtechnologies.meetingmind.core.identity.SpacesPicker(prefs.identity.spaces) { viewModel.setSpaces(it) }
             }
         }
@@ -556,8 +568,9 @@ fun SettingsScreen(
             CrashReportDialog(
                 report = report,
                 onClear = {
-                    com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.clear(context)
-                    crashReport = null; showCrashReport = false
+                    com.craftflowtechnologies.meetingmind.core.diagnostics.DiagnosticsReport.clear(context)
+                    crashReport = com.craftflowtechnologies.meetingmind.core.diagnostics.DiagnosticsReport.build(context, com.craftflowtechnologies.meetingmind.BuildConfig.VERSION_NAME)
+                    showCrashReport = false
                 },
                 onClose = { showCrashReport = false }
             )
@@ -595,11 +608,45 @@ private fun SettingsHub(env: SettingsEnv, onBack: () -> Unit) {
         item {
             ScreenHeader(
                 "Settings", Modifier.statusBarsPadding(),
-                leading = { IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_btn")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.inkSecondary) } }
+                leading = { IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_btn")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.inkSecondary) } },
+                actions = {
+                    IconButton(onClick = env.actions.onOpenLanguage, modifier = Modifier.testTag("settings_hub_language_btn")) {
+                        Icon(Icons.Outlined.Language, contentDescription = stringResource(R.string.settings_language_title), tint = MM.colors.inkSecondary)
+                    }
+                }
             )
         }
         item { SettingsSearchField(query) { query = it } }
         if (query.isBlank()) {
+            item {
+                val currentTag = env.prefs.appLanguage
+                val activeLanguage = com.craftflowtechnologies.meetingmind.core.i18n.AppLanguage.fromTag(currentTag)
+                val displayLanguageName = if (activeLanguage != null) {
+                    "${activeLanguage.nativeName} (${activeLanguage.englishName})"
+                } else {
+                    stringResource(R.string.settings_language_follow_system)
+                }
+
+                MMCard(contentPadding = MM.space.xs, modifier = Modifier.padding(bottom = MM.space.m)) {
+                    ListRow(
+                        title = stringResource(R.string.settings_language_title),
+                        subtitle = displayLanguageName,
+                        leading = {
+                            Icon(
+                                Icons.Outlined.Language,
+                                contentDescription = null,
+                                tint = MM.colors.accent,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        },
+                        trailing = {
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MM.colors.inkMuted)
+                        },
+                        onClick = env.actions.onOpenLanguage,
+                        modifier = Modifier.padding(horizontal = MM.space.m).testTag("settings_hub_language")
+                    )
+                }
+            }
             item {
                 MMCard(contentPadding = MM.space.xs) {
                     SettingsRegistry.groups.filter { it != SettingsGroup.FAITH || env.prefs.identity.showsFaith }.forEachIndexed { i, group ->
@@ -749,6 +796,16 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
                 )
             }
         }
+        SettingId.NOTE_POLISH -> SettingsChoiceBlock("Note formatting & AI polish") {
+            val mode = prefs.notePolishMode
+            com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.entries.forEach { m ->
+                SettingsRadioRow(
+                    m.displayName,
+                    m.description,
+                    mode == m, { vm.setNotePolishMode(m) }, "settings_note_polish_${m.name.lowercase()}"
+                )
+            }
+        }
         SettingId.SPEAKER_DETECTION -> SettingsChoiceBlock("Speaker detection") {
             com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.entries.forEach { s ->
                 SettingsRadioRow(
@@ -774,12 +831,14 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
         SettingId.GEMINI_KEY -> {
             val tierMode by com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.mode.collectAsState()
             val owned by com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway.entitlements.collectAsState()
-            if (tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.PRODUCTION &&
-                !owned.has(com.craftflowtechnologies.meetingmind.core.billing.Capability.BYOK_KEY)
-            ) {
+            val canUseOwnKey = tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ||
+                com.craftflowtechnologies.meetingmind.core.billing.FeatureGate.can(
+                    owned, com.craftflowtechnologies.meetingmind.core.billing.Capability.BYOK_KEY
+                )
+            if (!canUseOwnKey) {
                 SettingsNavRow(
                     "Gemini API key (BYOK Tier)",
-                    "Upgrade to MeetingMind BYOK or Pro to use your own Gemini key with all Pro features.",
+                    "Use your own Gemini key instead of the managed service, with a BYOK or Pro plan.",
                     a.onOpenSubscription
                 )
             } else {
@@ -847,6 +906,11 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
                 a.onOpenCompanion
             )
         }
+        SettingId.LANGUAGE -> {
+            val lang = com.craftflowtechnologies.meetingmind.core.i18n.AppLanguage.fromTag(prefs.appLanguage)
+            val subtitle = if (lang != null) "${lang.nativeName} (${lang.englishName})" else stringResource(R.string.settings_language_follow_system)
+            SettingsNavRow(stringResource(R.string.settings_language_title), subtitle, a.onOpenLanguage)
+        }
         SettingId.HERO_MODE -> SettingsChoiceBlock("Home hero card") {
             com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.entries.forEach { mode ->
                 SettingsRadioRow(
@@ -906,12 +970,12 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
         SettingId.SHARE_APP -> SettingsNavRow("Share MeetingMind", "Invite friends, colleagues or study partners to try it", {
             val send = android.content.Intent().apply {
                 action = android.content.Intent.ACTION_SEND
-                putExtra(android.content.Intent.EXTRA_TEXT, "Hey! I'm testing MeetingMind — the intelligent offline-first app for faith and work meetings. Check it out here: https://github.com/creativesites/MeetingMind/releases")
+                putExtra(android.content.Intent.EXTRA_TEXT, "Hey! I'm using MeetingMind for daily devotionals, notes, and circles. Download it here: ${com.craftflowtechnologies.meetingmind.core.share.AppLinks.DOWNLOAD_URL}")
                 type = "text/plain"
             }
             context.startActivity(android.content.Intent.createChooser(send, "Share MeetingMind"))
         })
-        SettingId.CRASH_REPORT -> SettingsNavRow("Last crash report", "The app closed unexpectedly. You can copy the report to share it.", a.showCrash)
+        SettingId.CRASH_REPORT -> SettingsNavRow("Diagnostics", "Device, crashes, system exits and recent steps. Copy or share them when something goes wrong.", a.showCrash)
         SettingId.DIAGNOSTIC_LOG -> GeminiLogRow()
         SettingId.AUDIO_BENCHMARK -> if (BuildConfig.DEBUG) AudioBenchmarkRow()
 
@@ -1400,7 +1464,7 @@ internal object GeminiKeyProbe {
     }
 }
 
-/** The plan, this month's Gemini use, and the Closed Testing vs Production tiering toggle. */
+/** The plan, this month's managed-cloud use, and (debug only) the closed-testing switch. */
 @Composable
 private fun PlanAndUsageRow(onOpen: () -> Unit) {
     val context = LocalContext.current
@@ -1408,33 +1472,41 @@ private fun PlanAndUsageRow(onOpen: () -> Unit) {
     val owned by billing.entitlements.collectAsState()
     val usage by com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.state.collectAsState()
     val tierMode by com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.mode.collectAsState()
+    val configured = billing.configured
+    val debugBuild = com.craftflowtechnologies.meetingmind.core.billing.showTierSwitch(BuildConfig.DEBUG)
     androidx.compose.runtime.LaunchedEffect(Unit) {
         com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.current(context)
-        if (billing.configured) com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.refresh(context)
+        if (configured) com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.refresh(context)
     }
     Column(Modifier.fillMaxWidth()) {
         SettingsNavRow(
             title = "Plan and usage",
             subtitle = (when {
-                tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ->
-                    "${owned.plan.label} (Closed Testing — all Pro features unlocked)"
+                com.craftflowtechnologies.meetingmind.core.billing.ClosedTesting.allAccess ->
+                    com.craftflowtechnologies.meetingmind.core.billing.ClosedTesting.SUMMARY
+                !configured -> "Plans aren't available in this build"
+                debugBuild && tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ->
+                    "${owned.plan.label} (Closed testing — paywalls off)"
                 owned.isPaid -> "${owned.plan.label} · manage or change your plan"
-                else -> "Free · see what BYOK, Pro or Church adds"
+                else -> "Free · see what BYOK or Pro adds"
             }) + usage.summary().takeIf { usage.known && it.isNotEmpty() }?.let { "\nThis month: $it" }.orEmpty(),
-            onClick = onOpen
+            // With nothing to sell, stay here rather than opening a paywall that cannot complete.
+            onClick = if (configured) onOpen else ({})
         )
-        SettingsSwitchRow(
-            "Closed testing mode (no tiering)",
-            "Tester's benefit: unlocks all Pro features and disables paywall interruptions while testing. Turn off to test Production tiering and paywalls.",
-            tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING,
-            { checked ->
-                com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.set(
-                    context,
-                    if (checked) com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING
-                    else com.craftflowtechnologies.meetingmind.core.billing.TieringMode.PRODUCTION
-                )
-            },
-            "settings_tiering_mode_switch"
-        )
+        if (debugBuild) {
+            SettingsSwitchRow(
+                "Closed testing mode (paywalls off)",
+                "Debug builds only: hides paywall interruptions and lets testers use their own Gemini key without a plan. Release builds always enforce tiers.",
+                tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING,
+                { checked ->
+                    com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.set(
+                        context,
+                        if (checked) com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING
+                        else com.craftflowtechnologies.meetingmind.core.billing.TieringMode.PRODUCTION
+                    )
+                },
+                "settings_tiering_mode_switch"
+            )
+        }
     }
 }

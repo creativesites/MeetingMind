@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Navigation -->
+    <string name="nav_today">Namhlanje</string>
+    <string name="nav_notes">Amanothi</string>
+    <string name="nav_circles">Ama-Circle</string>
+    <string name="nav_faith">Ukukholwa</string>
+    <string name="nav_work">Umsebenzi</string>
+    <string name="nav_settings">Izilungiselelo</string>
+
+    <!-- Common Actions & Feedback -->
+    <string name="action_save">Gcina</string>
+    <string name="action_cancel">Khansela</string>
+    <string name="action_done">Kwenziwe</string>
+    <string name="action_delete">Sula</string>
+    <string name="action_edit">Hlela</string>
+    <string name="action_back">Emuva</string>
+    <string name="action_close">Vala</string>
+    <string name="action_share">Yabelana</string>
+    <string name="action_copy">Kopisha</string>
+    <string name="action_retry">Zama futhi</string>
+    <string name="action_search">Sesha</string>
+    <string name="action_confirm">Qinisekisa</string>
+    <string name="action_apply">Sebenzisa</string>
+    <string name="action_remove">Khipha</string>
+    <string name="action_dismiss">Cashisa</string>
+    <string name="state_loading">Kuyalayisha…</string>
+    <string name="state_empty">Akukho lutho lapha okwamanje</string>
+    <string name="state_error">Kube nenkinga encane</string>
+
+    <!-- Language Selection (Settings) -->
+    <string name="settings_language_title">Ulimi</string>
+    <string name="settings_language_description">Khetha ulimi olusetshenziswa ku-MeetingMind. Ukuguqulwa kwenkulumo ibe umbhalo neBhayibheli kungabekwa ngokwehlukana.</string>
+    <string name="settings_language_follow_system">Landela ulimi lwefoni</string>
+    <string name="settings_language_follow_system_summary">Okuzenzakalelayo (ngokwezilungiselelo zefoni)</string>
+    <string name="settings_language_all_header">ZONKE IZILIMI</string>
+    <string name="settings_language_asr_notice">Ulimi lwe-app luhlukile olimini lokuqopha umsindo.</string>
+
+    <!-- Recording & Transcription -->
+    <string name="recording_button_record">Qopha</string>
+    <string name="recording_button_pause">Misa kancane</string>
+    <string name="recording_button_resume">Qhubeka</string>
+    <string name="recording_button_finish">Kwenziwe</string>
+    <string name="recording_button_discard">Lahla</string>
+    <string name="recording_status_recording">Kuyawaqopha…</string>
+    <string name="recording_status_paused">Kumile kancane</string>
+    <string name="recording_status_processing">Kucutshungulwa umsindo…</string>
+    <string name="recording_ready_title">Inothi lakho selilungile</string>
+    <string name="recording_empty_prompt">Thepha u-Qopha ukuze uqale ukugcina izingxoxo, imicabango, noma izintshumayelo.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_headline">Imicabango yakho ifanele ukukhunjulwa.</string>
+    <string name="onboarding_body">Guqula izingxoxo, imibono nezifundo zibe ulwazi ongabuyela kulo nganoma yisiphi isikhathi.</string>
+    <string name="onboarding_pill_private">Kuyimfihlo kuwe kuphela</string>
+    <string name="onboarding_pill_offline">Ukusebenza ngaphandle kwe-inthanethi</string>
+    <string name="onboarding_pill_ai">Amanothi e-AI</string>
+    <string name="onboarding_button_get_started">Qala lapha</string>
+    <string name="onboarding_button_continue">Qhubeka</string>
+    <string name="onboarding_button_skip">Yeqa</string>
+    <string name="onboarding_button_explore_sample">Buka isibonelo</string>
+    <string name="onboarding_button_record_now">Qopha okuthile manje</string>
+    <string name="onboarding_button_make_it_mine">Kwenze kube ngokwami</string>
+    <string name="onboarding_button_skip_for_now">Yeqa okwamanje</string>
+    <string name="onboarding_button_start_using">Qala ukusebenzisa i-MeetingMind</string>
+    <string name="onboarding_button_start_recording">Qala ukuqopha</string>
+    <string name="onboarding_language_selector_hint">Ulimi lwe-app</string>
+
+    <!-- Notes & Search -->
+    <string name="notes_screen_title">Amanothi</string>
+    <string name="notes_search_hint">Sesha amanothi, imibhalo eqoshiwe, nama-tag…</string>
+    <string name="notes_empty_state_title">Awekho amanothi okwamanje</string>
+    <string name="notes_filter_all">Konke</string>
+    <string name="notes_filter_meetings">Imihlangano</string>
+    <string name="notes_filter_sermons">Izintshumayelo</string>
+    <string name="notes_filter_ideas">Imibono</string>
+    <string name="notes_tab_summary">Isifinyezo</string>
+    <string name="notes_tab_transcript">Umbhalo oqoshiwe</string>
+    <string name="notes_tab_actions">Okufanele kwenziwe</string>
+    <string name="notes_menu_export">Thumela kwelinye ifayela</string>
+    <string name="notes_menu_archive">Faka engobo yomlando</string>
+
+    <!-- Faith & Devotional -->
+    <string name="faith_screen_title">Ukukholwa</string>
+    <string name="faith_tab_today">Namhlanje</string>
+    <string name="faith_tab_plans">Izinhlelo</string>
+    <string name="faith_tab_prayer">Umkhuleko</string>
+    <string name="faith_tab_bible">IBhayibheli</string>
+    <string name="faith_daily_devotional_title">Ukuzinikela kwansuku zonke</string>
+    <string name="faith_verse_of_day_title">Ivesi losuku</string>
+    <string name="faith_prayer_list_title">Uhlu lwemikhuleko</string>
+    <string name="faith_add_prayer_prompt">Faka isicelo somkhuleko</string>
+    <string name="faith_evening_reflection_title">Ukuzindla kwakusihlwa</string>
+
+    <!-- Circles -->
+    <string name="circles_screen_title">Ama-Circle</string>
+    <string name="circles_tab_feed">I-Feed</string>
+    <string name="circles_tab_chat">Ingxoxo</string>
+    <string name="circles_tab_members">Amalungu</string>
+    <string name="circles_action_new_circle">I-Circle Entsha</string>
+    <string name="circles_action_share_story">Yabelana ku-Circle</string>
+    <string name="circles_action_comment">Beka umbono</string>
+    <string name="circles_action_like">Thanda</string>
+
+    <!-- Work & Tasks -->
+    <string name="work_screen_title">Umsebenzi</string>
+    <string name="work_tab_tasks">Imisebenzi</string>
+    <string name="work_tab_projects">Amaphrojekthi</string>
+    <string name="work_tab_review">Ukubuyekeza kweviki</string>
+    <string name="work_action_new_task">Umsebenzi omusha</string>
+    <string name="work_filter_due_today">Okudingeka namhlanje</string>
+
+    <!-- Offline Models & Storage -->
+    <string name="models_screen_title">I-AI namamodeli angaxhunyiwe ku-inthanethi</string>
+    <string name="models_asr_whisper_title">Ukubona inkulumo (Whisper)</string>
+    <string name="models_action_download">Landa</string>
+    <string name="models_status_downloading">Iyalanda…</string>
+    <string name="models_status_ready">Ilandiwe futhi ilungile</string>
+    <string name="models_setting_wifi_only">Landa nge-Wi-Fi kuphela</string>
+    <string name="models_storage_used_label">Isikhala esisetshenzisiwe</string>
+
+    <!-- Subscription & Billing / Paywall -->
+    <string name="paywall_screen_title">Vula i-MeetingMind Egcwele</string>
+    <string name="paywall_tagline">Khetha uhlelo olufanele umsebenzi wakho nemikhuleko yakho.</string>
+    <string name="paywall_action_restore">Buyisela okuthengile</string>
+    <string name="paywall_action_upgrade">Thuthukisa uhlelo</string>
+    <string name="paywall_tier_annual">Ngonnyaka</string>
+    <string name="paywall_tier_monthly">Ngenyanga</string>
+</resources>

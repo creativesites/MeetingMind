@@ -1,4 +1,4 @@
-package com.craftflowtechnologies.meetingmind.core.repository
+package com.craftflowtechnologies.meetingmind.core.learning
 
 import android.content.Context
 import androidx.room.Room
@@ -34,11 +34,11 @@ import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class LearningRepositoryTest {
+class StudyRepositoryTest {
 
     private lateinit var context: Context
     private lateinit var db: MeetMindDatabase
-    private lateinit var repository: LearningRepository
+    private lateinit var repository: StudyRepository
 
     @Before
     fun setup() {
@@ -46,7 +46,7 @@ class LearningRepositoryTest {
         db = Room.inMemoryDatabaseBuilder(context, MeetMindDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        repository = LearningRepository(context, db)
+        repository = StudyRepository(context, db)
     }
 
     @After

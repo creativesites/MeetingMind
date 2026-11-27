@@ -30,8 +30,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionFlags
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionForm
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionTier
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionLodCutoff
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionLook
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionParallaxGate
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.forSize
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionVolume
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.Pose
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.drawCompanion
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.forms.CompanionDrawKit
@@ -201,13 +207,16 @@ internal fun MomentCharacter(
     modifier: Modifier = Modifier,
     titleWords: Int = 5,
     staticPose: Pose? = null,
-    mini: Boolean = false
+    mini: Boolean = false,
+    look: CompanionLook? = null
 ) {
     val kit = remember { CompanionDrawKit() }
     val frame = remember { CompanionFrame() }
     val pose = remember { Pose() }
     val drawer = FormDrawer.of(if (mini) CompanionForm.PAGE else form)
     val lod = size >= CompanionLodCutoff
+    val volumeOn = LocalCompanionVolume.current ?: CompanionFlags.volumeLayer
+    val volume = CompanionParallaxGate.volume(volumeOn, CompanionTier.forSize(size))
     Canvas(modifier.size(size).clearAndSetSemantics { }) {
         val t = if (clock == null) moment.spec.baseMs.toFloat() else moment.baseMsAt(clock.timeMs)
         val p = when {
@@ -221,6 +230,18 @@ internal fun MomentCharacter(
         frame.level = 0f
         frame.reduced = staticPose != null
         frame.lod = lod
+        frame.volume = volume && lod
+        if (look != null && volume) {
+            frame.lookX = look.x
+            frame.lookY = look.y
+            frame.lightX = look.lightX
+            frame.lightY = look.lightY
+        } else {
+            frame.lookX = 0f
+            frame.lookY = 0f
+            frame.lightX = 0f
+            frame.lightY = 0f
+        }
         drawCompanion(kit, frame, drawer, palette)
     }
 }

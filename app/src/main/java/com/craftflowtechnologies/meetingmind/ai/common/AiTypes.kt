@@ -22,8 +22,22 @@ sealed interface AiResult<out T> {
     /** The device does not have enough free disk space to download/install the required model. */
     data class InsufficientStorage(val requiredMb: Long, val availableMb: Long) : AiResult<Nothing>
 
-    /** The model was available but inference failed at runtime. */
-    data class Failed(val message: String, val cause: Throwable? = null) : AiResult<Nothing>
+    /**
+     * The model was available but inference failed at runtime.
+     *
+     * [retryable] distinguishes a failure that another attempt could plausibly fix (a dropped
+     * connection, a busy server) from one that cannot succeed until the person changes something
+     * (a rejected key, an exhausted quota) — so a caller never offers "Try again" for a failure a
+     * retry can't fix.
+     */
+    data class Failed(val message: String, val cause: Throwable? = null, val retryable: Boolean = true) : AiResult<Nothing>
+}
+
+/** Whether trying the same call again could plausibly succeed, with nothing else changed. */
+fun AiResult<*>.isRetryable(): Boolean = when (this) {
+    is AiResult.Success -> false
+    is AiResult.Failed -> retryable
+    is AiResult.ModelUnavailable, is AiResult.DeviceUnsupported, is AiResult.InsufficientMemory, is AiResult.InsufficientStorage -> false
 }
 
 inline fun <T, R> AiResult<T>.map(transform: (T) -> R): AiResult<R> = when (this) {

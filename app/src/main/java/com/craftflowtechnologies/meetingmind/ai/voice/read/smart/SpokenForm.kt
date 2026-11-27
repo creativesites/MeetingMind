@@ -18,5 +18,8 @@ object SpokenForm {
         Regex("\\s{2,}") to " "
     )
 
-    fun apply(text: String): String = rules.fold(text) { acc, (re, to) -> re.replace(acc, to) }.trim()
+    fun apply(text: String): String {
+        val base = if (AcademicSpokenForm.containsAcademicNotation(text)) AcademicSpokenForm.apply(text) else text
+        return rules.fold(base) { acc, (re, to) -> re.replace(acc, to) }.trim()
+    }
 }

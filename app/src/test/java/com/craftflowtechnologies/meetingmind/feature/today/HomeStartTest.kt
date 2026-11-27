@@ -1,9 +1,13 @@
 package com.craftflowtechnologies.meetingmind.feature.today
 
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
@@ -58,6 +62,8 @@ class HomeStartTest {
         settle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/home_new_user.png")
         compose.onNodeWithTag("home_record").performClick()
+        // YouTube notes and the spaces row sit above the setup card, so it starts below the fold.
+        compose.onNodeWithTag("today_list").performScrollToNode(hasTestTag("setup_one_tap"))
         compose.onNodeWithTag("setup_one_tap").performClick()
         assertEquals(1, recorded); assertEquals(1, setUp)
         assertTrue(vm.gettingStarted.value?.isNew == true)
@@ -80,14 +86,18 @@ class HomeStartTest {
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/home_tour_new.png")
         compose.onNodeWithTag("coach_skip").performClick()
         settle()
+        // Skipping closes the tour at once; if it is still up, the tap never reached "Skip tour".
+        compose.onAllNodesWithTag("coach_overlay").assertCountEquals(0)
         // The skip is saved on Dispatchers.IO and posts back to the paused looper; idle it until the save lands.
         runBlocking {
-            repeat(100) {
-                if (UserPreferencesManager(app).preferencesFlow.first().tourCompleted) return@repeat
+            var saved = false
+            for (i in 0 until 100) {
+                saved = UserPreferencesManager(app).preferencesFlow.first().tourCompleted
+                if (saved) break
                 org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS)
                 Thread.sleep(50)
             }
-            assertTrue(UserPreferencesManager(app).preferencesFlow.first().tourCompleted)
+            assertTrue("the tour closed but its completion was never saved (view model says ${vm.tourCompleted.value})", saved)
         }
     }
 }

@@ -54,20 +54,32 @@ import androidx.room.migration.Migration
         LearningActivityEntity::class,
         ActivityAttemptEntity::class,
         ReviewScheduleEntity::class,
+        LearningGoalEntity::class,
         CreateCardEntity::class,
         RecordingMarkerEntity::class,
-        LegacyNoteMarkEntity::class
+        LegacyNoteMarkEntity::class,
+        TranscriptTranslationEntity::class,
+        TaskSectionEntity::class,
+        TaskLabelEntity::class,
+        TaskLabelLinkEntity::class,
+        TaskFtsEntity::class,
+        DocumentPageEntity::class,
+        DocumentPageFtsEntity::class,
+        PracticeEntity::class,
+        PracticeDayEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
 )
 abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun meetingDao(): MeetingDao
+    abstract fun transcriptTranslationDao(): TranscriptTranslationDao
     abstract fun workDao(): WorkDao
     abstract fun itemDao(): ItemDao
     abstract fun signalDao(): SignalDao
     abstract fun briefDao(): BriefDao
     abstract fun inboxDao(): InboxDao
+    abstract fun documentPageDao(): DocumentPageDao
     abstract fun createCardDao(): CreateCardDao
     abstract fun memoryStoryDao(): MemoryStoryDao
     abstract fun transcriptDao(): TranscriptDao
@@ -99,6 +111,8 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun learningActivityDao(): LearningActivityDao
     abstract fun activityAttemptDao(): ActivityAttemptDao
     abstract fun reviewScheduleDao(): ReviewScheduleDao
+    abstract fun learningGoalDao(): LearningGoalDao
+    abstract fun practiceDao(): PracticeDao
 
     companion object {
         @Volatile
@@ -599,8 +613,170 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "UPDATE meetings SET recordingOrder = (SELECT COUNT(*) FROM meetings AS earlier WHERE earlier.noteId = meetings.noteId AND (earlier.createdAt < meetings.createdAt OR (earlier.createdAt = meetings.createdAt AND earlier.id < meetings.id))) WHERE noteId IS NOT NULL"
         )
 
+        /**
+         * Schema 27: Non-destructive transcript translation (Phase P3).
+         * Adds `transcript_translations` table to store translated title, summary, and segment text
+         * without mutating or replacing original verbatim transcript data.
+         */
+        val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_26_27_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_26_27_SQL: List<String> = listOf(
+            """CREATE TABLE IF NOT EXISTS `transcript_translations` (
+                `id` TEXT NOT NULL,
+                `meetingId` TEXT NOT NULL,
+                `sourceLanguage` TEXT NOT NULL,
+                `targetLanguage` TEXT NOT NULL,
+                `translationEngine` TEXT NOT NULL,
+                `translatedTitle` TEXT,
+                `translatedSummary` TEXT,
+                `translatedSegmentsJson` TEXT NOT NULL DEFAULT '[]',
+                `createdAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS `index_transcript_translations_meetingId` ON `transcript_translations` (`meetingId`)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_transcript_translations_meetingId_targetLanguage` ON `transcript_translations` (`meetingId`, `targetLanguage`)"
+        )
+
+        /**
+         * Schema 28: Title provenance. Adds `meetings.titleSource`, defaulting existing rows to
+         * `AI` — the value the app's previous behaviour implies — so upgrading never mass-retitles
+         * a library. New rows record whether a title came from the model, real content, the date
+         * fallback, the person, or an imported file's own name.
+         */
+        val MIGRATION_27_28 = object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_27_28_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_27_28_SQL: List<String> = listOf(
+            "ALTER TABLE `meetings` ADD COLUMN `titleSource` TEXT NOT NULL DEFAULT 'AI'"
+        )
+
+        /**
+         * Schema 29: Work Inbox Redesign (Increment 1). Adds source tracking, media metadata,
+         * transcription status, and meeting link to `inbox_items`.
+         */
+        val MIGRATION_28_29 = object : Migration(28, 29) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_28_29_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_28_29_SQL: List<String> = listOf(
+            "ALTER TABLE `inbox_items` ADD COLUMN `source` TEXT",
+            "ALTER TABLE `inbox_items` ADD COLUMN `mediaDurationMs` INTEGER",
+            "ALTER TABLE `inbox_items` ADD COLUMN `mediaThumbnailUri` TEXT",
+            "ALTER TABLE `inbox_items` ADD COLUMN `transcriptionStatus` TEXT NOT NULL DEFAULT 'NONE'",
+            "ALTER TABLE `inbox_items` ADD COLUMN `meetingId` TEXT"
+        )
+
+        /**
+         * Schema 30: Learning vertical v2 substrate. Adds subject domain & signal counters to
+         * `learning_sessions`, exam importance & formula LaTeX to `learning_concepts`, Teach-Back
+         * rubrics to `learning_activities`, audio/attachment provenance to `activity_attempts`,
+         * and the `learning_goals` table for exam readiness.
+         */
+        val MIGRATION_29_30 = object : Migration(29, 30) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_29_30_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_29_30_SQL: List<String> = listOf(
+            "ALTER TABLE `learning_sessions` ADD COLUMN `subjectDomain` TEXT NOT NULL DEFAULT 'GENERAL'",
+            "ALTER TABLE `learning_sessions` ADD COLUMN `examSignalCount` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `learning_sessions` ADD COLUMN `unresolvedConfusionCount` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `learning_concepts` ADD COLUMN `examImportance` TEXT NOT NULL DEFAULT 'NORMAL'",
+            "ALTER TABLE `learning_concepts` ADD COLUMN `formulaLatex` TEXT",
+            "ALTER TABLE `learning_activities` ADD COLUMN `rubricJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE `activity_attempts` ADD COLUMN `audioPath` TEXT",
+            "ALTER TABLE `activity_attempts` ADD COLUMN `attachmentId` TEXT",
+            "CREATE TABLE IF NOT EXISTS `learning_goals` (`id` TEXT NOT NULL, `notebookId` TEXT, `title` TEXT NOT NULL, `examDateMs` INTEGER NOT NULL, `examFormat` TEXT NOT NULL DEFAULT 'MIXED', `sessionIdsJson` TEXT NOT NULL DEFAULT '[]', `topicWeightsJson` TEXT NOT NULL DEFAULT '{}', `pastPaperNoteId` TEXT, `dailyMinutesTarget` INTEGER NOT NULL DEFAULT 25, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`notebookId`) REFERENCES `notebooks`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_learning_goals_notebookId` ON `learning_goals` (`notebookId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_goals_examDateMs` ON `learning_goals` (`examDateMs`)"
+        )
+
+        /**
+         * Schema 31 (work-vertical-design-spec R3 and R4). Additive only: the Tasks manager (list,
+         * section, priority, label, subtask and recurrence columns, and task search), and on-device
+         * document reading (per-page text, read progress, and page-cited evidence). Existing tasks
+         * keep priority 4 (none) and the Inbox list (no list). Tasks that came from a note are filed in
+         * that note's notebook. Work tasks (waiting on someone, or from a finding) get space WORK.
+         */
+        val MIGRATION_30_31 = object : Migration(30, 31) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_30_31_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_30_31_SQL: List<String> = listOf(
+            // Tasks manager columns (all with defaults, so existing rows stay valid).
+            "ALTER TABLE `tasks` ADD COLUMN `priority` INTEGER NOT NULL DEFAULT 4",
+            "ALTER TABLE `tasks` ADD COLUMN `parentId` TEXT",
+            "ALTER TABLE `tasks` ADD COLUMN `listId` TEXT",
+            "ALTER TABLE `tasks` ADD COLUMN `sectionId` TEXT",
+            "ALTER TABLE `tasks` ADD COLUMN `position` REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE `tasks` ADD COLUMN `hasTime` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `tasks` ADD COLUMN `repeatRule` TEXT",
+            "CREATE INDEX IF NOT EXISTS `index_tasks_listId` ON `tasks` (`listId`)",
+            // Sections, labels and their links.
+            "CREATE TABLE IF NOT EXISTS `task_sections` (`id` TEXT NOT NULL, `listId` TEXT NOT NULL, `name` TEXT NOT NULL, `position` REAL NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_task_sections_listId` ON `task_sections` (`listId`)",
+            "CREATE TABLE IF NOT EXISTS `task_labels` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `color` TEXT, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `task_label_links` (`taskId` TEXT NOT NULL, `labelId` TEXT NOT NULL, PRIMARY KEY(`taskId`, `labelId`))",
+            "CREATE INDEX IF NOT EXISTS `index_task_label_links_labelId` ON `task_label_links` (`labelId`)",
+            // Backfill: a task from a note goes in that note's notebook; a work task is in the WORK space.
+            "UPDATE `tasks` SET `listId` = (SELECT `n`.`notebookId` FROM `notes` `n` WHERE `n`.`id` = `tasks`.`noteId`) " +
+                "WHERE `noteId` IS NOT NULL AND `listId` IS NULL " +
+                "AND EXISTS (SELECT 1 FROM `notes` `n` WHERE `n`.`id` = `tasks`.`noteId` AND `n`.`notebookId` IS NOT NULL)",
+            "UPDATE `tasks` SET `space` = 'WORK' WHERE `space` IS NULL AND (`waitingOn` = 1 OR `sourceItemId` IS NOT NULL)",
+            // Full-text search over tasks, in the same external-content form as notes_fts.
+            "CREATE VIRTUAL TABLE IF NOT EXISTS `tasks_fts` USING FTS4(`title` TEXT NOT NULL, `notes` TEXT NOT NULL, tokenize=unicode61, content=`tasks`)",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_tasks_fts_BEFORE_UPDATE BEFORE UPDATE ON `tasks` BEGIN DELETE FROM `tasks_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_tasks_fts_BEFORE_DELETE BEFORE DELETE ON `tasks` BEGIN DELETE FROM `tasks_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_tasks_fts_AFTER_UPDATE AFTER UPDATE ON `tasks` BEGIN INSERT INTO `tasks_fts`(`docid`, `title`, `notes`) VALUES (NEW.`rowid`, NEW.`title`, NEW.`notes`); END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_tasks_fts_AFTER_INSERT AFTER INSERT ON `tasks` BEGIN INSERT INTO `tasks_fts`(`docid`, `title`, `notes`) VALUES (NEW.`rowid`, NEW.`title`, NEW.`notes`); END",
+            "INSERT INTO `tasks_fts`(`tasks_fts`) VALUES ('rebuild')",
+            // Inbox items: read status and page progress.
+            "ALTER TABLE `inbox_items` ADD COLUMN `readStatus` TEXT NOT NULL DEFAULT 'NONE'",
+            "ALTER TABLE `inbox_items` ADD COLUMN `pageCount` INTEGER",
+            "ALTER TABLE `inbox_items` ADD COLUMN `readPages` INTEGER NOT NULL DEFAULT 0",
+            // Document pages, and their full-text index.
+            "CREATE TABLE IF NOT EXISTS `document_pages` (`itemId` TEXT NOT NULL, `page` INTEGER NOT NULL, `text` TEXT NOT NULL, `source` TEXT NOT NULL, `confidence` REAL, `boxesJson` TEXT, PRIMARY KEY(`itemId`, `page`))",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS `document_pages_fts` USING FTS4(`text` TEXT NOT NULL, tokenize=unicode61, content=`document_pages`)",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_document_pages_fts_BEFORE_UPDATE BEFORE UPDATE ON `document_pages` BEGIN DELETE FROM `document_pages_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_document_pages_fts_BEFORE_DELETE BEFORE DELETE ON `document_pages` BEGIN DELETE FROM `document_pages_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_document_pages_fts_AFTER_UPDATE AFTER UPDATE ON `document_pages` BEGIN INSERT INTO `document_pages_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_document_pages_fts_AFTER_INSERT AFTER INSERT ON `document_pages` BEGIN INSERT INTO `document_pages_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); END",
+            // Evidence can cite a page and a box.
+            "ALTER TABLE `item_evidence` ADD COLUMN `page` INTEGER",
+            "ALTER TABLE `item_evidence` ADD COLUMN `boxJson` TEXT"
+        )
+
+        /**
+         * Schema 32 (Your garden): practices, and the days they were kept. Additive only; no existing
+         * table changes. A practice's repeating task is linked by its sourceItemId, not a foreign key.
+         */
+        val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_31_32_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_31_32_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `practices` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `sourceNoteId` TEXT, `sourceTitle` TEXT, `taskId` TEXT, `rhythm` TEXT NOT NULL, `remindMinutes` INTEGER, `checkInWeeks` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, `checkInAt` INTEGER, `state` TEXT NOT NULL, `endedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `practice_days` (`practiceId` TEXT NOT NULL, `day` TEXT NOT NULL, `keptAt` INTEGER NOT NULL, PRIMARY KEY(`practiceId`, `day`))",
+            "CREATE INDEX IF NOT EXISTS `index_practice_days_practiceId` ON `practice_days` (`practiceId`)"
+        )
+
         /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
-        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32)
 
         internal val MIGRATION_21_22_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -764,7 +940,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 26
+        const val VERSION = 32
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {

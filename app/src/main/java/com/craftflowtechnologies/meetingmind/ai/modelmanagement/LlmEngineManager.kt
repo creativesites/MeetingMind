@@ -20,12 +20,19 @@ object LlmEngineManager {
     private var engineModelId: String? = null
 
     suspend fun getOrCreate(context: Context, modelId: String, modelPath: String, maxTokens: Int): LlmInference =
-        mutex.withLock {
+        mutex.withLock { createLocked(context, modelId, modelPath, maxTokens) }
+
+    private fun createLocked(context: Context, modelId: String, modelPath: String, maxTokens: Int): LlmInference =
+        run {
             val existing = engine
             if (existing != null && engineModelId == modelId) {
-                return@withLock existing
+                return@run existing
             }
-            existing?.close()
+            // Forget the old engine before loading the new one, so a failed load never leaves a
+            // closed engine behind for the next caller.
+            runCatching { existing?.close() }
+            engine = null
+            engineModelId = null
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelPath)
                 .setMaxTokens(maxTokens)
@@ -41,9 +48,41 @@ object LlmEngineManager {
             created
         }
 
-    /** Releases the native engine. Safe to call even if nothing was ever loaded. */
-    suspend fun release() = mutex.withLock {
-        engine?.close()
+    /** Set by [release] while a generation holds the engine; the user that finishes closes it. */
+    @Volatile private var releasePending = false
+
+    /**
+     * Runs [block] with the engine held: one generation at a time, and [release] can't close the
+     * native engine underneath it (closing mid-generation is a native crash no catch can stop).
+     */
+    suspend fun <T> withEngine(context: Context, modelId: String, modelPath: String, maxTokens: Int, block: (LlmInference) -> T): T =
+        mutex.withLock {
+            try {
+                block(createLocked(context, modelId, modelPath, maxTokens))
+            } finally {
+                if (releasePending) closeLocked()
+            }
+        }
+
+    /**
+     * Releases the native engine. Safe to call even if nothing was ever loaded. If a generation is
+     * running, the engine is closed as soon as it finishes instead of under it.
+     */
+    suspend fun release() {
+        if (!mutex.tryLock()) {
+            releasePending = true
+            return
+        }
+        try {
+            closeLocked()
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    private fun closeLocked() {
+        releasePending = false
+        runCatching { engine?.close() }
         engine = null
         engineModelId = null
     }

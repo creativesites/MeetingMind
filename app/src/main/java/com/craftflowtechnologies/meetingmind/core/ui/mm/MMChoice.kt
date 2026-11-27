@@ -34,13 +34,14 @@ fun MMChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     val c = MM.colors
     val fill = animateColorAsState(if (selected) c.accentWash else c.surfaceSunk, MM.motion.quick(), label = "chipFill")
     Box(
         modifier.heightIn(min = MMSize.minTouch)
-            .toggleable(value = selected, role = Role.Checkbox, onValueChange = { onClick() }),
+            .toggleable(value = selected, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() }),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -52,10 +53,14 @@ fun MMChip(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (selected) {
-                    Icon(Icons.Rounded.Check, null, Modifier.size(MMSize.iconSmall), tint = c.accent)
+                    Icon(Icons.Rounded.Check, null, Modifier.size(MMSize.iconSmall), tint = if (enabled) c.accent else c.inkMuted)
                     Spacer(Modifier.width(MM.space.xs))
                 }
-                Text(label, style = MM.type.caption, color = if (selected) c.accent else c.inkSecondary)
+                Text(label, style = MM.type.caption, color = when {
+                    !enabled -> c.inkMuted
+                    selected -> c.accent
+                    else -> c.inkSecondary
+                })
             }
         }
     }

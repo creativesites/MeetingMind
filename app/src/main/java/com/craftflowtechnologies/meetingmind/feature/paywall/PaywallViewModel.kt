@@ -9,10 +9,12 @@ import com.craftflowtechnologies.meetingmind.core.analytics.Events
 import com.craftflowtechnologies.meetingmind.core.billing.Billing
 import com.craftflowtechnologies.meetingmind.core.billing.BillingGateway
 import com.craftflowtechnologies.meetingmind.core.billing.Entitlements
+import com.craftflowtechnologies.meetingmind.core.billing.SimulatedBillingGateway
 import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
 import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
 import com.craftflowtechnologies.meetingmind.core.billing.PurchaseResult
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,7 +30,7 @@ data class PaywallUiState(
     /** The store is still processing a purchase: don't offer to start another. */
     val pending: Boolean = false,
     val message: String? = null,
-    val outcome: OutcomeCopy = PaywallCopy.outcome(emptySet(), emptySet()),
+    val outcome: OutcomeCopy = PaywallCopy.outcome(emptySet()),
     /** Set once the person owns a plan; the screen then thanks them and closes. */
     val purchased: Boolean = false
 ) {
@@ -50,11 +52,16 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
     val entitlements: StateFlow<Entitlements> = gateway.entitlements
     val configured: Boolean get() = gateway.configured
 
+    /** True only in a debug build with no store key, where purchases are simulated. */
+    val isTestStore: Boolean get() = gateway is SimulatedBillingGateway
+
     init {
         viewModelScope.launch {
-            val saved = prefs.preferencesFlow.first()
-            val outcome = PaywallCopy.outcome(saved.onboardingGoals, saved.onboardingOutcomes)
-            val offers = gateway.offers()
+            // An unreadable store or a failing store call leaves the general headline and "plans unavailable",
+            // never a crash on the way to the plans.
+            val spaces = runCatching { prefs.preferencesFlow.first().identity.spaces }.getOrDefault(emptySet())
+            val outcome = PaywallCopy.outcome(spaces)
+            val offers = runCatching { gateway.offers() }.getOrDefault(emptyList())
             _state.update { it.copy(loading = false, offers = offers, selectedId = defaultOffer(offers)?.id, outcome = outcome) }
         }
     }
@@ -65,11 +72,23 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
     }
 
     fun buy(activity: Activity) {
+        // Someone who already pays is shown Manage instead of a purchase button; this is the second guard.
+        val owned = gateway.entitlements.value.effective(System.currentTimeMillis())
+        if (owned.isPaid) {
+            _state.update { it.copy(message = "You're already on ${owned.plan.label}. Manage your plan in Google Play.") }
+            return
+        }
         val offer = _state.value.selected ?: return
         if (_state.value.busy || _state.value.pending) return
         _state.update { it.copy(busy = true, message = null) }
         Analytics.track(Events.PURCHASE_STARTED, "plan" to offer.plan.name, "period" to offer.period)
         viewModelScope.launch { handle(gateway.purchase(activity, offer.id)) }
+    }
+
+    /** Debug builds without a store key only: returns the simulated account to Free so the paywall can be tried again. */
+    fun resetTestStore() {
+        val simulated = gateway as? SimulatedBillingGateway ?: return
+        viewModelScope.launch { simulated.reset() }
     }
 
     fun restore() {
@@ -89,7 +108,12 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
             PurchaseResult.Cancelled -> _state.update { it.copy(busy = false) }
             PurchaseResult.Pending -> {
                 Analytics.track(Events.PURCHASE_PENDING)
-                _state.update { it.copy(busy = false, pending = true, message = "Your purchase is still being processed. Your plan will start as soon as Google Play confirms it.") }
+                _state.update { it.copy(busy = false, pending = true, message = "Your purchase is still being processed. Your plan will start as soon as Google Play confirms it. Checking again in a moment…") }
+                // A slow payment is not a dead end: ask the store again shortly, and leave a visible retry.
+                viewModelScope.launch {
+                    delay(PENDING_POLL_DELAY_MS)
+                    if (_state.value.pending) pollPending()
+                }
             }
             is PurchaseResult.Failed -> {
                 Analytics.track(Events.PURCHASE_FAILED)
@@ -98,16 +122,45 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
         }
     }
 
+    /** The visible retry for a pending purchase. */
+    fun retryPending() {
+        if (_state.value.busy) return
+        _state.update { it.copy(busy = true, pending = false, message = "Checking with Google Play…") }
+        viewModelScope.launch { pollPending() }
+    }
+
+    private suspend fun pollPending() {
+        runCatching { gateway.refresh() }
+        val owned = gateway.entitlements.value.effective(System.currentTimeMillis())
+        if (owned.isPaid) {
+            Analytics.track(Events.PURCHASE_SUCCEEDED, "plan" to owned.plan.name)
+            _state.update { it.copy(busy = false, pending = false, purchased = true, message = null) }
+        } else {
+            _state.update {
+                it.copy(
+                    busy = false,
+                    pending = true,
+                    message = "Google Play hasn't confirmed the purchase yet. You can check again, and your plan starts as soon as it does."
+                )
+            }
+        }
+    }
+
     /** Records that the paywall was put in front of the person unasked, for the weekly limit. */
     fun shown(trigger: PaywallTrigger) {
         Analytics.track(Events.PAYWALL_VIEWED, "placement" to trigger.name.lowercase())
-        if (trigger != PaywallTrigger.SETTINGS) viewModelScope.launch { prefs.markPaywallShown(System.currentTimeMillis(), trigger == PaywallTrigger.FIRST_RESULT) }
+        if (trigger != PaywallTrigger.SETTINGS) viewModelScope.launch { runCatching { prefs.markPaywallShown(System.currentTimeMillis(), trigger == PaywallTrigger.FIRST_RESULT) } }
     }
 
     fun dismissed() {
         Analytics.track(Events.PAYWALL_DISMISSED)
-        viewModelScope.launch { prefs.recordPaywallDismissed() }
+        viewModelScope.launch { runCatching { prefs.recordPaywallDismissed() } }
     }
 
     fun exitSheetShown() = Analytics.track(Events.EXIT_SHEET_SHOWN)
+
+    companion object {
+        /** How long to wait before asking the store about a purchase it said was still pending. */
+        const val PENDING_POLL_DELAY_MS = 4_000L
+    }
 }

@@ -23,7 +23,7 @@ sealed interface RemixOutcome {
 }
 
 const val FAILED_MESSAGE = "Couldn't generate — try again or write your own."
-const val UNAVAILABLE_MESSAGE = "Writing with AI needs Internet mode and a Gemini key. Write your own, or start from a starter."
+const val UNAVAILABLE_MESSAGE = "Writing with AI needs Internet mode with a Gemini key, or an installed local AI model. Write your own, or start from a starter."
 
 /**
  * Create's engine (replaces the old Spark generator).
@@ -56,7 +56,7 @@ class CreateGenerator(
         } else null
 
         val prompt = CreatePrompts.generate(req)
-        val raw = when (val r = model.complete(prompt.system, prompt.user)) {
+        val raw = when (val r = model.completeStructured(prompt.system, prompt.user, GENERATE_SCHEMA)) {
             is AiResult.Success -> r.value
             is AiResult.ModelUnavailable -> return CreateOutcome.Unavailable(UNAVAILABLE_MESSAGE)
             else -> return CreateOutcome.Failed()
@@ -111,7 +111,7 @@ class CreateGenerator(
         if (card.text.isBlank() && action != RemixAction.ADD_VERSE) return RemixOutcome.Failed("Write something first.")
         if (!model.available()) return RemixOutcome.Unavailable(UNAVAILABLE_MESSAGE)
         val prompt = CreatePrompts.remix(card, action)
-        val raw = when (val r = model.complete(prompt.system, prompt.user, 30_000L)) {
+        val raw = when (val r = model.completeStructured(prompt.system, prompt.user, REMIX_SCHEMA, 30_000L)) {
             is AiResult.Success -> r.value
             is AiResult.ModelUnavailable -> return RemixOutcome.Unavailable(UNAVAILABLE_MESSAGE)
             else -> return RemixOutcome.Failed()
@@ -158,7 +158,11 @@ class CreateGenerator(
         JSONObject(body.substring(body.indexOf('{'), body.lastIndexOf('}') + 1))
     }.getOrNull()
 
-    companion object { const val MAX_TEXT = 280 }
+    companion object {
+        const val MAX_TEXT = 280
+        private const val GENERATE_SCHEMA = """{"type":"object","properties":{"suggestedVibe":{"type":"string"},"pieces":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"verseRef":{"type":"string","nullable":true}},"required":["text"]}}},"required":["pieces"]}"""
+        private const val REMIX_SCHEMA = """{"type":"object","properties":{"text":{"type":"string"},"verseRef":{"type":"string","nullable":true}},"required":["text"]}"""
+    }
 }
 
 /** Local checks on what a model returned. The prompt asks; this enforces. */

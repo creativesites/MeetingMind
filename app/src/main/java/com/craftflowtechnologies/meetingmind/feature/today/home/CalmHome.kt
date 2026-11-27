@@ -75,14 +75,13 @@ fun CalmHome(
     onOpenProcessing: (String) -> Unit,
     onOpenFaith: () -> Unit,
     onOpenWork: () -> Unit,
-    /** Opens Study; null hides its shortcut. */
-    onOpenStudy: (() -> Unit)? = null,
     onOpenDevotional: () -> Unit,
     onOpenPrayer: () -> Unit,
     onOpenWord: () -> Unit,
     onOpenTestimonies: () -> Unit,
     onOpenCircles: () -> Unit,
     onOpenStories: (StoryKind?) -> Unit,
+    onOpenLearn: () -> Unit = {},
     onCustomize: () -> Unit,
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit
 ) {
@@ -145,8 +144,26 @@ fun CalmHome(
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
                     onOpenCreate = { create.open() },
-                    onOpenStudy = onOpenStudy,
+                    onOpenLearn = onOpenLearn,
+                    showLearn = true,
                     modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+
+            // The companion's line: what it has to say right now, or the week's quiet rhythm.
+            item(key = "companion_line") {
+                com.craftflowtechnologies.meetingmind.feature.today.companion.HomeCompanionLine(
+                    space = null, onRecord = onRecord, onOpenNote = onOpenNote, onOpenRecording = onOpenProcessing,
+                    onSearch = onSearch, modifier = Modifier.padding(horizontal = 24.dp).padding(top = 20.dp)
+                )
+            }
+
+            // Notes from a YouTube video: the same shared card as every home.
+            item(key = "youtube") {
+                val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
+                com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
+                    onClick = { youTube.open() },
+                    modifier = Modifier.padding(horizontal = 24.dp).padding(top = 20.dp).testTag("calm_youtube")
                 )
             }
 

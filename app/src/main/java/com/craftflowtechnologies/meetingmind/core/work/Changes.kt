@@ -72,7 +72,7 @@ class DeviceChangeModels(
         if (WorkPrivacy.mustStayOnDevice(context, meetingId = meetingId)) {
             return factory.resolveLocal(ModelCapability.SYNTHESIS, ModelTier.RECOMMENDED)?.languageModel
         }
-        return factory.resolve(profile(), ModelCapability.SYNTHESIS, ModelTier.RECOMMENDED)?.languageModel
+        return factory.resolveWithFallback(profile(), ModelCapability.SYNTHESIS, ModelTier.RECOMMENDED)?.languageModel
     }
 }
 

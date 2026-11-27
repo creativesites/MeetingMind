@@ -64,12 +64,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.core.audio.AudioExtractor
+import com.craftflowtechnologies.meetingmind.core.audio.NoAudioTrackException
 import com.craftflowtechnologies.meetingmind.core.common.Formatters
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.Meeting
 import com.craftflowtechnologies.meetingmind.core.model.MeetingSource
 import com.craftflowtechnologies.meetingmind.core.repository.MeetingRepository
 import com.craftflowtechnologies.meetingmind.core.ui.SectionCard
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -99,8 +102,11 @@ data class ImportMediaState(
     val sizeBytes: Long = 0L,
     val isVideo: Boolean = false,
     val isExtracting: Boolean = false,
+    val extractionProgress: Float = 0f,
     val meetingId: String? = null,
     val extractedAudioFile: File? = null,
+    val youtubeUrl: String? = null,
+    val youtubeVideoId: String? = null,
     val error: String? = null,
     /** Import creates the meeting the instant a file is picked (so extraction can start right
      * away), before there's been any chance to ask what it is — this is filled in afterward,
@@ -110,27 +116,64 @@ data class ImportMediaState(
     val speakerCountPreference: Int? = null
 )
 
-class ImportViewModel(application: Application) : AndroidViewModel(application) {
-    private val audioExtractor = AudioExtractor(application)
-    private val database = MeetMindDatabase.getInstance(application)
-    private val meetingRepository = MeetingRepository(application, database)
+class ImportViewModel @JvmOverloads constructor(
+    application: Application,
+    private val audioExtractor: AudioExtractor = AudioExtractor(application),
+    private val meetingRepository: MeetingRepository = MeetingRepository(application, MeetMindDatabase.getInstance(application))
+) : AndroidViewModel(application) {
 
     private val _importState = MutableStateFlow(ImportMediaState())
     val importState: StateFlow<ImportMediaState> = _importState.asStateFlow()
 
+    private var extractionJob: Job? = null
+
     fun handleSelectedUri(uri: Uri) {
-        viewModelScope.launch {
-            _importState.value = _importState.value.copy(isExtracting = true, error = null)
+        cancelExtraction()
+        extractionJob = viewModelScope.launch {
+            _importState.value = _importState.value.copy(
+                isExtracting = true,
+                extractionProgress = 0f,
+                error = null
+            )
             try {
                 val meetingId = UUID.randomUUID().toString()
-                val info = audioExtractor.importAndExtract(uri, meetingId)
+                val info = audioExtractor.importAndExtract(uri, meetingId) { progress ->
+                    _importState.value = _importState.value.copy(extractionProgress = progress)
+                }
 
+                val importedName = info.fileName.substringBeforeLast(".")
                 val meeting = meetingRepository.createInitialMeeting(
                     id = meetingId,
-                    title = info.fileName.substringBeforeLast("."),
+                    title = importedName,
                     source = if (info.isVideo) MeetingSource.IMPORTED_VIDEO else MeetingSource.IMPORTED_AUDIO,
-                    audioFilePath = info.outputFile.absolutePath
+                    audioFilePath = info.outputFile.absolutePath,
+                    // A recorder's "AUD_0042" is not a title. Only a name that actually says
+                    // something about the content is frozen as IMPORT; everything else keeps the
+                    // AI source so processing can give it a real title from what was said.
+                    titleSource = if (
+                        com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator
+                            .isUsableImportedTitle(importedName)
+                    ) {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.IMPORT
+                    } else {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI
+                    }
                 )
+
+                // If this file came from the Work Inbox, link the new Meeting back to the Inbox item
+                // so transcription progress, AI summary, and Note links stay connected end-to-end.
+                runCatching {
+                    val inboxDao = MeetMindDatabase.getInstance(getApplication()).inboxDao()
+                    val matched = uri.path?.let { inboxDao.getByUri(it) } ?: inboxDao.getByUri(uri.toString())
+                    if (matched != null) {
+                        inboxDao.updateTranscription(
+                            id = matched.id,
+                            status = "TRANSCRIBING",
+                            meetingId = meeting.id,
+                            durationMs = info.durationMs.takeIf { it > 0L }
+                        )
+                    }
+                }
 
                 _importState.value = ImportMediaState(
                     uri = uri,
@@ -139,15 +182,99 @@ class ImportViewModel(application: Application) : AndroidViewModel(application) 
                     sizeBytes = info.sizeBytes,
                     isVideo = info.isVideo,
                     isExtracting = false,
+                    extractionProgress = 1f,
                     meetingId = meeting.id,
                     extractedAudioFile = info.outputFile
+                )
+            } catch (e: CancellationException) {
+                _importState.value = _importState.value.copy(
+                    isExtracting = false,
+                    extractionProgress = 0f
+                )
+            } catch (e: NoAudioTrackException) {
+                _importState.value = _importState.value.copy(
+                    isExtracting = false,
+                    extractionProgress = 0f,
+                    error = e.localizedMessage ?: "This video does not contain an audio track."
                 )
             } catch (e: Exception) {
                 _importState.value = _importState.value.copy(
                     isExtracting = false,
+                    extractionProgress = 0f,
                     error = "Failed to import file: ${e.localizedMessage}"
                 )
             }
+        }
+    }
+
+    fun handleYouTubeUrl(rawUrl: String, customTitle: String? = null) {
+        cancelExtraction()
+        val parsed = com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.parse(rawUrl)
+        if (parsed == null) {
+            _importState.value = _importState.value.copy(
+                error = "Please enter a valid YouTube link (e.g. youtube.com/watch?v=... or youtu.be/...)."
+            )
+            return
+        }
+        extractionJob = viewModelScope.launch {
+            try {
+                val meetingId = UUID.randomUUID().toString()
+                val initialTitle = customTitle?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: "YouTube Video (${parsed.videoId})"
+                val meeting = meetingRepository.createInitialMeeting(
+                    id = meetingId,
+                    title = initialTitle,
+                    source = MeetingSource.YOUTUBE_VIDEO,
+                    audioFilePath = parsed.canonicalWatchUrl,
+                    recordingType = _importState.value.recordingType,
+                    speakerCountPreference = 1,
+                    titleSource = if (!customTitle.isNullOrBlank()) {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.USER
+                    } else {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI
+                    }
+                )
+                runCatching {
+                    val inboxDao = MeetMindDatabase.getInstance(getApplication()).inboxDao()
+                    val matched = inboxDao.getByUri(parsed.canonicalWatchUrl) ?: inboxDao.getByUri(rawUrl.trim())
+                    if (matched != null) {
+                        inboxDao.updateTranscription(
+                            id = matched.id,
+                            status = "TRANSCRIBING",
+                            meetingId = meeting.id
+                        )
+                    }
+                }
+                _importState.value = ImportMediaState(
+                    fileName = parsed.canonicalWatchUrl,
+                    isVideo = true,
+                    meetingId = meeting.id,
+                    youtubeUrl = parsed.canonicalWatchUrl,
+                    youtubeVideoId = parsed.videoId,
+                    recordingType = com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
+                    speakerCountPreference = 1
+                )
+            } catch (e: Exception) {
+                _importState.value = _importState.value.copy(
+                    error = "Could not prepare YouTube link: ${e.localizedMessage}"
+                )
+            }
+        }
+    }
+
+    fun clearSelection() {
+        cancelExtraction()
+        _importState.value = ImportMediaState()
+    }
+
+    fun cancelExtraction() {
+        extractionJob?.cancel()
+        extractionJob = null
+        if (_importState.value.isExtracting) {
+            _importState.value = _importState.value.copy(
+                isExtracting = false,
+                extractionProgress = 0f
+            )
         }
     }
 
@@ -189,11 +316,13 @@ fun ImportScreen(
 ) {
     val state by viewModel.importState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showAllTypes by remember { mutableStateOf(false) }
     var showSpeakerPicker by remember { mutableStateOf(false) }
+    var youtubeInput by remember { mutableStateOf("") }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { viewModel.handleSelectedUri(it) }
     }
@@ -224,15 +353,12 @@ fun ImportScreen(
                         .testTag("import_back_btn")
                         .wrapContentSize(Alignment.Center)
                 )
-                Text("Import audio", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text("Import audio or YouTube", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             }
 
             val fileName = state.fileName
             if (fileName == null) {
-                // Nothing picked yet. The frame shows the screen with a file already in hand, so
-                // this is the one state it does not depict: keep it to the same visual language —
-                // one bordered card, the same bar-meter glyph, one action — rather than inventing
-                // a differently-styled dropzone.
+                // Nothing picked yet: allow picking an audio/video file OR pasting a YouTube link.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -240,7 +366,7 @@ fun ImportScreen(
                         .padding(top = 22.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
-                        .clickable { filePickerLauncher.launch("*/*") }
+                        .clickable { filePickerLauncher.launch(arrayOf("audio/*", "video/*")) }
                         .testTag("import_picker_card")
                         .padding(horizontal = 18.dp, vertical = 17.dp)
                 ) {
@@ -258,8 +384,79 @@ fun ImportScreen(
                         Text("Browse", fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = InkSecondary)
                     }
                 }
+
+                // YouTube URL Card
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .padding(top = 14.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 18.dp, vertical = 16.dp)
+                        .testTag("import_youtube_card")
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("YouTube video link", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                            Text(
+                                "Sermons, lectures, motivation & life skills — transcribed into bytes",
+                                fontSize = 12.5.sp,
+                                color = InkMuted,
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                        }
+                        Text(
+                            text = "Paste",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Accent,
+                            modifier = Modifier
+                                .clickable {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                    val clipText = clipboard?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
+                                    if (clipText.isNotEmpty()) {
+                                        youtubeInput = clipText
+                                        if (com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(clipText)) {
+                                            viewModel.handleYouTubeUrl(clipText)
+                                        }
+                                    }
+                                }
+                                .padding(start = 10.dp, top = 4.dp, bottom = 4.dp)
+                                .testTag("import_youtube_paste_btn")
+                        )
+                    }
+                    OutlinedTextField(
+                        value = youtubeInput,
+                        onValueChange = { youtubeInput = it },
+                        placeholder = { Text("https://www.youtube.com/watch?v=...", fontSize = 13.sp) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                            .testTag("import_youtube_input")
+                    )
+                    if (youtubeInput.isNotBlank()) {
+                        Button(
+                            onClick = { viewModel.handleYouTubeUrl(youtubeInput) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                                .testTag("import_youtube_load_btn")
+                        ) {
+                            Text("Use YouTube link", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
             } else {
-                // The picked file, as #5c shows it: glyph, name, the real facts about it, Change.
+                // The picked file or YouTube link: glyph, name, facts, Change.
+                val isYouTube = state.youtubeUrl != null
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -281,11 +478,15 @@ fun ImportScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = listOfNotNull(
-                                    Formatters.formatDurationSummary(state.durationMs).takeIf { state.durationMs > 0 },
-                                    Formatters.formatBytes(state.sizeBytes).takeIf { state.sizeBytes > 0 },
-                                    if (state.isVideo) "video" else null
-                                ).joinToString(" · "),
+                                text = if (isYouTube) {
+                                    "YouTube video · ID ${state.youtubeVideoId.orEmpty()} · Gemini 3.8 Flash"
+                                } else {
+                                    listOfNotNull(
+                                        Formatters.formatDurationSummary(state.durationMs).takeIf { state.durationMs > 0 },
+                                        Formatters.formatBytes(state.sizeBytes).takeIf { state.sizeBytes > 0 },
+                                        if (state.isVideo) "video" else null
+                                    ).joinToString(" · ")
+                                },
                                 fontSize = 12.5.sp,
                                 color = InkMuted,
                                 modifier = Modifier.padding(top = 3.dp)
@@ -297,7 +498,10 @@ fun ImportScreen(
                             fontWeight = FontWeight.Medium,
                             color = InkSecondary,
                             modifier = Modifier
-                                .clickable { filePickerLauncher.launch("*/*") }
+                                .clickable {
+                                    if (isYouTube) viewModel.clearSelection()
+                                    else filePickerLauncher.launch(arrayOf("audio/*", "video/*"))
+                                }
                                 .testTag("import_change_btn")
                         )
                     }
@@ -306,31 +510,117 @@ fun ImportScreen(
 
             if (state.isExtracting) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .padding(top = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Accent)
-                    Text("Extracting the audio track…", fontSize = 13.sp, color = InkSecondary)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = Accent
+                        )
+                        val progressText = if (state.extractionProgress > 0f) {
+                            "Extracting audio track… ${(state.extractionProgress * 100).toInt()}%"
+                        } else {
+                            "Extracting audio track…"
+                        }
+                        Text(
+                            text = progressText,
+                            fontSize = 13.sp,
+                            color = InkSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Text(
+                        text = "Cancel",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = InkSecondary,
+                        modifier = Modifier
+                            .clickable { viewModel.cancelExtraction() }
+                            .padding(start = 12.dp)
+                            .testTag("import_cancel_extraction_btn")
+                    )
+                }
+            }
+
+            val error = state.error
+            if (error != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .padding(top = 18.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 18.dp, vertical = 17.dp)
+                        .testTag("import_error_card")
+                ) {
+                    Text(
+                        text = "Could not import file",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Ink
+                    )
+                    Text(
+                        text = error,
+                        fontSize = 13.sp,
+                        color = InkMuted,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                    )
+                    Button(
+                        onClick = { filePickerLauncher.launch(arrayOf("audio/*", "video/*")) },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
+                        modifier = Modifier.testTag("import_choose_another_btn")
+                    ) {
+                        Text("Choose another file", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
                 }
             }
 
             if (state.fileName != null) {
+                val isYouTube = state.youtubeUrl != null
                 SectionLabel("What is it")
-                // The four the frame shows, as chips. Every other type stays reachable through
-                // "More types", so importing a Sermon or a Journal is not made impossible by a
-                // frame that happened to depict four.
+                // For YouTube links, surface Auto-detect, Sermon, Lecture, Motivation, Life skills;
+                // for audio files, preserve the existing 4 chips + More types.
                 FlowRow(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val quickTypes = listOf(
-                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.MEETING,
-                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.INTERVIEW,
-                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE,
-                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.VOICE_MEMO
-                    )
+                    if (isYouTube) {
+                        ImportTypeChip(
+                            label = "Auto-detect",
+                            selected = state.recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
+                            onClick = { viewModel.selectRecordingType(com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL) }
+                        )
+                    }
+                    val quickTypes = if (isYouTube) {
+                        listOf(
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.MOTIVATION,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.LIFE_SKILLS,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.INTERVIEW
+                        )
+                    } else {
+                        listOf(
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.MEETING,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.INTERVIEW,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE,
+                            com.craftflowtechnologies.meetingmind.core.model.RecordingType.VOICE_MEMO
+                        )
+                    }
                     quickTypes.forEach { type ->
                         ImportTypeChip(
                             label = type.displayName,
@@ -338,9 +628,11 @@ fun ImportScreen(
                             onClick = { viewModel.selectRecordingType(type) }
                         )
                     }
+                    val inQuickOrAuto = state.recordingType in quickTypes ||
+                        (isYouTube && state.recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL)
                     ImportTypeChip(
-                        label = if (state.recordingType in quickTypes) "More types" else state.recordingType.displayName,
-                        selected = state.recordingType !in quickTypes,
+                        label = if (inQuickOrAuto) "More types" else state.recordingType.displayName,
+                        selected = !inQuickOrAuto,
                         onClick = { showAllTypes = !showAllTypes }
                     )
                 }
@@ -400,18 +692,18 @@ fun ImportScreen(
                     )
                 }
 
+                val targetPath = state.youtubeUrl ?: state.extractedAudioFile?.absolutePath
                 Button(
                     onClick = {
                         val mId = state.meetingId
-                        val file = state.extractedAudioFile
-                        if (mId != null && file != null) {
+                        if (mId != null && targetPath != null) {
                             coroutineScope.launch {
                                 viewModel.applyRecordingContext()
-                                onStartProcessing(mId, file.absolutePath, state.durationMs)
+                                onStartProcessing(mId, targetPath, state.durationMs)
                             }
                         }
                     },
-                    enabled = state.meetingId != null && state.extractedAudioFile != null,
+                    enabled = state.meetingId != null && targetPath != null,
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
                     modifier = Modifier
@@ -421,7 +713,11 @@ fun ImportScreen(
                         .height(50.dp)
                         .testTag("import_transcribe_btn")
                 ) {
-                    Text("Start processing", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text(
+                        if (state.youtubeUrl != null) "Extract transcript & bytes" else "Start processing",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
+                    )
                 }
             }
         }

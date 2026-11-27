@@ -170,3 +170,83 @@ object StudyFixedColors {
     val OrbMid = Color(0xFF1F9AB5)
     val OrbDeep = Color(0xFF0B5568)
 }
+
+/**
+ * Rich, accessible academic design tokens for Learning courses, mastery indicators, semantic callouts,
+ * offline syntax highlighting, and double-entry accounting tables across Light and Dark themes.
+ */
+object LearningFixedColors {
+    val White = Color.White
+
+    // Hero & course cover accents
+    val SapphireDeep = Color(0xFF1E3A8A)
+    val SapphireMid = Color(0xFF2563EB)
+    val SapphireSoft = Color(0xFFDBEAFE)
+    val TealAccent = Color(0xFF0D9488)
+    val AmberHighlight = Color(0xFFD97706)
+
+    // Mastery state accents & soft pill washes
+    val MasteryNew = Color(0xFF64748B)
+    val MasteryNewBg = Color(0xFFF1F5F9)
+    val MasteryLearning = Color(0xFF2563EB)
+    val MasteryLearningBg = Color(0xFFDBEAFE)
+    val MasteryDeveloping = Color(0xFFD97706)
+    val MasteryDevelopingBg = Color(0xFFFEF3C7)
+    val MasteryStrong = Color(0xFF059669)
+    val MasteryStrongBg = Color(0xFFD1FAE5)
+    val MasteryNeedsReview = Color(0xFFDC2626)
+    val MasteryNeedsReviewBg = Color(0xFFFEE2E2)
+
+    // Semantic academic callout accents
+    val DefinitionAccent = Color(0xFF2563EB)
+    val TheoremAccent = Color(0xFF7C3AED)
+    val FormulaAccent = Color(0xFF0D9488)
+    val ExamTipAccent = Color(0xFFD97706)
+    val PitfallAccent = Color(0xFFE11D48)
+    val WorkedExampleAccent = Color(0xFF059669)
+    val ObjectiveAccent = Color(0xFF0284C7)
+    val EnrichmentAccent = Color(0xFF6366F1)
+
+    // Multi-language syntax token colors (balanced contrast on both Paper and Graphite surfaces)
+    val SyntaxKeyword = Color(0xFF8B5CF6)
+    val SyntaxString = Color(0xFF0EA57A)
+    val SyntaxComment = Color(0xFF64748B)
+    val SyntaxNumber = Color(0xFFE07C10)
+    val SyntaxType = Color(0xFF0284C7)
+
+    // Accounting Debit/Credit balance status pills
+    val BalancedBg = Color(0xFFDCFCE7)
+    val BalancedInk = Color(0xFF15803D)
+    val UnbalancedBg = Color(0xFFFEE2E2)
+    val UnbalancedInk = Color(0xFFB91C1C)
+}
+
+/** Fixed editorial tokens for the redesigned Testimonies Wall of Remembrance. */
+object TestimonyColors {
+    val HeroDeepIndigo = Color(0xFF1C1633)
+    val HeroVelvetPlum = Color(0xFF35244E)
+    val HeroDawnBronze = Color(0xFF5A3B22)
+    val HeroGoldGlow = Color(0xFFF5C97B)
+    val HeroOnDark = Color(0xFFFFFFFF)
+    val HeroSubtleOnDark = Color(0xFFE7DFD3)
+
+    // Category badge tints (readable on both light & dark themes via soft alpha backgrounds)
+    val CategoryHealing = Color(0xFF059669)
+    val CategoryProvision = Color(0xFFD97706)
+    val CategoryBreakthrough = Color(0xFF7C3AED)
+    val CategoryFamily = Color(0xFFE11D48)
+    val CategoryGuidance = Color(0xFF0284C7)
+    val CategoryGratitude = Color(0xFFB45309)
+
+    // Story beats & Scripture callouts
+    val SpotlightTintLight = Color(0xFFFFF8EC)
+    val SpotlightTintDark = Color(0xFF282118)
+    val ScriptureWashLight = Color(0xFFFAF3E3)
+    val ScriptureWashDark = Color(0xFF252019)
+    val DraftAmber = Color(0xFFB45309)
+    val DraftWash = Color(0xFFFEF3C7)
+    val CircleSage = Color(0xFF0F766E)
+    val CircleWash = Color(0xFFCCFBF1)
+}
+
+

@@ -2,19 +2,34 @@ package com.craftflowtechnologies.meetingmind.feature.search
 
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import android.app.Application
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import com.craftflowtechnologies.meetingmind.core.ui.mm.AiCopyButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.AiRecoveryBanner
+import com.craftflowtechnologies.meetingmind.core.ui.mm.AiThinkingSkeleton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.citedAnnotatedString
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 import com.craftflowtechnologies.meetingmind.ui.theme.FaithGold
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.Success
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
@@ -83,6 +98,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 enum class SearchFilter(val label: String) { ALL("All"), NOTES("Notes"), RECORDINGS("Recordings"), TASKS("Tasks") }
@@ -90,6 +106,7 @@ enum class SearchFilter(val label: String) { ALL("All"), NOTES("Notes"), RECORDI
 sealed interface AskState {
     data object Idle : AskState
     data object Thinking : AskState
+    data class Streaming(val question: String, val partialText: String) : AskState
     data class Answered(val question: String, val answer: com.craftflowtechnologies.meetingmind.ai.assistant.AskAnswer) : AskState
     data class Failed(val message: String) : AskState
 }
@@ -130,20 +147,32 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         searchJob = viewModelScope.launch {
             _isSearching.value = true
             delay(150)
-            val passage = com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser.findAll(newQuery).firstOrNull()?.reference
+            // "Open in the Bible" only for people who use the Faith space.
+            val showsFaith = runCatching {
+                com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(getApplication()).preferencesFlow.first().identity.showsFaith
+            }.getOrDefault(true)
+            val passage = if (!showsFaith) null else com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser.findAll(newQuery).firstOrNull()?.reference
             val scripture = passage?.let {
                 SearchResultItem(
                     meetingId = "", meetingTitle = it.display(), meetingDate = 0L, matchSnippet = "Open in the Bible",
                     timestampMs = 0L, matchType = SearchMatchType.SCRIPTURE, relevanceScore = 1f, reference = it.passageId()
                 )
             }
-            _results.value = listOfNotNull(scripture) + searchUseCase(newQuery)
+            // A failed index read (a damaged search table, a database error) shows no results, never a crash.
+            val found = runCatching { searchUseCase(newQuery) }
+                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                .getOrDefault(emptyList())
+            _results.value = listOfNotNull(scripture) + found
             _isSearching.value = false
         }
     }
 
     fun clearQuery() {
         onQueryChange("")
+    }
+
+    private val neuralEmbeddings by lazy {
+        com.craftflowtechnologies.meetingmind.ai.embeddings.NeuralEmbeddingEngine(application)
     }
 
     /** Ask across everything: search finds the sources on the phone, the model answers from them. */
@@ -153,19 +182,58 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         _ask.value = AskState.Thinking
         askJob = viewModelScope.launch {
             val app = getApplication<Application>()
+            val transport = com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(app)
+            val profile = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(app)
+                .preferencesFlow.first().processingProfile
             val engine = com.craftflowtechnologies.meetingmind.ai.assistant.AskEverythingEngine(
-                com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(app),
+                transport = transport,
                 search = { sources(it) },
-                dateLabel = { Formatters.formatDateRelative(it) }
+                dateLabel = { Formatters.formatDateRelative(it) },
+                localModelProvider = {
+                    com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory(
+                        context = app,
+                        modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(app),
+                        geminiTransport = transport
+                    ).resolveLocal(
+                        com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SUMMARIZATION,
+                        com.craftflowtechnologies.meetingmind.core.model.ModelTier.RECOMMENDED
+                    )?.languageModel
+                },
+                preferLocal = profile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.OFFLINE,
+                keepOnDevice = { found -> anyMustStayOnDevice(found) },
+                onLocalFinished = {
+                    viewModelScope.launch {
+                        com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release()
+                    }
+                }
             )
-            _ask.value = when (val r = engine.ask(q)) {
-                is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success -> AskState.Answered(q, r.value)
-                else -> AskState.Failed(r.describeFailure() ?: "Ask didn't work this time.")
+            engine.askStream(q).collect { ev ->
+                when (ev) {
+                    is com.craftflowtechnologies.meetingmind.ai.assistant.AskEverythingStreamEvent.Streaming -> {
+                        if (ev.partialText.isNotEmpty()) _ask.value = AskState.Streaming(q, ev.partialText)
+                    }
+                    is com.craftflowtechnologies.meetingmind.ai.assistant.AskEverythingStreamEvent.Complete -> {
+                        _ask.value = when (val r = ev.result) {
+                            is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success -> AskState.Answered(q, r.value)
+                            else -> AskState.Failed(r.describeFailure() ?: "Ask didn't work this time.")
+                        }
+                    }
+                }
             }
         }
     }
 
     fun dismissAnswer() { askJob?.cancel(); _ask.value = AskState.Idle }
+
+    fun cancelAsk() { askJob?.cancel(); _ask.value = AskState.Idle }
+
+    /** A found source that must never reach a cloud model: a note or recording in a confidential project. */
+    private suspend fun anyMustStayOnDevice(found: List<com.craftflowtechnologies.meetingmind.ai.assistant.AskSource>): Boolean {
+        val app = getApplication<Application>()
+        return found.any { src ->
+            com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.mustStayOnDevice(app, meetingId = src.meetingId, noteId = src.noteId)
+        }
+    }
 
     private suspend fun sources(query: String): List<com.craftflowtechnologies.meetingmind.ai.assistant.AskSource> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val fts = com.craftflowtechnologies.meetingmind.core.scripture.BibleStore.ftsQuery(query) ?: return@withContext emptyList()
@@ -196,7 +264,22 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 taskId = t.id, noteId = t.noteId
             )
         }
-        out
+        if (out.size <= 1) return@withContext out
+        // Ranking by meaning sends the query and the excerpts to Google's embedding model, so it runs only in
+        // Internet mode and only when nothing found belongs to a confidential project. Otherwise the on-phone
+        // full-text order stands (the "On-device only" promise in Settings).
+        val profile = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(getApplication())
+            .preferencesFlow.first().processingProfile
+        if (profile != com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET || anyMustStayOnDevice(out)) {
+            return@withContext out
+        }
+        val qVec = runCatching { neuralEmbeddings.embedQuery(query) }.getOrNull() ?: return@withContext out
+        val docVecs = runCatching { neuralEmbeddings.embedBatch(out.map { "${it.title}\n${it.text}" }, isQuery = false) }.getOrNull()
+            ?: return@withContext out
+        out.mapIndexed { idx, src ->
+            val sem = neuralEmbeddings.cosineSimilarity(qVec, docVecs.getOrElse(idx) { FloatArray(0) })
+            src to sem
+        }.sortedByDescending { it.second }.map { it.first }
     }
 }
 
@@ -296,22 +379,33 @@ fun SearchScreen(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AskChip(ask is AskState.Thinking) { viewModel.askEverything() }
+                    AskChip(ask is AskState.Thinking || ask is AskState.Streaming) { viewModel.askEverything() }
                     SearchFilter.entries.forEach { f ->
-                        val selected = f == filter
-                        Text(
-                            f.label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = if (selected) OnInk else InkSecondary,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(if (selected) Ink else SurfaceSunk)
-                                .clickable { viewModel.filter.value = f }.padding(horizontal = 14.dp, vertical = 7.dp)
-                        )
+                        val isSelected = f == filter
+                        androidx.compose.material3.Surface(
+                            onClick = { viewModel.filter.value = f },
+                            shape = RoundedCornerShape(50),
+                            color = if (isSelected) Ink else SurfaceSunk,
+                            modifier = Modifier
+                                .heightIn(min = 38.dp)
+                                .semantics {
+                                    role = Role.RadioButton
+                                    selected = isSelected
+                                }
+                        ) {
+                            Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                Text(f.label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = if (isSelected) OnInk else InkSecondary)
+                            }
+                        }
                     }
                 }
             }
 
-            LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 22.dp)) {
+            LazyColumn(modifier = Modifier.fillMaxSize().animateContentSize(), contentPadding = PaddingValues(bottom = 22.dp)) {
                 when (val a = ask) {
                     AskState.Idle -> Unit
-                    AskState.Thinking -> item { AskThinking() }
+                    AskState.Thinking -> item { AskThinking(onStop = viewModel::cancelAsk) }
+                    is AskState.Streaming -> item { AskStreamingCard(a.partialText, onStop = viewModel::cancelAsk) }
                     is AskState.Failed -> item { AskFailed(a.message, onRetry = viewModel::askEverything, onClose = viewModel::dismissAnswer) }
                     is AskState.Answered -> item {
                         AnswerCard(a, onClose = viewModel::dismissAnswer, onOpen = { src ->
@@ -334,10 +428,16 @@ fun SearchScreen(
                             Text("Try", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp, color = InkMuted, modifier = Modifier.padding(top = 22.dp))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
                                 suggestions.forEach { sug ->
-                                    Row(
-                                        modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(LineSoft)
-                                            .clickable { viewModel.onQueryChange(sug) }.padding(horizontal = 13.dp, vertical = 9.dp)
-                                    ) { Text(sug, fontSize = 13.sp, color = InkSecondary) }
+                                    androidx.compose.material3.Surface(
+                                        onClick = { viewModel.onQueryChange(sug) },
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = LineSoft,
+                                        modifier = Modifier.heightIn(min = 40.dp).semantics { role = Role.Button }
+                                    ) {
+                                        Box(Modifier.padding(horizontal = 13.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+                                            Text(sug, fontSize = 13.sp, color = InkSecondary)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -383,67 +483,100 @@ internal fun looksLikeQuestion(q: String): Boolean {
 @Composable
 private fun AskChip(busy: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(50)).background(Brush.horizontalGradient(listOf(Accent, Speaker3)))
-            .clickable(enabled = !busy, onClick = onClick).padding(horizontal = 14.dp, vertical = 7.dp).testTag("search_ask"),
+        Modifier
+            .heightIn(min = 38.dp)
+            .alpha(if (busy) 0.6f else 1f)
+            .clip(RoundedCornerShape(50))
+            .background(Brush.horizontalGradient(listOf(Accent, Speaker3)))
+            .clickable(enabled = !busy, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .semantics {
+                contentDescription = if (busy) "Asking AI" else "Ask AI"
+                stateDescription = if (busy) "Working" else "Ready"
+            }
+            .testTag("search_ask"),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = com.craftflowtechnologies.meetingmind.ui.theme.OnAccent, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(6.dp))
-        Text("Ask", color = com.craftflowtechnologies.meetingmind.ui.theme.OnAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (busy) "Asking…" else "Ask", color = com.craftflowtechnologies.meetingmind.ui.theme.OnAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-private fun AskThinking() {
-    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "ask")
-    val a by t.animateFloat(0.35f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "pulse")
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).clip(RoundedCornerShape(18.dp)).background(AccentWash).padding(18.dp)) {
+private fun AskThinking(onStop: () -> Unit) {
+    AiThinkingSkeleton(
+        label = "Looking through your notes and recordings…",
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        onStop = onStop
+    )
+}
+
+@Composable
+private fun AskStreamingCard(partialText: String, onStop: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceRaised)
+            .border(1.dp, LineSoft, RoundedCornerShape(18.dp)).padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 16.dp)
+            .animateContentSize()
+            .semantics { liveRegion = LiveRegionMode.Polite }
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent.copy(alpha = a), modifier = Modifier.size(18.dp))
-            Text("Looking through your notes and recordings…", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(start = 10.dp))
+            Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(16.dp))
+            Text("Answering…", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp, color = Accent, modifier = Modifier.padding(start = 8.dp).weight(1f))
+            androidx.compose.material3.TextButton(onClick = onStop) {
+                Text("Stop", fontSize = 12.sp, color = InkSecondary)
+            }
         }
-        listOf(0.9f, 0.75f, 0.55f).forEach { w ->
-            Box(Modifier.padding(top = 10.dp).fillMaxWidth(w).height(10.dp).clip(RoundedCornerShape(5.dp)).background(Accent.copy(alpha = 0.12f * a)))
-        }
+        Text(partialText, fontSize = 15.sp, color = Ink, lineHeight = 22.sp, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
 @Composable
 private fun AskFailed(message: String, onRetry: () -> Unit, onClose: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceSunk).padding(16.dp)) {
-        Text(message, fontSize = 14.sp, color = InkSecondary)
-        Row(Modifier.padding(top = 6.dp)) {
-            androidx.compose.material3.TextButton(onClick = onRetry) { Text("Try again", color = Accent) }
-            androidx.compose.material3.TextButton(onClick = onClose) { Text("Close", color = InkMuted) }
-        }
-    }
+    AiRecoveryBanner(
+        message = message,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        onRetry = onRetry,
+        onDismiss = onClose
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AnswerCard(a: AskState.Answered, onClose: () -> Unit, onOpen: (com.craftflowtechnologies.meetingmind.ai.assistant.AskSource) -> Unit) {
-    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceRaised)
-            .border(1.dp, LineSoft, RoundedCornerShape(18.dp)).padding(18.dp).testTag("search_answer")
+            .border(1.dp, LineSoft, RoundedCornerShape(18.dp)).padding(start = 18.dp, end = 10.dp, top = 12.dp, bottom = 18.dp)
+            .animateContentSize()
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .testTag("search_answer")
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(16.dp))
             Text("Answer", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp, color = Accent, modifier = Modifier.padding(start = 8.dp).weight(1f))
-            IconButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(a.answer.text)) }, modifier = Modifier.size(30.dp)) {
-                Icon(Icons.Filled.ContentCopy, "Copy", tint = InkMuted, modifier = Modifier.size(16.dp))
-            }
-            IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.Close, "Close", tint = InkMuted, modifier = Modifier.size(16.dp)) }
+            AiCopyButton(text = a.answer.text)
+            com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction(source = {
+                com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource(
+                    com.craftflowtechnologies.meetingmind.core.aireport.AiFeature.ASK_EVERYTHING, a.answer.text,
+                    moreNoteIds = a.answer.sources.mapNotNull { it.noteId },
+                    moreMeetingIds = a.answer.sources.mapNotNull { it.meetingId }
+                )
+            })
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.sizeIn(minWidth = MMSize.minTouch, minHeight = MMSize.minTouch)
+            ) { Icon(Icons.Default.Close, "Close answer", tint = InkMuted, modifier = Modifier.size(18.dp)) }
         }
-        Text(citedText(a.answer.text), fontSize = 15.sp, color = Ink, lineHeight = 23.sp, modifier = Modifier.padding(top = 8.dp))
+        Text(citedAnnotatedString(a.answer.text, Accent), fontSize = 15.sp, color = Ink, lineHeight = 23.sp, modifier = Modifier.padding(top = 4.dp, end = 8.dp))
         if (a.answer.unverified) {
-            Text("No source backs this answer — check it before relying on it.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 8.dp))
+            Text("No source backs this answer — check it before relying on it.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 8.dp, end = 8.dp))
         }
         if (a.answer.cited.isNotEmpty()) {
             Text("SOURCES", fontSize = 10.5.sp, letterSpacing = 0.8.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
             a.answer.cited.forEach { src ->
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onOpen(src) }.padding(vertical = 6.dp),
+                    Modifier.fillMaxWidth().heightIn(min = MMSize.minTouch).padding(end = 8.dp).clip(RoundedCornerShape(10.dp))
+                        .clickable(role = Role.Button) { onOpen(src) }.padding(vertical = 8.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(Modifier.size(22.dp).clip(CircleShape).background(AccentWash), contentAlignment = Alignment.Center) {
@@ -457,23 +590,6 @@ private fun AnswerCard(a: AskState.Answered, onClose: () -> Unit, onOpen: (com.c
                 }
             }
         }
-    }
-}
-
-/** "[3]" markers drawn as small accent superscripts. */
-@Composable
-private fun citedText(text: String): androidx.compose.ui.text.AnnotatedString {
-    val accent = Accent
-    return androidx.compose.ui.text.buildAnnotatedString {
-        var i = 0
-        Regex("\\[(\\d{1,2})]").findAll(text).forEach { m ->
-            append(text.substring(i, m.range.first))
-            pushStyle(androidx.compose.ui.text.SpanStyle(color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, baselineShift = androidx.compose.ui.text.style.BaselineShift.Superscript))
-            append(m.groupValues[1])
-            pop()
-            i = m.range.last + 1
-        }
-        append(text.substring(i))
     }
 }
 

@@ -10,7 +10,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -456,9 +458,10 @@ internal fun Reveal(index: Int, modifier: Modifier = Modifier, content: @Composa
     }) { content() }
 }
 
-/** Eases a little smaller while pressed, then springs back; keeps the ripple. */
+/** Eases a little smaller while pressed, then springs back; keeps the ripple. [onLongClick] is optional. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun Modifier.bentoPress(onClick: () -> Unit): Modifier {
+internal fun Modifier.bentoPress(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -469,7 +472,7 @@ internal fun Modifier.bentoPress(onClick: () -> Unit): Modifier {
     return this.graphicsLayer {
         scaleX = scale
         scaleY = scale
-    }.clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
+    }.combinedClickable(interactionSource = interaction, indication = LocalIndication.current, onLongClick = onLongClick, onClick = onClick)
 }
 
 /** One shareable story card, drawn from today's devotional. */
@@ -478,7 +481,9 @@ data class StoryCardData(
     val headline: String,
     val body: String,
     val caption: String,
-    val onOpen: () -> Unit
+    val onOpen: () -> Unit,
+    /** Set only when the card's words were written by AI: long-press offers "Report this". */
+    val report: com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource? = null
 )
 
 /**
@@ -486,6 +491,8 @@ data class StoryCardData(
  */
 @Composable
 fun StoryCards(cards: List<StoryCardData>, onShareAll: () -> Unit, modifier: Modifier = Modifier) {
+    // One report sheet for the row, kept outside each card's menu so it survives the menu closing.
+    val reportState = com.craftflowtechnologies.meetingmind.core.aireport.rememberAiReportState()
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Stories from today", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, modifier = Modifier.weight(1f))
@@ -499,13 +506,15 @@ fun StoryCards(cards: List<StoryCardData>, onShareAll: () -> Unit, modifier: Mod
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.padding(top = 14.dp)
         ) {
-            itemsIndexed(cards) { i, card -> StoryCardTile(i, card) }
+            itemsIndexed(cards) { i, card -> StoryCardTile(i, card, onReport = { src -> reportState.open(src) }) }
         }
     }
+    com.craftflowtechnologies.meetingmind.core.aireport.AiReportSheetHost(reportState)
 }
 
 @Composable
-private fun StoryCardTile(index: Int, card: StoryCardData) {
+private fun StoryCardTile(index: Int, card: StoryCardData, onReport: (com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource) -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
     val time = rememberSceneTime()
     // Each card has its own scene: sunrise, night sky, then the sage rings.
     val scene: Scene = when (index % 3) {
@@ -517,8 +526,14 @@ private fun StoryCardTile(index: Int, card: StoryCardData) {
     val ink = if (onNight) FixedWhite else Ink
     Reveal(index) {
         Box(
-            Modifier.width(220.dp).aspectRatio(9f / 16f).clip(RoundedCornerShape(30.dp)).bentoPress(card.onOpen)
+            Modifier.width(220.dp).aspectRatio(9f / 16f).clip(RoundedCornerShape(30.dp))
+                .bentoPress(card.onOpen, onLongClick = card.report?.let { { menuOpen = true } })
         ) {
+            card.report?.let { src ->
+                androidx.compose.material3.DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    com.craftflowtechnologies.meetingmind.core.aireport.ReportAiMenuItem(onClick = { menuOpen = false; onReport(src) })
+                }
+            }
             Canvas(Modifier.matchParentSize()) { scene(time.value) }
             Column(Modifier.fillMaxSize().padding(22.dp)) {
                 Text(card.reference.uppercase(), color = ink.copy(alpha = 0.8f), fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.sp)

@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -40,9 +43,8 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
-import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 
-enum class CreateAction { RECORD, NOTE, MEDIA, IMPORT }
+enum class CreateAction { RECORD, NOTE, MEDIA, IMPORT, YOUTUBE }
 
 /**
  * What the bar's New action opens. Record comes first and largest: it is still the thing people
@@ -51,8 +53,17 @@ enum class CreateAction { RECORD, NOTE, MEDIA, IMPORT }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateSheet(onPick: (CreateAction) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
+    // The navigation bar read from the app's window: inside the sheet's own window the insets can come
+    // through as zero (3-button navigation on some phones), which drew the last line under the bar.
+    val appNavBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceBase,
+        // The content pads for the navigation bar itself (below), so the sheet adds none.
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
+    ) {
+        val sheetNavBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp + maxOf(appNavBar, sheetNavBar))) {
             Text("Create", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, letterSpacing = (-0.3).sp)
             Spacer(Modifier.height(14.dp))
             Surface(onClick = { onPick(CreateAction.RECORD) }, shape = RoundedCornerShape(20.dp), color = Accent, modifier = Modifier.fillMaxWidth()) {
@@ -71,8 +82,11 @@ fun CreateSheet(onPick: (CreateAction) -> Unit, onDismiss: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CreateTile("Write a note", Icons.Filled.EditNote, Modifier.weight(1f)) { onPick(CreateAction.NOTE) }
                 CreateTile("Photos & video", Icons.Filled.PhotoLibrary, Modifier.weight(1f)) { onPick(CreateAction.MEDIA) }
-                CreateTile("Import audio", Icons.Filled.FileUpload, Modifier.weight(1f)) { onPick(CreateAction.IMPORT) }
+                CreateTile("Import a file", Icons.Filled.FileUpload, Modifier.weight(1f)) { onPick(CreateAction.IMPORT) }
             }
+            Spacer(Modifier.height(10.dp))
+            // Notes from a YouTube link: its own card, so it is never hidden behind "Import".
+            YouTubeNotesCard(onClick = { onPick(CreateAction.YOUTUBE) }, modifier = Modifier.testTag("create_youtube"))
             Text(
                 "Every recording gets its own note, so what you write and what was said stay together.",
                 fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 14.dp, start = 2.dp)

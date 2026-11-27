@@ -102,8 +102,8 @@ class DailyAlarmResync : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val prefs = UserPreferencesManager(context.applicationContext)
-                DevotionalScheduler.sync(context.applicationContext, prefs.devotionalProfile.first())
-                ReminderScheduler.sync(context.applicationContext, prefs.reminderSettings.first())
+                // Devotional and faith reminders run only while the Faith space is on.
+                com.craftflowtechnologies.meetingmind.core.navigation.SpaceSchedules.sync(context.applicationContext)
                 runCatching { com.craftflowtechnologies.meetingmind.core.tasks.TaskReminders.sync(context.applicationContext) }
                 runCatching { com.craftflowtechnologies.meetingmind.core.work.WorkRhythmScheduler.sync(context.applicationContext, prefs.workSettings.first(), prefs.usesWork()) }
             } catch (e: Exception) {

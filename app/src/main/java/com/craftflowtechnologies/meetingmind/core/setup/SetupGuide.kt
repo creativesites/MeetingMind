@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore
+import com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker
@@ -60,8 +61,18 @@ data class SetupState(
 ) {
     fun part(p: SetupPart) = parts.first { it.part == p }
     val offlineReady: Boolean get() = parts.all { it.installed }
-    /** Internet mode with a key does all three jobs in the cloud. */
+    /** Internet mode with a cloud route (the person's key or MeetingMind's own service) does all three jobs. */
     val internetReady: Boolean get() = profile.requiresNetwork && hasGeminiKey
+
+    /**
+     * The app can turn speech into text: any installed speech model (with the voice helper), or Internet
+     * mode. This, and only this, is what Home and the record screen remind about. Who spoke and Thinking
+     * are extras: offered on the setup page, never nagged.
+     */
+    val canTranscribe: Boolean get() = part(SetupPart.HEAR).installed || internetReady
+
+    /** What it costs to become able to transcribe offline: the Hearing part only. */
+    val essentialBytes: Long get() = part(SetupPart.HEAR).remainingBytes
     val ready: Boolean get() = offlineReady || internetReady
     val downloading: Boolean get() = parts.any { it.downloading }
     val doneCount: Int get() = parts.count { it.installed }
@@ -72,30 +83,33 @@ data class SetupState(
      * The classic mistake: a language model (or two) downloaded, but nothing to hear with. Said
      * plainly, because the app otherwise looks set up and recordings quietly fail.
      */
-    val thinkingOnly: Boolean get() = part(SetupPart.THINK).installed && !part(SetupPart.HEAR).installed
+    val thinkingOnly: Boolean get() = part(SetupPart.THINK).installed && !part(SetupPart.HEAR).installed && !internetReady
 
     /** One line for the card. */
     val headline: String get() = when {
         offlineReady -> "You're all set"
         downloading -> "Setting up… ${(progress * 100).toInt()}%"
         thinkingOnly -> "One more step: MeetingMind can't hear yet"
+        part(SetupPart.HEAR).installed -> "Ready to transcribe on this phone"
         internetReady -> "Ready with Internet mode"
-        doneCount == 0 -> "Finish setting up MeetingMind"
-        else -> "${doneCount} of ${parts.size} ready — finish setting up"
+        else -> "Get the speech model to transcribe offline"
     }
 
     val detail: String get() = when {
         offlineReady -> "Everything runs privately on this phone."
         downloading -> "Downloading in the background — you can keep using the app."
-        thinkingOnly -> "You have a language model, but transcription needs the speech model too. " +
-            "Add Hearing and Who spoke (${SetupGuide.formatBytes(remainingBytes)})."
-        internetReady -> "Recordings are processed with Gemini. Add the offline pack to work without a connection."
-        else -> "Recording works now. To transcribe and summarise privately, get the offline pack (${SetupGuide.formatBytes(remainingBytes)})."
+        thinkingOnly -> "You have a language model, but transcription needs a speech model too " +
+            "(${SetupGuide.formatBytes(essentialBytes)})."
+        part(SetupPart.HEAR).installed -> "Who spoke and offline summaries are optional extras on the setup page."
+        internetReady -> "Recordings are processed with Gemini. Add a speech model to work without a connection."
+        else -> "Recording works now. To transcribe privately on this phone, get a speech model (${SetupGuide.formatBytes(essentialBytes)})."
     }
 
-    /** Whether the reminder should show (snoozing is checked by the caller). Internet mode with a
-     * key works without the pack, so it isn't nagged — only offered in the setup page. */
-    val needsAttention: Boolean get() = !offlineReady && !internetReady
+    /**
+     * Whether the reminder should show (snoozing is checked by the caller): only when nothing can
+     * transcribe. A phone with any speech model, or Internet mode, is never nagged for more models.
+     */
+    val needsAttention: Boolean get() = !canTranscribe
 }
 
 object SetupGuide {
@@ -104,8 +118,12 @@ object SetupGuide {
     fun recommendedThinker(totalRamGb: Float): AiModelInfo =
         ModelCatalog.entries.firstOrNull { it.id == DeviceCapabilityDetector.recommendedLlmModelId(totalRamGb) } ?: ModelCatalog.qwen25_0_5bInstruct
 
-    fun modelsFor(part: SetupPart, totalRamGb: Float): List<AiModelInfo> = when (part) {
-        SetupPart.HEAR -> listOf(ModelCatalog.sileroVad, ModelCatalog.parakeetTdtV3Int8)
+    /** The speech model that suits this phone and [language]: Parakeet, Whisper or Omnilingual. */
+    fun recommendedHearer(totalRamGb: Float, language: String? = null): AiModelInfo =
+        AsrModelResolver.recommended(AsrModelResolver.ramMbOf(totalRamGb), language)
+
+    fun modelsFor(part: SetupPart, totalRamGb: Float, language: String? = null): List<AiModelInfo> = when (part) {
+        SetupPart.HEAR -> listOf(ModelCatalog.sileroVad, recommendedHearer(totalRamGb, language))
         SetupPart.SPEAKERS -> listOf(ModelCatalog.speakerDiarization)
         SetupPart.THINK -> listOf(recommendedThinker(totalRamGb))
     }
@@ -114,29 +132,47 @@ object SetupGuide {
         get() = ModelCatalog.entries.filter { ModelCapability.SUMMARIZATION in it.capability }
 
     /**
+     * HEAR needs the voice-activity helper and *a* speech model — any of them. With one installed,
+     * that one is listed (nothing more to fetch for it); with none, the recommended one is.
+     */
+    private fun hearingModels(totalRamGb: Float, language: String?, isInstalled: (String) -> Boolean): List<AiModelInfo> {
+        val installed = AsrModelResolver.speechModels.filter { isInstalled(it.id) }.map { it.id }.toSet()
+        val ramMb = AsrModelResolver.ramMbOf(totalRamGb)
+        val speech = AsrModelResolver.resolve(installed, null, language, ramMb)
+            ?: AsrModelResolver.resolve(installed, null, null, ramMb)
+            ?: recommendedHearer(totalRamGb, language)
+        return listOf(ModelCatalog.sileroVad, speech)
+    }
+
+    /**
      * Pure: works out each part from what's installed and what's downloading. THINK counts as done
-     * with *any* language model, not just the recommended one.
+     * with *any* language model, and HEAR with the helper plus *any* speech model, not just the
+     * recommended ones.
      */
     fun compute(
         totalRamGb: Float,
         isInstalled: (String) -> Boolean,
         downloads: Map<String, DownloadProgress> = emptyMap(),
         profile: ProcessingProfile = ProcessingProfile.OFFLINE,
-        hasGeminiKey: Boolean = false
+        hasGeminiKey: Boolean = false,
+        language: String? = null
     ): SetupState {
         val parts = SetupPart.entries.map { part ->
-            val models = modelsFor(part, totalRamGb)
+            val models = if (part == SetupPart.HEAR) hearingModels(totalRamGb, language, isInstalled) else modelsFor(part, totalRamGb, language)
             val installed = if (part == SetupPart.THINK) thinkers.any { isInstalled(it.id) } else models.all { isInstalled(it.id) }
             val missing = models.filterNot { isInstalled(it.id) }
             val active = missing.mapNotNull { downloads[it.id] }
             val total = missing.sumOf { it.sizeBytes }.coerceAtLeast(1)
             val done = missing.sumOf { m -> downloads[m.id]?.let { if (it.total > 0) it.done * m.sizeBytes / it.total else 0L } ?: 0L }
-            // A thinker downloading that isn't the recommended one still counts as progress here.
+            // A thinker (or speech model) downloading that isn't the recommended one still counts as progress here.
             val otherThinker = if (part == SetupPart.THINK && !installed) thinkers.mapNotNull { downloads[it.id] }.firstOrNull { it.running } else null
+            val otherHearer = if (part == SetupPart.HEAR && !installed && active.none { it.running }) {
+                AsrModelResolver.speechModels.filter { it !in models }.mapNotNull { downloads[it.id] }.firstOrNull { it.running }
+            } else null
             PartStatus(
                 part, models, installed,
-                downloading = !installed && (active.any { it.running } || otherThinker != null),
-                progress = if (installed) 1f else otherThinker?.fraction ?: (done.toFloat() / total).coerceIn(0f, 1f),
+                downloading = !installed && (active.any { it.running } || otherThinker != null || otherHearer != null),
+                progress = if (installed) 1f else otherThinker?.fraction ?: otherHearer?.fraction ?: (done.toFloat() / total).coerceIn(0f, 1f),
                 failed = !installed && active.any { it.failed } && active.none { it.running }
             )
         }
@@ -155,7 +191,9 @@ object SetupGuide {
             UserPreferencesManager(app).preferencesFlow,
             GeminiCredentialStore(app).apiKeyFlow.catch { emit(null) }
         ) { infos, prefs, key ->
-            compute(ram, storage::isInstalled, progressOf(infos), prefs.processingProfile, key != null)
+            // Internet mode works with the person's key or through MeetingMind's own service (the proxy).
+            val cloud = key != null || com.craftflowtechnologies.meetingmind.BuildConfig.GEMINI_PROXY_URL.trim().startsWith("https://")
+            compute(ram, storage::isInstalled, progressOf(infos), prefs.processingProfile, cloud, prefs.selectedLanguage)
         }
     }
 

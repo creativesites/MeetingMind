@@ -40,6 +40,19 @@ interface TranscriptAiCleanupEngine {
         profile: TranscriptCleanupProfile,
         singleSpeakerMode: Boolean
     ): AiResult<TranscriptAiCleanupResult>
+
+    /**
+     * Context-aware cleanup entry point allowing domain vocabulary hints, recording title, and
+     * session context to resolve proper nouns and technical terms without inventing unstated words.
+     */
+    suspend fun cleanWithContext(
+        segments: List<TranscriptSegment>,
+        profile: TranscriptCleanupProfile,
+        singleSpeakerMode: Boolean,
+        vocabularyHints: List<String> = emptyList(),
+        recordingTitle: String? = null,
+        customContext: String? = null
+    ): AiResult<TranscriptAiCleanupResult> = clean(segments, profile, singleSpeakerMode)
 }
 
 /**
@@ -83,6 +96,16 @@ class RealTranscriptAiCleanupEngine(
         segments: List<TranscriptSegment>,
         profile: TranscriptCleanupProfile,
         singleSpeakerMode: Boolean
+    ): AiResult<TranscriptAiCleanupResult> =
+        cleanWithContext(segments, profile, singleSpeakerMode)
+
+    override suspend fun cleanWithContext(
+        segments: List<TranscriptSegment>,
+        profile: TranscriptCleanupProfile,
+        singleSpeakerMode: Boolean,
+        vocabularyHints: List<String>,
+        recordingTitle: String?,
+        customContext: String?
     ): AiResult<TranscriptAiCleanupResult> {
         // A hand-correction is never sent through automatic cleanup — the user's own edit always
         // wins and is never second-guessed by a model, matching TranscriptCleanupEngine's rule.
@@ -92,13 +115,29 @@ class RealTranscriptAiCleanupEngine(
         }
         val sortedAll = segments.sortedBy { it.startMs }
 
+        // Frontier cloud models (32k+ context) previously inherited local 600-token output caps,
+        // causing large chunks to truncate mid-JSON and silently fall back to rule-based cleanup.
+        // Keep each chunk focused (~2,400 input tokens on cloud) and grant generous output headroom.
+        val isCloudScale = contextLengthTokens >= CLOUD_CONTEXT_THRESHOLD_TOKENS
+        val reservedOutput = if (isCloudScale) CLOUD_CLEANUP_OUTPUT_TOKENS else CLEANUP_OUTPUT_TOKENS
+        val chunkBudgetContext = if (isCloudScale) {
+            CLOUD_CLEANUP_INPUT_TOKENS + CLEANUP_PROMPT_OVERHEAD_TOKENS + reservedOutput
+        } else {
+            contextLengthTokens
+        }
+        val callMaxOutputTokens = if (isCloudScale) {
+            CLOUD_CLEANUP_OUTPUT_TOKENS
+        } else {
+            (contextLengthTokens / 2).coerceIn(CLEANUP_OUTPUT_TOKENS, 1_536)
+        }
+
         val chunks = TranscriptChunker.chunk(
             eligible,
-            contextLengthTokens,
+            chunkBudgetContext,
             reservedPromptOverheadTokens = CLEANUP_PROMPT_OVERHEAD_TOKENS,
-            reservedOutputTokens = CLEANUP_OUTPUT_TOKENS
+            reservedOutputTokens = reservedOutput
         )
-        val budgetChars = ((contextLengthTokens - CLEANUP_PROMPT_OVERHEAD_TOKENS - CLEANUP_OUTPUT_TOKENS)
+        val budgetChars = ((chunkBudgetContext - CLEANUP_PROMPT_OVERHEAD_TOKENS - reservedOutput)
             .coerceAtLeast(256) * TranscriptChunker.APPROX_CHARS_PER_TOKEN).toInt()
 
         val cleanedById = mutableMapOf<String, String>()
@@ -120,8 +159,17 @@ class RealTranscriptAiCleanupEngine(
             val contextAfter = contextParagraphAfter(sortedAll, chunk.segments.last())
 
             chunksAttempted++
-            val prompt = buildCleanupPrompt(chunk.segments, contextBefore, contextAfter, profile, singleSpeakerMode)
-            val result = languageModel.generate(prompt, maxOutputTokens = CLEANUP_OUTPUT_TOKENS)
+            val prompt = buildCleanupPrompt(
+                primarySegments = chunk.segments,
+                contextBefore = contextBefore,
+                contextAfter = contextAfter,
+                profile = profile,
+                singleSpeakerMode = singleSpeakerMode,
+                vocabularyHints = vocabularyHints,
+                recordingTitle = recordingTitle,
+                customContext = customContext
+            )
+            val result = languageModel.generate(prompt, maxOutputTokens = callMaxOutputTokens)
 
             // Nothing has succeeded yet and the very first real attempt reports the model isn't
             // installed — every later chunk would fail identically, so this is a whole-call
@@ -166,12 +214,23 @@ class RealTranscriptAiCleanupEngine(
         contextBefore: TranscriptSegment?,
         contextAfter: TranscriptSegment?,
         profile: TranscriptCleanupProfile,
-        singleSpeakerMode: Boolean
+        singleSpeakerMode: Boolean,
+        vocabularyHints: List<String> = emptyList(),
+        recordingTitle: String? = null,
+        customContext: String? = null
     ): String {
         val guidance = profile.typeGuidance.let { if (it.isNotBlank()) "\n$it" else "" }
         val speakerNote = if (singleSpeakerMode) {
             "\nThis is a single continuous speaker. Reconstruct natural paragraphs — a pause is not, by itself, evidence of a new thought."
         } else ""
+        val cleanedHints = vocabularyHints.asSequence().map { it.trim() }.filter { it.length >= 2 }.distinct().take(60).toList()
+        val domainBlock = buildString {
+            recordingTitle?.trim()?.takeIf { it.isNotBlank() }?.let { appendLine("Recording topic/title: $it") }
+            customContext?.trim()?.takeIf { it.isNotBlank() }?.let { appendLine("Session context: $it") }
+            if (cleanedHints.isNotEmpty()) {
+                appendLine("Domain terms & proper nouns (use these exact spellings only when the spoken audio clearly refers to them): ${cleanedHints.joinToString(", ")}")
+            }
+        }.trim().let { if (it.isNotBlank()) "\n$it\n" else "" }
         val contextBeforeBlock = contextBefore?.let {
             "\nCONTEXT BEFORE (for reference only — do NOT rewrite this, do NOT include it in your response):\n${renderParagraph(it)}\n"
         } ?: ""
@@ -186,7 +245,7 @@ class RealTranscriptAiCleanupEngine(
             You MUST preserve: meaning, chronology, names, numbers, dates, monetary amounts, commitments, uncertainty, contradictions, speaker identity, and every substantive detail.
             ${profile.permissivenessGuidance}
             You MUST NOT: invent words, facts, names, numbers, dates, or amounts; summarize; add explanations; infer missing speech; remove meaningful uncertainty or contradictions; change speaker attribution; or reorder events.
-            $guidance$speakerNote
+            $guidance$speakerNote$domainBlock
             $contextBeforeBlock
             PRIMARY TEXT — rewrite ONLY this. Respond with exactly one entry per [id] below, using the exact id given:
             $primaryBlock
@@ -231,5 +290,8 @@ class RealTranscriptAiCleanupEngine(
         // Generous relative to the input budget: the response must return the full cleaned text of
         // every paragraph in the chunk PLUS JSON structure overhead, not just a short verdict.
         const val CLEANUP_OUTPUT_TOKENS = 600
+        const val CLOUD_CONTEXT_THRESHOLD_TOKENS = 16_000
+        const val CLOUD_CLEANUP_INPUT_TOKENS = 2_400
+        const val CLOUD_CLEANUP_OUTPUT_TOKENS = 4_096
     }
 }

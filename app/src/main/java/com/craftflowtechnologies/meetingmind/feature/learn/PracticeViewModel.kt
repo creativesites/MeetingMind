@@ -45,7 +45,7 @@ sealed interface PracticeScope {
 
 /**
  * A practice round: builds it from the scope, takes answers, re-queues a miss once, records every
- * attempt through [com.craftflowtechnologies.meetingmind.core.repository.LearningRepository] and
+ * attempt through [com.craftflowtechnologies.meetingmind.core.repository.StudyRepository] and
  * summarises the round at the end. Works offline: the round is built from stored items and kits.
  *
  * Actions: [answerChoice] for multiple choice, [reveal] and [rate] for recall, [notSure] to skip

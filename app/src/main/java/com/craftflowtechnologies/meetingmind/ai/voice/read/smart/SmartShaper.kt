@@ -75,9 +75,10 @@ class SmartShaper(
             if (saved.kind != ChangeKind.AS_WRITTEN && saved.before == original && ScriptValidator.check(original, saved.after, limits) == null) return unit.copy(text = saved.after)
             if (saved.kind == ChangeKind.AS_WRITTEN && model != null) return unit // already tried and failed: don't ask again
         }
+        val academic = AcademicSpokenForm.containsAcademicNotation(original)
         if (model == null) {
             val spoken = SpokenForm.apply(original)
-            val ok = spoken != original && ScriptValidator.check(original, spoken, ScriptValidator.Limits.GENERAL) == null
+            val ok = spoken != original && (academic || ScriptValidator.check(original, spoken, ScriptValidator.Limits.GENERAL) == null)
             if (ok) { remember(key, ScriptChange(original, spoken, ChangeKind.SPOKEN_FORM)); return unit.copy(text = spoken) }
             return unit
         }
@@ -89,6 +90,13 @@ class SmartShaper(
             if (reason == null) {
                 remember(key, ScriptChange(original, cleaned, ChangeKind.REWRITTEN))
                 return unit.copy(text = cleaned)
+            }
+        }
+        if (academic) {
+            val spoken = SpokenForm.apply(original)
+            if (spoken != original) {
+                remember(key, ScriptChange(original, spoken, ChangeKind.SPOKEN_FORM, reason))
+                return unit.copy(text = spoken)
             }
         }
         remember(key, ScriptChange(original, original, ChangeKind.AS_WRITTEN, reason))
@@ -108,6 +116,7 @@ class SmartShaper(
         appendLine("- Do not add, remove or soften any claim. Keep every \"not\", \"never\", \"may\", \"might\" and \"perhaps\" as it is.")
         appendLine("- Do not add quotations, Bible verses, examples, advice or conclusions.")
         appendLine("- Use short, plain sentences. Spell out symbols and abbreviations. No lists, headings or markdown.")
+        appendLine("- Spell out equations, LaTeX formulas, Big-O complexity, code logic, tables and accounting entries (Dr as Debit, Cr as Credit) naturally for the ear without altering any fact or number.")
         appendLine("- Keep roughly the same length.")
         if (attempt > 1) appendLine("- Your last answer broke a rule. Change as little as possible: only smooth the wording.")
         appendLine("Reply with the rewritten passage only.")

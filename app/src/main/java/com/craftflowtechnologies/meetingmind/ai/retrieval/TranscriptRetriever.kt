@@ -78,16 +78,37 @@ class TranscriptRetriever(
             return filtered.map { RetrievedPassage(it, 0f, 0f, 0f) }
         }
 
-        val queryVector = embeddingEngine.embed(question)
-        val scored = filtered.map { segment ->
+        val queryVector = embeddingEngine.embedQuery(question)
+        val segmentVectors = embeddingEngine.embedBatch(filtered.map { it.cleanedText ?: it.text }, isQuery = false)
+
+        val baseEntries = filtered.mapIndexed { idx, segment ->
             val text = segment.cleanedText ?: segment.text
-            val semantic = embeddingEngine.cosineSimilarity(queryVector, embeddingEngine.embed(text))
+            val segVec = segmentVectors.getOrNull(idx) ?: embeddingEngine.embed(text)
+            val semantic = embeddingEngine.cosineSimilarity(queryVector, segVec)
             val keyword = keywordOverlap(intent.keywords, text)
+            Triple(segment, semantic, keyword)
+        }
+
+        // Reciprocal Rank Fusion (RRF) stabilizes dense + sparse fusion when score scales differ.
+        val semanticRanks = baseEntries.withIndex()
+            .sortedByDescending { it.value.second }
+            .withIndex()
+            .associate { (rank, entry) -> entry.index to rank }
+        val keywordRanks = baseEntries.withIndex()
+            .sortedByDescending { it.value.third }
+            .withIndex()
+            .associate { (rank, entry) -> entry.index to rank }
+
+        val scored = baseEntries.mapIndexed { idx, (segment, semantic, keyword) ->
+            val semRrf = 1f / (RRF_K + (semanticRanks[idx] ?: idx))
+            val kwRrf = if (keyword > 0f) 1f / (RRF_K + (keywordRanks[idx] ?: idx)) else 0f
+            val rrfNormalized = ((semRrf * (1f - keywordWeight) + kwRrf * keywordWeight) * RRF_K).coerceIn(0f, 1f)
+            val linearScore = semantic * (1f - keywordWeight) + keyword * keywordWeight
             RetrievedPassage(
                 segment = segment,
                 semanticScore = semantic,
                 keywordScore = keyword,
-                finalScore = semantic * (1f - keywordWeight) + keyword * keywordWeight
+                finalScore = linearScore * 0.7f + rrfNormalized * 0.3f
             )
         }
 
@@ -134,6 +155,10 @@ class TranscriptRetriever(
             }
         }
         return chosen.values.toList()
+    }
+
+    private companion object {
+        const val RRF_K = 60f
     }
 }
 

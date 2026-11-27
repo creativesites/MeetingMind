@@ -250,17 +250,63 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Taps build one contiguous run: the first tap marks a verse, the next extends to it. */
+    /**
+     * Taps build and adjust a multi-verse selection smoothly:
+     * - First tap selects that verse.
+     * - Tapping the only selected verse clears it.
+     * - Tapping another verse extends a single-verse selection or expands an active range outward.
+     * - Tapping an outer boundary of a multi-verse selection trims it by one verse instead of losing the range.
+     * - Tapping inside a multi-verse selection adjusts from the anchor outward so shrinking stays one tap away.
+     */
     fun tapVerse(number: Int) {
         val current = _selection.value
         _focus.value = null
         _selection.value = when {
-            current == null -> { anchor = number; number..number }
-            current.first == number && current.last == number -> { anchor = null; null }
-            anchor != null && current.first == current.last -> minOf(anchor!!, number)..maxOf(anchor!!, number)
-            else -> { anchor = number; number..number }
+            current == null -> {
+                anchor = number
+                number..number
+            }
+            current.first == number && current.last == number -> {
+                anchor = null
+                null
+            }
+            current.first == current.last -> {
+                val base = anchor ?: current.first
+                minOf(base, number)..maxOf(base, number)
+            }
+            number == current.last -> {
+                val nextLast = (current.last - 1).coerceAtLeast(current.first)
+                current.first..nextLast
+            }
+            number == current.first -> {
+                val nextFirst = (current.first + 1).coerceAtMost(current.last)
+                nextFirst..current.last
+            }
+            number > current.last -> {
+                anchor = current.first
+                current.first..number
+            }
+            number < current.first -> {
+                anchor = current.last
+                number..current.last
+            }
+            else -> {
+                val base = (anchor ?: current.first).coerceIn(current.first, current.last)
+                minOf(base, number)..maxOf(base, number)
+            }
         }
     }
+
+    /** Extends (+1) or trims (-1) the selected verse range directly from the compact selection dock. */
+    fun extendSelection(delta: Int) {
+        val current = _selection.value ?: return
+        val maxVerse = (_content.value as? ChapterState.Ready)?.result?.content?.verses?.maxOfOrNull { it.number } ?: Int.MAX_VALUE
+        val newLast = (current.last + delta).coerceIn(current.first, maxVerse)
+        _selection.value = current.first..newLast
+    }
+
+    fun maxVerseNumber(): Int =
+        (_content.value as? ChapterState.Ready)?.result?.content?.verses?.maxOfOrNull { it.number } ?: Int.MAX_VALUE
 
     fun clearSelection() { _selection.value = null; anchor = null }
 

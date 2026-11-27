@@ -53,7 +53,9 @@ fun CreateStudioDialog(seed: CreateSeed, reopen: CreateCard? = null, openId: Int
     val vm: CreateViewModel = viewModel()
     remember(openId) { vm.start(seed, reopen); openId }
     val ui by vm.ui.collectAsState()
+    val joinedCircles by vm.joinedCircles.collectAsState()
     val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { vm.loadJoinedCircles() }
 
     // The companion is off unless switched on; its pose follows the mood and is drawn by the Canvas renderer, so export never depends on animation.
     val settings by rememberCompanionSettings()
@@ -140,9 +142,13 @@ fun CreateStudioDialog(seed: CreateSeed, reopen: CreateCard? = null, openId: Int
                 onBackground = { b -> vm.setDesign({ it.copy(background = b) }, userChoseBackground = true) },
                 onPickPhoto = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onShare = { t -> vm.share(t, companionBitmap) },
+                joinedCircles = joinedCircles,
+                onShareToCircle = { circle, postToFeed -> vm.shareToCircle(circle, postToFeed, companionBitmap) },
+                onApplyPreset = vm::applyViralPreset,
                 sendLabel = sendTarget?.label,
                 onSend = sendTarget?.let { target -> { target.onShare(CreateShareResult(ui.card, ui.scripture)); close() } },
-                onCopy = { copy(context, vm.plainText()); vm.dismissMessage() }
+                onCopy = { copy(context, vm.plainText()); vm.dismissMessage() },
+                onCopyCaption = { copy(context, vm.viralCaptionText()); vm.dismissMessage() }
             )
         )
     }

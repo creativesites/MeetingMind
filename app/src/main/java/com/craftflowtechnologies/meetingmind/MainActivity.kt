@@ -36,14 +36,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.craftflowtechnologies.meetingmind.core.audio.PlaybackController
-import com.craftflowtechnologies.meetingmind.core.audio.RecordingJournalEntry
-import com.craftflowtechnologies.meetingmind.core.audio.RecordingJournalStore
-import com.craftflowtechnologies.meetingmind.core.audio.RecordingState
 import com.craftflowtechnologies.meetingmind.core.common.Formatters
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.MeetingSource
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
-import com.craftflowtechnologies.meetingmind.core.repository.MeetingRepository
 import com.craftflowtechnologies.meetingmind.core.ui.MiniPlayerBar
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -82,6 +78,11 @@ import androidx.lifecycle.lifecycleScope
 class MainActivity : FragmentActivity() {
     private val appLock: AppLockViewModel by viewModels()
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        val tag = com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.getActiveLocaleTag(newBase)
+        super.attachBaseContext(com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.wrapContext(newBase, tag))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -89,7 +90,7 @@ class MainActivity : FragmentActivity() {
         com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.handle(intent)
         // Something shared into the app: it becomes a Work Inbox item, and only on a fresh launch (not a rotation).
         if (savedInstanceState == null && com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
-            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+            handleShare(intent)
         }
         // The database opens (and migrates) before anything reads it. If it can't, the recovery
         // screen offers the data back instead of the app crashing or wiping it (PRD_M0 §4.1).
@@ -122,6 +123,15 @@ class MainActivity : FragmentActivity() {
                     statusBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent),
                     navigationBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent)
                 )
+            }
+            // themePrefs is null until DataStore emits; that is not the same as "follow system" (see shouldApplySavedLanguage).
+            val prefsLoaded = themePrefs != null
+            val savedLanguageTag = themePrefs?.appLanguage
+            androidx.compose.runtime.LaunchedEffect(prefsLoaded, savedLanguageTag) {
+                val activeTag = com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.getActiveLocaleTag(applicationContext)
+                if (com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.shouldApplySavedLanguage(prefsLoaded, savedLanguageTag, activeTag)) {
+                    com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.applyLocale(applicationContext, savedLanguageTag)
+                }
             }
             MeetMindTheme(darkTheme = dark, appearance = themePrefs?.appearance ?: com.craftflowtechnologies.meetingmind.ui.theme.Appearance(homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY)) {
                 // Who the app is for — spaces, look, name, avatar — available to every screen.
@@ -163,9 +173,8 @@ class MainActivity : FragmentActivity() {
     private fun startBackgroundSync() {
         lifecycleScope.launch {
             runCatching {
-                val profile = UserPreferencesManager(applicationContext).devotionalProfile.first()
-                com.craftflowtechnologies.meetingmind.core.devotional.DevotionalScheduler.sync(applicationContext, profile)
-                com.craftflowtechnologies.meetingmind.core.faith.ReminderScheduler.sync(applicationContext, UserPreferencesManager(applicationContext).reminderSettings.first())
+                // Devotional and faith reminders run only while the Faith space is on.
+                com.craftflowtechnologies.meetingmind.core.navigation.SpaceSchedules.sync(applicationContext)
                 UserPreferencesManager(applicationContext).let { it.syncWorkRhythm(it.workSettings.first()) }
                 com.craftflowtechnologies.meetingmind.core.widget.Widgets.refresh(applicationContext)
             }
@@ -174,12 +183,20 @@ class MainActivity : FragmentActivity() {
             runCatching {
                 com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(applicationContext, com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(applicationContext)).purgeTrash()
             }
+            runCatching {
+                com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(applicationContext).syncPushOnStartup()
+            }
         }
     }
 
     override fun onStart() {
         super.onStart()
         appLock.controller.onAppForegrounded()
+        // Back in the foreground: the store may know about a new, renewed or lapsed plan. Never on the main thread.
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway.refresh() }
+            runCatching { com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(applicationContext).syncPushOnStartup() }
+        }
     }
 
     override fun onStop() {
@@ -209,14 +226,38 @@ class MainActivity : FragmentActivity() {
         com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.handle(intent)
         com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.handle(intent)
         if (com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
-            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+            handleShare(intent)
+        }
+    }
+
+    /**
+     * Something shared into the app. A YouTube link opens "Notes from a YouTube video" straight
+     * away, and is also filed in the Work Inbox when Work is on. Anything else goes to the Inbox.
+     */
+    private fun handleShare(intent: android.content.Intent) {
+        // A database or content-resolver error while filing a share must not crash the app.
+        val shareScope = kotlinx.coroutines.CoroutineScope(lifecycleScope.coroutineContext + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+            android.util.Log.w("MainActivity", "Couldn't file the shared item", e)
+        })
+        val youTube = com.craftflowtechnologies.meetingmind.feature.importing.YouTubeLinks.sharedLink(intent)
+        if (youTube == null) {
+            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, shareScope)
+            return
+        }
+        com.craftflowtechnologies.meetingmind.feature.importing.YouTubeLinkRequests.offer(youTube)
+        lifecycleScope.launch {
+            val spaces = runCatching {
+                com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(applicationContext).preferencesFlow.first().identity.spaces
+            }.getOrNull()
+            if (spaces == null || com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces) {
+                com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, shareScope)
+            }
         }
     }
 }
 
 /** The unfinished-recording check happens once per process, however often the UI is re-composed (rotation, unlocking). */
 private object RecordingRecovery {
-    val entry = kotlinx.coroutines.flow.MutableStateFlow<RecordingJournalEntry?>(null)
     @Volatile var checked = false
 }
 
@@ -225,7 +266,10 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
     // The fourth bottom-bar slot: Search, or Work when the person put Work there (§7.4).
     val context = androidx.compose.ui.platform.LocalContext.current
     val workSettings by remember { UserPreferencesManager(context).workSettings }.collectAsState(initial = com.craftflowtechnologies.meetingmind.core.work.WorkSettings())
-    androidx.compose.runtime.CompositionLocalProvider(com.craftflowtechnologies.meetingmind.core.ui.LocalTabSlot provides workSettings.tabSlot) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.craftflowtechnologies.meetingmind.core.ui.LocalTabSlot provides workSettings.tabSlot,
+        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionVolume provides true
+    ) {
         MeetMindAppBody(navController, workSettings.tabSlot)
     }
 }
@@ -243,26 +287,35 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
 
     val startRoute = if (prefsState?.onboardingCompleted == true) Routes.HOME else Routes.ONBOARDING
 
-    // Crash recovery (design spec §3.7): a journal left behind in RECORDING/PAUSED state means
-    // the process died mid-capture rather than stopping cleanly — MeetingRecordingService clears
-    // the journal on every normal stop/discard, so its mere presence in one of those two states
-    // is itself the signal, checked once per app launch.
-    val journalStore = remember { RecordingJournalStore(context) }
-    val recoveryMeetingRepository = remember { MeetingRepository(context, MeetMindDatabase.getInstance(context)) }
+    // Crash recovery (design spec §3.7): a journal left behind by a recording that never stopped
+    // cleanly (a kill, a crash, a flat battery) is recovered automatically, once per process: the
+    // audio is salvaged, a SAVED meeting row is made, and only then is the journal cleared. The
+    // person is told after, so a dismissed prompt can never lose a recording.
     val recoveryScope = rememberCoroutineScope()
-    val recoveryEntry by RecordingRecovery.entry.collectAsState()
     LaunchedEffect(Unit) {
         if (RecordingRecovery.checked) return@LaunchedEffect
+        // A recording still going (the app was swiped away and reopened) is live, not lost.
+        if (com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService.capturing.value) return@LaunchedEffect
         RecordingRecovery.checked = true
-        val entry = journalStore.read()
-        if (entry != null && (entry.state == RecordingState.RECORDING.name || entry.state == RecordingState.PAUSED.name)) {
-            RecordingRecovery.entry.value = entry
+        runCatching { com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.recoverPending(context) }
+    }
+
+    // Reopened while a recording kept going in the background: go back to the recorder, once.
+    var reopenedRecorder by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(prefsState?.onboardingCompleted) {
+        if (reopenedRecorder || prefsState?.onboardingCompleted != true) return@LaunchedEffect
+        if (com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService.capturing.value) {
+            reopenedRecorder = true
+            navController.navigate(Routes.RECORDING) { launchSingleTop = true }
         }
     }
 
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
     // People is built from history, once, after the work schema arrives (PLAN_PROFESSIONAL.md §5.1).
     LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.core.work.WorkStartup.run(context) }
+    // A model downloaded after a recording was processed can now give it a real title. Bounded,
+    // off the main thread, and a no-op until some engine is actually available — see the object.
+    LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.ai.pipeline.RecordingTitleBackfill.run(context) }
     val pendingCircleInvite by com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.pendingCode.collectAsState()
     LaunchedEffect(pendingCircleInvite) {
         if (pendingCircleInvite != null) {
@@ -301,7 +354,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val route = when (destination) {
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME -> Routes.HOME
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NOTES -> Routes.NOTES
-                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH -> com.craftflowtechnologies.meetingmind.core.ui.TabSlots.route(tabSlot, Routes.WORK, Routes.SEARCH)
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH -> Routes.SEARCH
+                // The bar's space places (core/navigation/BarConfig.kt).
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.WORK -> Routes.WORK
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.LEARN -> Routes.LEARN
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH -> Routes.FAITH
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.PERSONAL -> Routes.PERSONAL
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.TASKS -> Routes.TASKS
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NONE -> Routes.HOME
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NEW -> Routes.HOME
@@ -348,7 +407,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         if (deepLink == null || prefsState?.onboardingCompleted != true) return@LaunchedEffect
         when (val link = com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.consume()) {
             is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Processing -> openProcessing(link.meetingId)
-            is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Recording -> navController.navigate(Routes.meetingDetailRoute(link.meetingId))
+            // The activity is exported: a malformed id from another app's intent must not crash it.
+            is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Recording -> runCatching { navController.navigate(Routes.meetingDetailRoute(link.meetingId)) }
+            // The recording's ongoing notification: back to the recorder, which shows the live recording.
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.LiveRecording -> navController.navigate(Routes.RECORDING) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Models -> navController.navigate(Routes.MODELS) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Bible -> navController.navigate(Routes.BIBLE_HOME) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Devotional -> navController.navigate(Routes.devotionalRoute()) { launchSingleTop = true }
@@ -358,6 +420,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Tasks -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Inbox -> navController.navigate(Routes.WORK_INBOX) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WorkSpace -> navController.navigate(Routes.WORK) { launchSingleTop = true }
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Learn -> navController.navigate(Routes.LEARN) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WeeklyReview -> navController.navigate(Routes.WEEKLY_REVIEW) { launchSingleTop = true }
             // Prepare opens the sheet on Work, over the space that owns it; the sheet reads the event from the link.
             is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Prepare -> {
@@ -383,8 +446,14 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     val routesWithNav = setOf(Routes.HOME, Routes.NOTES, Routes.SEARCH, Routes.SETTINGS)
     val onProcessingScreen = currentRoute == Routes.PROCESSING
 
+    // The app menu (core/navigation/AppMenu.kt): every space and feature, from any screen.
+    val appMenu = com.craftflowtechnologies.meetingmind.core.navigation.rememberAppMenuState()
+    val youTubeSheet = com.craftflowtechnologies.meetingmind.feature.importing.rememberYouTubeSheetState()
     androidx.compose.runtime.CompositionLocalProvider(
-        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionOpenSettings provides { navController.navigate(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) }
+        com.craftflowtechnologies.meetingmind.core.navigation.LocalAppMenu provides appMenu.controller,
+        com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet provides youTubeSheet.controller,
+        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionOpenSettings provides { navController.navigate(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) },
+        com.craftflowtechnologies.meetingmind.core.ui.mm.LocalAiOpenSettings provides { navController.navigate(Routes.SETTINGS) }
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
@@ -407,6 +476,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
                     }
                     navController.navigate(Routes.recordTypeRoute(RecordingType.MEETING)) { launchSingleTop = true }
+                },
+                // Picked "On this phone": Home underneath, the guided on-device setup on top, so Back lands on Home.
+                onSetUpOnDevice = {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                    navController.navigate(Routes.SETUP) { launchSingleTop = true }
                 }
             )
         }
@@ -418,7 +494,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val setupVm: com.craftflowtechnologies.meetingmind.feature.setup.SetupViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
             val setupState by setupVm.state.collectAsState()
             val setupSnoozedUntil by setupVm.snoozedUntil.collectAsState()
+            // A vertical's home falls back to Today while its space is turned off (core/navigation).
             val homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance.current.homeStyle
+                .effectiveFor(com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current.spaces)
             // The Circles card is on the Today and Work homes. Other homes never load circles, so no sign-in happens for them.
             val homeCirclesVm: com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel? =
                 if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY ||
@@ -428,8 +506,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
                     )
                 ) else null
-            val homeCircles = if (homeCirclesVm != null) homeCirclesVm.state.collectAsState().value
-                else com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Loading
+            val homeCirclesFlow = remember(homeCirclesVm) {
+                homeCirclesVm?.state ?: kotlinx.coroutines.flow.flowOf(com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Empty)
+            }
+            val homeCircles by homeCirclesFlow.collectAsState(initial = com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Empty)
             if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.EVERYDAY) com.craftflowtechnologies.meetingmind.feature.today.EverydayHome(
                 viewModel = vm,
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
@@ -443,11 +523,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 homeCircles = homeCircles,
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
-                onStartCircle = { navController.navigate(Routes.CIRCLE_CREATE) },
+                onStartCircle = { navController.navigate(Routes.circleCreateRoute()) },
                 onRetryCircles = { homeCirclesVm?.retry() }
             ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PROFESSIONAL) com.craftflowtechnologies.meetingmind.feature.work.ProfessionalHome(
                 today = vm,
                 work = viewModel(viewModelStoreOwner = context as ComponentActivity),
+                onOpenBrief = { navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.WEEKLY)) },
+                onOpenWeeklyReview = { navController.navigate(Routes.WEEKLY_REVIEW) },
                 onRecord = { navController.navigate(Routes.RECORDING) },
                 onRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
                 onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
@@ -460,7 +542,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
-                onOpenStudy = { navController.navigate(Routes.LEARN) }.takeIf { com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING in com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current.spaces },
+                onOpenLearn = { navController.navigate(Routes.LEARN) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
@@ -468,7 +550,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 homeCircles = homeCircles,
                 onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
-                onStartCircle = { navController.navigate(Routes.CIRCLE_CREATE) },
+                onStartCircle = { navController.navigate(Routes.circleCreateRoute("work")) },
                 onRetryCircles = { homeCirclesVm?.retry() },
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenWrapUp = { id, compose -> navController.navigate(Routes.wrapUpRoute(id, compose)) },
@@ -482,6 +564,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     navController.navigate(Routes.SHARE)
                 },
                 onNavigateBottomNav = navigateToPrimary
+            ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.LEARNING) LearnHomeHost(
+                navController = navController,
+                onNavigateBottomNav = navigateToPrimary
             ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM) com.craftflowtechnologies.meetingmind.feature.today.home.CalmHome(
                 today = vm,
                 onRecord = { navController.navigate(Routes.RECORDING) },
@@ -493,7 +578,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenProcessing = openProcessing,
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
-                onOpenStudy = { navController.navigate(Routes.LEARN) }.takeIf { com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING in com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current.spaces },
+                onOpenLearn = { navController.navigate(Routes.LEARN) },
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
@@ -528,11 +613,14 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
-                onOpenStudy = { navController.navigate(Routes.LEARN) },
+                onOpenStudy = { navController.navigate(Routes.STUDY_HOME) },
+                onOpenLearn = { navController.navigate(Routes.LEARN) },
+                onOpenTasks = { navController.navigate(Routes.TASKS) },
+                onOpenPersonal = { navController.navigate(Routes.PERSONAL) },
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 homeCircles = homeCircles,
                 onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
-                onStartCircle = { navController.navigate(Routes.CIRCLE_CREATE) },
+                onStartCircle = { navController.navigate(Routes.circleCreateRoute()) },
                 onRetryCircles = { homeCirclesVm?.retry() },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
@@ -545,7 +633,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onImport = { navController.navigate(Routes.IMPORT) },
                 setup = setupState,
                 setupSnoozed = setupSnoozedUntil > System.currentTimeMillis(),
-                onSetUp = { setupVm.setUp() },
+                // Home's one tap gets what transcription needs; the extras stay on the setup page.
+                onSetUp = { setupVm.setUp(listOf(com.craftflowtechnologies.meetingmind.core.setup.SetupPart.HEAR)) },
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
                 onSnoozeSetup = { setupVm.snooze() },
                 tourEnabled = true
@@ -588,16 +677,141 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 setupNotice = {
                     val setupVm: com.craftflowtechnologies.meetingmind.feature.setup.SetupViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
                     val setup by setupVm.state.collectAsState()
-                    setup?.takeIf { !it.offlineReady && (!it.internetReady || it.thinkingOnly) }?.let { st ->
+                    setup?.takeIf { it.needsAttention }?.let { st ->
                         com.craftflowtechnologies.meetingmind.feature.setup.SetupBanner(st, onClick = { navController.navigate(Routes.SETUP) })
                     }
                 }
             )
         }
 
+        // LEARN — Learning vertical flagship studio
+        composable(Routes.LEARN) {
+            LearnHomeHost(
+                navController = navController,
+                onNavigateBottomNav = null
+            )
+        }
+
+        composable(
+            route = Routes.LEARN_PRACTICE,
+            arguments = listOf(
+                navArgument("sessionId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("activityId") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId")
+            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            // Practice is a full-screen mode (decision D1). Callers prepare the deck on the shared
+            // view model first; a bare sessionId (old links) opens that session's practice.
+            LaunchedEffect(sessionId) {
+                if (!sessionId.isNullOrBlank() && vm.practiceActivities.value.isEmpty()) {
+                    vm.startSessionPractice(sessionId, dueOnly = false) { }
+                }
+            }
+            com.craftflowtechnologies.meetingmind.ui.theme.LearningAccent {
+                com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeModeScreen(
+                    viewModel = vm,
+                    onClose = { navController.popBackStack() },
+                    onOpenSession = { id -> navController.navigate(Routes.learningSessionRoute(id)) }
+                )
+            }
+        }
+
+        composable(
+            route = Routes.LEARN_EXAM,
+            arguments = listOf(
+                navArgument("goalId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("courseId") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            var shareMarkdown by remember { mutableStateOf<String?>(null) }
+
+            com.craftflowtechnologies.meetingmind.feature.learning.ExamPrepScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onOpenNote = { noteId -> navController.navigate(Routes.learningSessionRoute(noteId)) },
+                onStartExamDrill = { navController.navigate(Routes.learnPracticeRoute()) },
+                onShareToCircle = { markdown -> shareMarkdown = markdown }
+            )
+
+            if (shareMarkdown != null) {
+                com.craftflowtechnologies.meetingmind.feature.learning.ShareStudyPackToCircleSheet(
+                    title = "Exam Study Pack",
+                    cramSheetMarkdown = shareMarkdown!!,
+                    onDismiss = { shareMarkdown = null },
+                    onPublished = { circleName ->
+                        shareMarkdown = null
+                        android.widget.Toast.makeText(context, "Shared study pack to $circleName", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onNavigateCreateCircle = {
+                        shareMarkdown = null
+                        navController.navigate(Routes.circleCreateRoute("learning"))
+                    }
+                )
+            }
+        }
+
+        composable(
+            Routes.LEARNING_SESSION,
+            arguments = listOf(navArgument("noteId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val noteId = backStackEntry.arguments?.getString("noteId").orEmpty()
+            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            LaunchedEffect(noteId) {
+                if (noteId.isNotBlank()) {
+                    vm.loadSessionDetail(noteId)
+                }
+            }
+
+            com.craftflowtechnologies.meetingmind.ui.theme.LearningAccent {
+                com.craftflowtechnologies.meetingmind.feature.learning.space.SessionStudioScreen(
+                    noteId = noteId,
+                    viewModel = vm,
+                    onBack = { navController.popBackStack() },
+                    onOpenNotes = { id -> navController.navigate(Routes.noteRoute(id)) },
+                    onPlayMoment = { meetingId, startMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startMs)) },
+                    onStartPractice = { navController.navigate(Routes.learnPracticeRoute()) }
+                )
+            }
+        }
+
+        // PERSONAL — "Your garden": the day's question, practices as plants, and the seed jar.
+        composable(Routes.PERSONAL) {
+            androidx.compose.material3.Scaffold(
+                contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+                bottomBar = {
+                    com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
+                        current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.PERSONAL,
+                        onNavigate = { if (it != com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.PERSONAL) navigateToPrimary(it) }
+                    )
+                }
+            ) { personalBar ->
+                Box(Modifier.padding(bottom = personalBar.calculateBottomPadding())) {
+                    com.craftflowtechnologies.meetingmind.feature.personal.PersonalHost(
+                        onAnswerAloud = { question -> navController.navigate(Routes.recordTitledRoute(RecordingType.JOURNAL, question)) },
+                        onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                        onOpenSeedJar = { navController.navigate(Routes.NOTES) },
+                        onCaptureIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) }
+                    )
+                }
+            }
+        }
+
         // FAITH — one view model shared by the space and its two sub-pages, all behind the optional lock.
         composable(Routes.FAITH) {
             val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            // Faith keeps the app bar, so the other spaces, Notes and New are one tap away inside it.
+            androidx.compose.material3.Scaffold(
+                contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+                bottomBar = {
+                    com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
+                        current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH,
+                        onNavigate = { if (it != com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH) navigateToPrimary(it) }
+                    )
+                }
+            ) { faithBar ->
+            Box(Modifier.padding(bottom = faithBar.calculateBottomPadding())) {
             com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
                 com.craftflowtechnologies.meetingmind.feature.faith.FaithScreen(
                     viewModel = vm,
@@ -618,6 +832,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onOpenFellowship = { navController.navigate(Routes.FELLOWSHIP) },
                     onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) }
                 )
+            }
+            }
             }
         }
         composable(Routes.TESTIMONIES) {
@@ -641,17 +857,23 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             com.craftflowtechnologies.meetingmind.feature.circles2.CirclesListScreen(
                 onBack = { navController.popBackStack() },
                 onOpenCircle = { circleId -> navController.navigate(Routes.circleDetailRoute(circleId)) },
-                onCreate = { navController.navigate(Routes.CIRCLE_CREATE) },
+                onCreate = { navController.navigate(Routes.circleCreateRoute()) },
                 initialCode = inviteCode,
-                onInitialCodeHandled = { com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consume() }
+                onInitialCodeHandled = { com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consume() },
+                onCreateInSpace = { sp -> navController.navigate(Routes.circleCreateRoute(sp)) }
             )
         }
-        composable(Routes.CIRCLE_CREATE) {
+        composable(
+            Routes.CIRCLE_CREATE,
+            arguments = listOf(navArgument("space") { type = NavType.StringType; nullable = true; defaultValue = null })
+        ) { entry ->
+            val initialSpace = entry.arguments?.getString("space")
             com.craftflowtechnologies.meetingmind.feature.circles2.CreateCircleScreen(
                 onBack = { navController.popBackStack() },
                 onCreated = { circleId ->
                     navController.navigate(Routes.circleDetailRoute(circleId)) { popUpTo(Routes.CIRCLE_CREATE) { inclusive = true } }
-                }
+                },
+                initialSpace = initialSpace
             )
         }
         composable(
@@ -724,6 +946,26 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         composable(Routes.APPEARANCE) {
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.AppearanceViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.settings.AppearanceScreen(vm, onNavigateBack = { navController.popBackStack() })
+        }
+        composable(Routes.LANGUAGE) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.settings.LanguageSelectionViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.settings.LanguageSelectionScreen(vm, onNavigateBack = { navController.popBackStack() })
+        }
+        composable(
+            Routes.TASKS_OPEN,
+            arguments = listOf(
+                navArgument("task") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("list") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.tasks.TasksViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.tasks.TasksScreen(
+                vm, onNavigateBack = { navController.popBackStack() },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenRecording = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                initialTaskId = entry.arguments?.getString("task"),
+                initialListId = entry.arguments?.getString("list")
+            )
         }
         composable(Routes.TASKS) {
             val vm: com.craftflowtechnologies.meetingmind.feature.tasks.TasksViewModel = viewModel()
@@ -803,7 +1045,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
                     onShare = { req -> com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) },
                     playOnOpen = entry.arguments?.getString("play"),
-                    onLive = { mode -> navController.navigate(Routes.prayRoute(mode.name)) }
+                    onLive = { mode -> navController.navigate(Routes.prayRoute(mode.name)) },
+                    onCreateCircle = { navController.navigate(Routes.circleCreateRoute("faith")) }
                 )
             }
         }
@@ -909,7 +1152,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
                 onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) },
-                onRecord = { navController.navigate(Routes.RECORDING) }
+                onRecord = { navController.navigate(Routes.RECORDING) },
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
             )
         }
 
@@ -934,11 +1178,18 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenSettings = { navController.navigate(Routes.WORK_SETTINGS) },
                 onSearch = openSearch,
+                onOpenProcessing = openProcessing,
                 onImport = { navController.navigate(Routes.IMPORT) },
                 onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
                 onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) },
                 onOpenWeeklyReview = { navController.navigate(Routes.WEEKLY_REVIEW) },
-                onNavigateBottomNav = navigateToPrimary
+                onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
+                onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
+                onStartCircle = { navController.navigate(Routes.circleCreateRoute("work")) },
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) },
+                onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) },
+                onOpenTaskPage = { navController.navigate(Routes.tasksOpenRoute(taskId = it)) },
+                onOpenTaskList = { navController.navigate(Routes.tasksOpenRoute(listId = it)) }
             )
         }
         composable(Routes.WEEKLY_REVIEW) {
@@ -954,13 +1205,57 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             com.craftflowtechnologies.meetingmind.feature.work.InboxScreen(
                 viewModel = vm, onNavigateBack = { navController.popBackStack() },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
-                onImportAudio = { path -> navController.navigate(Routes.importFileRoute(path)) }
+                onImportAudio = { path -> navController.navigate(Routes.importFileRoute(path)) },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onOpenProcessing = openProcessing,
+                onOpenDocument = { id, page -> navController.navigate(Routes.documentRoute(id, page)) },
+                onOpenProject = { navController.navigate(Routes.projectRoute(it)) }
             )
         }
-        composable(Routes.IMPORT_FILE, arguments = listOf(navArgument("path") { type = NavType.StringType })) { entry ->
+        composable(
+            Routes.DOCUMENT,
+            arguments = listOf(
+                navArgument("itemId") { type = NavType.StringType },
+                navArgument("page") { type = NavType.IntType; defaultValue = 1 }
+            )
+        ) { entry ->
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
+            val itemId = entry.arguments?.getString("itemId").orEmpty()
+            val item by androidx.compose.runtime.produceState<com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity?>(null, itemId) { value = vm.inboxItem(itemId) }
+            val path = item?.uri
+            if (path != null) {
+                com.craftflowtechnologies.meetingmind.feature.work.DocumentViewerScreen(
+                    itemId = itemId,
+                    title = item?.title ?: "Document",
+                    filePath = path,
+                    onBack = { navController.popBackStack() },
+                    initialPage = entry.arguments?.getInt("page") ?: 1
+                )
+            }
+        }
+        composable(Routes.IMPORT_FILE, arguments = listOf(
+            navArgument("path") { type = NavType.StringType },
+            navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null }
+        )) { entry ->
             val vm: ImportViewModel = viewModel()
-            val path = URLDecoder.decode(entry.arguments?.getString("path").orEmpty(), "UTF-8")
-            LaunchedEffect(path) { vm.handleSelectedUri(android.net.Uri.fromFile(java.io.File(path))) }
+            // Navigation has already decoded the path once; a literal "%" in a file name makes a second decode throw.
+            val rawPath = entry.arguments?.getString("path").orEmpty()
+            val path = runCatching { URLDecoder.decode(rawPath, "UTF-8") }.getOrDefault(rawPath)
+            val presetType = entry.arguments?.getString("type")?.let { t ->
+                runCatching { com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(t) }.getOrNull()
+            }
+            LaunchedEffect(path) {
+                if (com.craftflowtechnologies.meetingmind.core.youtube.YouTubeUrlParser.isYouTubeUrl(path)) {
+                    vm.handleYouTubeUrl(path)
+                    // Loading the link resets the kind, so the sheet's choice is applied once it has loaded.
+                    if (presetType != null) {
+                        vm.importState.first { it.youtubeUrl != null || it.error != null }
+                        vm.selectRecordingType(presetType)
+                    }
+                } else {
+                    vm.handleSelectedUri(android.net.Uri.fromFile(java.io.File(path)))
+                }
+            }
             ImportScreen(
                 viewModel = vm, onNavigateBack = { navController.popBackStack() },
                 onStartProcessing = { meetingId, audioPath, durationMs ->
@@ -1009,7 +1304,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             com.craftflowtechnologies.meetingmind.feature.work.BriefScreen(
                 target = com.craftflowtechnologies.meetingmind.core.work.BriefTarget.of(kind, entry.arguments?.getString("id").orEmpty()), viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
-                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onOpenTarget = { t -> navController.navigate(Routes.brief(t.kind, t.scope.cacheKey.second)) { popUpTo(Routes.BRIEF) { inclusive = true } } }
             )
         }
         composable(Routes.CONTEXT, arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType })) { entry ->
@@ -1042,7 +1338,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 },
                 onPlay = { at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) },
                 onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
-                startComposing = entry.arguments?.getBoolean("compose") == true
+                startComposing = entry.arguments?.getBoolean("compose") == true,
+                onStartCircle = { navController.navigate(Routes.circleCreateRoute("work")) }
             )
         }
         composable(Routes.WORK_SETTINGS) {
@@ -1077,7 +1374,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenNotebook = { navController.navigate(Routes.notebookRoute(it)) },
                 onOpenArchive = { navController.navigate(Routes.NOTES_ARCHIVE) },
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateBottomNav = navigateToPrimary
+                onNavigateBottomNav = navigateToPrimary,
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
             )
         }
         composable(Routes.NOTES_ARCHIVE) {
@@ -1118,8 +1416,11 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onRecordHere = { navController.navigate(Routes.recordIntoNoteRoute(it)) },
                 onOpenTasks = { navController.navigate(Routes.TASKS) },
-                onOpenLesson = { navController.navigate(Routes.lessonRoute(it)) },
-                startWithMediaPicker = media
+                startWithMediaPicker = media,
+                onCreateCircle = { navController.navigate(Routes.circleCreateRoute("faith")) },
+                onOpenStudyStudio = { id -> navController.navigate(Routes.learningSessionRoute(id)) },
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) },
+                onOpenLesson = { navController.navigate(Routes.studyLessonRoute(it)) }
             )
         }
 
@@ -1161,10 +1462,28 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onNavigateBack = { navController.popBackStack() },
                 onProcessingComplete = { finishedMeetingId ->
                     // A work recording with findings opens its Wrap-up (PLAN_PROFESSIONAL.md §4.3);
-                    // anything else opens as before.
+                    // a Sermon or Lecture/Lesson with a polished note opens straight into the note;
+                    // anything else opens MeetingDetail as before.
                     recoveryScope.launch {
-                        val wrapUp = com.craftflowtechnologies.meetingmind.core.work.WorkRepository(MeetMindDatabase.getInstance(context)).wantsWrapUp(finishedMeetingId)
-                        navController.navigate(if (wrapUp) Routes.wrapUpRoute(finishedMeetingId) else Routes.meetingDetailRoute(finishedMeetingId)) {
+                        val db = MeetMindDatabase.getInstance(context)
+                        val wrapUp = com.craftflowtechnologies.meetingmind.core.work.WorkRepository(db).wantsWrapUp(finishedMeetingId)
+                        val targetRoute = if (wrapUp) {
+                            Routes.wrapUpRoute(finishedMeetingId)
+                        } else {
+                            val meeting = db.meetingDao().getMeetingById(finishedMeetingId)
+                            val type = meeting?.recordingType?.let { runCatching { RecordingType.valueOf(it) }.getOrNull() }
+                            val noteId = meeting?.noteId
+                            val polishMode = runCatching {
+                                UserPreferencesManager(context).preferencesFlow.first().notePolishMode
+                            }.getOrDefault(com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP)
+                            val openPolishedNote = noteId != null &&
+                                polishMode != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.OFF &&
+                                (type == RecordingType.SERMON || type == RecordingType.LECTURE || type == RecordingType.RESEARCH ||
+                                    type == RecordingType.MOTIVATION || type == RecordingType.LIFE_SKILLS ||
+                                    meeting?.source == MeetingSource.YOUTUBE_VIDEO.name)
+                            if (openPolishedNote) Routes.noteRoute(noteId!!) else Routes.meetingDetailRoute(finishedMeetingId)
+                        }
+                        navController.navigate(targetRoute) {
                             popUpTo(Routes.PROCESSING) { inclusive = true }
                         }
                     }
@@ -1201,8 +1520,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     else navController.navigate(Routes.noteRoute(noteId))
                 },
                 onStudy = { noteId, mId -> navController.navigate(Routes.studyRoute(noteId, meetingId = mId)) },
-                onOpenLesson = { navController.navigate(Routes.lessonRoute(it)) },
-                onCreateBrief = { mId -> navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.MEETING, mId)) }
+                onCreateBrief = { mId -> navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.MEETING, mId)) },
+                onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) },
+                onOpenLesson = { navController.navigate(Routes.studyLessonRoute(it)) }
             )
         }
 
@@ -1243,10 +1563,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
 
-        composable(Routes.SETTINGS) {
+        // Settings: the hub, or opened at one group from a vertical's menu (settings_group/faith).
+        val settingsDestination: @Composable (String?) -> Unit = { startGroup ->
             val vm: SettingsViewModel = viewModel()
             SettingsScreen(
                 viewModel = vm,
+                startGroup = startGroup,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToModels = { navController.navigate(Routes.MODELS) },
                 onNavigateBottomNav = navigateToPrimary,
@@ -1254,6 +1576,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
                 onOpenDataBackup = { navController.navigate(Routes.DATA_BACKUP) },
                 onOpenAppearance = { navController.navigate(Routes.APPEARANCE) },
+                onOpenLanguage = { navController.navigate(Routes.LANGUAGE) },
                 onOpenWork = { navController.navigate(Routes.WORK_SETTINGS) },
                 onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
                 onOpenRecipes = { navController.navigate(Routes.RECIPES) },
@@ -1280,13 +1603,19 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 }
             )
         }
+        composable(Routes.SETTINGS) { settingsDestination(null) }
+        composable(
+            Routes.SETTINGS_GROUP,
+            arguments = listOf(navArgument("group") { type = NavType.StringType })
+        ) { entry -> settingsDestination(entry.arguments?.getString("group")) }
 
         // INTEGRATIONS (W13)
         composable(Routes.INTEGRATIONS) {
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsScreen(
                 viewModel = vm,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigatePaywall = { navController.navigate(Routes.paywallRoute("SETTINGS")) { launchSingleTop = true } }
             )
         }
 
@@ -1303,6 +1632,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     // After a real recording's notes appear: one gentle, dismissible offer (never the sample, never more than weekly).
     com.craftflowtechnologies.meetingmind.feature.paywall.PostResultOfferHost(
         onResultScreen = currentRoute == Routes.MEETING_DETAIL,
+        meetingId = if (currentRoute == Routes.MEETING_DETAIL) currentBackStackEntry?.arguments?.getString("meetingId") else null,
         onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) { launchSingleTop = true } }
     )
 
@@ -1332,6 +1662,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     com.craftflowtechnologies.meetingmind.core.ui.CreateAction.NOTE -> openNewNote(false)
                     com.craftflowtechnologies.meetingmind.core.ui.CreateAction.MEDIA -> openNewNote(true)
                     com.craftflowtechnologies.meetingmind.core.ui.CreateAction.IMPORT -> navController.navigate(Routes.IMPORT)
+                    com.craftflowtechnologies.meetingmind.core.ui.CreateAction.YOUTUBE -> youTubeSheet.controller.open()
                 }
             },
             onDismiss = { showCreateSheet = false }
@@ -1358,64 +1689,128 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         )
     }
 
+    suspend fun resolveProcessedTargetRoute(finishedMeetingId: String): String {
+        val db = MeetMindDatabase.getInstance(context)
+        val wrapUp = com.craftflowtechnologies.meetingmind.core.work.WorkRepository(db).wantsWrapUp(finishedMeetingId)
+        if (wrapUp) return Routes.wrapUpRoute(finishedMeetingId)
+        val meeting = db.meetingDao().getMeetingById(finishedMeetingId)
+        val type = meeting?.recordingType?.let { runCatching { RecordingType.valueOf(it) }.getOrNull() }
+        val noteId = meeting?.noteId
+        val polishMode = runCatching {
+            UserPreferencesManager(context).preferencesFlow.first().notePolishMode
+        }.getOrDefault(com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP)
+        // Only open straight into the note when not going to Work WrapUp; otherwise detail/note fits the workflow.
+        val openNoteDirectly = noteId != null &&
+            polishMode != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.OFF &&
+            (type == RecordingType.SERMON || type == RecordingType.LECTURE || type == RecordingType.RESEARCH ||
+                type == RecordingType.MOTIVATION || type == RecordingType.LIFE_SKILLS ||
+                meeting?.source == MeetingSource.YOUTUBE_VIDEO.name)
+        return if (openNoteDirectly) Routes.noteRoute(noteId!!) else Routes.meetingDetailRoute(finishedMeetingId)
+    }
+
     // "{title} is ready." with Open and a nod; notes that finish during a recording wait for the stop
     // (signature moments §3.2, §4). Not for the note the person is already watching or reading.
     com.craftflowtechnologies.meetingmind.feature.moments.NoteReadySnackbarHost(
         suppressed = { id ->
+            val currentMeetingId = currentBackStackEntry?.arguments?.getString("meetingId")
+            val currentNoteId = currentBackStackEntry?.arguments?.getString("noteId")
             prefsState?.onboardingCompleted != true ||
-                (currentRoute in setOf(Routes.PROCESSING, Routes.MEETING_DETAIL, Routes.WRAP_UP) && currentBackStackEntry?.arguments?.getString("meetingId") == id)
+                (currentRoute in setOf(Routes.PROCESSING, Routes.MEETING_DETAIL, Routes.WRAP_UP) && currentMeetingId == id) ||
+                (currentRoute == Routes.NOTE && currentNoteId == "note_$id")
         },
-        onOpen = { id -> navController.navigate(Routes.meetingDetailRoute(id)) },
+        onOpen = { id ->
+            recoveryScope.launch {
+                navController.navigate(resolveProcessedTargetRoute(id))
+            }
+        },
         onShowAll = { navController.navigate(Routes.NOTES) { popUpTo(Routes.HOME) { saveState = true }; launchSingleTop = true; restoreState = true } },
         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (currentRoute in routesWithNav) 72.dp else 0.dp)
     )
 
-    recoveryEntry?.let { entry ->
-        AlertDialog(
-            onDismissRequest = { /* Never auto-dismiss into a silent discard — spec §3.7. Back
-                gesture just closes this composition's state; the same journal is read again and
-                re-prompted on the next app launch since nothing here has cleared it. */ RecordingRecovery.entry.value = null },
-            title = { Text("We found an unfinished recording.") },
-            text = {
-                Text(
-                    "MeetingMind closed unexpectedly while recording \"${entry.title}\" " +
-                        "(about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)} captured). " +
-                        "Continuing this recording isn't supported yet, but you can save what was " +
-                        "already captured or delete it."
-                )
+    com.craftflowtechnologies.meetingmind.core.navigation.AppMenuHost(
+        state = appMenu,
+        navigate = { route -> navController.navigate(route) { launchSingleTop = true } },
+        onCreate = { showCreateSheet = true },
+        onYouTube = { from -> youTubeSheet.controller.open(from) }
+    )
+    com.craftflowtechnologies.meetingmind.feature.importing.YouTubeSheetHost(
+        state = youTubeSheet,
+        navigate = { route -> navController.navigate(route) { launchSingleTop = true } }
+    )
+
+    // What automatic recovery found, told after the fact; never while a recording is running.
+    val recoveryNotices by com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.notices.collectAsState()
+    val capturingNow by com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService.capturing.collectAsState()
+    recoveryNotices.firstOrNull()?.takeIf { !capturingNow }?.let { notice ->
+        val autoRecovery = com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery
+        val entry = notice.entry
+        when (notice) {
+            is com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.Outcome.Recovered -> AlertDialog(
+                onDismissRequest = { autoRecovery.dismiss(notice) },
+                title = { Text("We recovered a recording") },
+                text = {
+                    Text(
+                        "\"${entry.title}\" (${Formatters.formatDurationHms(notice.durationMs)}) was interrupted, " +
+                            "so we saved what was recorded. It's in your notes. Make its notes now, or later from the recording."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        autoRecovery.dismiss(notice)
+                        navController.navigate(Routes.processingRoute(entry.meetingId, notice.audioPath, notice.durationMs))
+                    }) { Text("Make notes") }
+                },
+                dismissButton = { TextButton(onClick = { autoRecovery.dismiss(notice) }) { Text("Later") } }
+            )
+            is com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.Outcome.NoAudio -> AlertDialog(
+                onDismissRequest = { autoRecovery.dismiss(notice) },
+                title = { Text("A recording was interrupted") },
+                text = { Text("MeetingMind closed while recording \"${entry.title}\", before any audio could be saved.") },
+                confirmButton = { TextButton(onClick = { autoRecovery.dismiss(notice) }) { Text("OK") } }
+            )
+            is com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.Outcome.NotYet -> AlertDialog(
+                onDismissRequest = { autoRecovery.dismiss(notice) },
+                title = { Text("We couldn't add your recording yet") },
+                text = { Text("\"${entry.title}\" is safe on this phone. We'll add it to your notes the next time you open MeetingMind.") },
+                confirmButton = { TextButton(onClick = { autoRecovery.dismiss(notice) }) { Text("OK") } }
+            )
+            is com.craftflowtechnologies.meetingmind.core.audio.RecordingAutoRecovery.Outcome.AlreadySaved -> LaunchedEffect(notice) { autoRecovery.dismiss(notice) }
+        }
+    }
+    }
+    }
+}
+
+@Composable
+private fun LearnHomeHost(
+    navController: NavHostController,
+    onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+
+    // The Learning space (design/learning-vertical-design-spec.md). Exam Prep and Teach-Back are
+    // Release 2 and 1.1, so the space has no entry to them (decision D3); their code is kept.
+    com.craftflowtechnologies.meetingmind.feature.learning.space.LearningSpaceScreen(
+        viewModel = vm,
+        onNavigateBottomNav = onNavigateBottomNav,
+        actions = com.craftflowtechnologies.meetingmind.feature.learning.space.LearningSpaceActions(
+            onBack = { navController.popBackStack() },
+            onOpenSpace = { navController.navigate(Routes.LEARN) { launchSingleTop = true } },
+            onOpenSession = { id -> navController.navigate(Routes.learningSessionRoute(id)) },
+            onStartPractice = { navController.navigate(Routes.learnPracticeRoute()) { launchSingleTop = true } },
+            onRecordLecture = { navController.navigate(Routes.recordTypeRoute(RecordingType.LECTURE)) },
+            onWriteStudyNote = {
+                vm.createStudyNote(
+                    title = "Study Note",
+                    domain = com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain.GENERAL,
+                    courseNotebookId = null
+                ) { noteId ->
+                    navController.navigate(Routes.noteRoute(noteId))
+                }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    recoveryScope.launch {
-                        val recordingType = try {
-                            RecordingType.valueOf(entry.recordingType)
-                        } catch (e: Exception) {
-                            RecordingType.GENERAL
-                        }
-                        recoveryMeetingRepository.createInitialMeeting(
-                            id = entry.meetingId,
-                            title = entry.title,
-                            source = MeetingSource.LOCAL_RECORDING,
-                            audioFilePath = entry.audioFilePath,
-                            recordingType = recordingType
-                        )
-                        journalStore.clear()
-                        RecordingRecovery.entry.value = null
-                        navController.navigate(
-                            Routes.processingRoute(entry.meetingId, entry.audioFilePath, entry.lastKnownDurationMs)
-                        )
-                    }
-                }) { Text("Save recording") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    java.io.File(entry.audioFilePath).delete()
-                    journalStore.clear()
-                    RecordingRecovery.entry.value = null
-                }) { Text("Delete") }
-            }
+            onImport = { navController.navigate(Routes.IMPORT) },
+            onOpenNote = { id -> navController.navigate(Routes.noteRoute(id)) }
         )
-    }
-    }
-    }
+    )
 }

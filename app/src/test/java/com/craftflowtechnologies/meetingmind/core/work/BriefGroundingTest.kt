@@ -24,8 +24,13 @@ class BriefGroundingTest {
 
     private fun id(name: String) = w.getValue(name).id
     private fun quoteId(name: String) = runBlocking { f.db.itemDao().evidenceFor(id(name)).first().id }
-    private fun build(models: WorkModels?, target: BriefTarget = BriefTarget.forProject("nb"), refresh: Boolean = false, privacy: PackPrivacy = PackPrivacy { _, _ -> false }) =
-        runBlocking { BriefBuilder(f.db, models, privacy) { f.now }.build(target, refresh) }
+    private fun build(
+        models: WorkModels?, target: BriefTarget = BriefTarget.forProject("nb"), refresh: Boolean = false,
+        privacy: PackPrivacy = PackPrivacy { _, _ -> false }, options: BriefOptions = BriefOptions.DEFAULT
+    ) = runBlocking { BriefBuilder(f.db, models, privacy) { f.now }.build(target, options = options, refresh = refresh) }
+
+    /** The full structure, with no one-page cap: what the database holds, section by section. */
+    private val everything = BriefOptions.DEFAULT.copy(length = BriefLength.DETAILED)
 
     private fun reply(vararg parts: Pair<String, List<String>>, recommended: List<Pair<String, List<String>>> = emptyList()): String {
         fun arr(l: List<Pair<String, List<String>>>) = l.joinToString(",") { (t, c) -> "{\"text\":\"$t\",\"cites\":[${c.joinToString(",") { "\"$it\"" }}]}" }
@@ -48,8 +53,8 @@ class BriefGroundingTest {
     }
 
     @Test fun theStructureIsTheDatabaseNotTheModel() {
-        val withModel = build(FakeWorkModels(FakeWorkModel(reply("Anything." to listOf(id("deck"))))))
-        val without = build(null)
+        val withModel = build(FakeWorkModels(FakeWorkModel(reply("Anything." to listOf(id("deck"))))), options = everything)
+        val without = build(null, options = everything)
         assertEquals(without.copy(executive = emptyList(), recommended = emptyList(), generatedAt = 0), withModel.copy(executive = emptyList(), recommended = emptyList(), generatedAt = 0))
         assertEquals(listOf("Send the deck"), without.youOwe.map { it.text })
         assertEquals("overdue since ${Pulse.shortDate(f.today - f.day, java.util.Locale.ENGLISH)}", without.youOwe.single().detail)

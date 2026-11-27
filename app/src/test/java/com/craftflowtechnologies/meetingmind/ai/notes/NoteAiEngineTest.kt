@@ -293,4 +293,16 @@ class NoteAiEngineTest {
         assertTrue(texts.contains("Discussion Questions"))
         assertTrue(texts.contains("How do we receive grace?"))
     }
+
+    @Test
+    fun `unresolved gaps and follow-up brief cite source passages and insert cleanly`() = runBlocking {
+        val (gaps, _) = run(NoteAiTool.UNRESOLVED_GAPS, """{"gaps":[{"text":"Budget review timing unclear beyond 14 March","sources":["p1"]}]}""")
+        assertTrue(gaps is NoteAiOutcome.Points)
+        assertEquals(1, (gaps as NoteAiOutcome.Points).items.size)
+
+        val (brief, _) = run(NoteAiTool.FOLLOW_UP_BRIEF, """{"brief":[{"text":"Sarah will send the figures by 14 March","sources":["p1"]}]}""")
+        assertTrue(brief is NoteAiOutcome.Points)
+        val updated = NoteAiApply.withRecap(noteBlocks, "n1", (brief as NoteAiOutcome.Points).items)
+        assertTrue(updated.any { it.sectionKey == NoteAiApply.RECAP_KEY })
+    }
 }

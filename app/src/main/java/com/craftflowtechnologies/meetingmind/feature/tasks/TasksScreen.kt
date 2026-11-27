@@ -1,15 +1,12 @@
 package com.craftflowtechnologies.meetingmind.feature.tasks
 
-import android.app.Application
-import androidx.compose.animation.animateColorAsState
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,503 +15,682 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.NotificationsNone
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.rounded.DateRange
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Inbox
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import com.craftflowtechnologies.meetingmind.core.tasks.Person
+import com.craftflowtechnologies.meetingmind.core.calendar.CalendarEvent
+import com.craftflowtechnologies.meetingmind.core.database.ItemEntity
 import com.craftflowtechnologies.meetingmind.core.tasks.Task
-import com.craftflowtechnologies.meetingmind.core.tasks.TaskBucket
-import com.craftflowtechnologies.meetingmind.core.tasks.TaskKind
-import com.craftflowtechnologies.meetingmind.core.tasks.TaskReminders
-import com.craftflowtechnologies.meetingmind.core.tasks.TaskRepeat
-import com.craftflowtechnologies.meetingmind.core.tasks.TaskRules
-import com.craftflowtechnologies.meetingmind.ui.theme.Accent
-import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
-import com.craftflowtechnologies.meetingmind.ui.theme.Danger
-import com.craftflowtechnologies.meetingmind.ui.theme.FaithGold
-import com.craftflowtechnologies.meetingmind.ui.theme.Ink
-import com.craftflowtechnologies.meetingmind.ui.theme.InkFaint
-import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
-import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
-import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
-import com.craftflowtechnologies.meetingmind.ui.theme.Success
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.catch
+import com.craftflowtechnologies.meetingmind.core.ui.mm.HeroCard
+import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
+import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
+import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.core.ui.work.ProgressRing
+import com.craftflowtechnologies.meetingmind.core.ui.work.projectColor
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import kotlinx.coroutines.launch
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-class TasksViewModel(app: Application) : AndroidViewModel(app) {
-    private val repo = TaskReminders.repository(app)
-    val tasks: StateFlow<List<Task>> = repo.observeTasks().catch { emit(emptyList()) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val people: StateFlow<List<Person>> = repo.observePeople().catch { emit(emptyList()) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    /** The last deleted task, for Undo. */
-    val lastDeleted = MutableStateFlow<Task?>(null)
-
-    fun toggle(task: Task) = viewModelScope.launch {
-        val now = repo.toggleDone(task.id) ?: return@launch
-        // Keep the checklist line the task came from in step with it.
-        now.blockId?.let { com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(getApplication()).noteDao().setBlockChecked(it, now.done, System.currentTimeMillis()) }
-    }
-    fun save(task: Task, newPersonName: String?) = viewModelScope.launch {
-        val personId = newPersonName?.takeIf { it.isNotBlank() }?.let { repo.savePerson(it).id } ?: task.personId
-        val saved = repo.save(task.copy(personId = personId))
-        saved.noteId?.let { note -> personId?.let { repo.linkNote(note, it) } }
-    }
-    fun delete(task: Task) = viewModelScope.launch { repo.delete(task.id); lastDeleted.value = task }
-    fun undoDelete() = viewModelScope.launch { lastDeleted.value?.let { repo.restore(it.id) }; lastDeleted.value = null }
-    fun savePerson(name: String, relationship: String?, id: String?) = viewModelScope.launch { repo.savePerson(name, relationship, id = id) }
-    fun deletePerson(p: Person) = viewModelScope.launch { repo.deletePerson(p.id) }
-    fun tasksFor(personId: String) = repo.observeForPerson(personId)
-    fun notesFor(personId: String) = repo.observeNotesFor(personId)
+/** Where the Tasks app is. The screen keeps a stack of these; Back pops it. */
+sealed interface TasksRoute {
+    data object Home : TasksRoute
+    data class View(val view: SmartView) : TasksRoute
+    data class Label(val name: String) : TasksRoute
+    data class OpenList(val listId: String) : TasksRoute
+    data class OpenTask(val taskId: String) : TasksRoute
+    data object Plan : TasksRoute
 }
 
-private enum class TasksTab(val label: String) { TASKS("Tasks"), PEOPLE("People") }
+/** The actions every page can take, bundled so the pages take one parameter instead of many. */
+private class TasksActions(
+    val open: (TasksRoute) -> Unit,
+    val back: () -> Unit,
+    val sheet: (TaskSheet) -> Unit,
+    val openTask: (Task) -> Unit,
+    val complete: (Task) -> Unit,
+    val schedule: (Task) -> Unit,
+    val toggleSelect: (Task) -> Unit,
+    val selectAll: (List<String>) -> Unit,
+    val selection: Set<String>,
+    val onOpenNote: (String) -> Unit,
+    val onOpenRecording: (String, Long?) -> Unit
+)
 
+/**
+ * The Tasks app: a home with the day's ring and the smart views, Today with the calendar, Upcoming,
+ * the lists, a task page, Plan my day. Quick add, the date sheet and bulk edit are sheets over it.
+ */
 @Composable
-fun TasksScreen(vm: TasksViewModel, onNavigateBack: () -> Unit, onOpenNote: (String) -> Unit, onOpenRecording: (String, Long?) -> Unit) {
-    val tasks by vm.tasks.collectAsState()
-    val people by vm.people.collectAsState()
-    val deleted by vm.lastDeleted.collectAsState()
-    var tab by remember { mutableStateOf(TasksTab.TASKS) }
-    var filter by remember { mutableStateOf<TaskKind?>(null) }
-    var editing by remember { mutableStateOf<Task?>(null) }
-    var person by remember { mutableStateOf<Person?>(null) }
-    var addingPerson by remember { mutableStateOf(false) }
-    val today = LocalDate.now()
-    val shown = tasks.filter { filter == null || it.kind == filter }
-    val grouped = shown.groupBy { TaskRules.bucket(it, today) }
+fun TasksScreen(
+    vm: TasksViewModel,
+    onNavigateBack: () -> Unit,
+    onOpenNote: (String) -> Unit,
+    onOpenRecording: (String, Long?) -> Unit,
+    /** Opens straight onto one task (from Work, a notification or a link); Back returns to Tasks home. */
+    initialTaskId: String? = null,
+    /** Opens straight onto one list. */
+    initialListId: String? = null
+) {
+    val colors = MM.colors
+    val ctx = rememberTaskCtx(vm)
+    val scope = rememberCoroutineScope()
+    val stack = remember {
+        mutableStateListOf<TasksRoute>(TasksRoute.Home).apply {
+            initialListId?.let { add(TasksRoute.OpenList(it)) }
+            initialTaskId?.let { add(TasksRoute.OpenTask(it)) }
+        }
+    }
+    var sheet by remember { mutableStateOf<TaskSheet?>(null) }
+    var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val snackbar = remember { SnackbarHostState() }
+    val undo by vm.undo.collectAsState()
+    val top = stack.last()
+
+    fun open(route: TasksRoute) {
+        stack.add(route)
+        selection = emptySet()
+    }
+
+    fun back() {
+        if (stack.size > 1) {
+            stack.removeAt(stack.lastIndex)
+            selection = emptySet()
+        } else {
+            onNavigateBack()
+        }
+    }
+
+    LaunchedEffect(Unit) { vm.refreshCalendar() }
+
+    BackHandler(enabled = selection.isNotEmpty() || stack.size > 1) {
+        if (selection.isNotEmpty()) selection = emptySet() else back()
+    }
+
+    LaunchedEffect(undo) {
+        val current = undo ?: return@LaunchedEffect
+        val result = snackbar.showSnackbar(message = current.message, actionLabel = "Undo", duration = SnackbarDuration.Short)
+        if (result == SnackbarResult.ActionPerformed) {
+            scope.launch { vm.undoLast() }
+        } else {
+            vm.dismissUndo()
+        }
+    }
+
+    val actions = TasksActions(
+        open = { route -> open(route) },
+        back = { back() },
+        sheet = { sheet = it },
+        openTask = { task -> open(TasksRoute.OpenTask(task.id)) },
+        complete = { task -> scope.launch { vm.toggleDone(task) } },
+        schedule = { task -> sheet = TaskSheet.Date(listOf(task.id)) },
+        toggleSelect = { task ->
+            selection = if (task.id in selection) selection - task.id else selection + task.id
+        },
+        selectAll = { ids -> selection = ids.toSet() },
+        selection = selection,
+        onOpenNote = onOpenNote,
+        onOpenRecording = onOpenRecording
+    )
 
     Scaffold(
-        containerColor = SurfaceBase,
-        floatingActionButton = {
-            Row(
-                Modifier.navigationBarsPadding().clip(RoundedCornerShape(18.dp)).background(Ink)
-                    .clickable { if (tab == TasksTab.TASKS) editing = Task(id = "", title = "", kind = filter ?: TaskKind.TASK) else addingPerson = true }
-                    .padding(horizontal = 18.dp, vertical = 14.dp).testTag("tasks_add"),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.Add, null, tint = OnInk, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (tab == TasksTab.TASKS) "New task" else "Add person", color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-            }
-        }
-    ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 110.dp)) {
-            item {
-                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 12.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink) }
-                    Text(tab.label, fontSize = 28.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
-                }
-                Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceSunk).padding(3.dp)) {
-                    TasksTab.entries.forEach { t ->
-                        val selected = t == tab
-                        Text(
-                            t.label, fontSize = 14.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                            color = if (selected) Ink else InkSecondary,
-                            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(if (selected) SurfaceRaised else Color.Transparent)
-                                .clickable { tab = t }.padding(horizontal = 18.dp, vertical = 8.dp)
-                        )
-                    }
-                }
-            }
-            if (tab == TasksTab.TASKS) {
-                item {
-                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Chip("All", filter == null) { filter = null }
-                        TaskKind.entries.forEach { k -> Chip(k.label, filter == k) { filter = if (filter == k) null else k } }
-                    }
-                }
-                if (deleted != null) item {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceSunk).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Deleted “${deleted!!.title}”", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        TextButton(onClick = vm::undoDelete) { Text("Undo", color = Accent) }
-                    }
-                }
-                if (shown.isEmpty()) item { EmptyTasks(filter) }
-                TaskBucket.entries.forEach { bucket ->
-                    val list = grouped[bucket].orEmpty()
-                    if (list.isNotEmpty()) {
-                        item(key = "h_${bucket.name}") {
-                            Text(
-                                bucket.label.uppercase() + "  ·  ${list.size}", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold,
-                                color = if (bucket == TaskBucket.OVERDUE) Danger else InkMuted, modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 4.dp)
-                            )
-                        }
-                        items(list.take(if (bucket == TaskBucket.DONE) 30 else Int.MAX_VALUE), key = { it.id }) { t ->
-                            TaskRow(t, people.firstOrNull { it.id == t.personId }, onToggle = { vm.toggle(t) }, onClick = { editing = t })
-                        }
-                    }
-                }
-            } else {
-                if (people.isEmpty()) item {
-                    Text(
-                        "People you mention in tasks and notes — family, friends, your small group. Tasks and notes about them gather here.",
-                        fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(20.dp)
-                    )
-                }
-                items(people, key = { it.id }) { p -> PersonRow(p) { person = p } }
-            }
-        }
-    }
-    editing?.let { t ->
-        TaskEditorSheet(
-            task = t, people = people,
-            onSave = { task, newPerson -> vm.save(task, newPerson); editing = null },
-            onDelete = if (t.id.isNotBlank()) ({ vm.delete(t); editing = null }) else null,
-            onOpenSource = when {
-                t.meetingId != null -> ({ onOpenRecording(t.meetingId, t.startMs); editing = null })
-                t.noteId != null -> ({ onOpenNote(t.noteId); editing = null })
-                else -> null
-            },
-            onDismiss = { editing = null }
-        )
-    }
-    person?.let { p ->
-        PersonSheet(p, vm, onDismiss = { person = null }, onOpenTask = { editing = it; person = null }, onOpenNote = { person = null; onOpenNote(it) })
-    }
-    if (addingPerson) PersonDialog(null, onSave = { n, r -> vm.savePerson(n, r, null); addingPerson = false }, onDismiss = { addingPerson = false })
-}
-
-@Composable
-private fun EmptyTasks(filter: TaskKind?) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(56.dp).clip(CircleShape).background(AccentWash), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.Check, null, tint = Accent)
-        }
-        Spacer(Modifier.height(14.dp))
-        Text(if (filter == null) "Nothing to do yet" else "No ${filter.label.lowercase()} items", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Add one here, or turn a checklist line in any note into a task — “Apply this” points from a sermon, people to follow up, things to pray about.",
-            fontSize = 14.sp, color = InkSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = if (selected) OnInk else InkSecondary,
-        modifier = Modifier.clip(RoundedCornerShape(50)).background(if (selected) Ink else SurfaceSunk).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 7.dp)
-    )
-}
-
-private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
-private val TIME = DateTimeFormatter.ofPattern("HH:mm")
-
-fun describeDue(ms: Long, today: LocalDate = LocalDate.now()): String {
-    val d = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate()
-    return when (d) {
-        today -> "Today"
-        today.plusDays(1) -> "Tomorrow"
-        today.minusDays(1) -> "Yesterday"
-        else -> d.format(DAY)
-    }
-}
-
-@Composable
-private fun kindColor(kind: TaskKind): Color = when (kind) {
-    TaskKind.TASK -> Accent
-    TaskKind.APPLY -> FaithGold
-    TaskKind.PRAYER -> Danger
-    TaskKind.FOLLOW_UP -> Success
-}
-
-@Composable
-private fun TaskRow(t: Task, person: Person?, onToggle: () -> Unit, onClick: () -> Unit) {
-    val ring by animateColorAsState(if (t.done) Success else kindColor(t.kind), label = "ring")
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 11.dp).testTag("task_${t.title}"), verticalAlignment = Alignment.Top) {
-        Box(
-            Modifier.padding(top = 1.dp).size(22.dp).clip(CircleShape).background(if (t.done) Success else Color.Transparent)
-                .border(1.8.dp, ring, CircleShape).clickable(onClick = onToggle),
-            contentAlignment = Alignment.Center
-        ) { if (t.done) Icon(Icons.Filled.Check, contentDescription = "Done", tint = OnInk, modifier = Modifier.size(14.dp)) }
-        Column(Modifier.weight(1f).padding(start = 14.dp)) {
-            Text(
-                t.title, fontSize = 15.5.sp, color = if (t.done) InkMuted else Ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                textDecoration = if (t.done) TextDecoration.LineThrough else null
-            )
-            val meta = listOfNotNull(
-                t.kind.label.takeIf { t.kind != TaskKind.TASK },
-                t.dueAt?.let { describeDue(it) },
-                person?.name,
-                t.scripture
-            )
-            if (meta.isNotEmpty() || t.remindAt != null || t.repeat != TaskRepeat.NONE) {
-                Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(meta.joinToString("  ·  "), fontSize = 12.5.sp, color = InkSecondary)
-                    if (t.remindAt != null && !t.done) Icon(Icons.Filled.NotificationsNone, "Reminder", tint = InkMuted, modifier = Modifier.padding(start = 6.dp).size(14.dp))
-                    if (t.repeat != TaskRepeat.NONE) Icon(Icons.Filled.Repeat, t.repeat.label, tint = InkMuted, modifier = Modifier.padding(start = 4.dp).size(14.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PersonRow(p: Person, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-        Avatar(p.name)
-        Column(Modifier.weight(1f).padding(start = 14.dp)) {
-            Text(p.name, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(
-                listOfNotNull(p.relationship, "${p.openTasks} open".takeIf { p.openTasks > 0 }, "${p.noteCount} notes".takeIf { p.noteCount > 0 }).joinToString("  ·  ").ifBlank { "No tasks yet" },
-                fontSize = 12.5.sp, color = InkSecondary
-            )
-        }
-    }
-}
-
-@Composable
-private fun Avatar(name: String) {
-    Box(Modifier.size(40.dp).clip(CircleShape).background(AccentWash), contentAlignment = Alignment.Center) {
-        Text(name.trim().take(1).uppercase(), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Accent)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PersonSheet(p: Person, vm: TasksViewModel, onDismiss: () -> Unit, onOpenTask: (Task) -> Unit, onOpenNote: (String) -> Unit) {
-    val notes by remember(p.id) { vm.notesFor(p.id) }.collectAsState(initial = emptyList())
-    val tasks by remember(p.id) { vm.tasksFor(p.id) }.collectAsState(initial = emptyList())
-    var editing by remember { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(p.name)
-                Column(Modifier.weight(1f).padding(start = 14.dp)) {
-                    Text(p.name, fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
-                    p.relationship?.let { Text(it, fontSize = 13.sp, color = InkSecondary) }
-                }
-                TextButton(onClick = { editing = true }) { Text("Edit", color = Accent) }
-                IconButton(onClick = { vm.deletePerson(p); onDismiss() }) { Icon(Icons.Filled.DeleteOutline, "Remove", tint = InkMuted) }
-            }
-            Spacer(Modifier.height(14.dp))
-            Text("TASKS", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted)
-            if (tasks.isEmpty()) Text("Nothing for ${p.name} yet.", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(vertical = 8.dp))
-            tasks.forEach { t ->
-                Row(Modifier.fillMaxWidth().clickable { onOpenTask(t) }.padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(18.dp).clip(CircleShape).border(1.5.dp, if (t.done) Success else kindColor(t.kind), CircleShape).clickable { vm.toggle(t) })
-                    Text(t.title, fontSize = 15.sp, color = if (t.done) InkMuted else Ink, textDecoration = if (t.done) TextDecoration.LineThrough else null, modifier = Modifier.padding(start = 12.dp).weight(1f))
-                    t.dueAt?.let { Text(describeDue(it), fontSize = 12.sp, color = InkSecondary) }
-                }
-            }
-            // Their prayers and stories, in the order they matter: what's still being prayed, what was answered, what was told.
-            val groups = listOf(
-                "PRAYING FOR" to notes.filter { it.workflow == "PRAYER_REQUEST" && !it.answered },
-                "ANSWERED" to notes.filter { it.workflow == "PRAYER_REQUEST" && it.answered },
-                "TESTIMONIES" to notes.filter { it.workflow == "TESTIMONY" },
-                "NOTES" to notes.filter { it.workflow != "PRAYER_REQUEST" && it.workflow != "TESTIMONY" }
-            )
-            groups.filter { it.second.isNotEmpty() }.forEach { (label, list) ->
-                Text(label, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(top = 16.dp))
-                list.forEach { n ->
-                    Text(n.title.ifBlank { "Untitled" }, fontSize = 15.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth().clickable { onOpenNote(n.id) }.padding(vertical = 9.dp))
-                }
-            }
-        }
-    }
-    if (editing) PersonDialog(p, onSave = { n, r -> vm.savePerson(n, r, p.id); editing = false }, onDismiss = { editing = false })
-}
-
-@Composable
-private fun PersonDialog(p: Person?, onSave: (String, String?) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf(p?.name.orEmpty()) }
-    var rel by remember { mutableStateOf(p?.relationship.orEmpty()) }
-    AlertDialog(
-        onDismissRequest = onDismiss, containerColor = SurfaceBase,
-        title = { Text(if (p == null) "Add a person" else "Edit") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(rel, { rel = it }, label = { Text("Who they are (optional)") }, placeholder = { Text("Friend, sister, small group…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        containerColor = colors.background,
+        snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            if (selection.isNotEmpty()) {
+                BulkBar(
+                    count = selection.size,
+                    onDate = { sheet = TaskSheet.Date(selection.toList()) },
+                    onPriority = { sheet = TaskSheet.Priority(selection.toList()) },
+                    onMove = { sheet = TaskSheet.Move(selection.toList()) },
+                    onAssign = { sheet = TaskSheet.Assign(selection.toList()) },
+                    onComplete = {
+                        val ids = selection.toList()
+                        selection = emptySet()
+                        scope.launch { vm.completeAll(ids) }
+                    },
+                    onClose = { selection = emptySet() }
+                )
             }
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, rel) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
-    )
-}
-
-/** Editing one task: title, kind, date, reminder, repeat, person, notes. */
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-fun TaskEditorSheet(
-    task: Task,
-    people: List<Person>,
-    onSave: (Task, String?) -> Unit,
-    onDelete: (() -> Unit)?,
-    onOpenSource: (() -> Unit)?,
-    onDismiss: () -> Unit
-) {
-    val zone = ZoneId.systemDefault()
-    var title by remember { mutableStateOf(task.title) }
-    var notes by remember { mutableStateOf(task.notes) }
-    var kind by remember { mutableStateOf(task.kind) }
-    var due by remember { mutableStateOf(task.dueAt?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }) }
-    var remind by remember { mutableStateOf(task.remindAt?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalTime() }) }
-    var repeat by remember { mutableStateOf(task.repeat) }
-    var personId by remember { mutableStateOf(task.personId) }
-    var newPerson by remember { mutableStateOf("") }
-    var pickDate by remember { mutableStateOf(false) }
-    var pickTime by remember { mutableStateOf(false) }
-    val today = LocalDate.now()
-
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            OutlinedTextField(
-                title, { title = it }, placeholder = { Text("What needs doing?") }, modifier = Modifier.fillMaxWidth().testTag("task_title"),
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp, color = Ink)
-            )
-            Section("Kind") { TaskKind.entries.forEach { k -> Chip(k.label, kind == k) { kind = k } } }
-            Section("When") {
-                Chip("No date", due == null) { due = null; remind = null }
-                Chip("Today", due == today) { due = today }
-                Chip("Tomorrow", due == today.plusDays(1)) { due = today.plusDays(1) }
-                Chip("Next week", due == today.plusWeeks(1)) { due = today.plusWeeks(1) }
-                val custom = due?.takeIf { it != today && it != today.plusDays(1) && it != today.plusWeeks(1) }
-                Chip(custom?.format(DAY) ?: "Pick a date…", custom != null) { pickDate = true }
-            }
-            if (due != null) Section("Remind me") {
-                Chip("No reminder", remind == null) { remind = null }
-                listOf(LocalTime.of(8, 0), LocalTime.of(12, 0), LocalTime.of(18, 0)).forEach { t -> Chip(t.format(TIME), remind == t) { remind = t } }
-                val custom = remind?.takeIf { it !in listOf(LocalTime.of(8, 0), LocalTime.of(12, 0), LocalTime.of(18, 0)) }
-                Chip(custom?.format(TIME) ?: "Other time…", custom != null) { pickTime = true }
-            }
-            if (due != null) Section("Repeat") { TaskRepeat.entries.forEach { r -> Chip(r.label, repeat == r) { repeat = r } } }
-            Section("Person") {
-                Chip("No one", personId == null && newPerson.isBlank()) { personId = null; newPerson = "" }
-                people.forEach { p -> Chip(p.name, personId == p.id) { personId = p.id; newPerson = "" } }
-            }
-            OutlinedTextField(
-                newPerson, { newPerson = it; if (it.isNotBlank()) personId = null },
-                placeholder = { Text("Someone new") }, singleLine = true, leadingIcon = { Icon(Icons.Filled.Person, null, tint = InkMuted) },
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(notes, { notes = it }, placeholder = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-            if (onOpenSource != null) {
-                Row(Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onOpenSource).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = Accent, modifier = Modifier.size(16.dp))
-                    Text(if (task.meetingId != null) "Open where it was said" else "Open the note it came from", color = Accent, fontSize = 14.sp, modifier = Modifier.padding(start = 8.dp))
+        floatingActionButton = {
+            if (selection.isEmpty() && top != TasksRoute.Plan && top !is TasksRoute.OpenTask) {
+                FloatingActionButton(
+                    onClick = { sheet = TaskSheet.QuickAdd(listId = (top as? TasksRoute.OpenList)?.listId) },
+                    containerColor = colors.accent,
+                    contentColor = colors.onAccent
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "New task")
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (onDelete != null) TextButton(onClick = onDelete) { Text("Delete", color = Danger) }
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = onDismiss) { Text("Cancel", color = InkSecondary) }
-                Text(
-                    "Save", color = OnInk, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (title.isBlank()) InkFaint else Ink)
-                        .clickable(enabled = title.isNotBlank()) {
-                            val dueMs = due?.atTime(remind ?: LocalTime.of(9, 0))?.atZone(zone)?.toInstant()?.toEpochMilli()
-                            val remindMs = if (remind != null) dueMs else null
-                            onSave(
-                                task.copy(title = title, notes = notes, kind = kind, dueAt = dueMs, remindAt = remindMs, repeat = if (due == null) TaskRepeat.NONE else repeat, personId = personId),
-                                newPerson.takeIf { it.isNotBlank() }
-                            )
-                        }.padding(horizontal = 22.dp, vertical = 11.dp).testTag("task_save")
+        }
+    ) { inner ->
+        Box(Modifier.padding(inner).fillMaxSize()) {
+            when (top) {
+                TasksRoute.Home -> HomePage(vm, ctx, actions)
+                is TasksRoute.View -> ViewPage(vm, ctx, top.view, actions)
+                is TasksRoute.Label -> LabelPage(ctx, top.name, actions)
+                is TasksRoute.OpenList -> ListPage(
+                    vm = vm,
+                    ctx = ctx,
+                    listId = top.listId,
+                    selection = selection,
+                    onBack = { back() },
+                    onOpen = actions.openTask,
+                    onComplete = actions.complete,
+                    onSchedule = actions.schedule,
+                    onToggleSelect = actions.toggleSelect,
+                    onSelectAll = actions.selectAll,
+                    onSheet = actions.sheet
+                )
+                is TasksRoute.OpenTask -> TaskPage(
+                    vm = vm,
+                    ctx = ctx,
+                    taskId = top.taskId,
+                    onBack = { back() },
+                    onOpenTask = { id -> open(TasksRoute.OpenTask(id)) },
+                    onSheet = actions.sheet,
+                    onOpenNote = onOpenNote,
+                    onOpenRecording = onOpenRecording
+                )
+                TasksRoute.Plan -> PlanMyDayPage(
+                    vm = vm,
+                    ctx = ctx,
+                    onBack = { back() },
+                    onSheet = actions.sheet,
+                    onSeeToday = {
+                        stack.removeAt(stack.lastIndex)
+                        open(TasksRoute.View(SmartView.TODAY))
+                    }
                 )
             }
         }
     }
-    if (pickDate) {
-        val state = rememberDatePickerState(initialSelectedDateMillis = (due ?: today).atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli())
-        DatePickerDialog(
-            onDismissRequest = { pickDate = false },
-            confirmButton = { TextButton(onClick = { state.selectedDateMillis?.let { due = Instant.ofEpochMilli(it).atZone(ZoneId.of("UTC")).toLocalDate() }; pickDate = false }) { Text("OK") } },
-            dismissButton = { TextButton(onClick = { pickDate = false }) { Text("Cancel") } }
-        ) { DatePicker(state) }
+
+    TaskSheetHost(
+        vm = vm,
+        ctx = ctx,
+        sheet = sheet,
+        onDismiss = { sheet = null },
+        onCreatedList = { id -> open(TasksRoute.OpenList(id)) }
+    )
+}
+
+private fun dayTitle(today: LocalDate): String = today.format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.getDefault()))
+
+private fun iconFor(view: SmartView): ImageVector = when (view) {
+    SmartView.TODAY -> Icons.Filled.WbSunny
+    SmartView.UPCOMING -> Icons.Filled.Event
+    SmartView.INBOX -> Icons.Rounded.Inbox
+    SmartView.WAITING -> Icons.Filled.Schedule
+    SmartView.PRIORITY_1 -> Icons.Rounded.Flag
+    SmartView.COMPLETED -> Icons.Filled.CheckCircle
+}
+
+@Composable
+private fun HomePage(vm: TasksViewModel, ctx: TaskCtx, a: TasksActions) {
+    val colors = MM.colors
+    val today = ctx.today
+    val zone = ctx.zone
+    val labels by vm.labels.collectAsState()
+    val theirs by vm.commitmentsTheirs.collectAsState()
+    val meetings by vm.todayEvents.collectAsState()
+    val (done, total) = TaskViews.dayProgress(ctx.all, today, zone)
+    val openToday = TaskViews.dueToday(ctx.all, today, zone).size
+    val pastDue = TaskViews.pastDue(ctx.all, today, zone).size
+    val summary = buildList<String> {
+        add("${TaskViews.count(openToday, "task")} for today")
+        if (pastDue > 0) add("$pastDue past due")
+        if (meetings.isNotEmpty()) add("${meetings.size} ${if (meetings.size == 1) "meeting" else "meetings"}")
+    }.joinToString(" · ")
+
+    val tiles = listOf(
+        Triple(SmartView.TODAY, SmartView.TODAY.label, openToday),
+        Triple(SmartView.UPCOMING, SmartView.UPCOMING.label, TaskViews.upcoming(ctx.all, today, zone).size),
+        Triple(SmartView.INBOX, SmartView.INBOX.label, TaskViews.inbox(ctx.all).size),
+        Triple(SmartView.WAITING, SmartView.WAITING.label, TaskViews.waiting(ctx.all).size + theirs.size),
+        Triple(SmartView.PRIORITY_1, SmartView.PRIORITY_1.label, TaskViews.priorityOne(ctx.all).size),
+        Triple(SmartView.COMPLETED, SmartView.COMPLETED.label, TaskViews.completed(ctx.all).size)
+    )
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = MM.space.l)
+    ) {
+        PageHeader(title = "Tasks", subtitle = dayTitle(today), onBack = null)
+        Spacer(Modifier.height(MM.space.s))
+        HeroCard(Modifier.fillMaxWidth(), contentPadding = MM.space.l) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.l)) {
+                ProgressRing(done = done, total = total, size = 64.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (total > 0 && done == total) "Today is done" else "Plan your day",
+                        style = MM.type.heading,
+                        color = colors.ink
+                    )
+                    Text(summary, style = MM.type.secondary, color = colors.inkSecondary)
+                    Spacer(Modifier.height(MM.space.s))
+                    Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                        PrimaryButton(text = "Plan my day", onClick = { a.open(TasksRoute.Plan) })
+                        SecondaryButton(text = "Open Today", onClick = { a.open(TasksRoute.View(SmartView.TODAY)) })
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(MM.space.m))
+        tiles.chunked(2).forEach { pair ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                pair.forEach { (view, label, count) ->
+                    SmartTile(
+                        label = label,
+                        count = count,
+                        icon = iconFor(view),
+                        modifier = Modifier.weight(1f),
+                        onClick = { a.open(TasksRoute.View(view)) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(MM.space.s))
+        }
+
+        listOf("WORK" to "Work", "PERSONAL" to "Personal", "LEARNING" to "Learning").forEach { (space, heading) ->
+            val inSpace = ctx.lists.filter { it.space == space }
+            if (inSpace.isNotEmpty()) {
+                GroupLabel(title = heading, count = null)
+                inSpace.forEach { list ->
+                    val count = ctx.all.count { it.listId == list.id && it.parentId == null && !it.done }
+                    ListRow(
+                        title = list.name,
+                        meta = count.toString(),
+                        leading = {
+                            Box(Modifier.size(10.dp).background(projectColor(list.id), MM.radius.small))
+                        },
+                        onClick = { a.open(TasksRoute.OpenList(list.id)) }
+                    )
+                }
+            }
+        }
+
+        GroupLabel(title = "Labels", count = null)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+            labels.forEach { label ->
+                MMChip("@${label.name}", selected = false, onClick = { a.open(TasksRoute.Label(label.name)) })
+            }
+        }
+        Spacer(Modifier.height(MM.space.l))
+        TextAction(
+            text = "New list",
+            onClick = { a.sheet(TaskSheet.NewList) }
+        )
+        Spacer(Modifier.height(MM.space.xxl))
+        Spacer(Modifier.height(MM.space.xxl))
     }
-    if (pickTime) {
-        val state = rememberTimePickerState(remind?.hour ?: 9, remind?.minute ?: 0, is24Hour = true)
-        AlertDialog(
-            onDismissRequest = { pickTime = false }, containerColor = SurfaceBase,
-            confirmButton = { TextButton(onClick = { remind = LocalTime.of(state.hour, state.minute); pickTime = false }) { Text("OK") } },
-            dismissButton = { TextButton(onClick = { pickTime = false }) { Text("Cancel") } },
-            text = { TimePicker(state) }
+}
+
+@Composable
+private fun SmartTile(label: String, count: Int, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
+    val colors = MM.colors
+    MMCard(modifier = modifier, onClick = onClick, contentPadding = MM.space.m) {
+        Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(MM.space.s))
+        Text(count.toString(), style = MM.type.title, color = colors.ink)
+        Text(label, style = MM.type.caption, color = colors.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun ViewPage(vm: TasksViewModel, ctx: TaskCtx, view: SmartView, a: TasksActions) {
+    val colors = MM.colors
+    val today = ctx.today
+    val zone = ctx.zone
+    val theirs by vm.commitmentsTheirs.collectAsState()
+    val rows = TaskViews.viewOf(view, ctx.all, today, zone)
+    val subtitle = when (view) {
+        SmartView.TODAY -> dayTitle(today)
+        SmartView.UPCOMING -> "Next seven days, then later"
+        SmartView.INBOX -> "Captured, not yet sorted"
+        SmartView.WAITING -> "Promises other people owe you"
+        SmartView.PRIORITY_1 -> "Flagged red"
+        SmartView.COMPLETED -> "Your log"
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        PageHeader(title = view.label, subtitle = subtitle, onBack = { a.back() })
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = MM.space.l)
+        ) {
+            when (view) {
+                SmartView.TODAY -> TodayBody(vm, ctx, a)
+                SmartView.UPCOMING -> UpcomingBody(ctx, a)
+                SmartView.INBOX -> {
+                    Text(
+                        "Quick adds without a list land here. Give each one a list and a date, or do it now.",
+                        style = MM.type.secondary,
+                        color = colors.inkSecondary
+                    )
+                    Spacer(Modifier.height(MM.space.s))
+                    TaskRows(rows, ctx, a.selection, a.openTask, a.complete, a.schedule, a.toggleSelect)
+                }
+                SmartView.WAITING -> {
+                    TaskRows(rows, ctx, a.selection, a.openTask, a.complete, a.schedule, a.toggleSelect)
+                    if (theirs.isNotEmpty()) {
+                        GroupLabel(title = "Owed to you", count = theirs.size)
+                        theirs.forEach { item -> CommitmentRow(item, ctx) }
+                    }
+                    Spacer(Modifier.height(MM.space.m))
+                    Text(
+                        "To hand a task to someone, open it and choose \"Someone else is doing this\". It moves here and keeps its source.",
+                        style = MM.type.caption,
+                        color = colors.inkMuted
+                    )
+                }
+                SmartView.PRIORITY_1, SmartView.COMPLETED -> {
+                    if (rows.isEmpty()) {
+                        Text("Nothing here.", style = MM.type.secondary, color = colors.inkMuted)
+                    } else {
+                        TaskRows(rows, ctx, a.selection, a.openTask, a.complete, a.schedule, a.toggleSelect)
+                    }
+                    if (view == SmartView.COMPLETED) {
+                        Spacer(Modifier.height(MM.space.m))
+                        Text(
+                            "Completed tasks are kept and searchable. The weekly review reads from here.",
+                            style = MM.type.caption,
+                            color = colors.inkMuted
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(MM.space.xxl))
+            Spacer(Modifier.height(MM.space.xxl))
+        }
+    }
+}
+
+@Composable
+private fun LabelPage(ctx: TaskCtx, name: String, a: TasksActions) {
+    val rows = TaskViews.open(ctx.all).filter { task ->
+        ctx.labels[task.id].orEmpty().any { it.equals(name, ignoreCase = true) }
+    }
+    Column(Modifier.fillMaxSize()) {
+        PageHeader(title = "@$name", subtitle = TaskViews.count(rows.size, "open task"), onBack = { a.back() })
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = MM.space.l)
+        ) {
+            if (rows.isEmpty()) {
+                Text("No open tasks carry this label.", style = MM.type.secondary, color = MM.colors.inkMuted)
+            } else {
+                TaskRows(rows, ctx, a.selection, a.openTask, a.complete, a.schedule, a.toggleSelect)
+            }
+            Spacer(Modifier.height(MM.space.xxl))
+        }
+    }
+}
+
+/** One timeline entry on Today: a meeting from the calendar, or a task with a time. */
+private data class TimelineEntry(val time: LocalTime, val meeting: CalendarEvent?, val task: Task?)
+
+@Composable
+private fun TodayBody(vm: TasksViewModel, ctx: TaskCtx, a: TasksActions) {
+    val colors = MM.colors
+    val scope = rememberCoroutineScope()
+    val today = ctx.today
+    val zone: ZoneId = ctx.zone
+    val meetings by vm.todayEvents.collectAsState()
+    val dueToday = TaskViews.dueToday(ctx.all, today, zone)
+    val past = TaskViews.pastDue(ctx.all, today, zone)
+    val anytime = TaskViews.anytimeToday(ctx.all, today, zone)
+    val timed = TaskViews.scheduledToday(ctx.all, today, zone)
+    val (done, total) = TaskViews.dayProgress(ctx.all, today, zone)
+    val openCount = dueToday.size
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
+        ProgressRing(done = done, total = total, size = 56.dp)
+        Text(
+            if (openCount == 0) "All done. Enjoy the rest of the day." else "$openCount left · about ${openCount * TaskViews.MINUTES_PER_TASK} min of work",
+            style = MM.type.secondary,
+            color = colors.inkSecondary,
+            modifier = Modifier.weight(1f)
+        )
+    }
+    Spacer(Modifier.height(MM.space.m))
+
+    if (past.isNotEmpty()) {
+        InsetPanel(Modifier.fillMaxWidth(), contentPadding = MM.space.m) {
+            Text(
+                "${TaskViews.count(past.size, "task")} from before today ${if (past.size == 1) "is" else "are"} still open.",
+                style = MM.type.bodyStrong,
+                color = colors.ink
+            )
+            Spacer(Modifier.height(MM.space.s))
+            Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                SecondaryButton(
+                    text = "Do today",
+                    onClick = {
+                        scope.launch {
+                            vm.applyDate(past.map { it.id }, DateChoice(dueAt = startOfDayMs(today, zone), hasTime = false))
+                        }
+                    }
+                )
+                TextAction(text = "Reschedule", onClick = { a.sheet(TaskSheet.Date(past.map { it.id })) })
+            }
+        }
+        Spacer(Modifier.height(MM.space.m))
+    }
+
+    GroupLabel(title = "Scheduled", count = null)
+    val entries = buildList {
+        meetings.forEach { add(TimelineEntry(localTimeOf(it.begin, zone), it, null)) }
+        timed.forEach { t -> t.dueAt?.let { add(TimelineEntry(localTimeOf(it, zone), null, t)) } }
+    }.sortedBy { it.time }
+    if (entries.isEmpty()) {
+        Text(
+            if (vm.calendarAllowed()) "Nothing scheduled for a time today." else "Allow calendar access to see your meetings here.",
+            style = MM.type.caption,
+            color = colors.inkMuted
+        )
+    }
+    entries.forEach { entry ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Text(
+                entry.time.format(DateTimeFormatter.ofPattern("HH:mm")),
+                style = MM.type.caption,
+                color = colors.inkSecondary,
+                modifier = Modifier.width(52.dp).padding(top = MM.space.m)
+            )
+            val meeting = entry.meeting
+            val task = entry.task
+            if (meeting != null) {
+                InsetPanel(Modifier.weight(1f).padding(vertical = MM.space.xs), contentPadding = MM.space.s) {
+                    Text(meeting.title, style = MM.type.bodyStrong, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Meeting", style = MM.type.caption, color = colors.inkSecondary)
+                }
+            } else if (task != null) {
+                Column(Modifier.weight(1f)) {
+                    TaskRow(
+                        task = task,
+                        ctx = ctx,
+                        selecting = a.selection.isNotEmpty(),
+                        selected = task.id in a.selection,
+                        onOpen = { a.openTask(task) },
+                        onComplete = { a.complete(task) },
+                        onSchedule = { a.schedule(task) },
+                        onToggleSelect = { a.toggleSelect(task) }
+                    )
+                }
+            }
+        }
+    }
+
+    if (anytime.isNotEmpty()) {
+        GroupLabel(title = "Anytime today", count = anytime.size)
+        TaskRows(anytime, ctx, a.selection, a.openTask, a.complete, a.schedule, a.toggleSelect)
+    }
+    Spacer(Modifier.height(MM.space.l))
+    Text("Swipe right to complete · left to change the date", style = MM.type.caption, color = colors.inkMuted)
+}
+
+@Composable
+private fun UpcomingBody(ctx: TaskCtx, a: TasksActions) {
+    val colors = MM.colors
+    val today = ctx.today
+    val zone = ctx.zone
+    var picked by remember { mutableStateOf<LocalDate?>(null) }
+    val week = TaskViews.week(today)
+    val dots = TaskViews.daysWithTasks(ctx.all, today, zone)
+    val groups = TaskViews.groupUpcoming(ctx.all, today, zone).filter { picked == null || it.first == picked }
+
+    Row(Modifier.fillMaxWidth()) {
+        week.forEach { day ->
+            val selected = picked == day
+            val selectable = day.isAfter(today)
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clickable(enabled = selectable) { picked = if (selected) null else day },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(day.format(DateTimeFormatter.ofPattern("EEE", Locale.getDefault())), style = MM.type.caption, color = colors.inkMuted)
+                Spacer(Modifier.height(MM.space.xs))
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .background(if (selected) colors.accent else Color.Transparent, MM.radius.pill),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        day.dayOfMonth.toString(),
+                        style = MM.type.bodyStrong,
+                        color = when {
+                            selected -> colors.onAccent
+                            day == today -> colors.accent
+                            else -> colors.ink
+                        }
+                    )
+                }
+                Spacer(Modifier.height(MM.space.xs))
+                Box(
+                    Modifier
+                        .size(5.dp)
+                        .background(if (day in dots) colors.accent else Color.Transparent, MM.radius.pill)
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(MM.space.s))
+    groups.forEach { (day, items) ->
+        GroupLabel(title = if (day == null) "Later" else TaskViews.dayLabel(day, today), count = items.size)
+        TaskRows(items, ctx, a.selection, a.openTask, a.complete, a.schedule, a.toggleSelect)
+    }
+    if (groups.isEmpty()) {
+        Text("Nothing dated after today.", style = MM.type.secondary, color = colors.inkMuted)
+    }
+}
+
+@Composable
+internal fun CommitmentRow(item: ItemEntity, ctx: TaskCtx) {
+    val colors = MM.colors
+    val who = item.ownerPersonId?.let { ctx.people[it] }
+    Column(Modifier.fillMaxWidth().padding(vertical = MM.space.s)) {
+        Text(item.text, style = MM.type.bodyStrong, color = colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            listOfNotNull(who, item.dueText).joinToString(" · ").ifEmpty { "No date" },
+            style = MM.type.caption,
+            color = colors.inkSecondary
         )
     }
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun Section(label: String, content: @Composable () -> Unit) {
-    Column {
-        Text(label.uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(bottom = 6.dp))
-        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+private fun BulkBar(
+    count: Int,
+    onDate: () -> Unit,
+    onPriority: () -> Unit,
+    onMove: () -> Unit,
+    onAssign: () -> Unit,
+    onComplete: () -> Unit,
+    onClose: () -> Unit
+) {
+    val colors = MM.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.ink)
+            .navigationBarsPadding()
+            .padding(horizontal = MM.space.s, vertical = MM.space.xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onClose) {
+            Icon(Icons.Filled.Close, contentDescription = "Clear selection", tint = colors.onInk)
+        }
+        Text("$count selected", style = MM.type.bodyStrong, color = colors.onInk, modifier = Modifier.weight(1f))
+        BulkAction(Icons.Rounded.DateRange, "Date", onDate)
+        BulkAction(Icons.Rounded.Flag, "Priority", onPriority)
+        BulkAction(Icons.Rounded.FolderOpen, "Move", onMove)
+        BulkAction(Icons.Rounded.Person, "Assign", onAssign)
+        BulkAction(Icons.Filled.CheckCircle, "Complete", onComplete)
     }
 }
 
-/** A few open tasks, for a home screen: the next ones due, with a tick and "See all". */
 @Composable
-fun TasksPeekCard(title: String, kinds: Set<TaskKind>?, onOpenAll: () -> Unit, modifier: Modifier = Modifier, horizontalPadding: androidx.compose.ui.unit.Dp = 20.dp) {
-    val vm: TasksViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-    val tasks by vm.tasks.collectAsState()
-    val people by vm.people.collectAsState()
-    val open = tasks.filter { !it.done && (kinds == null || it.kind in kinds) }.take(3)
-    if (open.isEmpty()) return
-    Column(modifier.fillMaxWidth().padding(horizontal = horizontalPadding).clip(RoundedCornerShape(18.dp)).background(SurfaceRaised).border(1.dp, com.craftflowtechnologies.meetingmind.ui.theme.LineSoft, RoundedCornerShape(18.dp)).padding(vertical = 6.dp)) {
-        Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
-            TextButton(onClick = onOpenAll) { Text("See all", color = Accent, fontSize = 13.sp) }
-        }
-        open.forEach { t -> TaskRow(t, people.firstOrNull { it.id == t.personId }, onToggle = { vm.toggle(t) }, onClick = onOpenAll) }
+private fun BulkAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        Modifier.clickable(onClick = onClick).padding(horizontal = MM.space.xs),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, contentDescription = label, tint = MM.colors.onInk, modifier = Modifier.size(20.dp))
+        Text(label, style = MM.type.caption, color = MM.colors.onInk, maxLines = 1)
     }
 }

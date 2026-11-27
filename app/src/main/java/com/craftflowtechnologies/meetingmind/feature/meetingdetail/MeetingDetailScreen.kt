@@ -178,8 +178,9 @@ class MeetingDetailViewModel(
         // Ask follows the processing profile like every other AI stage: Gemini in Internet mode,
         // with the local model behind it so a cloud failure still gets an answer. Offline never
         // reaches the cloud engine at all.
+        val effectiveProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile)
         val engine: com.craftflowtechnologies.meetingmind.ai.llm.MeetingIntelligenceEngine =
-            if (com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile) == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
+            if (effectiveProfile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
                 com.craftflowtechnologies.meetingmind.ai.llm.FallbackMeetingIntelligenceEngine(
                     primary = com.craftflowtechnologies.meetingmind.ai.cloud.GeminiIntelligenceEngine(
                         com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(getApplication())
@@ -189,7 +190,13 @@ class MeetingDetailViewModel(
             } else {
                 localEngine
             }
-        return AskMeetingUseCase(transcriptRepository, engine, vocabularyRepository = vocabularyRepository)
+        val embeddings: com.craftflowtechnologies.meetingmind.ai.embeddings.EmbeddingEngine =
+            if (effectiveProfile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
+                com.craftflowtechnologies.meetingmind.ai.embeddings.NeuralEmbeddingEngine(getApplication())
+            } else {
+                com.craftflowtechnologies.meetingmind.ai.embeddings.LocalEmbeddingEngine()
+            }
+        return AskMeetingUseCase(transcriptRepository, engine, embeddingEngine = embeddings, vocabularyRepository = vocabularyRepository)
     }
     /** Display-only filler-word cleanup preference. The stored transcript is always verbatim; this
      * only decides how it is rendered, so flipping it takes effect immediately with no reprocessing. */
@@ -341,10 +348,12 @@ class MeetingDetailViewModel(
         PlaybackController.playAt(getApplication(), meetingId, meeting.value?.title ?: "Recording", File(path), positionMs)
     }
 
-    private val _asrModelInstalled = MutableStateFlow(
-        modelStorage.isInstalled(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8.id)
-    )
-    val asrModelInstalled: StateFlow<Boolean> = _asrModelInstalled.asStateFlow()
+    /** Bumped to re-read what is on disk; see [refreshModelAvailability]. */
+    private val _modelCheck = MutableStateFlow(0)
+
+    /** True when an installed speech model (any of them, not just Parakeet) can transcribe this recording's language. */
+    private fun asrUsableFor(language: String?): Boolean =
+        com.craftflowtechnologies.meetingmind.ai.modelmanagement.AsrModelResolver.resolve(modelStorage, null, language) != null
 
     private val _llmModelInstalled = MutableStateFlow(anySummarizationModelInstalled())
     /** Whether *any* Meeting Intelligence model is really on disk. Needed so a finished recording
@@ -361,7 +370,7 @@ class MeetingDetailViewModel(
     /** Re-checks real on-disk install state — call when the screen becomes visible again
      * (e.g. returning from the Model Manager), since a download may have finished meanwhile. */
     fun refreshModelAvailability() {
-        _asrModelInstalled.value = modelStorage.isInstalled(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8.id)
+        _modelCheck.value = _modelCheck.value + 1
         _llmModelInstalled.value = anySummarizationModelInstalled()
     }
 
@@ -370,6 +379,10 @@ class MeetingDetailViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = null
     )
+
+    /** Whether "Transcribe" can work now: decided by the same resolver processing uses, for this recording's language. */
+    val asrModelInstalled: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(meeting, _modelCheck) { m, _ -> asrUsableFor(m?.language) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), asrUsableFor(null))
 
     val transcript: StateFlow<Transcript> = transcriptRepository.getTranscript(meetingId).stateIn(
         scope = viewModelScope,
@@ -712,19 +725,36 @@ class MeetingDetailViewModel(
 
     private val _pendingQuestion = MutableStateFlow("")
     val pendingQuestion: StateFlow<String> = _pendingQuestion.asStateFlow()
+    private val _streamingReply = MutableStateFlow<String?>(null)
+    val streamingReply: StateFlow<String?> = _streamingReply.asStateFlow()
+    private var askJob: kotlinx.coroutines.Job? = null
 
     fun askQuestion(questionText: String) {
         if (questionText.isBlank()) return
-        viewModelScope.launch {
+        askJob?.cancel()
+        askJob = viewModelScope.launch {
             _pendingQuestion.value = questionText
+            _streamingReply.value = null
             _isAnswering.value = true
             try {
                 val userName = userPrefs.preferencesFlow.first().userName
-                buildAskUseCase()(meetingId, questionText, userName, meeting.value?.recordingType)
+                buildAskUseCase().invokeStream(meetingId, questionText, userName, meeting.value?.recordingType).collect { ev ->
+                    when (ev) {
+                        is com.craftflowtechnologies.meetingmind.ai.llm.AskStreamEvent.Partial -> _streamingReply.value = ev.text
+                        is com.craftflowtechnologies.meetingmind.ai.llm.AskStreamEvent.Complete -> _streamingReply.value = null
+                    }
+                }
             } finally {
+                _streamingReply.value = null
                 _isAnswering.value = false
             }
         }
+    }
+
+    fun cancelAsk() {
+        askJob?.cancel()
+        _streamingReply.value = null
+        _isAnswering.value = false
     }
 
     fun generateMarkdownExport(): String {
@@ -791,7 +821,8 @@ fun MeetingDetailScreen(
     /** Opens the Study lesson for a lecture or research recording's note. */
     onOpenLesson: ((noteId: String) -> Unit)? = null,
     /** "✨ Brief" on a work recording: its Intelligence Brief. */
-    onCreateBrief: ((meetingId: String) -> Unit)? = null
+    onCreateBrief: ((meetingId: String) -> Unit)? = null,
+    onOpenPaywall: (com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger) -> Unit = {}
 ) {
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
@@ -853,6 +884,8 @@ fun MeetingDetailScreen(
     var currentTab by remember { mutableStateOf(RecordingDetailTab.OVERVIEW) }
     var showFullPlayer by remember { mutableStateOf(false) }
     var showAiToolsSheet by remember { mutableStateOf(false) }
+    var showDeepSynthesisSheet by remember { mutableStateOf(false) }
+    var showAutopilotSheet by remember { mutableStateOf(false) }
     val processingProfile by viewModel.processingProfile.collectAsState()
     val latestToolResult by viewModel.latestToolResult.collectAsState()
     // Set when an "AI tools" entry whose data already exists is tapped (Phase 15 §7) — switches to
@@ -893,6 +926,7 @@ fun MeetingDetailScreen(
     var renameSpeakerText by remember { mutableStateOf("") }
     var showAddActionDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var showSermonCirclePackSheet by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
 
     var pendingExportContentType by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.export.ExportContentType?>(null) }
@@ -964,6 +998,7 @@ fun MeetingDetailScreen(
                 // below it — previously this had zero inset handling and rendered under the status
                 // bar, overlapping the clock/battery icons (see MiniPlayerBar for the same pattern
                 // applied to the nav-bar side).
+                Column {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1013,6 +1048,47 @@ fun MeetingDetailScreen(
                         )
                     }
 
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.testTag("meeting_menu_btn")
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = InkSecondary)
+                        }
+                    }
+
+                    // The design's mini dial is a conic play/progress indicator, present on every
+                    // tab and never scrolling away (docs/recording-page-implementation.md §2.1).
+                    // Long-press reveals the full scrub player below (see showFullPlayer) — the
+                    // old always-visible player's slider/lyrics-preview didn't fit the dial's
+                    // "shrinks to a corner" brief, so it moved behind that disclosure instead of
+                    // being deleted.
+                    MiniDialPlayer(
+                        progress = if (isThisRecordingActive && playbackState.durationMs > 0L) {
+                            (playbackState.positionMs.toFloat() / playbackState.durationMs.toFloat()).coerceIn(0f, 1f)
+                        } else 0f,
+                        isPlaying = isThisRecordingActive && playbackState.isPlaying,
+                        onTogglePlayPause = {
+                            if (isThisRecordingActive) {
+                                viewModel.togglePlayPause()
+                            } else if (audioPath != null) {
+                                viewModel.playAudio(File(audioPath))
+                            }
+                        },
+                        onLongPress = { showFullPlayer = !showFullPlayer },
+                        modifier = Modifier.testTag("mini_dial_player")
+                    )
+                }
+                // The actions (Note, Brief, Study, Deep Pack, Autopilot) get their own row that scrolls
+                // sideways. In the title row they squeezed the title out and wrapped "Deep Pack".
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 66.dp, end = 18.dp, top = 8.dp, bottom = 6.dp)
+                        .testTag("meeting_actions_row"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     meeting?.noteId?.let { noteId ->
                         Surface(
                             onClick = { onOpenNote(noteId) },
@@ -1054,38 +1130,37 @@ fun MeetingDetailScreen(
                                 }
                             }
                         }
-                    }
-
-                    Box {
-                        IconButton(
-                            onClick = { menuExpanded = true },
-                            modifier = Modifier.testTag("meeting_menu_btn")
-                        ) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = InkSecondary)
+                        if (meeting?.status == MeetingStatus.READY) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                onClick = { showDeepSynthesisSheet = true },
+                                shape = RoundedCornerShape(50),
+                                color = AccentWash,
+                                modifier = Modifier.testTag("meeting_deep_synthesis_btn")
+                            ) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(15.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Deep Pack", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                                }
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                onClick = { showAutopilotSheet = true },
+                                shape = RoundedCornerShape(50),
+                                color = AccentWash,
+                                modifier = Modifier.testTag("meeting_autopilot_btn")
+                            ) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(15.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Autopilot", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                                }
+                            }
                         }
                     }
 
-                    // The design's mini dial is a conic play/progress indicator, present on every
-                    // tab and never scrolling away (docs/recording-page-implementation.md §2.1).
-                    // Long-press reveals the full scrub player below (see showFullPlayer) — the
-                    // old always-visible player's slider/lyrics-preview didn't fit the dial's
-                    // "shrinks to a corner" brief, so it moved behind that disclosure instead of
-                    // being deleted.
-                    MiniDialPlayer(
-                        progress = if (isThisRecordingActive && playbackState.durationMs > 0L) {
-                            (playbackState.positionMs.toFloat() / playbackState.durationMs.toFloat()).coerceIn(0f, 1f)
-                        } else 0f,
-                        isPlaying = isThisRecordingActive && playbackState.isPlaying,
-                        onTogglePlayPause = {
-                            if (isThisRecordingActive) {
-                                viewModel.togglePlayPause()
-                            } else if (audioPath != null) {
-                                viewModel.playAudio(File(audioPath))
-                            }
-                        },
-                        onLongPress = { showFullPlayer = !showFullPlayer },
-                        modifier = Modifier.testTag("mini_dial_player")
-                    )
+                }
                 }
             }
         },
@@ -1181,6 +1256,32 @@ fun MeetingDetailScreen(
                 }
             }
 
+            // Saved but no notes yet (a recovered recording the person chose to finish later).
+            if (meeting?.status == MeetingStatus.SAVED) {
+                val savedMeeting = meeting
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Column(Modifier.padding(14.dp).fillMaxWidth()) {
+                        Text("Notes not made yet", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            "The recording is saved on this phone. Make its notes when you're ready.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        TextButton(
+                            onClick = {
+                                val audioPath = savedMeeting?.audioFilePath
+                                if (savedMeeting != null && audioPath != null) onTranscribe(savedMeeting.id, audioPath, savedMeeting.durationMs)
+                            },
+                            modifier = Modifier.padding(top = 6.dp)
+                        ) { Text("Make notes") }
+                    }
+                }
+            }
+
             // Processing failed: say why, in the pipeline's words, with the way forward.
             if (meeting?.status == MeetingStatus.ERROR) {
                 val processingError by viewModel.processingError.collectAsState()
@@ -1253,9 +1354,9 @@ fun MeetingDetailScreen(
                             )
                             Text(
                                 text = if (asrModelInstalled) {
-                                    "The speech recognition model is now installed — transcribe this meeting on your device."
+                                    "A speech model is installed now. Transcribe this meeting on your device."
                                 } else {
-                                    "Download the offline speech recognition model to transcribe this meeting on your device."
+                                    "Get a speech model, or switch to Internet mode, then try again. The audio is safe."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -1274,8 +1375,19 @@ fun MeetingDetailScreen(
                                 Text("Transcribe")
                             }
                         } else {
-                            TextButton(onClick = onNavigateToModels) {
-                                Text("Manage Models")
+                            // Always a way to run it again (Internet mode may be on now), with the models one tap away.
+                            val currentMeeting = meeting
+                            Column(horizontalAlignment = Alignment.End) {
+                                TextButton(
+                                    onClick = {
+                                        val audioPath = currentMeeting?.audioFilePath
+                                        if (currentMeeting != null && audioPath != null) {
+                                            onTranscribe(currentMeeting.id, audioPath, currentMeeting.durationMs)
+                                        }
+                                    },
+                                    modifier = Modifier.testTag("meeting_model_retry")
+                                ) { Text("Try again") }
+                                TextButton(onClick = onNavigateToModels) { Text("Models") }
                             }
                         }
                     }
@@ -1286,6 +1398,7 @@ fun MeetingDetailScreen(
             when (currentTab) {
                 RecordingDetailTab.OVERVIEW -> com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.OverviewStepper(
                     summary = meeting?.summaryPreview,
+                    meetingId = viewModel.meetingId,
                     openQuestionCount = questions.count { !it.resolved },
                     decisions = decisions,
                     actionItems = actionItems,
@@ -1334,25 +1447,31 @@ fun MeetingDetailScreen(
                     cleanFillerWords = cleanFillerWords,
                     scenes = remember(meeting?.audioFilePath, meeting?.status) { meeting?.audioFilePath?.let { com.craftflowtechnologies.meetingmind.ai.scene.SceneMap.load(java.io.File(it)) } }
                 ) }
-                RecordingDetailTab.ASK_AI -> com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.AskAiPanel(
-                    chatMessages = chatMessages,
-                    allSegments = transcript.segments,
-                    speakers = speakers,
-                    totalSegmentCount = transcript.segments.size,
-                    isAnswering = isAnswering,
-                    pendingQuestion = pendingQuestion,
-                    onSendQuestion = { viewModel.askQuestion(it) },
-                    onPlayFrom = { viewModel.jumpToTimestamp(it) },
-                    onOpenInTranscript = { ts ->
-                        highlightedSegmentId = transcript.segments
-                            .filter { it.startMs <= ts }
-                            .maxByOrNull { it.startMs }
-                            ?.id
-                            ?: transcript.segments.minByOrNull { kotlin.math.abs(it.startMs - ts) }?.id
-                        currentTab = RecordingDetailTab.TRANSCRIPT
-                        viewModel.jumpToTimestamp(ts)
-                    }
-                )
+                RecordingDetailTab.ASK_AI -> {
+                    val streamingReply by viewModel.streamingReply.collectAsState()
+                    com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.AskAiPanel(
+                        chatMessages = chatMessages,
+                        allSegments = transcript.segments,
+                        speakers = speakers,
+                        totalSegmentCount = transcript.segments.size,
+                        isAnswering = isAnswering,
+                        pendingQuestion = pendingQuestion,
+                        streamingReply = streamingReply,
+                        meetingId = viewModel.meetingId,
+                        onSendQuestion = { viewModel.askQuestion(it) },
+                        onStopQuestion = { viewModel.cancelAsk() },
+                        onPlayFrom = { viewModel.jumpToTimestamp(it) },
+                        onOpenInTranscript = { ts ->
+                            highlightedSegmentId = transcript.segments
+                                .filter { it.startMs <= ts }
+                                .maxByOrNull { it.startMs }
+                                ?.id
+                                ?: transcript.segments.minByOrNull { kotlin.math.abs(it.startMs - ts) }?.id
+                            currentTab = RecordingDetailTab.TRANSCRIPT
+                            viewModel.jumpToTimestamp(ts)
+                        }
+                    )
+                }
             }
         }
     }
@@ -1377,6 +1496,9 @@ fun MeetingDetailScreen(
                         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                     }
                 }
+            } else null,
+            onShareSermonPack = if (meeting?.recordingType == RecordingType.SERMON && meeting?.status == MeetingStatus.READY) {
+                { showSermonCirclePackSheet = true }
             } else null,
             onCopyMarkdownSummary = {
                 val md = viewModel.generateMarkdownExport()
@@ -1444,6 +1566,27 @@ fun MeetingDetailScreen(
         )
     }
 
+    if (showSermonCirclePackSheet) {
+        val m = meeting
+        val questionsList = questions.map { it.text }
+        com.craftflowtechnologies.meetingmind.feature.faith.SermonCirclePackSheet(
+            sermonTitle = m?.title ?: "Sermon",
+            preacher = null,
+            summaryText = m?.summaryPreview,
+            scriptures = emptyList(),
+            discussionQuestions = questionsList,
+            onDismiss = { showSermonCirclePackSheet = false },
+            onNavigateCreateCircle = { showSermonCirclePackSheet = false },
+            onNavigatePaywall = {
+                showSermonCirclePackSheet = false
+                onOpenSettings()
+            },
+            onPublished = { circleName, count ->
+                Toast.makeText(context, "Published $count items to $circleName", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
     latestToolResult?.let { result ->
         com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.ToolResultSheet(
             result = result,
@@ -1461,6 +1604,47 @@ fun MeetingDetailScreen(
                 Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
             }
         )
+    }
+
+    if (showDeepSynthesisSheet) {
+        meeting?.id?.let { mId ->
+            com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisSheet(
+                target = com.craftflowtechnologies.meetingmind.feature.synthesis.DeepSynthesisTarget.Meeting(mId),
+                onDismiss = { showDeepSynthesisSheet = false },
+                onOpenPaywall = { trigger ->
+                    showDeepSynthesisSheet = false
+                    onOpenPaywall(trigger)
+                },
+                onOpenNote = { nId ->
+                    showDeepSynthesisSheet = false
+                    onOpenNote(nId)
+                },
+                onOpenMeeting = { srcMeetingId, startMs ->
+                    if (srcMeetingId == mId) {
+                        showDeepSynthesisSheet = false
+                        currentTab = RecordingDetailTab.TRANSCRIPT
+                        if (startMs != null) viewModel.jumpToTimestamp(startMs)
+                    }
+                }
+            )
+        }
+    }
+
+    if (showAutopilotSheet) {
+        meeting?.id?.let { mId ->
+            com.craftflowtechnologies.meetingmind.feature.automation.AutopilotSheet(
+                target = com.craftflowtechnologies.meetingmind.feature.automation.AutopilotTarget.Meeting(mId),
+                onDismiss = { showAutopilotSheet = false },
+                onOpenPaywall = { trigger ->
+                    showAutopilotSheet = false
+                    onOpenPaywall(trigger)
+                },
+                onOpenNote = { nId ->
+                    showAutopilotSheet = false
+                    onOpenNote(nId)
+                }
+            )
+        }
     }
 
     if (isProposingCleanup) {

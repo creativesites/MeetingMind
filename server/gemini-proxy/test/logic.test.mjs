@@ -57,7 +57,13 @@ test('routes are allowlisted', () => {
   assert.equal(L.classifyRoute('GET', '/v1beta/files/abc-123').name, 'file-status');
   assert.equal(L.classifyRoute('POST', '/v1beta/models/gemini-3.6-flash:generateContent').model, 'gemini-3.6-flash');
   assert.equal(L.classifyRoute('GET', '/v1beta/files/../models'), null);
-  assert.equal(L.classifyRoute('POST', '/v1beta/models/x:streamGenerateContent'), null);
+  const streamRoute = L.classifyRoute('POST', '/v1beta/models/gemini-3.8-flash:streamGenerateContent');
+  assert.equal(streamRoute.name, 'generate');
+  assert.equal(streamRoute.model, 'gemini-3.8-flash');
+  assert.equal(streamRoute.stream, true);
+  assert.equal(L.classifyRoute('POST', '/v1beta/models/gemini-embedding-001:embedContent').model, 'gemini-embedding-001');
+  assert.equal(L.classifyRoute('POST', '/v1beta/models/gemini-embedding-001:batchEmbedContents').stream, false);
+  assert.equal(L.classifyRoute('POST', '/v1beta/models/x:countTokens'), null);
   assert.equal(L.classifyRoute('DELETE', '/v1beta/files/abc'), null);
   assert.equal(L.classifyRoute('GET', '/v1beta/models'), null);
 });
@@ -72,6 +78,8 @@ test('requests with audio or a transcription config draw on the audio meter, the
   assert.equal(L.classifyRequest({ generationConfig: { audioTranscriptionConfig: {} } }), 'audio');
   assert.equal(L.classifyRequest({ contents: [{ parts: [{ file_data: { file_uri: 'x' } }] }] }), 'audio');
   assert.equal(L.classifyRequest({ contents: [{ parts: [{ fileData: { fileUri: 'x' } }] }] }), 'audio');
+  assert.equal(L.classifyRequest({ contents: [{ parts: [{ file_data: { file_uri: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', mime_type: 'video/mp4' } }] }] }), 'action');
+  assert.equal(L.classifyRequest({ contents: [{ parts: [{ fileData: { fileUri: 'https://youtu.be/dQw4w9WgXcQ', mimeType: 'video/mp4' } }] }] }), 'action');
   assert.equal(L.classifyRequest({ contents: [{ parts: [{ text: 'hi' }] }] }), 'action');
   assert.equal(L.classifyRequest({}), 'action');
   assert.equal(L.classifyRequest(null), 'action');

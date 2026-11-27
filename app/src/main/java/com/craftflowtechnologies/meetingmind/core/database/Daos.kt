@@ -42,6 +42,29 @@ interface MeetingDao {
 
     @Query("SELECT * FROM meetings WHERE noteId = :noteId LIMIT 1")
     suspend fun getMeetingByNoteId(noteId: String): MeetingEntity?
+
+    /**
+     * Other recordings of the same type created in the same local day — the only thing the date
+     * fallback needs in order to disambiguate itself (see RecordingTitles). Deliberately by
+     * `recordingType` rather than by title, so a title someone renamed doesn't hide a collision.
+     */
+    @Query(
+        "SELECT * FROM meetings WHERE recordingType = :recordingType " +
+            "AND createdAt >= :fromMs AND createdAt < :toMs AND id != :excludeId"
+    )
+    suspend fun getMeetingsOfTypeBetween(
+        recordingType: String,
+        fromMs: Long,
+        toMs: Long,
+        excludeId: String
+    ): List<MeetingEntity>
+
+    /** A bounded queue for the title backfill — never the whole library in one run. */
+    @Query(
+        "SELECT * FROM meetings WHERE titleSource IN ('DATE', 'CONTENT') AND status = 'READY' " +
+            "ORDER BY createdAt DESC LIMIT :limit"
+    )
+    suspend fun getMeetingsForTitleBackfill(limit: Int): List<MeetingEntity>
 }
 
 @Dao
@@ -307,4 +330,25 @@ interface VocabularyDao {
 
     @Query("DELETE FROM vocabulary WHERE id = :id")
     suspend fun deleteById(id: String)
+}
+
+@Dao
+interface TranscriptTranslationDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrReplace(translation: TranscriptTranslationEntity)
+
+    @Query("SELECT * FROM transcript_translations WHERE meetingId = :meetingId AND targetLanguage = :targetLanguage LIMIT 1")
+    suspend fun getTranslation(meetingId: String, targetLanguage: String): TranscriptTranslationEntity?
+
+    @Query("SELECT * FROM transcript_translations WHERE meetingId = :meetingId ORDER BY createdAt DESC")
+    suspend fun getTranslationsForMeeting(meetingId: String): List<TranscriptTranslationEntity>
+
+    @Query("SELECT * FROM transcript_translations WHERE meetingId = :meetingId ORDER BY createdAt DESC")
+    fun observeTranslationsForMeeting(meetingId: String): Flow<List<TranscriptTranslationEntity>>
+
+    @Query("DELETE FROM transcript_translations WHERE meetingId = :meetingId AND targetLanguage = :targetLanguage")
+    suspend fun deleteTranslation(meetingId: String, targetLanguage: String)
+
+    @Query("DELETE FROM transcript_translations WHERE meetingId = :meetingId")
+    suspend fun deleteForMeeting(meetingId: String)
 }

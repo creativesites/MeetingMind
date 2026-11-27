@@ -124,6 +124,11 @@ enum class TranscriptAiToolType(
         "Lists the people and organizations mentioned.",
         TranscriptAiToolReadiness.MODEL_BACKED
     ),
+    FIND_RISKS_BLOCKERS(
+        TranscriptAiToolCategory.ANALYSIS, "Find risks & blockers",
+        "Surfaces risks, unresolved tensions, and blockers raised in the recording.",
+        TranscriptAiToolReadiness.MODEL_BACKED
+    ),
 
     EXPLAIN_THIS(
         TranscriptAiToolCategory.UTILITIES, "Explain this",
@@ -143,6 +148,16 @@ enum class TranscriptAiToolType(
     CREATE_OUTLINE(
         TranscriptAiToolCategory.UTILITIES, "Create outline",
         "Produces a hierarchical outline of the recording.",
+        TranscriptAiToolReadiness.MODEL_BACKED
+    ),
+    DRAFT_FOLLOW_UP(
+        TranscriptAiToolCategory.UTILITIES, "Draft follow-up email",
+        "Writes a ready-to-send recap email with decisions and next steps.",
+        TranscriptAiToolReadiness.MODEL_BACKED
+    ),
+    TRANSLATE_TRANSCRIPT(
+        TranscriptAiToolCategory.UTILITIES, "Translate transcript",
+        "Translates the transcript into your selected translation language.",
         TranscriptAiToolReadiness.MODEL_BACKED
     ),
     /** Title generation also runs automatically during processing; this is the on-demand entry

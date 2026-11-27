@@ -1,35 +1,23 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material.icons.filled.Work
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,48 +38,48 @@ import com.craftflowtechnologies.meetingmind.core.calendar.UpNext
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.timeline.DeepTarget
 import com.craftflowtechnologies.meetingmind.core.timeline.ItemKind
-import com.craftflowtechnologies.meetingmind.core.timeline.TimeOfDaySky
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineItem
+import com.craftflowtechnologies.meetingmind.core.ui.work.RibbonBlock
+import com.craftflowtechnologies.meetingmind.core.ui.work.RibbonDot
+import com.craftflowtechnologies.meetingmind.core.work.DueDates
 import com.craftflowtechnologies.meetingmind.core.work.PulseEvent
 import com.craftflowtechnologies.meetingmind.core.work.WorkTask
-import com.craftflowtechnologies.meetingmind.feature.today.HomeQuickAccessRow
-import com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel
 import com.craftflowtechnologies.meetingmind.feature.today.HeroTile
-import com.craftflowtechnologies.meetingmind.feature.today.HomeModes
+import com.craftflowtechnologies.meetingmind.feature.today.HomeQuickAccessRow
 import com.craftflowtechnologies.meetingmind.feature.today.ModeHome
-import com.craftflowtechnologies.meetingmind.feature.today.TodayFocus
-import com.craftflowtechnologies.meetingmind.feature.today.itemIcon
+import com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel
 import com.craftflowtechnologies.meetingmind.feature.today.home.FaithAndStories
 import com.craftflowtechnologies.meetingmind.feature.today.home.HomeModeHeader
 import com.craftflowtechnologies.meetingmind.feature.today.home.faithBentoData
-import com.craftflowtechnologies.meetingmind.feature.today.timeFormat
-import com.craftflowtechnologies.meetingmind.feature.work.home.NeedLine
-import com.craftflowtechnologies.meetingmind.feature.work.home.ScheduleAgendaRow
-import com.craftflowtechnologies.meetingmind.feature.work.home.WorkCaptureRow
-import com.craftflowtechnologies.meetingmind.feature.work.home.WorkGlanceTile
-import com.craftflowtechnologies.meetingmind.feature.work.home.WorkHero
-import com.craftflowtechnologies.meetingmind.feature.work.home.WorkHeroCard
-import com.craftflowtechnologies.meetingmind.feature.work.home.WorkHomeLayout
-import com.craftflowtechnologies.meetingmind.feature.work.home.WorkListCard
 import com.craftflowtechnologies.meetingmind.feature.today.home.Reveal
+import com.craftflowtechnologies.meetingmind.feature.today.itemIcon
+import com.craftflowtechnologies.meetingmind.feature.today.timeFormat
+import com.craftflowtechnologies.meetingmind.feature.work.home.UpNextChoice
+import com.craftflowtechnologies.meetingmind.feature.work.home.WorkGlanceTile
+import com.craftflowtechnologies.meetingmind.feature.work.home.WorkHomeCopy
+import com.craftflowtechnologies.meetingmind.feature.work.home.WorkPeopleStrip
+import com.craftflowtechnologies.meetingmind.feature.work.home.WorkProjectsStrip
+import com.craftflowtechnologies.meetingmind.feature.work.home.WorkQuickAccess
+import com.craftflowtechnologies.meetingmind.feature.work.home.WorkTodayTaskFormat
+import com.craftflowtechnologies.meetingmind.feature.work.home.WorkTodayTasksCard
+import com.craftflowtechnologies.meetingmind.feature.work.home.WorkUpNext
+import com.craftflowtechnologies.meetingmind.feature.work.home.WorkUpNextTile
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
-import com.craftflowtechnologies.meetingmind.ui.theme.FaithGold
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
-import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
-import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
-import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
+import java.time.LocalTime
 import java.util.Calendar
 import java.util.Date
+import kotlinx.coroutines.launch
 
 /**
- * The Work home (HomeStyle.PROFESSIONAL). It is a sibling of the Today home: the same header, the
- * same sky hero and illustrated tiles, but laid out for the working day. It leads with the next
- * meeting (or what needs the person), shows the figures for the week, then the lists that matter:
- * what needs you, the day's schedule, what you owe and are owed, projects and people. The rules for
- * which rows show are in [WorkHomeLayout]; the figures come from data this home already loads.
+ * The Work home (HomeStyle.PROFESSIONAL), in the same sky-hero language as the Today home. Top to bottom:
+ * the shared header and mode switch with the sky hero; a floating "Up next" tile over the hero's edge (the
+ * next meeting in the morning, what to review from evening); quick access; "Your day" (the Briefing card with
+ * the day ribbon and at most four things that need the person); today's tasks; projects; people; then the
+ * Circles card, the glance figures and the faith and stories sections. The rules live in feature/work/home.
  */
 @Composable
 fun ProfessionalHome(
@@ -115,8 +103,7 @@ fun ProfessionalHome(
     onRetryCircles: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit,
     onOpenWork: () -> Unit,
-    /** Opens Study; null hides its shortcut. */
-    onOpenStudy: (() -> Unit)? = null,
+    onOpenLearn: () -> Unit = {},
     onOpenFaith: () -> Unit = {},
     onOpenPrayer: () -> Unit = {},
     onOpenWord: () -> Unit = {},
@@ -129,15 +116,18 @@ fun ProfessionalHome(
     onOpenContext: (com.craftflowtechnologies.meetingmind.core.work.ContextType, String) -> Unit = { _, _ -> },
     onOpenInbox: () -> Unit = {},
     onShare: (com.craftflowtechnologies.meetingmind.feature.share.ShareRequest) -> Unit = {},
+    /** Quick access "Brief". Defaults to Work until the caller passes the brief screen. */
+    onOpenBrief: () -> Unit = onOpenWork,
+    /** Quick access "Review" (the weekly review). Defaults to Work until the caller passes it. */
+    onOpenWeeklyReview: () -> Unit = onOpenWork,
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit
 ) {
     val create = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
     com.craftflowtechnologies.meetingmind.feature.create.CreateHost(create)
     val identity by today.identity.collectAsState()
-    val upNext by today.upNext.collectAsState()
     val now by today.now.collectAsState()
     val todayItems by today.today.collectAsState()
-    val jobs by today.activeJobs.collectAsState()
+    val recentWork by work.recentWork.collectAsState()
     val stories by today.stories.collectAsState()
     val devotional by today.devotional.collectAsState()
     val stats by today.stats.collectAsState()
@@ -146,15 +136,13 @@ fun ProfessionalHome(
     val myTasks by work.myTasks.collectAsState()
     val waitingOn by work.waitingOn.collectAsState()
     val toReview by work.toReview.collectAsState()
+    val failed by work.failed.collectAsState()
     val followUps by work.followUps.collectAsState()
     val decisions by work.decisions.collectAsState()
     val projects by work.projects.collectAsState()
     val people by work.everyone.collectAsState()
     val titles by work.titles.collectAsState()
-    val focus by today.focus.collectAsState()
     val listState = rememberLazyListState()
-    val offeredModes = HomeModes.offered(ModeHome.WORK, identity.showsFaith)
-    val mode = HomeModes.effective(focus, offeredModes)
     val inboxCount by work.inboxCount.collectAsState()
     var nudging by remember { mutableStateOf<WorkTask?>(null) }
     var editing by remember { mutableStateOf<WorkTask?>(null) }
@@ -169,31 +157,65 @@ fun ProfessionalHome(
         work.setPulseEvents(todayItems.mapNotNull { (it.target as? DeepTarget.Event)?.event }.filter { it.end >= now && !it.allDay }.map(::pulseEventOf))
     }
     val fmt = timeFormat()
-    val dueToday = myTasks.filter { it.dueAt != null && it.dueAt < com.craftflowtechnologies.meetingmind.core.work.DueDates.startOfDay(now) + 86_400_000L }
+    val colors = MM.colors
+    val startOfToday = DueDates.startOfDay(now)
+    val endOfToday = startOfToday + DAY_MS
+    val dueToday = myTasks.filter { it.dueAt != null && it.dueAt < endOfToday }
     val overdue = myTasks.count { it.isOverdue(now) }
     val meetingsToday = todayItems.count { it.kind == ItemKind.EVENT }
-    val weekDecisions = decisions.count { it.createdAt > now - 7 * 86_400_000L }
+    val weekDecisions = decisions.count { it.createdAt > now - 7 * DAY_MS }
     val schedule = todayItems.sortedBy { it.start }
 
-    // The hero: the next meeting that has not ended, else the first item that needs the person.
+    // The next meeting that has not ended. The Up next tile and the day ribbon both read from it.
     val nextItem = schedule.firstOrNull { item ->
         (item.target as? DeepTarget.Event)?.event?.let { ev -> !ev.allDay && ev.end >= now } == true
     }
     val nextEvent = (nextItem?.target as? DeepTarget.Event)?.event
-    // The header's up-next line, from the same next item the hero uses.
+    val fmtNext = nextItem?.let { ni -> fmt.format(Date(ni.start)) }
+    // The header's up-next line, from the same next item the tile uses.
     val nextTile = nextItem?.let { ni ->
         HeroTile(
-            label = "Up next", title = ni.title.ifBlank { "Untitled" }, subtitle = fmt.format(Date(ni.start)),
+            label = "Up next", title = ni.title.ifBlank { "Untitled" }, subtitle = fmtNext.orEmpty(),
             icon = itemIcon(ni), accent = Color(ni.accent), onClick = { open(ni, today, onOpenNote, onOpenProcessing) }
         )
-    } ?: HeroTile(label = "Up next", title = "Nothing scheduled", subtitle = "Record something", icon = Icons.Filled.Mic, accent = Accent, onClick = onRecord)
-    val hero = WorkHomeLayout.hero(hasNextMeeting = nextEvent != null, needsCount = toReview.size + followUps.size)
-    val (reviewsShown, followUpsShown) = WorkHomeLayout.needsShown(toReview.size, followUps.size)
-    val sky = remember(now / 300_000) {
-        val cal = Calendar.getInstance().apply { timeInMillis = now }
-        TimeOfDaySky.at(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+    } ?: HeroTile(label = "Up next", title = "Nothing scheduled", subtitle = "Record something", icon = androidx.compose.material.icons.Icons.Filled.Event, accent = Accent, onClick = onRecord)
+    val hour = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.HOUR_OF_DAY)
+    val upNextChoice = WorkUpNext.choose(hour, hasNextMeeting = nextEvent != null, reviews = toReview.size, followUps = followUps.size)
+    val firstReview = toReview.firstOrNull()
+    val firstFollowUp = followUps.firstOrNull()
+
+    // The day ribbon: today's meetings as blocks, and today's timed tasks as priority dots.
+    val ribbonBlocks = todayItems.mapNotNull { item ->
+        val ev = (item.target as? DeepTarget.Event)?.event ?: return@mapNotNull null
+        if (ev.allDay) return@mapNotNull null
+        val endMs = if (ev.end > ev.begin) ev.end else ev.begin + 30 * 60_000L
+        RibbonBlock(
+            start = localTimeOf(ev.begin), end = localTimeOf(endMs), title = ev.title.ifBlank { "Untitled" },
+            onClick = { open(item, today, onOpenNote, onOpenProcessing) }, past = endMs < now
+        )
     }
-    val lateNight = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.HOUR_OF_DAY).let { it >= 22 || it < 5 }
+    val ribbonDots = myTasks.mapNotNull { t ->
+        val due = t.dueAt ?: return@mapNotNull null
+        if (due < startOfToday || due >= endOfToday || !WorkTodayTaskFormat.isTimed(due)) return@mapNotNull null
+        RibbonDot(time = localTimeOf(due), color = if (t.isOverdue(now)) colors.danger else colors.accent, onClick = { editing = t })
+    }
+
+    // Your day: the Pulse, with the recordings that need the person and the counts for the sentence.
+    val attentionTotal = failed.size + toReview.size + followUps.size
+    val ui = pulse.copy(
+        summary = WorkHomeCopy.summarySentence(meetingsToday, dueToday.size, overdue, attentionTotal),
+        failed = failed.map { PulseRecording(it.meetingId, it.title, "Recording didn't process · " + dayLabel(it.at, now)) },
+        toReview = toReview.map { PulseRecording(it.meetingId, it.title, "${it.type.displayName} · ready to wrap up") },
+        followUps = followUps.map { PulseRecording(it.meetingId, it.title, "Follow-up not sent yet · " + dayLabel(it.at, now)) },
+        primaryLabel = when (upNextChoice) {
+            UpNextChoice.MEETING -> "Prepare"
+            UpNextChoice.REVIEW, UpNextChoice.FOLLOW_UP -> "Review"
+            UpNextChoice.NONE -> null
+        },
+        dayBlocks = ribbonBlocks,
+        dayDots = ribbonDots,
+        dayNow = localTimeOf(now)
+    )
 
     Scaffold(
         containerColor = SurfaceBase,
@@ -205,31 +227,75 @@ fun ProfessionalHome(
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("professional_home"), state = listState, contentPadding = PaddingValues(bottom = 36.dp)) {
-            // The header every home shares: the Today header and sky hero, then the mode switch.
+            // 1. The header every home shares: avatar and date, the dock, the mode switch, and the sky hero.
             item {
                 HomeModeHeader(
                     today = today, home = ModeHome.WORK, tile = nextTile, listState = listState,
                     inboxCount = inboxCount, onSearch = onSearch, onInbox = onOpenInbox, onOpenDevotional = onOpenDevotional
                 )
             }
-            // The same Circles card as the Today home, in place of the old text link.
-            item {
-                com.craftflowtechnologies.meetingmind.feature.today.home.CirclesCard(
-                    circles = homeCircles,
-                    onOpenCircles = onOpenCircles,
-                    onOpenCircle = onOpenCircle,
-                    onStartCircle = onStartCircle,
-                    onRetry = onRetryCircles,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("professional_circles")
-                )
-            }
-            item {
-                Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    QuietLink("Customize home", onCustomize, modifier = Modifier.testTag("professional_customize"))
+
+            // 2. The Up next tile, under the mode switch at its full height. (It used to float 38 dp up over the
+            //    hero in a 54 dp slot, which covered the switch caption and squeezed the tile and its button.)
+            if (upNextChoice != UpNextChoice.NONE) item {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp)) {
+                    val meeting = nextItem
+                    val review = firstReview
+                    val followUp = firstFollowUp
+                    val floating = Modifier
+                    when {
+                        upNextChoice == UpNextChoice.MEETING && meeting != null && nextEvent != null -> WorkUpNextTile(
+                            overline = "UP NEXT · " + fmt.format(Date(meeting.start)).uppercase(),
+                            title = meeting.title.ifBlank { "Untitled" },
+                            subtitle = meeting.subtitle,
+                            icon = Icons.Filled.Event,
+                            buttonLabel = "Prepare",
+                            onTile = { preparing = PrepTarget.Event(pulseEventOf(nextEvent)) },
+                            onButton = { preparing = PrepTarget.Event(pulseEventOf(nextEvent)) },
+                            index = 0,
+                            modifier = floating
+                        )
+                        upNextChoice == UpNextChoice.REVIEW && review != null -> WorkUpNextTile(
+                            overline = WorkUpNext.reviewLine(toReview.size).uppercase(),
+                            title = review.title.ifBlank { "Untitled" },
+                            subtitle = "${review.type.displayName} · ready to wrap up",
+                            icon = Icons.Filled.Insights,
+                            buttonLabel = "Review",
+                            onTile = { onOpenWrapUp(review.meetingId, false) },
+                            onButton = { onOpenWrapUp(review.meetingId, false) },
+                            index = 0,
+                            modifier = floating
+                        )
+                        upNextChoice == UpNextChoice.FOLLOW_UP && followUp != null -> WorkUpNextTile(
+                            overline = "TO SEND",
+                            title = followUp.title.ifBlank { "Untitled" },
+                            subtitle = "Follow-up not sent yet · " + dayLabel(followUp.at, now),
+                            icon = Icons.AutoMirrored.Filled.Send,
+                            buttonLabel = "Review",
+                            onTile = { onOpenWrapUp(followUp.meetingId, true) },
+                            onButton = { onOpenWrapUp(followUp.meetingId, true) },
+                            index = 0,
+                            modifier = floating
+                        )
+                    }
                 }
             }
 
-            // Quick Access icons for Faith, Work, Devotional, Prayer, Word, Testimonies.
+            // 3. Quick access: Record, Task, Inbox, Ask, Brief, Review, and New (Note and Import are in New).
+            item {
+                WorkQuickAccess(
+                    onRecord = onRecord,
+                    onTask = { PendingWorkSegment.request.value = WorkSegment.TASKS; onOpenWork() },
+                    onInbox = onOpenInbox,
+                    onAsk = { askOpen = true },
+                    onBrief = onOpenBrief,
+                    onReview = onOpenWeeklyReview,
+                    onNew = { create.open() },
+                    inboxCount = inboxCount,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+            // The rest of the quick access: faith, devotional, prayer, word, testimonies, learn.
             item {
                 HomeQuickAccessRow(
                     onOpenFaith = onOpenFaith,
@@ -239,60 +305,110 @@ fun ProfessionalHome(
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
                     onOpenCreate = { create.open() },
-                    onOpenStudy = onOpenStudy,
+                    onOpenLearn = onOpenLearn,
+                    showLearn = true,
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
 
-            // The hero: the next meeting, or what needs the person. Omitted when there is nothing to lead with.
-            if (hero != WorkHero.NONE) item {
+            // Recent: every Work recording from the moment it exists (recording, writing notes, saved, ready, to
+            // review, didn't finish), shared with the Work page so both homes show a new meeting the same way.
+            if (recentWork.isNotEmpty()) item(key = "work_recent") {
+                WorkRecentSection(
+                    recentWork,
+                    onOpen = { r ->
+                        when (WorkRecent.targetOf(r)) {
+                            WorkRecent.Target.WRAP_UP -> onOpenWrapUp(r.meetingId, false)
+                            WorkRecent.Target.PROCESSING -> onOpenProcessing(r.meetingId)
+                        }
+                    },
+                    onAll = onOpenWork,
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)
+                )
+            }
+
+            // The companion's line: what it has to say right now, or the week's quiet rhythm.
+            item(key = "companion_line") {
+                com.craftflowtechnologies.meetingmind.feature.today.companion.HomeCompanionLine(
+                    space = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK,
+                    onRecord = onRecord, onOpenNote = onOpenNote, onOpenRecording = onOpenProcessing, onSearch = onSearch,
+                    showProcessing = false, // recordings in progress show in the list above
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)
+                )
+            }
+
+            // Notes from a YouTube video (a talk, a webinar, a recorded meeting): the same shared card as every home.
+            item(key = "youtube") {
+                val youTube = com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet.current
+                com.craftflowtechnologies.meetingmind.core.ui.YouTubeNotesCard(
+                    onClick = { youTube.open(from = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK) },
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp).testTag("work_youtube")
+                )
+            }
+            // 4. Your day: the Briefing card, with the ribbon, what needs you, what changed, and the buttons.
+            item {
                 Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
-                    if (hero == WorkHero.MEETING && nextItem != null && nextEvent != null) {
-                        WorkHeroCard(
-                            sky = sky, lateNight = lateNight,
-                            overline = "NEXT UP · ${fmt.format(Date(nextItem.start)).uppercase()}",
-                            title = nextItem.title.ifBlank { "Untitled" },
-                            line = nextItem.subtitle,
-                            primaryLabel = "Prepare",
-                            onPrimary = { preparing = PrepTarget.Event(pulseEventOf(nextEvent)) },
-                            secondaryLabel = "Record",
-                            onSecondary = {
-                                today.noteForEvent(nextEvent) { id, type -> onRecordEvent(id, type, nextEvent.title, UpNext.speakerCount(nextEvent)) }
-                            },
-                            index = 0
-                        )
-                    } else {
-                        val first = toReview.firstOrNull()
-                        val followUp = followUps.firstOrNull()
-                        if (first != null) WorkHeroCard(
-                            sky = sky, lateNight = lateNight, overline = "NEEDS YOU",
-                            title = first.title, line = "${first.type.displayName} · ready to wrap up",
-                            primaryLabel = "Wrap up", onPrimary = { onOpenWrapUp(first.meetingId, false) },
-                            secondaryLabel = null, onSecondary = {}, index = 0
-                        ) else if (followUp != null) WorkHeroCard(
-                            sky = sky, lateNight = lateNight, overline = "NEEDS YOU",
-                            title = followUp.title, line = "Follow-up not sent yet · ${dayLabel(followUp.at)}",
-                            primaryLabel = "Send", onPrimary = { onOpenWrapUp(followUp.meetingId, true) },
-                            secondaryLabel = null, onSecondary = {}, index = 0
+                    Reveal(2) {
+                        PulseCard(
+                            ui = ui,
+                            timeFormat = fmt,
+                            actions = PulseActions(
+                                onNudge = { r -> scope.launch { nudging = work.asTask(r) } },
+                                onPrepareRow = { r -> r.entityType?.let { t -> r.entityId?.let { id -> preparing = PrepTarget.Entity(t, id) } } },
+                                onOpenRow = { r -> if (r.entityType != null && r.entityId != null) onOpenContext(r.entityType, r.entityId) else onOpenAll(WorkTab.MINE) },
+                                onDone = { r ->
+                                    if (r.taskId != null) scope.launch { work.toggle(work.asTask(r)) }
+                                    else if (r.entityType != null && r.entityId != null) onOpenContext(r.entityType, r.entityId)
+                                    else onOpenAll(WorkTab.MINE)
+                                },
+                                onPlayChange = { l -> scope.launch { l.itemId?.let { work.evidenceOf(it) }?.let { (m, at) -> onOpenMeeting(m, at) } } },
+                                onPrepareEvent = { e -> preparing = PrepTarget.Event(e) },
+                                onRecordEvent = { e ->
+                                    (todayItems.firstNotNullOfOrNull { (it.target as? DeepTarget.Event)?.event?.takeIf { ev -> ev.key == e.key } })
+                                        ?.let { ev -> today.noteForEvent(ev) { id, type -> onRecordEvent(id, type, e.title, UpNext.speakerCount(ev)) } }
+                                },
+                                onAsk = { askOpen = true },
+                                onRecord = onRecord,
+                                onTemplates = onOpenWork,
+                                onOpenInbox = onOpenInbox,
+                                onPrimary = {
+                                    when (upNextChoice) {
+                                        UpNextChoice.MEETING -> nextEvent?.let { preparing = PrepTarget.Event(pulseEventOf(it)) }
+                                        UpNextChoice.REVIEW -> firstReview?.let { onOpenWrapUp(it.meetingId, false) }
+                                        UpNextChoice.FOLLOW_UP -> firstFollowUp?.let { onOpenWrapUp(it.meetingId, true) }
+                                        UpNextChoice.NONE -> Unit
+                                    }
+                                },
+                                onWrapUp = { r, followUp -> onOpenWrapUp(r.meetingId, followUp) },
+                                onRetry = { r -> onOpenProcessing(r.meetingId) },
+                                onOpenPulse = onOpenWork
+                            ),
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
             }
 
-            // Capture, one tap each.
+            // 5. Today's tasks: Mine, swipeable, with Waiting on below. "All" opens Tasks.
             item {
-                Box(Modifier.padding(top = 16.dp)) {
-                    WorkCaptureRow(
-                        onRecord = onRecord,
-                        onNote = onNewNote,
-                        onTask = { onOpenAll(WorkTab.MINE) },
-                        onImport = onImport,
-                        onWork = onOpenWork
+                Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
+                    WorkTodayTasksCard(
+                        today = dueToday.sortedBy { it.dueAt ?: Long.MAX_VALUE },
+                        totalMine = myTasks.size,
+                        waiting = waitingOn,
+                        now = now,
+                        timeFormat = fmt,
+                        contextOf = { t -> t.meetingId?.let { titles[it] } },
+                        onToggle = { t -> work.toggle(t) },
+                        onOpen = { t -> editing = t },
+                        onNudge = { t -> nudging = t },
+                        onAll = { onOpenAll(WorkTab.MINE) },
+                        index = 5
                     )
                 }
             }
 
-            // At a glance: the week's figures, each one opens its list.
+            // The figures for the week; each one opens its list.
             item {
                 Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
                     WorkGlanceTile(
@@ -306,173 +422,53 @@ fun ProfessionalHome(
                         onSend = { onOpenWork() },
                         onDecided = { onOpenAll(WorkTab.DECISIONS) },
                         onOpenWork = onOpenWork,
-                        index = 1
+                        index = 6
                     )
                 }
             }
 
-            // The Work Pulse: what changed, and today with what's still open (D5.1).
-            item {
-                Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
-                    Reveal(2) {
-                        PulseCard(
-                            ui = pulse.copy(summary = listOfNotNull(
-                                "$meetingsToday ${if (meetingsToday == 1) "meeting" else "meetings"} today",
-                                toReview.size.takeIf { it > 0 }?.let { "$it to review" },
-                                overdue.takeIf { it > 0 }?.let { "$it overdue" }
-                            ).joinToString("  ·  ")),
-                            timeFormat = fmt,
-                            actions = PulseActions(
-                                onPlay = { r -> r.meetingId?.let { onOpenMeeting(it, r.startMs) } },
-                                onNudge = { r -> scope.launch { nudging = work.asTask(r) } },
-                                onPrepareRow = { r -> r.entityType?.let { t -> r.entityId?.let { id -> preparing = PrepTarget.Entity(t, id) } } },
-                                onOpenRow = { r -> if (r.entityType != null && r.entityId != null) onOpenContext(r.entityType, r.entityId) else onOpenAll(WorkTab.MINE) },
-                                onPlayChange = { l -> scope.launch { l.itemId?.let { work.evidenceOf(it) }?.let { (m, at) -> onOpenMeeting(m, at) } } },
-                                onPrepareEvent = { e -> preparing = PrepTarget.Event(e) },
-                                onRecordEvent = { e ->
-                                    (todayItems.firstNotNullOfOrNull { (it.target as? DeepTarget.Event)?.event?.takeIf { ev -> ev.key == e.key } })
-                                        ?.let { ev -> today.noteForEvent(ev) { id, type -> onRecordEvent(id, type, e.title, UpNext.speakerCount(ev)) } }
-                                },
-                                onAsk = { askOpen = true }, onRecord = onRecord, onTemplates = onOpenWork, onOpenInbox = onOpenInbox
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            }
-
-            if (mode == TodayFocus.ALL) item {
-                FaithAndStories(
-                    showsFaith = identity.showsFaith, data = faithData, stories = stories,
-                    onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
-                    onOpenStories = onOpenStories, index = 7
-                )
-            }
-            if (jobs.isNotEmpty()) item {
-                val j = jobs.first()
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp).clip(RoundedCornerShape(16.dp)).background(AccentWash)
-                        .clickable { onOpenProcessing(j.meetingId) }.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Processing · ${j.progressPercent}%", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold)
-                    Text(j.meetingTitle, fontSize = 14.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 10.dp).weight(1f))
-                }
-            }
-
-            // Needs you: recordings to wrap up, and follow-ups not sent yet. Reviews first.
-            if (toReview.isNotEmpty() || followUps.isNotEmpty()) item {
-                Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
-                    WorkListCard(
-                        title = "Needs you", trailing = null, onTrailing = null,
-                        tag = "work_home_needs", index = 3
-                    ) {
-                        toReview.take(reviewsShown).forEach { r ->
-                            NeedLine(r.title, "${r.type.displayName} · ready to wrap up", "Wrap up") { onOpenWrapUp(r.meetingId, false) }
-                        }
-                        followUps.take(followUpsShown).forEach { r ->
-                            NeedLine(r.title, "Follow-up not sent yet · ${dayLabel(r.at)}", "Send") { onOpenWrapUp(r.meetingId, true) }
-                        }
-                    }
-                }
-            }
-
-            // The day's schedule, as an agenda. Past items recede; the live one is marked.
-            item {
-                Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
-                    WorkListCard(
-                        title = "Today's schedule",
-                        trailing = if (schedule.isEmpty()) null else "${schedule.size}",
-                        onTrailing = null, tag = "work_home_schedule", index = 4
-                    ) {
-                        if (schedule.isEmpty()) {
-                            EmptyLine("Nothing on the calendar today. Turn on your phone's calendar in the Today home to see meetings here, with prep and one-tap record.")
-                        }
-                        schedule.forEachIndexed { i, entry ->
-                            ScheduleAgendaRow(
-                                item = entry, fmt = fmt,
-                                state = WorkHomeLayout.scheduleState(entry.start, entry.end, now),
-                                last = i == schedule.lastIndex,
-                                onPrepare = (entry.target as? DeepTarget.Event)?.event?.takeIf { it.end >= now }?.let { ev -> { preparing = PrepTarget.Event(pulseEventOf(ev)) } }
-                            ) { open(entry, today, onOpenNote, onOpenProcessing) }
-                        }
-                    }
-                }
-            }
-
-            // What you owe.
-            item {
-                Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
-                    WorkListCard(
-                        title = "My tasks",
-                        trailing = if (myTasks.isNotEmpty()) "All ${myTasks.size}" else null,
-                        onTrailing = { onOpenAll(WorkTab.MINE) }, tag = "work_home_tasks", index = 5
-                    ) {
-                        if (myTasks.isEmpty()) EmptyLine("Nothing due. What you agree to in meetings lands here with its date.")
-                        myTasks.take(WorkHomeLayout.TASKS_CAP).forEach { t ->
-                            TaskLine(t, t.meetingId?.let { titles[it] }, { work.toggle(t) }, { editing = t }, t.meetingId?.let { m -> { onOpenMeeting(m, t.startMs) } })
-                        }
-                    }
-                }
-            }
-
-            // What you are owed.
-            if (waitingOn.isNotEmpty()) item {
-                Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
-                    WorkListCard(
-                        title = "Waiting on", trailing = "All ${waitingOn.size}",
-                        onTrailing = { onOpenAll(WorkTab.WAITING) }, tag = "work_home_waiting", index = 6
-                    ) {
-                        waitingOn.take(WorkHomeLayout.WAITING_CAP).forEach { t ->
-                            TaskLine(t, null, { work.toggle(t) }, { editing = t }, action = { TextButton(onClick = { nudging = t }) { Text("Nudge") } })
-                        }
-                    }
-                }
-            }
-
-            // Projects and people.
+            // 6. Projects, as a carousel. "All" opens the Projects segment of Work.
             if (projects.isNotEmpty()) item {
-                WorkSectionTitle(settings.terms.projects, "Work space", onTrailing = onOpenWork)
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(projects, key = { "p-" + it.notebook.id }) { p ->
-                        Column(Modifier.width(150.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceRaised).border(1.dp, LineSoft, RoundedCornerShape(18.dp)).clickable { onOpenProject(p.notebook.id) }.padding(14.dp)) {
-                            Text(p.notebook.status.uppercase(), fontSize = 10.sp, letterSpacing = 1.sp, color = InkMuted)
-                            Text(p.notebook.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
-                            Text("${p.notes} notes", fontSize = 12.sp, color = InkSecondary)
-                        }
-                    }
-                }
+                WorkSectionTitle(settings.terms.projects, "All", onTrailing = {
+                    PendingWorkSegment.request.value = WorkSegment.PROJECTS
+                    onOpenWork()
+                })
+                WorkProjectsStrip(projects = projects, now = now, onOpen = onOpenProject)
             }
+
+            // 7. People, with "owes" and "you owe" badges.
             if (people.isNotEmpty()) item {
                 WorkSectionTitle(if (settings.terms.person == "Contact") "People" else settings.terms.people, "All", onTrailing = { onOpenAll(WorkTab.PEOPLE) })
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(people.take(12), key = { "pp-" + it.id }) { p ->
-                        Column(Modifier.width(60.dp).clip(RoundedCornerShape(12.dp)).clickable { onOpenPerson(p.id) }, horizontalAlignment = Alignment.CenterHorizontally) {
-                            PersonAvatar(p, 48.dp)
-                            Text(p.firstName, fontSize = 12.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
-                        }
-                    }
-                }
-            }
-
-            // Work mode keeps the same faith and stories at the end of the page, so they stay reachable.
-            if (mode != TodayFocus.ALL) item {
-                FaithAndStories(
-                    showsFaith = identity.showsFaith, data = faithData, stories = stories,
-                    onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
-                    onOpenStories = onOpenStories, index = 7
+                WorkPeopleStrip(
+                    people = people,
+                    owedToMe = waitingOn.mapNotNull { it.personId }.toSet(),
+                    iOwe = myTasks.mapNotNull { it.personId }.toSet(),
+                    onOpen = onOpenPerson
                 )
             }
 
+            // 8. The Circles card, then Customize home, then faith and stories, all kept from before.
             item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 22.dp).clip(RoundedCornerShape(18.dp)).background(AccentWash).clickable(onClick = onOpenWork).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Work, null, tint = Accent)
-                    Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                        Text("Open Work", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                        Text("Notes, tasks, projects and decisions", fontSize = 12.sp, color = InkSecondary)
-                    }
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Accent)
+                com.craftflowtechnologies.meetingmind.feature.today.home.CirclesCard(
+                    circles = homeCircles,
+                    onOpenCircles = onOpenCircles,
+                    onOpenCircle = onOpenCircle,
+                    onStartCircle = onStartCircle,
+                    onRetry = onRetryCircles,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 22.dp).testTag("professional_circles")
+                )
+            }
+            item {
+                Row(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    QuietLink("Customize home", onCustomize, modifier = Modifier.testTag("professional_customize"))
                 }
+            }
+            item {
+                FaithAndStories(
+                    showsFaith = identity.showsFaith, data = faithData, stories = stories,
+                    onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
+                    onOpenStories = onOpenStories, index = 9
+                )
             }
         }
     }
@@ -483,8 +479,16 @@ fun ProfessionalHome(
     if (askOpen) ScopedAskSheet(com.craftflowtechnologies.meetingmind.ai.assistant.AskScope(), work, onOpenMeeting, onOpenNote, onDismiss = { askOpen = false })
 }
 
+private const val DAY_MS = 86_400_000L
+
 private fun pulseEventOf(e: com.craftflowtechnologies.meetingmind.core.calendar.CalendarEvent) =
     PulseEvent(e.key, e.title, e.begin, e.end, e.otherPeople, e.attendees.filter { a -> !a.isSelf }.mapNotNull { a -> a.email })
+
+/** The local clock time of [ms], for the day ribbon. */
+private fun localTimeOf(ms: Long): LocalTime {
+    val cal = Calendar.getInstance().apply { timeInMillis = ms }
+    return LocalTime.of(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+}
 
 private fun open(item: TimelineItem, today: TodayViewModel, onOpenNote: (String) -> Unit, onOpenProcessing: (String) -> Unit) = when (val t = item.target) {
     is DeepTarget.Note -> onOpenNote(t.noteId)

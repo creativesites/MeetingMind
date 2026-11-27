@@ -1,16 +1,27 @@
 package com.craftflowtechnologies.meetingmind.feature.meetingdetail.components
 
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
@@ -22,19 +33,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptAiToolCategory
-import com.craftflowtechnologies.meetingmind.core.model.TranscriptAiToolReadiness
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptAiToolRegistry
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptAiToolType
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
 /**
  * The "✨ AI tools" bottom sheet (design/recording-page-implementation.md §2.4).
@@ -56,7 +70,7 @@ fun AiToolsSheet(
     /** Stated rather than assumed: with Internet mode on, these tools are not running on the
      * phone, and a footer that says they are would be false. */
     footerNote: String = "Everything here runs on this phone. Longer transcripts are handled in chunks, so a whole-transcript pass takes a minute or two.",
-    sheetState: SheetState = rememberModalBottomSheetState()
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 ) {
     var expandedCategory by remember { mutableStateOf<TranscriptAiToolCategory?>(null) }
     val groups = remember { TranscriptAiToolRegistry.byCategory() }
@@ -67,13 +81,19 @@ fun AiToolsSheet(
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         containerColor = SurfaceBase
     ) {
-        Column {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .animateContentSize()
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 24.dp, end = 24.dp, bottom = 18.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(text = "AI tools", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, color = Ink)
                 Text(
@@ -81,7 +101,11 @@ fun AiToolsSheet(
                     fontSize = 13.sp,
                     color = Accent,
                     modifier = if (onChangeScope != null) {
-                        Modifier.clickable(onClick = onChangeScope).testTag("ai_tools_scope")
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button, onClick = onChangeScope)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .testTag("ai_tools_scope")
                     } else Modifier
                 )
             }
@@ -95,17 +119,27 @@ fun AiToolsSheet(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { expandedCategory = if (expanded) null else category }
-                                .padding(horizontal = 24.dp, vertical = 17.dp),
+                                .heightIn(min = MMSize.minTouch)
+                                .clickable(role = Role.Button) { expandedCategory = if (expanded) null else category }
+                                .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
+                                .padding(horizontal = 24.dp, vertical = 15.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(text = category.displayName(), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                            if (!expanded) {
-                                Text(text = "${tools.size}", fontSize = 12.5.sp, color = InkMuted)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (!expanded) {
+                                    Text(text = "${tools.size}", fontSize = 12.5.sp, color = InkMuted)
+                                }
+                                Icon(
+                                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                    contentDescription = null,
+                                    tint = InkMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
-                        if (expanded) {
+                        AnimatedVisibility(visible = expanded) {
                             Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 18.dp)) {
                                 tools.forEachIndexed { index, tool ->
                                     ToolRow(

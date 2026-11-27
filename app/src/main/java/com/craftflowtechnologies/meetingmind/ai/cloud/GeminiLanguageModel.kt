@@ -5,6 +5,9 @@ import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
 import com.craftflowtechnologies.meetingmind.ai.routing.AiModelRouter
 import com.craftflowtechnologies.meetingmind.ai.routing.AiRoute
 import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 
 /**
  * Presents Gemini as a [LanguageModel], the same primitive the on-device model implements.
@@ -20,10 +23,41 @@ import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
 class GeminiLanguageModel(
     private val transport: GeminiTransport,
     private val router: AiModelRouter = DefaultAiModelRouter,
-    private val systemInstruction: String = DEFAULT_SYSTEM_INSTRUCTION
+    private val systemInstruction: String = DEFAULT_SYSTEM_INSTRUCTION,
+    private val thinkingLevel: ThinkingLevel = ThinkingLevel.LOW
 ) : LanguageModel {
 
-    override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> {
+    override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> =
+        execute(prompt, responseSchema = null, maxOutputTokens = maxOutputTokens)
+
+    override suspend fun generateStructured(prompt: String, responseSchema: String, maxOutputTokens: Int): AiResult<String> =
+        execute(prompt, responseSchema = responseSchema, maxOutputTokens = maxOutputTokens)
+
+    override fun generateStream(prompt: String, maxOutputTokens: Int): Flow<AiStreamEvent> = flow {
+        if (!transport.refreshConfigured()) {
+            emit(AiStreamEvent.Failed(AiResult.ModelUnavailable(DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "No Gemini API key is set. Add one in Settings to use Internet mode.")))
+            return@flow
+        }
+        val modelId = router.route(AiRoute.GEMINI_INTELLIGENCE).modelId
+        if (modelId == null) {
+            emit(AiStreamEvent.Failed(AiResult.ModelUnavailable(DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "No Gemini reasoning model is configured.")))
+            return@flow
+        }
+        emitAll(
+            transport.stream(
+                GeminiRequest(
+                    modelId = modelId,
+                    systemInstruction = systemInstruction,
+                    prompt = prompt,
+                    jsonOutput = false,
+                    thinkingLevel = thinkingLevel,
+                    maxOutputTokens = maxOutputTokens
+                )
+            )
+        )
+    }
+
+    private suspend fun execute(prompt: String, responseSchema: String?, maxOutputTokens: Int): AiResult<String> {
         if (!transport.refreshConfigured()) {
             return AiResult.ModelUnavailable(
                 modelId = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
@@ -37,10 +71,11 @@ class GeminiLanguageModel(
             GeminiRequest(
                 modelId = modelId,
                 systemInstruction = systemInstruction,
-                prompt = prompt
-                // The schema is carried inside the prompt by TranscriptToolPrompts rather than set
-                // here: the tool engine owns the output contract, and passing it twice, in two
-                // different places, is how the two drift apart.
+                prompt = prompt,
+                responseSchema = responseSchema,
+                jsonOutput = true,
+                thinkingLevel = thinkingLevel,
+                maxOutputTokens = maxOutputTokens
             )
         )
     }

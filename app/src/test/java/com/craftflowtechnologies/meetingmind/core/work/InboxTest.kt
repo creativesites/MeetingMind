@@ -2,6 +2,8 @@ package com.craftflowtechnologies.meetingmind.core.work
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.craftflowtechnologies.meetingmind.core.database.DocumentPageEntity
+import com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -46,10 +48,26 @@ class ShareIntentParserTest {
     }
 
     @Test fun theManifestAcceptsWhatTheParserKnows() {
-        assertEquals(listOf("text/*", "application/pdf", "audio/*", "image/*"), ShareIntentParser.ACCEPTED)
+        assertEquals(listOf("text/*", "application/pdf", "audio/*", "image/*", "video/*"), ShareIntentParser.ACCEPTED)
         val xml = java.io.File("src/main/AndroidManifest.xml").readText()
         ShareIntentParser.ACCEPTED.forEach { assertTrue("manifest lacks $it", xml.contains("android:mimeType=\"$it\"")) }
         assertTrue(xml.contains("android.intent.action.SEND\"") && xml.contains("android.intent.action.SEND_MULTIPLE"))
+    }
+
+    @Test fun aSharedVideoBecomesAVideoPartWithSource() {
+        val parts = ShareIntentParser.parse(
+            ShareIntentParser.ACTION_SEND,
+            "video/mp4",
+            null,
+            "Keynote Video",
+            listOf("content://v1" to "video/mp4"),
+            sourceApp = "com.google.android.apps.photos"
+        )
+        assertEquals(1, parts.size)
+        val p = parts.single()
+        assertEquals(InboxKind.VIDEO, p.kind)
+        assertEquals("com.google.android.apps.photos", p.source)
+        assertEquals("Keynote Video", p.title)
     }
 }
 
@@ -67,6 +85,12 @@ class InboxProcessTest {
     private fun share(text: String, title: String? = null) = runBlocking { repo.add(listOf(SharedPart(InboxKind.TEXT, text = text, title = title ?: text.lineSequence().first()))).single() }
     private fun proposer(models: WorkModels? = null, keep: Boolean = false) = InboxProposer(f.db, models, keep) { f.now }
     private fun notes() = runBlocking { f.db.noteDao().getAll() }.filter { it.metadataJson.contains("fromInbox") }
+
+    /** Stands in for the on-device reader: the document is read, with these pages, and marked DONE. */
+    private fun readDone(itemId: String, vararg pages: String) = runBlocking {
+        f.db.documentPageDao().upsertPages(pages.mapIndexed { i, t -> DocumentPageEntity(itemId, i + 1, t, "TEXT_LAYER") })
+        f.db.inboxDao().updateReadState(itemId, "DONE", pages.size, pages.size, pages.joinToString("\n\n"))
+    }
 
     @Test fun aShareLandsNewAndFilesNothing() {
         val before = runBlocking { f.db.noteDao().getAll().size + f.db.taskDao().exportAll().size + f.db.itemDao().allLive().size }
@@ -177,6 +201,7 @@ class InboxProcessTest {
     @Test fun aFileIsFiledAsANoteThatNamesIt() = runBlocking {
         val tmp = java.io.File(context.filesDir, "inbox").apply { mkdirs() }.resolve("abc_Contract.pdf").apply { writeText("%PDF") }
         val item = repo.add(listOf(SharedPart(InboxKind.PDF, uri = "content://x", title = "Acme contract", mime = "application/pdf"))) { CopiedFile(tmp.absolutePath, "Contract.pdf") }.single()
+        readDone(item.id, "The scope of the Acme contract.") // a document is proposed only once it has been read
         val filing = proposer().propose(item)!! // the title names Acme
         InboxFiler(context, f.db).file(item.id, filing)
         val note = notes().single()
@@ -196,9 +221,153 @@ class InboxProcessTest {
         // Tap one: "File to…" and choose the project. Tap two: it is filed.
         val tmp = java.io.File(context.filesDir, "inbox").apply { mkdirs() }.resolve("x_brief.pdf").apply { writeText("%PDF") }
         val item = repo.add(listOf(SharedPart(InboxKind.PDF, uri = "content://x", mime = "application/pdf"))) { CopiedFile(tmp.absolutePath, "brief.pdf") }.single()
-        assertNull(proposer().propose(item)) // nothing to go on
+        readDone(item.id, "A short brief with nothing to match.")
+        assertNull(proposer().propose(item)) // read, and nothing to go on
         val candidate = proposer().candidates().first { it.target == FilingTarget.PROJECT }
         assertTrue(InboxFiler(context, f.db).file(item.id, Filing(FilingAction.NOTE, candidate.target, candidate.id, candidate.name, title = item.title)))
         assertEquals("nb", notes().single().notebookId)
+    }
+
+    @Test fun aSharedVideoBecomesAVideoItemWithSource() = runBlocking {
+        val part = SharedPart(
+            kind = InboxKind.VIDEO,
+            uri = "content://media/video/1",
+            title = "Keynote",
+            mime = "video/mp4",
+            source = "com.google.android.apps.photos",
+            durationMs = 60000L
+        )
+        val tmp = java.io.File(context.filesDir, "inbox").apply { mkdirs() }.resolve("v1_Keynote.mp4").apply { writeText("fake-mp4") }
+        val item = repo.add(listOf(part)) { CopiedFile(tmp.absolutePath, "Keynote.mp4") }.single()
+        assertEquals("VIDEO", item.kind)
+        assertEquals("com.google.android.apps.photos", item.source)
+        assertEquals(60000L, item.mediaDurationMs)
+        assertEquals("PENDING", item.transcriptionStatus)
+        assertEquals("Keynote", item.title)
+        assertEquals(tmp.absolutePath, item.uri)
+    }
+
+    @Test fun audioAndVideoSharesGetPendingTranscriptionStatusWhileOthersGetNone() = runBlocking {
+        val audioPart = SharedPart(kind = InboxKind.AUDIO, uri = "content://audio", mime = "audio/m4a")
+        val videoPart = SharedPart(kind = InboxKind.VIDEO, uri = "content://video", mime = "video/mp4")
+        val textPart = SharedPart(kind = InboxKind.TEXT, text = "Hello world")
+        val pdfPart = SharedPart(kind = InboxKind.PDF, uri = "content://doc", mime = "application/pdf")
+        val imagePart = SharedPart(kind = InboxKind.IMAGE, uri = "content://img", mime = "image/png")
+
+        val items = repo.add(listOf(audioPart, videoPart, textPart, pdfPart, imagePart)) { uri ->
+            CopiedFile("/files/inbox/${uri.substringAfterLast('/')}", uri.substringAfterLast('/'))
+        }
+        assertEquals(5, items.size)
+        assertEquals("PENDING", items[0].transcriptionStatus)
+        assertEquals("PENDING", items[1].transcriptionStatus)
+        assertEquals("NONE", items[2].transcriptionStatus)
+        assertEquals("NONE", items[3].transcriptionStatus)
+        assertEquals("NONE", items[4].transcriptionStatus)
+
+        repo.updateTranscription(items[0].id, "COMPLETED", transcript = "Voice note text", meetingId = "m_audio_1", durationMs = 45000L)
+        val updatedAudio = f.db.inboxDao().get(items[0].id)!!
+        assertEquals("COMPLETED", updatedAudio.transcriptionStatus)
+        assertEquals("Voice note text", updatedAudio.text)
+        assertEquals("m_audio_1", updatedAudio.meetingId)
+        assertEquals(45000L, updatedAudio.mediaDurationMs)
+    }
+
+    @Test fun shareInCopyPreservesOrInfersExtension() {
+        assertEquals("mp4", ShareIn.extensionFor("video", "video/mp4"))
+        assertEquals("mov", ShareIn.extensionFor("clip", "video/quicktime"))
+        assertEquals("webm", ShareIn.extensionFor("clip", "video/webm"))
+        assertEquals("mkv", ShareIn.extensionFor("clip", "video/x-matroska"))
+        assertEquals("m4a", ShareIn.extensionFor("voice", "audio/mp4"))
+        assertEquals("mp3", ShareIn.extensionFor("recording", "audio/mpeg"))
+        assertEquals("ogg", ShareIn.extensionFor("audio", "audio/ogg"))
+        assertEquals("opus", ShareIn.extensionFor("voice", "audio/opus"))
+        assertEquals("wav", ShareIn.extensionFor("track", "audio/wav"))
+        assertEquals("pdf", ShareIn.extensionFor("doc", "application/pdf"))
+        assertEquals("mp4", ShareIn.extensionFor("existing.mp4", "video/mp4"))
+    }
+
+    @Test fun whatsAppVoiceNoteAndAppSourcesAreInferredFromFilenameAndUri() = runBlocking {
+        assertEquals("WhatsApp Voice Note", ShareIn.inferSource(fileName = "PTT-20261114-WA0005.opus", mime = "audio/opus"))
+        assertEquals("WhatsApp Audio", ShareIn.inferSource(fileName = "AUD-20261114-WA0002.m4a", mime = "audio/mp4"))
+        assertEquals("WhatsApp Video", ShareIn.inferSource(fileName = "VID-20261114-WA0001.mp4", mime = "video/mp4"))
+        assertEquals("WhatsApp Voice Note", ShareIn.inferSource(uri = "content://com.whatsapp.provider.media/item/99", fileName = "voice.ogg", mime = "audio/ogg"))
+        assertEquals("Telegram Voice Note", ShareIn.inferSource(uri = "content://org.telegram.messenger/audio/1", fileName = "voice.ogg", mime = "audio/ogg"))
+        assertEquals("Slack", ShareIn.inferSource(rawSource = "com.Slack", fileName = "clip.mp4", mime = "video/mp4"))
+        assertEquals("Gmail", ShareIn.inferSource(rawSource = "com.google.android.gm", fileName = "attachment.pdf", mime = "application/pdf"))
+
+        val part = SharedPart(kind = InboxKind.AUDIO, uri = "content://com.whatsapp.provider.media/item/55", mime = "audio/opus", source = "Shared")
+        val item = repo.add(listOf(part)) {
+            CopiedFile("/files/inbox/PTT-20261114-WA0005.opus", "PTT-20261114-WA0005.opus", durationMs = 32_000L, inferredSource = "WhatsApp Voice Note")
+        }.single()
+        assertEquals("WhatsApp Voice Note", item.source)
+        assertEquals(32_000L, item.mediaDurationMs)
+        assertEquals(item.id, repo.getByUri("/files/inbox/PTT-20261114-WA0005.opus")?.id)
+    }
+
+    @Test fun transcribedVoiceNoteLinksMeetingAndSummaryNoteWhenFiledToProject() = runBlocking {
+        val part = SharedPart(kind = InboxKind.AUDIO, uri = "content://wa/ptt1", mime = "audio/opus")
+        val item = repo.add(listOf(part)) {
+            CopiedFile("/files/inbox/PTT-20261114-WA0009.opus", "PTT-20261114-WA0009.opus", durationMs = 48_000L, inferredSource = "WhatsApp Voice Note")
+        }.single()
+
+        // Create the note and meeting produced by transcription
+        val noteRepo = com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, f.db) { f.now }
+        val note = noteRepo.createNote(
+            workflow = com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
+            title = "Acme launch budget update",
+            useTemplate = false
+        )
+        f.db.meetingDao().insertMeeting(
+            com.craftflowtechnologies.meetingmind.core.database.MeetingEntity(
+                id = "m_wa_1",
+                title = "Acme launch budget update",
+                createdAt = f.now,
+                durationMs = 48_000L,
+                source = "IMPORTED_AUDIO",
+                audioFilePath = "/files/inbox/PTT-20261114-WA0009.opus",
+                status = "READY",
+                participantCount = 1,
+                language = "en",
+                summaryText = "Approved the Q4 Acme launch budget and timeline.",
+                noteId = note.id
+            )
+        )
+
+        repo.updateTranscription(
+            id = item.id,
+            status = "COMPLETED",
+            transcript = "We approved the Q4 Acme launch budget and timeline.",
+            meetingId = "m_wa_1",
+            durationMs = 48_000L
+        )
+        val byMeeting = repo.getByMeetingId("m_wa_1")!!
+        assertEquals(item.id, byMeeting.id)
+        assertEquals("COMPLETED", byMeeting.transcriptionStatus)
+
+        val filing = proposer().propose(byMeeting)!!
+        assertEquals(FilingTarget.PROJECT, filing.target)
+        assertEquals("nb", filing.targetId)
+
+        assertTrue(InboxFiler(context, f.db) { f.now }.file(byMeeting.id, filing))
+        val movedNote = f.db.noteDao().getById(note.id)!!
+        assertEquals("nb", movedNote.notebookId)
+        val filedItem = f.db.inboxDao().get(item.id)!!
+        assertEquals("FILED", filedItem.status)
+        assertTrue(filedItem.resultRefJson!!.contains(note.id))
+    }
+
+    @Test fun inboxDisplayFormattingHandlesWhatsAppCodesAndDates() {
+        assertEquals(
+            "WhatsApp Voice Note",
+            com.craftflowtechnologies.meetingmind.feature.work.formatInboxDisplayTitle("PTT-20261114-WA0005", "AUDIO", "WhatsApp Voice Note")
+        )
+        assertEquals(
+            "Q4 Pricing Sync",
+            com.craftflowtechnologies.meetingmind.feature.work.formatInboxDisplayTitle("PTT-20261114-WA0005", "AUDIO", "WhatsApp Voice Note", linkedMeetingTitle = "Q4 Pricing Sync")
+        )
+        assertNotNull(com.craftflowtechnologies.meetingmind.feature.work.parseWhatsAppDateFromFileName("PTT-20261114-WA0005.opus"))
+        val (dateStr, timeStr) = com.craftflowtechnologies.meetingmind.feature.work.formatImportDateAndTimeParts(1763145900000L)
+        assertTrue(dateStr.isNotBlank())
+        assertTrue(timeStr.isNotBlank())
     }
 }

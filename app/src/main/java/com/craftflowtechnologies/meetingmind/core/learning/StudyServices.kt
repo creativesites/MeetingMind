@@ -7,7 +7,6 @@ import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.LearningSession
 import com.craftflowtechnologies.meetingmind.core.model.Meeting
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
-import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import com.craftflowtechnologies.meetingmind.core.repository.MeetingRepository
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.repository.TranscriptRepository
@@ -31,7 +30,7 @@ data class OpenLecture(
 class StudyServices(
     val context: Context,
     database: MeetMindDatabase,
-    val learning: LearningRepository = LearningRepository(context, database),
+    val learning: StudyRepository = StudyRepository(context, database),
     val meetings: MeetingRepository = MeetingRepository(context, database),
     val transcripts: TranscriptRepository = TranscriptRepository(database),
     val notes: NoteRepository = NoteRepository(context, database),

@@ -1,6 +1,8 @@
 package com.craftflowtechnologies.meetingmind.feature.moments
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,6 +26,8 @@ import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
 import com.craftflowtechnologies.meetingmind.core.companion.LocalClock
+import com.craftflowtechnologies.meetingmind.core.companion.MilestoneDetector
+import com.craftflowtechnologies.meetingmind.core.companion.MilestoneKind
 import com.craftflowtechnologies.meetingmind.core.companion.MomentLedgerStore
 import com.craftflowtechnologies.meetingmind.core.companion.moment.MomentEnvironment
 import com.craftflowtechnologies.meetingmind.core.companion.moment.MomentFacts
@@ -31,6 +35,7 @@ import com.craftflowtechnologies.meetingmind.core.companion.moment.MomentPlan
 import com.craftflowtechnologies.meetingmind.core.companion.moment.MomentSpace
 import com.craftflowtechnologies.meetingmind.core.companion.moment.NoteOutcome
 import com.craftflowtechnologies.meetingmind.core.companion.moment.PlainReason
+import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
@@ -42,9 +47,18 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompan
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.util.TimeZone
+
+/**
+ * Whether a First Keep overlay is on screen anywhere. Other app-wide prompts (the first-result offer) wait
+ * for it, so nothing is ever drawn over the note's moment.
+ */
+object MomentOverlay {
+    val showing = kotlinx.coroutines.flow.MutableStateFlow(false)
+}
 
 /** The moments store; null is the app's DataStore-backed one. Tests provide their own. */
 val LocalMomentLedgerStore = androidx.compose.runtime.staticCompositionLocalOf<MomentLedgerStore?> { null }
@@ -56,9 +70,19 @@ class NoteMomentState {
         internal set
     var facts: NoteFacts? by mutableStateOf(null)
         internal set
-    /** The First Keep overlay is showing; "Open note" (or Back) clears it, and it never comes back. */
-    var overlay: Boolean by mutableStateOf(false)
+    private var showingOverlay: Boolean by mutableStateOf(false)
+
+    /** The overlay is the note-opening reveal ([OpenReveal]), not a note's arrival: it closes by itself. */
+    var openReveal: Boolean by mutableStateOf(false)
         internal set
+
+    /** The First Keep overlay is showing; "Open note" (or Back) clears it, and it never comes back. */
+    var overlay: Boolean
+        get() = showingOverlay
+        internal set(value) {
+            showingOverlay = value
+            MomentOverlay.showing.value = value
+        }
 
     fun closeOverlay() { overlay = false }
 }
@@ -73,10 +97,18 @@ class NoteMomentState {
  * [refreshKey] reloads the facts (e.g. when the recording's status changes) without planning again.
  */
 @Composable
-fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState {
+fun rememberNoteMoment(
+    noteId: String,
+    refreshKey: Any? = null,
+    /** Turn a fresh open's Unveil into the note-opening reveal ([OpenReveal]). Only the note editor asks. */
+    openReveal: Boolean = false
+): NoteMomentState {
     val context = LocalContext.current
     val session = rememberOpenSession()
     val state = remember(noteId) { NoteMomentState() }
+    androidx.compose.runtime.DisposableEffect(state) {
+        onDispose { if (state.overlay) MomentOverlay.showing.value = false }
+    }
     val provided = LocalMomentLedgerStore.current
     val store = remember(provided, context) { provided ?: MomentLedgerStore(context) }
     val shown by rememberUpdatedState(rememberCompanionVisible(CompanionPage.NOTE_READY))
@@ -84,7 +116,10 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
     val hasPendingReady = pendingReady.any { it.noteId == noteId }
     LaunchedEffect(noteId, refreshKey, hasPendingReady) {
         if (noteId.isBlank()) return@LaunchedEffect
-        val facts = readNoteFacts(context, noteId) ?: readTypedNoteFacts(context, noteId) ?: return@LaunchedEffect
+        // A database read that fails while the note opens means no moment, never a crash (crash audit, 2026-11-17).
+        val facts = runCatching { readNoteFacts(context, noteId) }.getOrNull()
+            ?: runCatching { readTypedNoteFacts(context, noteId) }.getOrNull()
+            ?: return@LaunchedEffect
         state.facts = facts
         if (session.claimed && !(hasPendingReady && state.plan !is MomentPlan.FirstKeep)) {
             // Not a fresh open: the note just shows (a moment never replays).
@@ -96,21 +131,28 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
         val today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
         val retried = RetriedNotes.consume(context, noteId)
         val fromSnackbar = NoteReadyEvents.consumeSnackbarOpen(noteId)
-        val planned = runCatching {
-            store.planOpen(noteId, clock) { ticket, ledger, rotation ->
-                MomentFacts(
-                    noteId = noteId, ticket = ticket, freshOpen = true, outcome = facts.outcome, sensitive = facts.sensitive,
-                    goodFriday = NoteFactsRules.goodFriday(today), space = facts.space, sermon = facts.sermon,
-                    audioMs = facts.audioMs, transcriptWords = facts.transcriptWords, retried = retried,
-                    recordingActive = recordingActive(), device = MomentEnvironment.read(context), companionShown = shown,
-                    nodPlayedInSnackbar = fromSnackbar, clock = clock, ledger = ledger, rotation = rotation
-                )
-            }.plan
-        }.getOrElse { MomentPlan.Plain(PlainReason.NOT_FRESH) }
-        session.claim()
-        NoteReadyEvents.dismiss(noteId)
-        state.plan = planned
-        state.overlay = planned is MomentPlan.FirstKeep
+        // Planning consumes the ticket, so it finishes and is applied as one step. A restart of this effect
+        // (the note-ready event and the refresh key often change together) must not cancel it half-way:
+        // the ticket would be gone without its First Keep, and the next run would play an Unveil instead.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+            val planned = runCatching {
+                store.planOpen(noteId, clock) { ticket, ledger, rotation ->
+                    MomentFacts(
+                        noteId = noteId, ticket = ticket, freshOpen = true, outcome = facts.outcome, sensitive = facts.sensitive,
+                        goodFriday = NoteFactsRules.goodFriday(today), space = facts.space, sermon = facts.sermon,
+                        audioMs = facts.audioMs, transcriptWords = facts.transcriptWords, retried = retried,
+                        recordingActive = recordingActive(), device = MomentEnvironment.read(context), companionShown = shown,
+                        nodPlayedInSnackbar = fromSnackbar, clock = clock, ledger = ledger, rotation = rotation
+                    )
+                }.plan
+            }.getOrElse { MomentPlan.Plain(PlainReason.NOT_FRESH) }
+            session.claim()
+            NoteReadyEvents.dismiss(noteId)
+            val reveal = openReveal && planned is MomentPlan.Unveil && OpenReveal.eligible(planned, facts) && OpenReveal.claim(noteId)
+            state.openReveal = reveal
+            state.plan = if (reveal) OpenReveal.planFor(planned as MomentPlan.Unveil) else planned
+            state.overlay = state.plan is MomentPlan.FirstKeep
+        }
     }
     return state
 }
@@ -126,6 +168,21 @@ fun noteMomentSubject(noteLoaded: Boolean, locked: Boolean, recordingIds: Collec
     if (!noteLoaded || locked) "" else recordingIds.firstOrNull() ?: noteId
 
 /**
+ * Chooses the moment subject for a note editor that may hold multiple recordings ("Record here"),
+ * preferring whichever attached recording has a pending note-ready event or is the newest.
+ */
+fun selectNoteMomentSubject(
+    noteLoaded: Boolean,
+    locked: Boolean,
+    recordingIds: Collection<String>,
+    noteId: String,
+    pendingIds: Set<String>
+): String {
+    if (!noteLoaded || locked) return ""
+    return recordingIds.lastOrNull { it in pendingIds } ?: recordingIds.lastOrNull() ?: noteId
+}
+
+/**
  * The First Keep over the already-rendered note (§2.2): the card shows only the note's verbatim title and
  * key points. "Open note" and Back dismiss it; the note is already there underneath. [onShare] opens Create
  * with the note's title.
@@ -138,6 +195,7 @@ fun NoteFirstKeep(
     actionCount: Int,
     onShare: () -> Unit
 ) {
+    NoteArrivalMilestone(state)
     val plan = state.plan as? MomentPlan.FirstKeep ?: return
     val facts = state.facts ?: return
     if (!state.overlay) return
@@ -146,7 +204,8 @@ fun NoteFirstKeep(
     val userName by androidx.compose.runtime.produceState<String?>(null) {
         value = runCatching { UserPreferencesManager(context).preferencesFlow.first().userName?.trim()?.takeIf { it.isNotEmpty() } }.getOrNull()
     }
-    val copy = firstKeepCopy(plan, facts, actionCount, userName)
+    val copy = if (state.openReveal) openRevealCopy(facts, actionCount) else firstKeepCopy(plan, facts, actionCount, userName)
+    val closer = androidx.compose.runtime.rememberCoroutineScope()
     FirstKeepOverlay(
         plan = plan,
         form = settings.form,
@@ -158,10 +217,59 @@ fun NoteFirstKeep(
         announcement = copy.announcement,
         companionLine = if (plan.onceEver && !plan.quiet) stringResource(R.string.companion_moment_first_keep_companion_line) else null,
         sounds = settings.sounds,
-        key = "firstkeep:${facts.noteId}",
+        key = if (state.openReveal) "reveal:${facts.noteId}" else "firstkeep:${facts.noteId}",
         onOpen = state::closeOverlay,
-        onShare = { state.closeOverlay(); onShare() }
+        onShare = { state.closeOverlay(); onShare() },
+        // The opening reveal dissolves into the note on its own, after a beat on the finished card.
+        onEnd = {
+            if (state.openReveal) closer.launch {
+                kotlinx.coroutines.delay(OpenRevealHoldMs)
+                state.closeOverlay()
+            }
+        }
     )
+}
+
+/**
+ * The tenth-note milestone (ZURI_EXPERIENCE §3.1 Proud): once a note's arrival First Keep has been closed, the notes
+ * kept so far are counted, and [MilestoneHost] shows the Proud card when the count is in
+ * [MilestoneDetector.TenthNoteWindow] (once ever). Never after the opening reveal, which is a later open, not an
+ * arrival, and never for a sensitive note. A count that can't be read means no card.
+ */
+@Composable
+private fun NoteArrivalMilestone(state: NoteMomentState) {
+    val context = LocalContext.current
+    var arrived by remember(state) { mutableStateOf(false) }
+    val arriving = state.overlay && !state.openReveal && state.plan is MomentPlan.FirstKeep && state.facts?.sensitive == false
+    LaunchedEffect(arriving) { if (arriving) arrived = true }
+    if (!arrived || state.overlay) return
+    val kind by androidx.compose.runtime.produceState<MilestoneKind?>(null, state) {
+        value = runCatching {
+            MilestoneDetector.forNotesKept(MeetMindDatabase.getInstance(context).noteDao().observeWrittenCount().first())
+        }.getOrNull()
+    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) { MilestoneHost(kind) }
+}
+
+/** How long the opening reveal rests on its finished card before showing the note. */
+private const val OpenRevealHoldMs = 900L
+
+/** The opening reveal's lines, by the note's type ([OpenReveal.kindOf]). */
+@Composable
+private fun openRevealCopy(facts: NoteFacts, actionCount: Int): FirstKeepCopy {
+    val (headline, subline) = when (OpenReveal.kindOf(facts.type)) {
+        OpenReveal.Kind.MEETING -> stringResource(R.string.moment_reveal_meeting_headline) to
+            if (actionCount > 0) pluralStringResource(R.plurals.moment_reveal_meeting_sub_actions, actionCount, actionCount)
+            else stringResource(R.string.moment_reveal_meeting_sub)
+        OpenReveal.Kind.INTERVIEW -> stringResource(R.string.moment_reveal_interview_headline) to stringResource(R.string.moment_reveal_interview_sub)
+        OpenReveal.Kind.LECTURE -> stringResource(R.string.moment_reveal_lecture_headline) to stringResource(R.string.moment_reveal_lecture_sub)
+        OpenReveal.Kind.RESEARCH -> stringResource(R.string.moment_reveal_research_headline) to stringResource(R.string.moment_reveal_research_sub)
+        OpenReveal.Kind.SERMON -> stringResource(R.string.moment_reveal_sermon_headline) to stringResource(R.string.companion_moment_first_keep_sub_faith)
+        OpenReveal.Kind.FAITH -> stringResource(R.string.moment_reveal_faith_headline) to stringResource(R.string.moment_reveal_faith_sub)
+        OpenReveal.Kind.IDEAS -> stringResource(R.string.moment_reveal_ideas_headline) to stringResource(R.string.moment_reveal_ideas_sub)
+        OpenReveal.Kind.PERSONAL -> stringResource(R.string.moment_reveal_personal_headline) to stringResource(R.string.companion_moment_first_keep_sub)
+    }
+    return FirstKeepCopy(headline, subline, stringResource(R.string.companion_moment_ready, facts.title))
 }
 
 private data class FirstKeepCopy(val headline: String, val subline: String, val announcement: String)

@@ -335,4 +335,70 @@ class GeminiHttpTransportTest {
         assertEquals("audio/opus", GeminiHttpTransport.directMimeType(java.io.File("a.OPUS")))
         assertEquals(null, GeminiHttpTransport.directMimeType(java.io.File("video.mp4")))
     }
+
+    @Test
+    fun `stream emits thought deltas text deltas function calls and usage`() = runBlocking {
+        credentials.setApiKey("stream-key-1")
+        val sseBody = buildString {
+            append("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Checking notes...\",\"thought\":true}]}}]}\n\n")
+            append("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello \"}]}}]}\n\n")
+            append("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"world!\",\"functionCall\":{\"name\":\"get_verses\",\"args\":{\"reference\":\"John 15:5\"}}}],\"role\":\"model\"}}],\"usageMetadata\":{\"promptTokenCount\":120,\"candidatesTokenCount\":15,\"cachedContentTokenCount\":80}}\n\n")
+        }
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "text/event-stream")
+                .setBody(sseBody)
+        )
+
+        val events = mutableListOf<AiStreamEvent>()
+        transport.stream(
+            GeminiRequest(
+                modelId = "gemini-3.8-flash",
+                systemInstruction = "Help concisely.",
+                prompt = "Say hello and check John 15:5.",
+                thinkingLevel = ThinkingLevel.LOW,
+                includeThoughts = true
+            )
+        ).collect { events += it }
+
+        val recorded = server.takeRequest()
+        assertTrue(recorded.path!!.contains("models/gemini-3.8-flash:streamGenerateContent?alt=sse&key=stream-key-1"))
+        assertTrue(events.any { it is AiStreamEvent.ThinkingDelta && it.text == "Checking notes..." })
+        val textDeltas = events.filterIsInstance<AiStreamEvent.TextDelta>().joinToString("") { it.text }
+        assertEquals("Hello world!", textDeltas)
+        val fn = events.filterIsInstance<AiStreamEvent.FunctionCalls>().single()
+        assertEquals("get_verses", fn.calls.single().name)
+        assertTrue(fn.calls.single().argsJson.contains("John 15:5"))
+        val done = events.filterIsInstance<AiStreamEvent.Completed>().single()
+        assertEquals("Hello world!", done.text)
+        assertEquals(120, done.usage?.promptTokens)
+        assertEquals(80, done.usage?.cachedTokens)
+    }
+
+    @Test
+    fun `externalMediaUri is serialized as file_data with video mime type`() = runBlocking {
+        credentials.setApiKey("yt-key")
+        enqueueGeneratedText("{}")
+
+        val res = transport.execute(
+            GeminiRequest(
+                modelId = "gemini-3.8-flash",
+                systemInstruction = "Extract video transcript.",
+                prompt = "Analyze this video.",
+                externalMediaUri = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                externalMediaMimeType = "video/mp4",
+                responseSchema = """{"type":"object"}"""
+            )
+        )
+
+        assertTrue(res is AiResult.Success)
+        val recorded = server.takeRequest()
+        assertTrue(recorded.path!!.contains("models/gemini-3.8-flash:generateContent"))
+        val body = org.json.JSONObject(recorded.body.readUtf8())
+        val parts = body.getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
+        val fileData = parts.getJSONObject(0).getJSONObject("file_data")
+        assertEquals("video/mp4", fileData.getString("mime_type"))
+        assertEquals("https://www.youtube.com/watch?v=dQw4w9WgXcQ", fileData.getString("file_uri"))
+    }
 }

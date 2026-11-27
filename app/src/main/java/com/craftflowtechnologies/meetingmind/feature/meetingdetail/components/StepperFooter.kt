@@ -22,10 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
-import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
+import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 
 /**
@@ -51,7 +52,7 @@ fun StepperFooter(
             enabled = currentStep > 0,
             filled = false
         ) {
-            Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "Previous", tint = InkSecondary)
+            Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "Previous", tint = Ink)
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -76,7 +77,8 @@ fun StepperFooter(
             enabled = currentStep < stepCount - 1,
             filled = true
         ) {
-            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = "Next", tint = Color.White)
+            // OnInk, not white: in dark mode Ink is light, and a white arrow on it disappeared.
+            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = "Next", tint = OnInk)
         }
     }
 }
@@ -91,6 +93,9 @@ private fun StepperCircle(
     androidx.compose.foundation.layout.Box(
         modifier = Modifier
             .size(52.dp)
+            // Faded when there is no page that way, so the end of the pages reads at a glance.
+            .alpha(if (enabled) 1f else 0.35f)
+            .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick)
             .then(
                 if (filled) Modifier.background(Ink, CircleShape)

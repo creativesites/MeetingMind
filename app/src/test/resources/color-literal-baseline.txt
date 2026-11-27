@@ -7,6 +7,9 @@ com/craftflowtechnologies/meetingmind/core/ui/BottomNavigation.kt 2
 com/craftflowtechnologies/meetingmind/core/ui/CoachMarks.kt 1
 com/craftflowtechnologies/meetingmind/core/ui/CreateSheet.kt 2
 com/craftflowtechnologies/meetingmind/core/ui/DesignSystem.kt 1
+# GoogleSignInButton.kt: Google's own Sign in with Google pill colours (light and dark fill, outline, text), which must
+# not follow the theme. The four-colour G mark is in res/drawable/ic_google_g.xml.
+com/craftflowtechnologies/meetingmind/core/ui/GoogleSignInButton.kt 6
 com/craftflowtechnologies/meetingmind/core/ui/MiniPlayerBar.kt 26
 com/craftflowtechnologies/meetingmind/feature/bible/BibleScreen.kt 10
 com/craftflowtechnologies/meetingmind/feature/devotional/AskDevotionalSheet.kt 1
@@ -22,7 +25,7 @@ com/craftflowtechnologies/meetingmind/feature/meetingdetail/components/StepperFo
 com/craftflowtechnologies/meetingmind/feature/notes/NotesScreen.kt 1
 com/craftflowtechnologies/meetingmind/feature/notes/editor/NoteBlocks.kt 4
 com/craftflowtechnologies/meetingmind/feature/notes/editor/NoteEditorScreen.kt 3
-com/craftflowtechnologies/meetingmind/feature/onboarding/OnboardingScreen.kt 16
+com/craftflowtechnologies/meetingmind/feature/onboarding/OnboardingScreen.kt 7
 com/craftflowtechnologies/meetingmind/feature/prayer/PraySession.kt 0
 com/craftflowtechnologies/meetingmind/feature/prayer/PrayWithMeScreen.kt 13
 com/craftflowtechnologies/meetingmind/feature/processing/ProcessingScreen.kt 1

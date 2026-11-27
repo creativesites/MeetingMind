@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.feature.processing
 
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.assertIsDisplayed
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
@@ -46,7 +47,9 @@ class ProcessingScreenshotTest {
             ProcessingUiState(stepTitle = "Transcribing part 1 of 3...", recordingTitle = "AUD-20260916-WA0001", progressPercent = 25, stage = ProcessingStage.TRANSCRIBING),
             "processing_running"
         )
-        compose.onNodeWithText("Continue in background").assertIsDisplayed()
+        // The running screen scrolls (the timeline, What's happening and the notification question can
+        // outgrow a small phone), so the button may sit below the fold: it must be reachable, then shown.
+        compose.onNodeWithText("Continue in background").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("With Google's AI").assertIsDisplayed()
     }
 

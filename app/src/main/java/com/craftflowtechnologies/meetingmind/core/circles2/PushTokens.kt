@@ -68,6 +68,14 @@ class PushTokenManager(
         registerIfNeeded()
     }
 
+    /** Called at app startup: syncs the FCM token if push notifications are already wanted. */
+    suspend fun syncIfWanted() {
+        if (!store.wantsPush || !api.isConfigured) return
+        val token = tokenSource()?.takeIf { it.isNotBlank() } ?: store.latestToken
+        if (token != null) store.latestToken = token
+        registerIfNeeded()
+    }
+
     /** From the messaging service: Firebase rotated the token. */
     suspend fun onNewToken(token: String) {
         if (token.isBlank()) return

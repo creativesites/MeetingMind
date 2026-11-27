@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.WarningAmber
@@ -46,7 +47,7 @@ fun EmptyState(
     }
 }
 
-enum class StatusKind { Info, Warning, Error }
+enum class StatusKind { Info, Warning, Error, Ok }
 
 /**
  * The honest fallback line: one plain sentence and, where possible, a Retry. The icon shape differs
@@ -65,6 +66,7 @@ fun StatusLine(
         StatusKind.Info -> Icons.Rounded.Info to c.inkMuted
         StatusKind.Warning -> Icons.Rounded.WarningAmber to c.warning
         StatusKind.Error -> Icons.Rounded.ErrorOutline to c.danger
+        StatusKind.Ok -> Icons.Rounded.CheckCircle to c.success
     }
     Row(
         modifier.fillMaxWidth().heightIn(min = MMSize.minTouch).semantics { liveRegion = LiveRegionMode.Polite },

@@ -51,6 +51,7 @@ import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -288,6 +289,11 @@ internal fun TopRow(
             border = BorderStroke(1.dp, Brush.verticalGradient(listOf(OnSky, Hairline))), shadowElevation = 10.dp
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(4.dp)) {
+                // The app menu: every space and feature, and Settings (core/navigation/AppMenu.kt).
+                val appMenu = com.craftflowtechnologies.meetingmind.core.navigation.LocalAppMenu.current
+                DockButton(Color.Transparent, "home_menu_button", { appMenu.open(null) }) {
+                    Icon(Icons.Outlined.Apps, contentDescription = "Menu: every space and feature, and Settings", tint = InkNavy, modifier = Modifier.size(19.dp))
+                }
                 DockButton(Color.Transparent, "home_search_button", onSearch) {
                     Icon(Icons.Outlined.Search, contentDescription = "Search everything", tint = InkNavy, modifier = Modifier.size(19.dp))
                 }
@@ -455,7 +461,8 @@ private fun HeroStage(
                     .fillMaxWidth()
                     .padding(start = 20.dp, end = 20.dp, bottom = 48.dp)
             ) {
-                when (displayMode) {
+                // Scripture and the devotional quote belong to Faith; without it the hero shows the day's stats.
+                when (if (identity.showsFaith) displayMode else HomeHeroDisplayMode.STATS) {
                     HomeHeroDisplayMode.DAILY_SCRIPTURE -> {
                         HeroScriptureBanner(
                             reference = refToUse,

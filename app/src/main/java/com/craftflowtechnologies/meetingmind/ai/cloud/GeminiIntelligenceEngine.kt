@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.ai.cloud
 
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
+import com.craftflowtechnologies.meetingmind.ai.llm.AskStreamEvent
 import com.craftflowtechnologies.meetingmind.ai.llm.MeetingIntelligenceEngine
 import com.craftflowtechnologies.meetingmind.ai.llm.MeetingIntelligenceJsonParser
 import com.craftflowtechnologies.meetingmind.ai.routing.AiModelRouter
@@ -15,6 +16,8 @@ import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.Transcript
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
 import com.craftflowtechnologies.meetingmind.core.work.signalKinds
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import java.util.UUID
 
 /**
@@ -59,7 +62,9 @@ class GeminiIntelligenceEngine(
                 modelId = model,
                 systemInstruction = EXTRACTION_SYSTEM_INSTRUCTION,
                 prompt = buildExtractionPrompt(transcript, meetingTitle, recordingType, customContext),
-                responseSchema = EXTRACTION_SCHEMA
+                responseSchema = EXTRACTION_SCHEMA,
+                thinkingLevel = ThinkingLevel.LOW,
+                maxOutputTokens = 8_192
             )
         )
         if (response !is AiResult.Success) {
@@ -94,6 +99,44 @@ class GeminiIntelligenceEngine(
         )
     }
 
+    /**
+     * Title-only cloud call — one attempt, then one stricter retry. Deliberately not another
+     * structured synthesis: this exists precisely for the case where synthesis failed or answered
+     * without a usable title, so it must be cheap and independent.
+     */
+    override suspend fun suggestTitle(
+        transcript: Transcript,
+        recordingType: RecordingType
+    ): AiResult<String> {
+        val model = modelIdOrNull() ?: return unavailable()
+        if (transcript.segments.isEmpty()) {
+            return AiResult.Failed("There is no transcript to title yet.")
+        }
+
+        suspend fun attempt(strict: Boolean): AiResult<String> {
+            val response = transport.execute(
+                GeminiRequest(
+                    modelId = model,
+                    systemInstruction = TITLE_SYSTEM_INSTRUCTION,
+                    prompt = com.craftflowtechnologies.meetingmind.ai.llm.RecordingTitles.titlePrompt(
+                        transcript, recordingType, strict = strict
+                    )
+                )
+            )
+            if (response is AiResult.Success) {
+                com.craftflowtechnologies.meetingmind.ai.llm.RecordingTitles
+                    .parseTitleCandidate(response.value)
+                    ?.let { return AiResult.Success(it) }
+                return AiResult.Failed("The cloud model did not return a usable title.")
+            }
+            return AiResult.Failed(response.describeFailure() ?: "Cloud title generation failed.")
+        }
+
+        val first = attempt(strict = false)
+        if (first is AiResult.Success) return first
+        return attempt(strict = true)
+    }
+
     override suspend fun askMeeting(
         question: String,
         transcript: Transcript,
@@ -120,22 +163,85 @@ class GeminiIntelligenceEngine(
             return AiResult.Failed(response.describeFailure() ?: "Cloud analysis failed.")
         }
 
+        return AiResult.Success(
+            buildAskChatMessage(transcript.meetingId, response.value, passages, faith)
+        )
+    }
+
+    override fun askMeetingStream(
+        question: String,
+        transcript: Transcript,
+        relevantSegments: List<TranscriptSegment>,
+        personalization: AskPersonalizationContext
+    ): Flow<AskStreamEvent> = flow {
+        val model = modelIdOrNull()
+        if (model == null) {
+            emit(AskStreamEvent.Complete(unavailable()))
+            return@flow
+        }
+        val passages = relevantSegments.ifEmpty { transcript.segments }
+        if (passages.isEmpty()) {
+            emit(AskStreamEvent.Complete(AiResult.Failed("There is no transcript to answer from yet.")))
+            return@flow
+        }
+        val faith = com.craftflowtechnologies.meetingmind.ai.faith.AskSermon.isFaith(personalization.recordingType)
+        val systemInstruction = if (faith) {
+            com.craftflowtechnologies.meetingmind.ai.faith.Prompts.faithContract + "\n\n" + com.craftflowtechnologies.meetingmind.ai.faith.Prompts.get("ask_sermon").system()
+        } else ASK_SYSTEM_INSTRUCTION
+
+        val raw = StringBuilder()
+        var doneText: String? = null
+        var failure: AiResult<Nothing>? = null
+
+        transport.stream(
+            GeminiRequest(
+                modelId = model,
+                systemInstruction = systemInstruction,
+                prompt = buildAskPrompt(question, passages, personalization),
+                thinkingLevel = ThinkingLevel.LOW
+            )
+        ).collect { ev ->
+            when (ev) {
+                is AiStreamEvent.TextDelta -> {
+                    raw.append(ev.text)
+                    emit(AskStreamEvent.Partial(raw.toString(), passages.size))
+                }
+                is AiStreamEvent.Completed -> doneText = ev.text
+                is AiStreamEvent.Failed -> failure = ev.error
+                else -> Unit
+            }
+        }
+
+        val finalRaw = (doneText ?: raw.toString()).takeIf { it.isNotBlank() }
+        if (finalRaw != null) {
+            emit(AskStreamEvent.Complete(AiResult.Success(buildAskChatMessage(transcript.meetingId, finalRaw, passages, faith))))
+        } else {
+            val err = failure
+            val res: AiResult<ChatMessage> = if (err != null) err else AiResult.Failed("Cloud analysis failed.")
+            emit(AskStreamEvent.Complete(res))
+        }
+    }
+
+    private fun buildAskChatMessage(
+        meetingId: String,
+        rawResponse: String,
+        passages: List<TranscriptSegment>,
+        faith: Boolean
+    ): ChatMessage {
         // Every [mm:ss] must be a real passage; the rest are removed, not shown as chips to nowhere.
-        val grounded = com.craftflowtechnologies.meetingmind.ai.faith.AskSermon.ground(response.value, passages)
+        val grounded = com.craftflowtechnologies.meetingmind.ai.faith.AskSermon.ground(rawResponse, passages)
         val content = if (grounded.unverified && faith) {
             grounded.text + "\n\n_No timestamp backs this answer — check it against the transcript._"
         } else grounded.text
-        return AiResult.Success(
-            ChatMessage(
-                id = UUID.randomUUID().toString(),
-                meetingId = transcript.meetingId,
-                isUser = false,
-                content = content,
-                timestamp = System.currentTimeMillis(),
-                sourceTimestamps = grounded.cited.map { it.startMs },
-                sourceQuotes = grounded.cited.map { it.cleanedText ?: it.text }.take(3),
-                readSegmentCount = passages.size
-            )
+        return ChatMessage(
+            id = UUID.randomUUID().toString(),
+            meetingId = meetingId,
+            isUser = false,
+            content = content,
+            timestamp = System.currentTimeMillis(),
+            sourceTimestamps = grounded.cited.map { it.startMs },
+            sourceQuotes = grounded.cited.map { it.cleanedText ?: it.text }.take(3),
+            readSegmentCount = passages.size
         )
     }
 
@@ -161,9 +267,17 @@ class GeminiIntelligenceEngine(
         recordingType: RecordingType,
         customContext: String?
     ): String = buildString {
+        appendLine("Recording type: ${recordingType.displayName}")
         appendLine("Recording title: $meetingTitle")
         val focus = customContext?.takeIf { it.isNotBlank() } ?: recordingType.focusGuidance()
         if (focus.isNotBlank()) appendLine("Focus: $focus")
+        appendLine("Formatting goal: Write a sharp 2–4 sentence executive summary for 'summary' and concise, concrete takeaways for 'keyPoints' (3–7 items when the transcript supports them) so the note is immediately actionable on first open.")
+        if (transcript.language.isNotBlank()) {
+            appendLine("Spoken language: ${transcript.language}")
+            if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(transcript.language)) {
+                appendLine("Language & code-switching note: Conversational speech in Zambia, Zimbabwe, and the region routinely code-switches with English loanwords for technical, business, and modern terms. Preserve English loanwords cleanly as spoken (e.g. 'meeting', 'budget', 'deadline', 'system') rather than forcing archaic translations.")
+            }
+        }
         com.craftflowtechnologies.meetingmind.core.work.SignalPrompts.section(recordingType).takeIf { it.isNotBlank() }?.let { appendLine(it) }
         appendLine()
         appendLine("Transcript. Each paragraph is prefixed with the id you must cite for it:")
@@ -209,6 +323,11 @@ class GeminiIntelligenceEngine(
                 "from, copied exactly, so the answer can be checked against the recording. If you mention anything that did not come from this meeting, label it " +
                 "explicitly as outside information and keep it separate from what the meeting " +
                 "actually said — never present the two as one."
+
+        const val TITLE_SYSTEM_INSTRUCTION =
+            "You write titles for recordings. Return only a 3–8 word title that describes what " +
+                "the transcript is actually about, using nothing but what the transcript says. " +
+                "No quotes, no trailing punctuation, no generic labels like Meeting or Recording."
 
         /**
          * Typed schema for extraction. Structured output rather than prose parsing is the point:

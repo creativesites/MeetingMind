@@ -40,6 +40,15 @@ enum class RecordingState {
      * than the service remaining bound in this state indefinitely. */
     SAVED,
 
+    /**
+     * Terminal failure of the *save*, not of the recording. The audio file is complete on disk but
+     * the Meeting row could not be written, so nothing else in the app can list it yet. The
+     * recovery journal is deliberately left in place with this state, so the next app launch
+     * offers the recording again instead of it disappearing. Never reported as [SAVED]: a caller
+     * must not navigate to processing for a recording that has no row.
+     */
+    SAVE_FAILED,
+
     /** Starting the recorder itself failed (e.g. the microphone could not be opened). Distinct
      * from a later processing failure — [com.craftflowtechnologies.meetingmind.core.model.MeetingStatus.ERROR] never
      * applies here since no [com.craftflowtechnologies.meetingmind.core.model.Meeting] row was ever created to mark as

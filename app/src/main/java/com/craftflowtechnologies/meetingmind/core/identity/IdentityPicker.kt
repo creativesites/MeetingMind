@@ -19,10 +19,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Church
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.SelfImprovement
-import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,49 +35,69 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.OfferedNotebookSpaces
+import com.craftflowtechnologies.meetingmind.core.navigation.SpaceStyle
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.semantics.Role
 
-private data class SpaceTile(val space: NotebookSpace, val title: String, val line: String, val icon: ImageVector, val tint: Color)
-
-private val tiles = listOf(
-    SpaceTile(NotebookSpace.WORK, "Work", "Meetings, interviews, decisions", Icons.Filled.Work, Color(0xFF4F46E5)),
-    SpaceTile(NotebookSpace.LEARNING, "Learning", "Lectures, classes, research", Icons.Filled.School, Color(0xFF0891B2)),
-    SpaceTile(NotebookSpace.FAITH, "Faith", "Sermons, devotions, prayer, the Bible", Icons.Filled.Church, Color(0xFFB7791F)),
-    SpaceTile(NotebookSpace.PERSONAL, "Personal", "Journal, ideas, life", Icons.Filled.SelfImprovement, Color(0xFF059669))
-)
-
-/** Which spaces the app shows. At least one stays on. */
+/**
+ * Which spaces the app shows: one row per space with a switch, so on and off are unmistakable in
+ * light and dark. A change applies at once everywhere (Home, the bar, the menu, Notes, Record).
+ * At least one space stays on; its switch is disabled with a reason rather than silently ignored.
+ */
 @Composable
 fun SpacesPicker(selected: Set<NotebookSpace>, onChange: (Set<NotebookSpace>) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        tiles.filter { it.space in OfferedNotebookSpaces }.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { t ->
-                    val on = t.space in selected
-                    Surface(
-                        onClick = {
-                            val next = if (on) selected - t.space else selected + t.space
-                            if (next.isNotEmpty()) onChange(next)
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (on) t.tint.copy(alpha = 0.08f) else Color.White,
-                        border = BorderStroke(if (on) 2.dp else 1.dp, if (on) t.tint else Line),
-                        modifier = Modifier.weight(1f).height(132.dp).testTag("space_${t.space.name.lowercase()}")
-                    ) {
-                        Box {
-                            Column(Modifier.padding(14.dp)) {
-                                Box(
-                                    Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(listOf(t.tint.copy(alpha = 0.9f), t.tint.copy(alpha = 0.55f)))),
-                                    contentAlignment = Alignment.Center
-                                ) { Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp)) }
-                                Text(t.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 10.dp))
-                                Text(t.line, fontSize = 12.sp, lineHeight = 16.sp, color = InkMuted)
-                            }
-                            if (on) Icon(Icons.Filled.CheckCircle, contentDescription = "Selected", tint = t.tint, modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(20.dp))
-                        }
+    val colors = MM.colors
+    Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        SpaceStyle.ORDER.filter { it in OfferedNotebookSpaces }.forEach { space ->
+            val on = space in selected
+            val last = on && selected.size == 1
+            val tint = SpaceStyle.tint(space)
+            val toggle = {
+                val next = if (on) selected - space else selected + space
+                if (next.isNotEmpty()) onChange(next)
+            }
+            Surface(
+                shape = MM.radius.card,
+                color = if (on) colors.surfaceRaised else colors.surfaceSunk,
+                border = BorderStroke(if (on) 1.5.dp else 1.dp, if (on) tint else colors.line),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = on, enabled = !last, role = Role.Switch, onValueChange = { toggle() })
+                    .testTag("space_${space.name.lowercase()}")
+            ) {
+                Row(Modifier.padding(horizontal = MM.space.m, vertical = MM.space.m), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(44.dp).clip(CircleShape).background(if (on) tint.copy(alpha = 0.16f) else colors.track),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(SpaceStyle.icon(space), contentDescription = null, tint = if (on) tint else colors.inkMuted, modifier = Modifier.size(22.dp)) }
+                    Column(Modifier.weight(1f).padding(horizontal = MM.space.m)) {
+                        Text(SpaceStyle.title(space), style = MM.type.heading, color = colors.ink)
+                        Text(SpaceStyle.line(space), style = MM.type.secondary, color = colors.inkSecondary)
+                        Text(
+                            if (last) "Keep at least one space on" else if (on) SpaceStyle.adds(space).replaceFirst("Adds", "Shows") else SpaceStyle.adds(space),
+                            style = MM.type.caption, color = if (on) tint else colors.inkMuted,
+                            modifier = Modifier.padding(top = MM.space.xs)
+                        )
                     }
+                    // The row is the toggle; the switch only shows its state (no second click target).
+                    Switch(
+                        checked = on, onCheckedChange = null, enabled = !last,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = colors.onAccent, checkedTrackColor = tint, checkedBorderColor = tint,
+                            uncheckedThumbColor = colors.inkMuted, uncheckedTrackColor = colors.track, uncheckedBorderColor = colors.line,
+                            disabledCheckedThumbColor = colors.onAccent, disabledCheckedTrackColor = tint.copy(alpha = 0.6f), disabledCheckedBorderColor = tint.copy(alpha = 0.6f)
+                        )
+                    )
                 }
             }
         }
+        Text(
+            "Turning a space off hides it everywhere: Home, the bar, the menu, Record and Notes. Your notes are kept, and turning it back on brings everything back.",
+            style = MM.type.caption, color = colors.inkSecondary, modifier = Modifier.padding(top = MM.space.xs)
+        )
     }
 }
 

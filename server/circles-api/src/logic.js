@@ -2,18 +2,45 @@
 import { ApiError } from "./errors.js";
 
 export const LIMITS = { membersPerCircle: 50, circlesPerUser: 10, bodyMax: 4000, commentMax: 2000, nameMax: 60, descriptionMax: 300, maxTokensPerUser: 5, maxUpdates: 50 };
-// "note" is the free-form post. Every circle allows it, so it is not in any template or allowedTypes list.
-export const POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note"];
-export const REACTIONS = ["praying", "amen", "heart", "celebrate"];
+// Post types for Faith, Work, Learning, and General verticals. "note" is the universal free-form post.
+export const FAITH_POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note", "devotional"];
+export const WORK_POST_TYPES = ["task", "decision", "brief", "standup", "blocker", "announcement", "note"];
+export const LEARNING_POST_TYPES = ["study", "announcement", "encouragement", "achievement", "note"];
+export const GENERAL_POST_TYPES = ["achievement", "encouragement", "reading", "announcement", "note"];
+export const POST_TYPES = [...new Set([...FAITH_POST_TYPES, ...WORK_POST_TYPES, ...LEARNING_POST_TYPES, ...GENERAL_POST_TYPES])];
+
+export const FAITH_REACTIONS = ["praying", "amen", "heart", "celebrate"];
+export const WORK_REACTIONS = ["ack", "approved", "priority", "reviewing", "win"];
+export const LEARNING_REACTIONS = ["ack", "heart", "celebrate", "priority"];
+export const GENERAL_REACTIONS = ["ack", "heart", "celebrate", "priority"];
+export const REACTIONS = [...new Set([...FAITH_REACTIONS, ...WORK_REACTIONS, ...LEARNING_REACTIONS, ...GENERAL_REACTIONS])];
+
 const ALL = POST_TYPES;
 export const TEMPLATES = {
-  small_group: ["prayer", "testimony", "study", "encouragement"],
-  prayer_partners: ["prayer", "encouragement"],
-  bible_study: ["study", "reading", "prayer"],
-  family: ["prayer", "testimony", "encouragement", "achievement"],
-  youth: ALL,
-  ministry_team: ["prayer", "announcement", "study"],
-  custom: ["prayer", "testimony", "encouragement"],
+  // Faith templates
+  small_group: ["prayer", "testimony", "study", "encouragement", "devotional"],
+  prayer_partners: ["prayer", "encouragement", "devotional"],
+  bible_study: ["study", "reading", "prayer", "devotional"],
+  family: ["prayer", "testimony", "encouragement", "achievement", "devotional"],
+  youth: FAITH_POST_TYPES,
+  ministry_team: ["prayer", "announcement", "study", "devotional"],
+  custom: ["prayer", "testimony", "encouragement", "devotional"],
+  // Work templates
+  project_team: ["task", "decision", "brief", "standup", "blocker", "announcement", "note"],
+  client_engagement: ["decision", "brief", "task", "blocker", "announcement", "note"],
+  exec_board: ["decision", "brief", "announcement", "note"],
+  department: ["announcement", "standup", "task", "decision", "blocker", "note"],
+  custom_work: ["task", "decision", "brief", "standup", "blocker", "announcement", "note"],
+  // Learning templates
+  study_group: ["study", "announcement", "encouragement", "achievement", "note"],
+  course_cohort: ["study", "announcement", "note"],
+  exam_prep_room: ["study", "announcement", "achievement", "note"],
+  custom_learning: ["study", "announcement", "encouragement", "achievement", "note"],
+  // General templates
+  friends_group: GENERAL_POST_TYPES,
+  community_club: GENERAL_POST_TYPES,
+  book_club: GENERAL_POST_TYPES,
+  custom_general: GENERAL_POST_TYPES,
 };
 
 const bad = (code, msg) => new ApiError(400, code, msg);
@@ -39,12 +66,24 @@ export function cleanVerseRef(v) {
 }
 
 // ---- settings ----
-export function normalizeSettings(input, template) {
+export function normalizeSettings(input, template, space = "faith") {
   const s = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const tpl = TEMPLATES[template];
   if (!tpl) throw bad("bad_request", "Unknown template");
+  const isGeneral = space === "general" || s.space === "general";
+  const isWork = space === "work" || s.space === "work";
+  const isLearning = space === "learning" || s.space === "learning";
+  const defaultReactions = isLearning ? [...LEARNING_REACTIONS] : isGeneral ? [...GENERAL_REACTIONS] : isWork ? [...WORK_REACTIONS] : [...FAITH_REACTIONS];
   // joinApproval defaults off so circles that exist today keep joining as they do.
-  const out = { allowedTypes: [...tpl], whoCanInvite: "admins", prayerApproval: true, joinApproval: false, reactions: [...REACTIONS], guidelines: "" };
+  const out = {
+    allowedTypes: [...tpl],
+    whoCanInvite: "admins",
+    prayerApproval: (isWork || isLearning || isGeneral) ? false : true,
+    joinApproval: false,
+    reactions: defaultReactions,
+    guidelines: "",
+    space: isLearning ? "learning" : isWork ? "work" : isGeneral ? "general" : "faith"
+  };
   if (s.allowedTypes !== undefined) {
     if (!Array.isArray(s.allowedTypes) || s.allowedTypes.length === 0 || s.allowedTypes.some((t) => !POST_TYPES.includes(t))) throw bad("bad_request", "Invalid post types");
     out.allowedTypes = [...new Set(s.allowedTypes)];
@@ -70,18 +109,31 @@ export function normalizeSettings(input, template) {
 }
 
 // ---- invite codes ----
-export const CODE_WORDS = ["GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT", "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING", "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"];
+export const FAITH_CODE_WORDS = ["GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT", "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING", "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"];
+export const WORK_CODE_WORDS = ["SPRINT", "FOCUS", "LAUNCH", "ALIGN", "IMPACT", "STRIDE", "TALENT", "VISION", "TARGET", "MATRIX", "NEXUS", "VECTOR", "DELTA", "APEX", "SUMMIT", "PULSE", "BRIDGE", "PIVOT", "THRIVE", "FORGE", "CLIMB", "SCALE", "DRIVE", "RESOLVE", "QUEST", "SYNC", "PRISM", "SIGNAL", "CHORD", "SYNERGY"];
+export const LEARNING_CODE_WORDS = ["STUDY", "EXAM", "CLASS", "NOTES", "LEARN", "LOGIC", "ACADEMY", "THEORY", "CAMPUS", "SCHOLAR", "DEGREE", "HONOR", "TUTOR", "COURSE", "LECTURE", "THESIS", "REVISION", "RECALL", "FORMULA", "SYNTAX"];
+export const GENERAL_CODE_WORDS = ["CIRCLE", "CLUB", "SQUAD", "TRIBE", "CREW", "GUILD", "TABLE", "FORUM", "COMMON", "SPARK", "HARBOR", "HAVEN"];
+export const CODE_WORDS = FAITH_CODE_WORDS;
+// Templates that make a work circle when a circle has no explicit space (see isWorkCircle).
+export const WORK_TEMPLATES = ["project_team", "client_engagement", "exec_board", "department", "custom_work"];
+/** A decision's status. Anyone may post a new one as proposed or confirmed; "replaced" is set when a newer decision replaces it. */
+export const DECISION_STATUSES = ["proposed", "confirmed", "replaced"];
+export const CREATE_DECISION_STATUSES = ["proposed", "confirmed"];
+/** The Table: a bring list on an event. */
+export const BRING = { max: 20, textMax: 80 };
+export const ALL_CODE_WORDS = [...new Set([...FAITH_CODE_WORDS, ...WORK_CODE_WORDS, ...LEARNING_CODE_WORDS, ...GENERAL_CODE_WORDS])];
 // No vowels (no accidental words), no 0/1/I/L/O lookalikes.
 export const CODE_ALPHABET = "23456789BCDFGHJKMNPQRSTVWXZ";
 
-export function generateCode(randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n))) {
+export function generateCode(randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n)), space = "faith") {
   const pick = (max) => { // rejection sampling: no modulo bias
     const lim = 256 - (256 % max);
     for (;;) { const b = randomBytes(1)[0]; if (b < lim) return b % max; }
   };
+  const words = space === "learning" ? LEARNING_CODE_WORDS : space === "work" ? WORK_CODE_WORDS : space === "general" ? GENERAL_CODE_WORDS : FAITH_CODE_WORDS;
   let suffix = "";
   for (let i = 0; i < 4; i++) suffix += CODE_ALPHABET[pick(CODE_ALPHABET.length)];
-  return `${CODE_WORDS[pick(CODE_WORDS.length)]}-${suffix}`;
+  return `${words[pick(words.length)]}-${suffix}`;
 }
 
 /** Pull candidate codes out of whatever was pasted (whole share message, URL, lowercase...). */
@@ -91,7 +143,7 @@ export function extractCodes(text, max = 3) {
   const found = [];
   for (const m of text.slice(0, 2000).matchAll(re)) {
     const code = `${m[1]}-${m[2]}`.toUpperCase();
-    if (!CODE_WORDS.includes(m[1].toUpperCase())) continue;
+    if (!ALL_CODE_WORDS.includes(m[1].toUpperCase())) continue;
     if (!found.includes(code)) found.push(code);
     if (found.length >= max) break;
   }
@@ -148,11 +200,86 @@ export const rateExceeded = (count, limit) => count >= limit;
 // ---- post shaping ----
 export const hourFloor = (d) => new Date(Math.floor(d.getTime() / 3_600_000) * 3_600_000);
 
+export function cleanPostMeta(meta) {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  const out = {};
+  if (typeof meta.sourceKind === "string") out.sourceKind = meta.sourceKind.slice(0, 32);
+  if (typeof meta.sourceId === "string") out.sourceId = meta.sourceId.slice(0, 64);
+  if (typeof meta.assigneeName === "string") out.assigneeName = meta.assigneeName.slice(0, 60);
+  if (typeof meta.dueText === "string") out.dueText = meta.dueText.slice(0, 40);
+  if (typeof meta.assigneeUid === "string") {
+    const s = meta.assigneeUid.trim();
+    if (s.length > 0) out.assigneeUid = s.slice(0, 64);
+  }
+  if (Number.isSafeInteger(meta.dueAt) && meta.dueAt > 0) {
+    out.dueAt = meta.dueAt;
+  }
+  if (typeof meta.priority === "string") {
+    const p = meta.priority.trim().toLowerCase();
+    if (["low", "normal", "high", "urgent"].includes(p)) {
+      out.priority = p;
+    }
+  }
+  if (typeof meta.blockedOn === "string") {
+    const s = meta.blockedOn.trim();
+    if (s.length > 0) out.blockedOn = s.slice(0, 80);
+  }
+  if (typeof meta.decisionOwner === "string") {
+    const s = meta.decisionOwner.trim();
+    if (s.length > 0) out.decisionOwner = s.slice(0, 60);
+  }
+  if (typeof meta.meetingDate === "string") {
+    const s = meta.meetingDate.trim();
+    if (s.length > 0) out.meetingDate = s.slice(0, 40);
+  }
+  if (meta.decisionStatus !== undefined && meta.decisionStatus !== null) {
+    if (!CREATE_DECISION_STATUSES.includes(meta.decisionStatus)) throw bad("bad_request", "Invalid decision status");
+    out.decisionStatus = meta.decisionStatus;
+  }
+  if (typeof meta.replacesPostId === "string" && meta.replacesPostId.trim()) {
+    out.replacesPostId = validId(meta.replacesPostId.trim(), "replacesPostId");
+  }
+  if (Array.isArray(meta.tags)) {
+    const seen = new Set();
+    const tags = [];
+    for (const item of meta.tags) {
+      if (typeof item !== "string") continue;
+      let s = item.trim();
+      while (s.startsWith("#")) s = s.slice(1).trim();
+      s = s.slice(0, 24);
+      if (!s) continue;
+      const lower = s.toLowerCase();
+      if (seen.has(lower)) continue;
+      seen.add(lower);
+      tags.push(s);
+      if (tags.length === 4) break;
+    }
+    if (tags.length > 0) out.tags = tags;
+  }
+  if (Array.isArray(meta.checklist)) {
+    const checklist = [];
+    let idx = 0;
+    for (const item of meta.checklist) {
+      if (!item || typeof item !== "object") continue;
+      const text = typeof item.text === "string" ? item.text.trim().slice(0, 120) : "";
+      if (!text) continue;
+      let id = typeof item.id === "string" ? item.id.trim().slice(0, 32) : "";
+      if (!id) id = `c${idx}`;
+      const done = item.done === true;
+      checklist.push({ id, text, done });
+      idx++;
+      if (checklist.length === 8) break;
+    }
+    if (checklist.length > 0) out.checklist = checklist;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /**
  * Decide where a new post goes and build every doc. The returned `post`/`pending` docs NEVER contain
  * the author's uid or name when anonymous; the uid lives only in `authorDoc` (postAuthors/{id}).
  */
-export function shapePost({ type, body, verseRef, anonymous, uid, authorName, settings, now }) {
+export function shapePost({ type, body, verseRef, anonymous, uid, authorName, settings, now, meta }) {
   if (!POST_TYPES.includes(type)) throw bad("bad_request", "Unknown post type");
   if (type !== "note" && !settings.allowedTypes.includes(type)) throw new ApiError(403, "type_not_allowed", "This circle doesn't use that kind of post.");
   if (typeof anonymous !== "boolean") throw bad("bad_request", "anonymous must be true or false");
@@ -166,6 +293,13 @@ export function shapePost({ type, body, verseRef, anonymous, uid, authorName, se
     createdAt: anonymous ? hourFloor(now) : now, editedAt: null,
   };
   const post = { ...base };
+  const cleanMeta = cleanPostMeta(meta);
+  if (cleanMeta) {
+    if (type !== "decision" && (cleanMeta.decisionStatus !== undefined || cleanMeta.replacesPostId !== undefined)) {
+      throw bad("bad_request", "Only decisions can have a status or replace another decision.");
+    }
+    post.meta = cleanMeta;
+  }
   if (!anonymous) { post.authorUid = uid; post.authorName = authorName; }
   const authorDoc = { authorUid: uid, anonymous, authorName: anonymous ? null : authorName, createdAt: now };
   return { pending, post, authorDoc };
@@ -181,6 +315,48 @@ export function publishFromPending(pendingDoc, authorDoc, now) {
   const post = { ...pendingDoc, createdAt: pendingDoc.anonymous ? hourFloor(now) : now };
   if (!pendingDoc.anonymous) { post.authorUid = authorDoc.authorUid; post.authorName = authorDoc.authorName; }
   return post;
+}
+
+/** A work circle: its space is "work"; with no space on the circle, a work template makes it one. */
+export function isWorkCircle(circle) {
+  const space = circle?.space || circle?.settings?.space;
+  if (space) return space === "work";
+  return WORK_TEMPLATES.includes(circle?.template);
+}
+
+const defaultItemId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+
+/**
+ * An event's bring list (The Table), at most BRING.max items of at most BRING.textMax characters.
+ * Items arrive as plain strings (what the app sends) or as {id, text}. A string keeps the id and claim of an existing
+ * item with the same text; an object keeps them when its id matches an existing item and its text is unchanged.
+ * Claims survive only on kept items. Every other item gets a fresh id. Blank items are dropped.
+ */
+export function cleanBringList(input, existing = [], newId = defaultItemId) {
+  if (input === undefined || input === null) return [];
+  if (!Array.isArray(input)) throw bad("bad_request", "The bring list must be a list.");
+  if (input.length > BRING.max) throw bad("bad_request", `A bring list can have at most ${BRING.max} items.`);
+  const prior = Array.isArray(existing) ? existing : [];
+  const usedIds = new Set();
+  const out = [];
+  for (const item of input) {
+    const isObj = item !== null && typeof item === "object" && !Array.isArray(item);
+    const text = cleanText(isObj ? item.text : item, "bring item", { min: 0, max: BRING.textMax });
+    if (!text) continue;
+    const keep = isObj
+      ? (typeof item.id === "string" ? prior.find((p) => p.id === item.id) : undefined)
+      : prior.find((p) => p.text === text && !usedIds.has(p.id));
+    let id = keep && !usedIds.has(keep.id) ? keep.id : null;
+    while (!id || usedIds.has(id)) id = newId();
+    usedIds.add(id);
+    const row = { id, text };
+    if (keep && keep.id === id && keep.text === text && keep.claimedByUid) {
+      row.claimedByUid = keep.claimedByUid;
+      row.claimedByName = keep.claimedByName ?? "";
+    }
+    out.push(row);
+  }
+  return out;
 }
 
 // ---- chat & fun (FAITH_V2 section 2.2b) ----
@@ -224,8 +400,8 @@ export const CHAT = { pollQuestionMax: 200, pollOptionMax: 80, pollOptionsMin: 2
 export const COMPANIONS = ["zuri", "nas", "wren", "page"];
 export const CELEBRATIONS = ["birthday", "answered", "streak", "milestone"];
 
-/** Validate and shape a poll. Returns { question, options:[{id,text}], optionIds, multi }. */
-export function shapePoll({ question, options, multi }) {
+/** Validate and shape a poll. Returns { question, options:[{id,text}], optionIds, multi, closesAt?, correctOptionId?, explanation? }. */
+export function shapePoll({ question, options, multi, closesAt, correctOptionId, correctIndex, explanation }) {
   const q = cleanText(question, "question", { max: CHAT.pollQuestionMax });
   if (!Array.isArray(options) || options.length < CHAT.pollOptionsMin || options.length > CHAT.pollOptionsMax) {
     throw bad("bad_request", `A poll needs ${CHAT.pollOptionsMin} to ${CHAT.pollOptionsMax} options`);
@@ -233,8 +409,52 @@ export function shapePoll({ question, options, multi }) {
   const texts = options.map((o) => cleanText(o, "option", { max: CHAT.pollOptionMax }));
   if (new Set(texts.map((t) => t.toLowerCase())).size !== texts.length) throw bad("bad_request", "Options must be different");
   if (multi !== undefined && typeof multi !== "boolean") throw bad("bad_request", "multi must be true or false");
+  if (closesAt !== undefined && closesAt !== null) {
+    if (!Number.isSafeInteger(closesAt) || closesAt <= 0) {
+      throw bad("bad_request", "Poll deadline must be a valid time.");
+    }
+  }
   const opts = texts.map((text, i) => ({ id: `o${i}`, text }));
-  return { question: q, options: opts, optionIds: opts.map((o) => o.id), multi: multi === true };
+  const res = { question: q, options: opts, optionIds: opts.map((o) => o.id), multi: multi === true };
+  if (closesAt !== undefined && closesAt !== null) {
+    res.closesAt = closesAt;
+  }
+
+  let resolvedCorrectId = null;
+  const hasIndex = correctIndex !== undefined && correctIndex !== null;
+  const hasId = correctOptionId !== undefined && correctOptionId !== null;
+
+  if (hasIndex) {
+    if (Number.isInteger(correctIndex) && correctIndex >= 0 && correctIndex < opts.length) {
+      resolvedCorrectId = opts[correctIndex].id;
+    } else {
+      throw bad("bad_request", "Invalid correctIndex");
+    }
+  } else if (hasId) {
+    if (typeof correctOptionId === "string" && opts.some((o) => o.id === correctOptionId.trim())) {
+      resolvedCorrectId = correctOptionId.trim();
+    } else {
+      throw bad("bad_request", "Invalid correctOptionId");
+    }
+  }
+
+  if (resolvedCorrectId) {
+    if (res.multi) throw bad("bad_request", "Quiz polls cannot be multiple choice");
+    res.correctOptionId = resolvedCorrectId;
+  }
+
+  if (explanation !== undefined && explanation !== null) {
+    if (typeof explanation === "string") {
+      const expTrimmed = explanation.trim();
+      if (expTrimmed.length > 0) {
+        res.explanation = cleanText(explanation, "explanation", { min: 1, max: 240 });
+      }
+    } else {
+      throw bad("bad_request", "Invalid explanation");
+    }
+  }
+
+  return res;
 }
 
 /** Validate a celebration. `kind` is one of CELEBRATIONS; companion falls back to null (client picks its own). */

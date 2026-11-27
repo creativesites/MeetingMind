@@ -2,7 +2,6 @@ package com.craftflowtechnologies.meetingmind.core.work
 
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
-import com.craftflowtechnologies.meetingmind.ai.tools.TranscriptToolPrompts
 import com.craftflowtechnologies.meetingmind.core.database.BriefEntity
 import com.craftflowtechnologies.meetingmind.core.database.ItemEntity
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
@@ -115,16 +114,21 @@ class BriefBuilder(
 ) {
     private val packs = ContextPackBuilder(database, privacy, clock)
 
+    /** The prose written this session, by entity, kind and style. Length and sections never reach it. */
+    private data class MemoProse(val at: Long, val executive: List<BriefSentence>, val recommended: List<BriefSentence>)
+    private val proseMemo = java.util.concurrent.ConcurrentHashMap<String, MemoProse>()
+
     /**
      * Builds the brief. The structure is always fresh; the prose comes from the cache unless the data changed since.
      * With [ask] false a model is never asked, so a screen can show the structure at once and the prose when it arrives.
+     * [options] shape the result: style reaches the prose, length and sections filter the lines.
      */
-    suspend fun build(target: BriefTarget, refresh: Boolean = false, ask: Boolean = true): Brief = withContext(Dispatchers.IO) {
+    suspend fun build(target: BriefTarget, options: BriefOptions = BriefOptions.DEFAULT, refresh: Boolean = false, ask: Boolean = true): Brief = withContext(Dispatchers.IO) {
         val now = clock()
         val (from, to) = window(target, now)
         val pack = packs.build(target.scope, from, to)
-        val (executive, recommended) = prose(target, pack, refresh, ask)
-        assemble(target, pack, executive, recommended, now)
+        val (executive, recommended) = prose(target, pack, options, refresh, ask)
+        BriefShaper.shape(assemble(target, pack, executive, recommended, now), options)
     }
 
     private fun window(target: BriefTarget, now: Long): Pair<Long?, Long?> = when (target.kind) {
@@ -169,39 +173,39 @@ class BriefBuilder(
 
     // ---------------------------------------------------------------- the model's two things
 
-    private suspend fun prose(target: BriefTarget, pack: ContextPack, refresh: Boolean, ask: Boolean): Pair<List<BriefSentence>, List<BriefSentence>> {
+    private suspend fun prose(target: BriefTarget, pack: ContextPack, options: BriefOptions, refresh: Boolean, ask: Boolean): Pair<List<BriefSentence>, List<BriefSentence>> {
         if (pack.items.isEmpty()) return emptyList<BriefSentence>() to emptyList()
         val (type, id) = target.scope.cacheKey
+        // Prose is keyed by entity, kind and style. Length and sections are filters, so changing them reuses it.
+        val memoKey = "$type/$id/${target.kind.name}/${options.styleKey}"
+        // Only the default style is kept on disk: the stored brief has one prose per kind, and a styled one must not replace it.
+        val durable = options.styleKey == BriefOptions.DEFAULT.styleKey
         val dao = database.briefDao()
-        val cached = dao.latest(type, id, target.kind.name)
-        if (cached != null && !refresh && cached.createdAt >= pack.lastChangeAt) {
-            val parsed = BriefGrounding.parse(cached.contentJson, "executive") to BriefGrounding.parse(cached.contentJson, "recommended")
-            // Cited ids are checked again against today's pack: a cache never outvotes the record.
-            return BriefGrounding.keep(parsed.first, pack.ids) to BriefGrounding.keep(parsed.second, pack.ids)
+        if (!refresh) {
+            proseMemo[memoKey]?.takeIf { it.at >= pack.lastChangeAt }?.let { memo ->
+                return BriefGrounding.keep(memo.executive, pack.ids) to BriefGrounding.keep(memo.recommended, pack.ids)
+            }
+            val cached = if (durable) dao.latest(type, id, target.kind.name) else null
+            if (cached != null && cached.createdAt >= pack.lastChangeAt) {
+                val parsed = BriefGrounding.parse(cached.contentJson, "executive") to BriefGrounding.parse(cached.contentJson, "recommended")
+                // Cited ids are checked again against today's pack: a cache never outvotes the record.
+                return BriefGrounding.keep(parsed.first, pack.ids) to BriefGrounding.keep(parsed.second, pack.ids)
+            }
         }
         if (!ask) return emptyList<BriefSentence>() to emptyList()
         val model = models?.forPack(pack.sensitive) ?: return emptyList<BriefSentence>() to emptyList()
-        val raw = (model.generate(prompt(target, pack), maxOutputTokens = 500) as? AiResult.Success)?.value ?: return emptyList<BriefSentence>() to emptyList()
+        val prompt = BriefPrompt.build(target.kind.label, pack.title, options, pack.render())
+        val raw = (model.generate(prompt, maxOutputTokens = 500) as? AiResult.Success)?.value ?: return emptyList<BriefSentence>() to emptyList()
         val executive = BriefGrounding.keep(BriefGrounding.parse(raw, "executive"), pack.ids)
         val recommended = BriefGrounding.keep(BriefGrounding.parse(raw, "recommended"), pack.ids)
         if (executive.isNotEmpty() || recommended.isNotEmpty()) {
-            dao.clear(type, id, target.kind.name)
-            dao.upsert(BriefEntity("brief_${UUID.randomUUID()}", type, id, target.kind.name, BriefGrounding.toJson(executive, recommended),
-                JSONArray((executive + recommended).flatMap { it.cites }.distinct()).toString(), clock()))
+            proseMemo[memoKey] = MemoProse(clock(), executive, recommended)
+            if (durable) {
+                dao.clear(type, id, target.kind.name)
+                dao.upsert(BriefEntity("brief_${UUID.randomUUID()}", type, id, target.kind.name, BriefGrounding.toJson(executive, recommended),
+                    JSONArray((executive + recommended).flatMap { it.cites }.distinct()).toString(), clock()))
+            }
         }
         return executive to recommended
-    }
-
-    private fun prompt(target: BriefTarget, pack: ContextPack) = buildString {
-        appendLine(TranscriptToolPrompts.FIDELITY_CONTRACT.trim())
-        appendLine()
-        appendLine("Write two short pieces for a ${target.kind.label.lowercase()} about \"${pack.title}\", using ONLY the facts below.")
-        appendLine("1. \"executive\": 2 to 4 sentences giving the picture: where things stand, what changed, what matters most.")
-        appendLine("2. \"recommended\": 1 to 3 sentences on what the next conversation should cover.")
-        appendLine("Every sentence must cite the ids, in square brackets in the facts, of the items or quotes it rests on. A sentence with no citation will be thrown away. Never state a date, name, number or decision that is not in the facts.")
-        appendLine("Answer with JSON only: {\"executive\":[{\"text\":string,\"cites\":[string]}],\"recommended\":[{\"text\":string,\"cites\":[string]}]}")
-        appendLine()
-        appendLine("Facts:")
-        append(pack.render())
     }
 }

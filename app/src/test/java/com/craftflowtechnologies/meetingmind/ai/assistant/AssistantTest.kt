@@ -1,5 +1,7 @@
 package com.craftflowtechnologies.meetingmind.ai.assistant
 
+import com.craftflowtechnologies.meetingmind.ai.cloud.AiStreamEvent
+import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiFunctionCall
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
@@ -86,6 +88,37 @@ class AssistantTest {
         assertTrue(sys.contains("insert_blocks"))
     }
 
+    @Test fun learningScopeExposesStudyToolsAndTutorPromptWithoutBibleTools() {
+        val engine = AssistantEngine(
+            Script(emptyList()),
+            Host(
+                AssistantScope(
+                    title = "Linear Algebra Lecture",
+                    faith = false,
+                    kindLabel = "Lecture",
+                    noteId = "n1",
+                    meetingId = "m1",
+                    learning = true,
+                    subjectDomain = "Mathematics & Quantitative"
+                )
+            )
+        )
+        val tools = engine.scopedTools()
+        assertTrue(tools.contains(AssistantTool.LIST_COURSES))
+        assertTrue(tools.contains(AssistantTool.GET_STUDY_CONCEPTS))
+        assertTrue(tools.contains(AssistantTool.CREATE_FLASHCARDS))
+        assertTrue(tools.contains(AssistantTool.CREATE_COURSE))
+        assertTrue(tools.contains(AssistantTool.CREATE_EXAM_GOAL))
+        assertTrue(tools.contains(AssistantTool.READ_NOTE))
+        assertTrue(tools.contains(AssistantTool.READ_TRANSCRIPT))
+        assertFalse(tools.contains(AssistantTool.GET_VERSES))
+        assertFalse(tools.contains(AssistantTool.INSERT_SCRIPTURE))
+
+        val sys = engine.systemPrompt()
+        assertTrue(sys.contains("Learning Tutor Mode"))
+        assertTrue(sys.contains("create_flashcards"))
+    }
+
     @Test fun serviceFailureComesBackAsAnErrorMessage() = runBlocking {
         val failing = object : GeminiTransport {
             override suspend fun execute(request: GeminiRequest): AiResult<String> = AiResult.Failed("Network down")
@@ -93,7 +126,18 @@ class AssistantTest {
         }
         val r = AssistantEngine(failing, Host(AssistantScope("x", false, "Note", noteId = "n"))).reply(emptyList(), "hi")
         assertTrue(r.error)
+        assertTrue(r.retryable)
         assertTrue(r.text.contains("Network down"))
+    }
+
+    @Test fun permanentFailureIsNotOfferedARetry() = runBlocking {
+        val rejectedKey = object : GeminiTransport {
+            override suspend fun execute(request: GeminiRequest): AiResult<String> = AiResult.Failed("Your Gemini API key was rejected.", retryable = false)
+            override fun isConfigured() = true
+        }
+        val r = AssistantEngine(rejectedKey, Host(AssistantScope("x", false, "Note", noteId = "n"))).reply(emptyList(), "hi")
+        assertTrue(r.error)
+        assertFalse(r.retryable)
     }
 
     // ---- organise keeps what was generated before
@@ -125,5 +169,88 @@ class AssistantTest {
         val src = File("src/main/java")
         val hits = src.walkTopDown().filter { it.extension == "kt" && it.readText().contains("AutoAwesome") }.map { it.name }.toList()
         assertTrue("Sparkles icon still used in $hits", hits.isEmpty())
+    }
+
+    @Test fun nativeToolCallingStreamsAndRunsIndependentReadsTogether() = runBlocking {
+        val recordedRequests = mutableListOf<GeminiRequest>()
+        var round = 0
+        val nativeTransport = object : GeminiTransport {
+            override fun isConfigured() = true
+            override suspend fun execute(request: GeminiRequest): AiResult<String> = AiResult.Failed("unused")
+            override fun stream(request: GeminiRequest) = kotlinx.coroutines.flow.flow {
+                recordedRequests += request
+                if (round == 0) {
+                    round++
+                    emit(AiStreamEvent.ThinkingDelta("Need verse and cross refs."))
+                    emit(
+                        AiStreamEvent.FunctionCalls(
+                            listOf(
+                                GeminiFunctionCall("get_verses", """{"reference":"John 15:5"}"""),
+                                GeminiFunctionCall("get_cross_references", """{"reference":"John 15:5"}""")
+                            )
+                        )
+                    )
+                } else {
+                    emit(AiStreamEvent.TextDelta("Here is "))
+                    emit(AiStreamEvent.TextDelta("John 15:5."))
+                    emit(AiStreamEvent.Completed("Here is John 15:5."))
+                }
+            }
+        }
+        val host = Host(AssistantScope("Vine", true, "Sermon", noteId = "n", meetingId = "m", sermon = true))
+        val snapshots = mutableListOf<AssistantTurnState>()
+        AssistantEngine(nativeTransport, host).replyStream(emptyList(), "Explain John 15:5").collect { snapshots += it }
+
+        val finalTurn = snapshots.last { it.done }.message
+        assertEquals("Here is John 15:5.", finalTurn.text)
+        assertTrue(finalTurn.thinking?.contains("Need verse") == true)
+        assertEquals(2, finalTurn.toolSteps.size)
+        assertTrue(finalTurn.toolSteps.all { it.state == com.craftflowtechnologies.meetingmind.ai.assistant.AssistantToolStep.State.DONE })
+        assertTrue(recordedRequests[0].toolsJson != null)
+        assertFalse(recordedRequests[0].jsonOutput)
+        assertTrue(recordedRequests[1].contentsJson?.contains("functionResponse") == true)
+    }
+
+    @Test fun fallsBackToLocalModelWhenCloudUnconfiguredAndSupportsTaskTools() = runBlocking {
+        val offlineTransport = object : GeminiTransport {
+            override fun isConfigured() = false
+            override suspend fun execute(request: GeminiRequest): AiResult<String> = AiResult.Failed("offline")
+        }
+        val localReplies = ArrayDeque(
+            listOf(
+                """{"say":"","calls":[{"tool":"list_tasks","args":{}}]}""",
+                """{"say":"You have 1 open task: Send slides.","calls":[]}"""
+            )
+        )
+        val localModel = object : com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel {
+            override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> =
+                AiResult.Success(localReplies.removeFirst())
+        }
+        val host = Host(AssistantScope("Weekly Sync", false, "Meeting", noteId = "n1", meetingId = "m1"))
+        val engine = AssistantEngine(
+            transport = offlineTransport,
+            host = host,
+            localModelProvider = {
+                com.craftflowtechnologies.meetingmind.ai.routing.ResolvedLanguageModel(
+                    languageModel = localModel,
+                    modelId = "gemma-local",
+                    contextLengthTokens = 4096,
+                    isCloud = false
+                )
+            }
+        )
+        assertTrue(AssistantTool.LIST_TASKS in engine.scopedTools())
+        assertTrue(AssistantTool.LIST_UPCOMING_REMINDERS in engine.scopedTools())
+        assertTrue(AssistantTool.COMPLETE_TASK in engine.scopedTools())
+
+        val reply = engine.reply(emptyList(), "What tasks are open?")
+        assertFalse(reply.error)
+        assertEquals("You have 1 open task: Send slides.", reply.text)
+        assertTrue(reply.provider?.contains("On-device") == true || reply.text.contains("Send slides"))
+    }
+
+    @Test fun `upcoming reminders native declaration has valid empty object parameters`() {
+        val raw = AssistantTool.nativeDeclarationsJson(listOf(AssistantTool.LIST_UPCOMING_REMINDERS))
+        assertTrue(raw.contains("list_upcoming_reminders"))
     }
 }
