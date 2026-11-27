@@ -59,7 +59,7 @@ class DeterministicSpacedSchedulerTest {
     }
 
     @Test
-    fun `failed review resets repetitions and conservatively sets 1 day interval`() {
+    fun `failed review resets repetitions and comes back the same day, ten minutes later`() {
         val establishedSchedule = ReviewSchedule(
             id = "s1",
             activityId = "act_1",
@@ -82,9 +82,12 @@ class DeterministicSpacedSchedulerTest {
             now = baseTime
         )
 
-        assertEquals(1, next.intervalDays)
+        assertEquals(0, next.intervalDays)
         assertEquals(0, next.repetitionCount)
-        assertEquals(baseTime + 1 * dayMs, next.dueAt)
+        assertEquals(baseTime + DeterministicSpacedScheduler.RETRY_SAME_DAY_MS, next.dueAt)
+        assertEquals(10 * 60 * 1000L, DeterministicSpacedScheduler.RETRY_SAME_DAY_MS)
+        assertTrue(next.isDue(baseTime + DeterministicSpacedScheduler.RETRY_SAME_DAY_MS))
+        assertFalse(next.isDue(baseTime + 9 * 60 * 1000L))
         assertTrue(next.easeFactor < establishedSchedule.easeFactor)
     }
 
@@ -122,7 +125,7 @@ class DeterministicSpacedSchedulerTest {
     }
 
     @Test
-    fun `previewInterval returns 1d for AGAIN regardless of repetition history`() {
+    fun `previewInterval returns same-day for AGAIN regardless of repetition history`() {
         val matureSchedule = ReviewSchedule(
             id = "s1",
             activityId = "act_1",
@@ -135,7 +138,7 @@ class DeterministicSpacedSchedulerTest {
             updatedAt = baseTime
         )
 
-        assertEquals("1d", DeterministicSpacedScheduler.previewInterval(matureSchedule, RecallRating.AGAIN, baseTime))
+        assertEquals("<1d", DeterministicSpacedScheduler.previewInterval(matureSchedule, RecallRating.AGAIN, baseTime))
     }
 
     @Test

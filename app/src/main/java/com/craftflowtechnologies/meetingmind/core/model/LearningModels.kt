@@ -266,6 +266,9 @@ data class ReviewSchedule(
 object DeterministicSpacedScheduler {
     const val DAY_MS: Long = 24 * 60 * 60 * 1000L
 
+    /** A missed item comes back the same day, ten minutes later (PLAN_LEARNING §5.3). */
+    const val RETRY_SAME_DAY_MS: Long = 10 * 60 * 1000L
+
     fun calculateNextSchedule(
         current: ReviewSchedule,
         isCorrect: Boolean,
@@ -292,13 +295,14 @@ object DeterministicSpacedScheduler {
                 updatedAt = now
             )
         } else {
-            // Unsuccessful attempt resets repetition count and steps back conservatively
+            // A missed attempt resets the repetition count and is due again the same day
+            // (PLAN_LEARNING §5.3): ten minutes later, not tomorrow.
             val newEase = (current.easeFactor * 0.85).coerceIn(1.3, 3.0)
             current.copy(
-                intervalDays = 1,
+                intervalDays = 0,
                 repetitionCount = 0,
                 easeFactor = newEase,
-                dueAt = now + DAY_MS,
+                dueAt = now + RETRY_SAME_DAY_MS,
                 snoozedUntil = null,
                 lastReviewedAt = now,
                 updatedAt = now
