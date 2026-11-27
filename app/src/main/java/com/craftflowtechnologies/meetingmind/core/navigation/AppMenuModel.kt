@@ -74,12 +74,14 @@ object AppMenuModel {
         )
         NotebookSpace.PERSONAL -> MenuSection(
             "personal", "Personal", listOf(
+                // One list with the garden's places (feature/personal/garden/GardenPlace.kt).
                 go("personal.garden", "Your garden", MenuIcon.GARDEN, Routes.PERSONAL, "Today's question, practices and ideas"),
-                go("personal.journal", "Journal", MenuIcon.JOURNAL, Routes.recordTypeRoute(RecordingType.JOURNAL), "Say what's on your mind"),
-                go("personal.living_journal", "Living journal", MenuIcon.JOURNAL, Routes.personalRoute("JOURNAL"), "Day pages, volumes and reflections"),
-                go("personal.growth", "Routines, journeys & coaching", MenuIcon.PLANS, Routes.personalRoute("GROWTH"), "Morning/evening routines, guided journeys and challenges"),
-                go("personal.ideas", "Idea studio", MenuIcon.CREATE, Routes.personalRoute("IDEAS"), "Spark vault and idea incubator"),
-                go("personal.vault", "Memory vault & capsules", MenuIcon.ARCHIVE, Routes.personalRoute("VAULT"), "Time capsules, milestones and voice keepsakes"),
+                go("personal.rituals", "Rituals", MenuIcon.PLANS, Routes.personalRoute("SANCTUARY"), "Morning and evening routines"),
+                go("personal.journeys", "Journeys & challenges", MenuIcon.PLANS, Routes.personalRoute("GROWTH"), "Guided journeys, challenges and coaching"),
+                go("personal.living_journal", "Living journal", MenuIcon.JOURNAL, Routes.personalRoute("JOURNAL"), "Day pages, volumes and the calendar"),
+                go("personal.ideas", "Seed jar", MenuIcon.CREATE, Routes.personalRoute("IDEAS"), "Ideas you have kept, and the ones being grown"),
+                go("personal.vault", "Keepsakes", MenuIcon.ARCHIVE, Routes.personalRoute("VAULT"), "Time capsules and memories, sealed until their day"),
+                go("personal.privacy", "Privacy & sync", MenuIcon.SETTINGS, Routes.personalRoute("SANCTUARY", tools = true), "Sanctuary lock, Obsidian and Day One"),
                 go("personal.idea", "Capture an idea", MenuIcon.RECORD, Routes.recordTypeRoute(RecordingType.IDEA))
             ), NotebookSpace.PERSONAL
         )

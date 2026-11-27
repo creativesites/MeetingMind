@@ -59,7 +59,7 @@ class PersonalHomeScreenshotTest {
     private fun shoot(name: String, dark: Boolean, s: PersonalUiState) {
         rule.setContent {
             MMPreviewFrame(dark) {
-                PersonalHomeScreen(s, animate = false, onAnswerAloud = {}, onWriteAnswer = {}, onOpenPlant = {}, onPlantNew = {}, onOpenSeedJar = {}, onCaptureIdea = {})
+                PersonalHomeScreen(s, animate = false, onAnswerAloud = {}, onWriteAnswer = {}, onOpenPlant = {}, onPlantNew = {}, onOpenPlace = {}, onCaptureIdea = {})
             }
         }
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/personal/${name}_${if (dark) "dark" else "light"}.png")
@@ -92,7 +92,7 @@ class PersonalHomeScreenshotTest {
         var aloud = 0; var written = 0
         rule.setContent {
             MMPreviewFrame(false) {
-                PersonalHomeScreen(state(GardenPhase.DUSK), animate = false, onAnswerAloud = { aloud++ }, onWriteAnswer = { written++ }, onOpenPlant = {}, onPlantNew = {}, onOpenSeedJar = {}, onCaptureIdea = {})
+                PersonalHomeScreen(state(GardenPhase.DUSK), animate = false, onAnswerAloud = { aloud++ }, onWriteAnswer = { written++ }, onOpenPlant = {}, onPlantNew = {}, onOpenPlace = {}, onCaptureIdea = {})
             }
         }
         rule.onNodeWithText("Light the lantern").assertIsDisplayed()
@@ -105,7 +105,7 @@ class PersonalHomeScreenshotTest {
         var opened: String? = null
         rule.setContent {
             MMPreviewFrame(false) {
-                PersonalHomeScreen(state(GardenPhase.DAY), animate = false, onAnswerAloud = {}, onWriteAnswer = {}, onOpenPlant = { opened = it }, onPlantNew = {}, onOpenSeedJar = {}, onCaptureIdea = {})
+                PersonalHomeScreen(state(GardenPhase.DAY), animate = false, onAnswerAloud = {}, onWriteAnswer = {}, onOpenPlant = { opened = it }, onPlantNew = {}, onOpenPlace = {}, onCaptureIdea = {})
             }
         }
         rule.onNodeWithTag("personal_plant_a").performClick()
@@ -116,7 +116,7 @@ class PersonalHomeScreenshotTest {
         var planted = 0
         rule.setContent {
             MMPreviewFrame(false) {
-                PersonalHomeScreen(state(GardenPhase.DAY, withPlants = false), animate = false, onAnswerAloud = {}, onWriteAnswer = {}, onOpenPlant = {}, onPlantNew = { planted++ }, onOpenSeedJar = {}, onCaptureIdea = {})
+                PersonalHomeScreen(state(GardenPhase.DAY, withPlants = false), animate = false, onAnswerAloud = {}, onWriteAnswer = {}, onOpenPlant = {}, onPlantNew = { planted++ }, onOpenPlace = {}, onCaptureIdea = {})
             }
         }
         rule.onNodeWithText("Plant your first seed").assertIsDisplayed()

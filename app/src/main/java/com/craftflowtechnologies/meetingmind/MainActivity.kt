@@ -577,8 +577,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onRecordIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) },
                     onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                     onOpenYouTube = { youTubeSheet.controller.open(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL) },
-                    onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) },
-                    onOpenPaywall = { navController.navigate(Routes.paywallRoute("AUTOMATION_RECIPES")) { launchSingleTop = true } }
+                    onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) }
                 )
             } else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM) com.craftflowtechnologies.meetingmind.feature.today.home.CalmHome(
                 today = vm,
@@ -734,7 +733,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             }
         }
 
-        // PERSONAL — "Your garden": the day's question, practices as plants, and the seed jar.
+        // PERSONAL — "Your garden": the day's question, practices as plants, and the places for every Sanctuary capability (GardenPlace).
         composable(Routes.PERSONAL) {
             androidx.compose.material3.Scaffold(
                 contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -749,7 +748,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     com.craftflowtechnologies.meetingmind.feature.personal.PersonalHost(
                         onAnswerAloud = { question -> navController.navigate(Routes.recordTitledRoute(RecordingType.JOURNAL, question)) },
                         onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
-                        onOpenSeedJar = { navController.navigate(Routes.NOTES) },
+                        onOpenRoute = { navController.navigate(it) { launchSingleTop = true } },
                         onCaptureIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) }
                     )
                 }
@@ -1121,19 +1120,22 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         // PERSONAL (Sanctuary Home, Living Journal, Idea Studio, Growth & Routines, Memory Vault)
         composable(
             route = Routes.PERSONAL_TAB,
-            arguments = listOf(navArgument("tab") { type = NavType.StringType; nullable = true; defaultValue = null })
+            arguments = listOf(
+                navArgument("tab") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("tools") { type = NavType.BoolType; defaultValue = false }
+            )
         ) { entry ->
             val pvm: com.craftflowtechnologies.meetingmind.feature.personal.SanctuaryViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.personal.PersonalSpaceScreen(
                 viewModel = pvm,
                 initialTab = entry.arguments?.getString("tab"),
+                openTools = entry.arguments?.getBoolean("tools") ?: false,
                 onStartRoutine = { rId, min -> navController.navigate(Routes.personalRoutinePlayerRoute(rId, min)) },
                 onRecordJournal = { navController.navigate(Routes.recordTypeRoute(RecordingType.JOURNAL)) },
                 onRecordIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenYouTube = { youTubeSheet.controller.open(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL) },
-                onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) },
-                onOpenPaywall = { navController.navigate(Routes.paywallRoute("AUTOMATION_RECIPES")) { launchSingleTop = true } }
+                onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) }
             )
         }
         composable(

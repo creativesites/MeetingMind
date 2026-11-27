@@ -335,7 +335,6 @@ internal fun PersonalSanctuaryToolsSheet(
     recentsShieldEnabled: Boolean,
     obsidianVaultLabel: String?,
     lastSyncLabel: String?,
-    autopilotUnlocked: Boolean,
     isAutopilotRunning: Boolean = false,
     onToggleLock: (Boolean) -> Unit,
     onToggleRecentsShield: (Boolean) -> Unit,
@@ -344,7 +343,6 @@ internal fun PersonalSanctuaryToolsSheet(
     onSyncObsidianNow: () -> Unit,
     onImportDayOneJson: () -> Unit,
     onRunPersonalAutopilot: (AutopilotRecipe) -> Unit,
-    onOpenPaywall: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val c = MM.colors
@@ -358,7 +356,7 @@ internal fun PersonalSanctuaryToolsSheet(
                 .padding(bottom = MM.space.xl),
             verticalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
-            Text("Sanctuary Tools & Pro Integrations", style = MM.type.title, color = c.ink)
+            Text("Sanctuary tools", style = MM.type.title, color = c.ink)
 
             // 1. Privacy & Sanctuary Lock
             MMCard {
@@ -394,7 +392,7 @@ internal fun PersonalSanctuaryToolsSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Bolt, contentDescription = null, tint = c.gold, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(MM.space.s))
-                    Text("PERSONAL AUTOPILOT · PRO & BYOK", style = MM.type.overline, color = c.gold, modifier = Modifier.weight(1f))
+                    Text("PERSONAL AUTOPILOT", style = MM.type.overline, color = c.gold, modifier = Modifier.weight(1f))
                     if (isAutopilotRunning) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = c.accent)
                     }
@@ -410,16 +408,12 @@ internal fun PersonalSanctuaryToolsSheet(
                     AutopilotRecipe.PERSONAL_RECIPES.forEach { recipe ->
                         InsetPanel(onClick = {
                             if (isAutopilotRunning) return@InsetPanel
-                            if (autopilotUnlocked) onRunPersonalAutopilot(recipe) else onOpenPaywall()
+                            onRunPersonalAutopilot(recipe)
                         }) {
                             Text(recipe.label, style = MM.type.bodyStrong, color = c.ink)
                             Text(recipe.subtitle, style = MM.type.caption, color = c.inkSecondary)
                         }
                     }
-                }
-                if (!autopilotUnlocked) {
-                    Spacer(Modifier.height(MM.space.s))
-                    TextAction("Included with Pro & BYOK — View plans", onClick = onOpenPaywall)
                 }
             }
 

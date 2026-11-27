@@ -2,6 +2,11 @@
 
 Updated: 2026-11-27. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
+## Personal: garden places for the Sanctuary (P5, branch `wt-p5`, not pushed)
+- **Built:** every Sanctuary capability has a place on the garden home ("Around the garden": Rituals, Journeys & challenges, Living journal, Seed jar, Keepsakes, Privacy & sync). The list is `feature/personal/garden/GardenPlaces.kt`; the Personal menu reads the same names. `Routes.PERSONAL_TAB` gained `tools`, which opens the sanctuary tools sheet.
+- **Tiering:** the Personal autopilot and sanctuary tools sheet no longer show a plan gate or "Pro & BYOK" copy.
+- **Open:** the places still open the old tabbed Sanctuary screen, which keeps its own look. Restyle to the garden palette and retiring `PersonalSpaceScreen` are not done. `AutopilotWorkspace.runRecipe` (`ai/automation/PostSessionAutopilot.kt`, shared with Work) still refuses Personal recipes on free plans; a one-line exemption for `AutopilotRecipe.PERSONAL_RECIPES` is needed in that file. Roborazzi garden screenshots for the new places are not done.
+
 ## Study (Learning) rebuild (2026-11-27, branch `ccr-193c8c6b-bozoxb`)
 - **Decision:** the founder approved the Study redesign canvas (2026-11-27). After merging `ccr-4eced482-bn5f1l`, which has its own Learning vertical, the founder chose to keep both for now: Study runs on its own `learn_study` routes beside Learning. Audit and rules: `docs/mvp/STUDY_AUDIT.md`. Mockups: `design/study/`. Contract: `feature/learn/LearnContract.kt`.
 - **Built:** Study home (round card, "Your sky", continue, courses, weekly rhythm), Lesson (lecture ribbon with stressed moments, 30-second summary, stressed quotes that play the recording, sections with tappable terms, quick checks, hard-to-hear line), concept sheet (lecturer's words, Explain another way, Draw it diagrams, Quiz me), Listen (dark read-along replay), Practice round (tap-to-answer, recall cards, wrong answers come back, Hear your lecturer), Round complete (stars light up, one next step, study-win card).
