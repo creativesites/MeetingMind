@@ -2,6 +2,11 @@
 
 Updated: 2026-11-27. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
 
+## Latest dev build (2026-11-27)
+- `MeetingMind-Dev-3b19f7b8.apk` on `apk-downloads` (arm64, 92,832,666 bytes, sha256 `786a9e68…`), built from `ccr-4eced482-bn5f1l` with Personal ("Your garden"). Key scan: only the Firebase key.
+- Full unit suite before it: 4,214 tests. Every failure also fails on `48da219d` (before Personal), except a race in `AudioExtractorTest`, now fixed: PrivacyNoCloudPathTest (2), GeminiHttpTransport, SermonTranscriptSection, ProcessingScheduler, TranscriptToolEngine, GeminiTranslationEngine, MomentStage, ImportViewModel (2), NoteEditorUnveil and Processing screenshots, TodayHeroSun (6), DesignSystemGuard (AiCraft.kt). Six classes could not start here because Robolectric could not download its Android 16 jar (network), not a code fault.
+- Not installed on a phone yet.
+
 ## Personal: "Your garden", complete (2026-11-27, branch `ccr-4eced482-bn5f1l`)
 - **What it is:** Personal has its own home and bar place. Design: canvas "MeetingMind: Personal vertical redesign", page "Your garden (new)".
 - **Screens (all in `feature/personal/`):**
