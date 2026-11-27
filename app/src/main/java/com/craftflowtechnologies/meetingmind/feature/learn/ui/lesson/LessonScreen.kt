@@ -51,6 +51,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
+import com.craftflowtechnologies.meetingmind.core.aireport.AiFeature
+import com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource
+import com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
@@ -73,6 +76,12 @@ import com.craftflowtechnologies.meetingmind.feature.learn.StudyTheme
 import com.craftflowtechnologies.meetingmind.feature.learn.TimeRange
 import com.craftflowtechnologies.meetingmind.feature.learn.ExplainState
 import com.craftflowtechnologies.meetingmind.feature.learn.formatLectureTime
+import com.craftflowtechnologies.meetingmind.feature.learn.lesson.ConceptFlags
+import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LegacyLesson
+import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LessonAskScope
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.LessonAskSheet
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.LessonAskUi
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.LessonOverflowMenu
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import kotlin.math.ceil
@@ -103,7 +112,23 @@ fun LessonScreen(
     onAsk: () -> Unit,
     onGenerate: () -> Unit,
     onFixAudio: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Whether this lecture's reviews are paused (the overflow menu's Pause or Resume reviews). */
+    reviewsPaused: Boolean = false,
+    /** Per concept: hidden, reported, edited. The concept sheet reads it. */
+    conceptFlags: Map<String, ConceptFlags> = emptyMap(),
+    /** Opens the lecture's full notes (the overflow menu, and the note offer when the lesson cannot be made). */
+    onOpenNote: () -> Unit = {},
+    onTogglePauseReviews: () -> Unit = {},
+    onToggleConceptHidden: (String) -> Unit = {},
+    onRenameConcept: (conceptId: String, name: String) -> Unit = { _, _ -> },
+    /** Non-null while the Ask sheet is open. */
+    ask: LessonAskUi? = null,
+    onAskQuestion: (String) -> Unit = {},
+    onAskGeneral: (String) -> Unit = {},
+    onAskScope: (LessonAskScope) -> Unit = {},
+    onAskQuiz: () -> Unit = {},
+    onCloseAsk: () -> Unit = {}
 ) {
     StudyTheme {
         val c = MM.colors
@@ -112,19 +137,26 @@ fun LessonScreen(
         val zuri = if (state.status is LessonKitStatus.Generating) CompanionState.THINKING else CompanionState.CURIOUS
         Box(modifier.fillMaxSize().background(c.background)) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 120.dp)) {
-                LessonTopBar(courseName = state.courseName, onBack = onBack)
+                LessonTopBar(
+                    courseName = state.courseName,
+                    reviewsPaused = reviewsPaused,
+                    onBack = onBack,
+                    onOpenNote = onOpenNote,
+                    onTogglePauseReviews = onTogglePauseReviews
+                )
                 LessonHeader(title = state.title, metaLine = state.metaLine, zuriState = zuri)
                 LectureCard(state = state, onPlayFrom = onPlayFrom, onTogglePlay = onTogglePlay)
                 if (kit != null && state.status == LessonKitStatus.Ready) {
                     LessonBody(
                         kit = kit,
+                        noteId = state.noteId,
                         onHearSummary = onHearSummary,
                         onPlayFrom = onPlayFrom,
                         onOpenConcept = onOpenConcept,
                         onFixAudio = onFixAudio
                     )
                 } else {
-                    LessonStatusPanel(status = state.status, onGenerate = onGenerate)
+                    LessonStatusPanel(status = state.status, onGenerate = onGenerate, onOpenNote = onOpenNote)
                 }
             }
             LessonBottomBar(
@@ -135,14 +167,37 @@ fun LessonScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
             if (openConcept != null) {
+                val id = openConcept.id
                 ConceptSheet(
                     concept = openConcept,
                     explain = explain,
                     onDismiss = onCloseConcept,
                     onPlayQuote = onPlayFrom,
-                    onExplain = { onExplain(openConcept.id, it) },
-                    onQuizMe = { onQuizConcept(openConcept.id) },
-                    onNotRight = { onReportConcept(openConcept.id) }
+                    onExplain = { onExplain(id, it) },
+                    onQuizMe = { onQuizConcept(id) },
+                    onNotRight = {},
+                    flags = conceptFlags[id] ?: ConceptFlags(),
+                    onRename = { onRenameConcept(id, it) },
+                    onToggleHidden = { onToggleConceptHidden(id) },
+                    onToggleReported = { onReportConcept(id) },
+                    aiSource = {
+                        AiReportSource(
+                            AiFeature.LECTURE_NOTES,
+                            listOf(openConcept.name, openConcept.definition).filter { it.isNotBlank() }.joinToString("\n"),
+                            noteId = state.noteId
+                        )
+                    }
+                )
+            }
+            if (ask != null) {
+                LessonAskSheet(
+                    ask = ask,
+                    onQuestion = onAskQuestion,
+                    onGeneral = onAskGeneral,
+                    onScope = onAskScope,
+                    onQuiz = onAskQuiz,
+                    onPlayFrom = onPlayFrom,
+                    onDismiss = onCloseAsk
                 )
             }
         }
@@ -150,7 +205,13 @@ fun LessonScreen(
 }
 
 @Composable
-private fun LessonTopBar(courseName: String?, onBack: () -> Unit) {
+private fun LessonTopBar(
+    courseName: String?,
+    reviewsPaused: Boolean,
+    onBack: () -> Unit,
+    onOpenNote: () -> Unit,
+    onTogglePauseReviews: () -> Unit
+) {
     val c = MM.colors
     Row(
         Modifier.fillMaxWidth().padding(start = MM.space.s, end = MM.space.s, top = MM.space.s),
@@ -166,8 +227,11 @@ private fun LessonTopBar(courseName: String?, onBack: () -> Unit) {
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f)
         )
-        // Balances the back button so the course label sits centred.
-        Spacer(Modifier.size(MMSize.minTouch))
+        LessonOverflowMenu(
+            reviewsPaused = reviewsPaused,
+            onOpenNotes = onOpenNote,
+            onTogglePauseReviews = onTogglePauseReviews
+        )
     }
 }
 
@@ -222,6 +286,7 @@ private fun LectureCard(state: LessonState, onPlayFrom: (Long) -> Unit, onToggle
 @Composable
 private fun LessonBody(
     kit: StudyKit,
+    noteId: String,
     onHearSummary: () -> Unit,
     onPlayFrom: (Long) -> Unit,
     onOpenConcept: (String) -> Unit,
@@ -233,6 +298,11 @@ private fun LessonBody(
         HeroCard(Modifier.padding(horizontal = MM.space.l), contentPadding = MM.space.l) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("In 30 seconds", style = MM.type.bodyStrong, color = c.accent, modifier = Modifier.weight(1f))
+                // The summary is AI-written, so "Report this" sits with it. A summary built from Learning's own
+                // concepts (no AI) is the learner's own words, so it is not offered.
+                if (kit.modelId != LegacyLesson.MODEL_ID && kit.summary.isNotBlank()) {
+                    ReportAiAction(source = { AiReportSource(AiFeature.LECTURE_NOTES, kit.summary, noteId = noteId) })
+                }
                 PrimaryButton("Hear it", onClick = onHearSummary, leadingIcon = Icons.Rounded.PlayArrow)
             }
             Spacer(Modifier.height(MM.space.s))
@@ -343,14 +413,16 @@ private fun QuickCheckCard(check: QuickCheck) {
 
 /** What the page shows instead of the lesson while it is not ready. Each state says what happened, plainly. */
 @Composable
-private fun LessonStatusPanel(status: LessonKitStatus, onGenerate: () -> Unit) {
+private fun LessonStatusPanel(status: LessonKitStatus, onGenerate: () -> Unit, onOpenNote: () -> Unit) {
     when (status) {
         is LessonKitStatus.Generating -> GeneratingPanel(status.step)
         LessonKitStatus.Ready -> GeneratingPanel("Getting the lesson ready")
+        // Said plainly, and the note is still one tap away.
         is LessonKitStatus.NeedsAi -> EmptyState(
             title = "Set up AI to make this lesson",
             body = status.message,
-            modifier = Modifier.padding(top = MM.space.xl)
+            modifier = Modifier.padding(top = MM.space.xl),
+            action = { SecondaryButton("Open the note", onClick = onOpenNote) }
         )
         is LessonKitStatus.Failed -> EmptyState(
             title = "This lesson didn't finish",
@@ -361,7 +433,8 @@ private fun LessonStatusPanel(status: LessonKitStatus, onGenerate: () -> Unit) {
         LessonKitStatus.NoTranscript -> EmptyState(
             title = "No words to read yet",
             body = "This lecture is still being processed, or nothing was heard. The lesson appears once there are words to work from.",
-            modifier = Modifier.padding(top = MM.space.xl)
+            modifier = Modifier.padding(top = MM.space.xl),
+            action = { SecondaryButton("Open the note", onClick = onOpenNote) }
         )
     }
 }

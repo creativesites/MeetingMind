@@ -3,10 +3,7 @@ package com.craftflowtechnologies.meetingmind.feature.learn
 import android.app.Application
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -20,22 +17,21 @@ import androidx.navigation.navArgument
 import com.craftflowtechnologies.meetingmind.core.learning.StudyServices
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.share.ShareCardContent
+import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LessonActions
+import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LessonHost
+import com.craftflowtechnologies.meetingmind.feature.learn.lesson.ListenHost
 import com.craftflowtechnologies.meetingmind.feature.learn.ui.common.SkyView
 import com.craftflowtechnologies.meetingmind.feature.learn.ui.home.StudyHomeScreen
-import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.LessonScreen
-import com.craftflowtechnologies.meetingmind.feature.learn.ui.listen.ListenScreen
 import com.craftflowtechnologies.meetingmind.feature.learn.ui.practice.PracticeScreen
 import com.craftflowtechnologies.meetingmind.feature.navigation.Routes
-import com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet
 import com.craftflowtechnologies.meetingmind.feature.share.ShareRequest
 import com.craftflowtechnologies.meetingmind.feature.share.ShareRequests
 import kotlinx.coroutines.launch
 
-private val ListenSpeeds = listOf(1f, 1.25f, 1.5f, 1.75f, 2f, 0.75f)
-
 /**
  * The Study routes (docs/mvp/STUDY_AUDIT.md §3): home, lesson, listen and practice. Screens are
- * stateless; this file joins each to its view model and to navigation.
+ * stateless; this file joins each to its view model and to navigation. The lesson and listen hosts
+ * are in `feature/learn/lesson/LessonRoutes.kt`.
  */
 fun NavGraphBuilder.learnGraph(navController: NavController, onSearch: () -> Unit) {
 
@@ -66,59 +62,22 @@ fun NavGraphBuilder.learnGraph(navController: NavController, onSearch: () -> Uni
 
     composable(Routes.STUDY_LESSON, arguments = listOf(navArgument("noteId") { type = NavType.StringType })) { entry ->
         val noteId = entry.arguments?.getString("noteId").orEmpty()
-        val app = LocalContext.current.applicationContext as Application
-        val vm: LessonViewModel = viewModel(key = "lesson-$noteId", factory = viewModelFactory { initializer { LessonViewModel(app, noteId) } })
-        val state by vm.state.collectAsState()
-        val explain by vm.explain.collectAsState()
-        var openConcept by rememberSaveable { mutableStateOf<String?>(null) }
-        var readAloud by remember { mutableStateOf(false) }
-        LessonScreen(
-            state = state,
-            explain = explain,
-            openConceptId = openConcept,
-            onBack = { navController.popBackStack() },
-            onPlayFrom = vm::playFrom,
-            onTogglePlay = vm::togglePlay,
-            onHearSummary = { readAloud = true },
-            onOpenConcept = { openConcept = it },
-            onCloseConcept = { openConcept = null; vm.clearExplain() },
-            onExplain = { id, mode -> vm.explain(id, mode) },
-            onQuizConcept = { conceptId ->
-                openConcept = null
-                navController.navigate(Routes.studyPracticeRoute(state.sessionId.ifBlank { null }, conceptId))
-            },
-            onReportConcept = { openConcept = null },
-            onListen = { navController.navigate(Routes.studyListenRoute(noteId)) },
-            onPractice = { navController.navigate(Routes.studyPracticeRoute(state.sessionId.ifBlank { null })) },
-            onAsk = { readAloud = false; navController.navigate(Routes.noteRoute(noteId)) },
-            onGenerate = vm::generate,
-            onFixAudio = { state.meetingId?.let { navController.navigate(Routes.meetingDetailRoute(it)) } }
+        LessonHost(
+            noteId = noteId,
+            actions = LessonActions(
+                onBack = { navController.popBackStack() },
+                onOpenNote = { id -> navController.navigate(Routes.noteRoute(id)) },
+                onListen = { id -> navController.navigate(Routes.studyListenRoute(id)) },
+                onPractise = { sessionId -> navController.navigate(Routes.studyPracticeRoute(sessionId)) },
+                onQuizConcept = { sessionId, conceptId -> navController.navigate(Routes.studyPracticeRoute(sessionId, conceptId)) },
+                onOpenRecording = { meetingId, startMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startMs)) }
+            )
         )
-        if (readAloud) ReadToMeSheet(noteId, onDismiss = { readAloud = false })
     }
 
     composable(Routes.STUDY_LISTEN, arguments = listOf(navArgument("noteId") { type = NavType.StringType })) { entry ->
         val noteId = entry.arguments?.getString("noteId").orEmpty()
-        val app = LocalContext.current.applicationContext as Application
-        val vm: ListenViewModel = viewModel(key = "listen-$noteId", factory = viewModelFactory { initializer { ListenViewModel(app, noteId) } })
-        val state by vm.state.collectAsState()
-        var readAloud by remember { mutableStateOf(false) }
-        ListenScreen(
-            state = state,
-            onClose = { navController.popBackStack() },
-            onTogglePlay = vm::togglePlayPause,
-            onSeek = vm::seekTo,
-            onSkip = vm::seekBy,
-            onNextStressed = vm::nextStressedMoment,
-            onSpeed = {
-                val i = ListenSpeeds.indexOf(state.speed).let { if (it < 0) 0 else it }
-                vm.setSpeed(ListenSpeeds[(i + 1) % ListenSpeeds.size])
-            },
-            onVoice = { voice -> if (voice == ListenVoice.READ_TO_ME) readAloud = true },
-            onToggleStopAtSectionEnd = { vm.setStopAtSectionEnd(!state.stopAtSectionEnd) },
-            onToggleQuizAfter = { vm.setQuizAfter(!state.quizAfter) }
-        )
-        if (readAloud) ReadToMeSheet(noteId, onDismiss = { readAloud = false })
+        ListenHost(noteId = noteId, onClose = { navController.popBackStack() })
     }
 
     composable(

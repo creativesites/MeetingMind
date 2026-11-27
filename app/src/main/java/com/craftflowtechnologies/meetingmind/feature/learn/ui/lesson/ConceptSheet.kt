@@ -33,12 +33,21 @@ import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.testTag
+import com.craftflowtechnologies.meetingmind.core.aireport.AiReportSource
+import com.craftflowtechnologies.meetingmind.core.aireport.ReportAiAction
+import com.craftflowtechnologies.meetingmind.feature.learn.lesson.ConceptFlags
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -95,10 +104,18 @@ fun ConceptSheet(
     onExplain: (ExplainMode) -> Unit,
     onQuizMe: () -> Unit,
     onNotRight: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** What the learner has already changed about this concept (hidden, reported, edited). */
+    flags: ConceptFlags = ConceptFlags(),
+    onRename: (String) -> Unit = {},
+    onToggleHidden: () -> Unit = {},
+    onToggleReported: () -> Unit = {},
+    /** The AI-written definition to report. Null once the learner has edited the concept. */
+    aiSource: (() -> AiReportSource)? = null
 ) {
     StudyTheme {
         val c = MM.colors
+        var notRightOpen by rememberSaveable(concept.id) { mutableStateOf(false) }
         ModalBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -131,11 +148,102 @@ fun ConceptSheet(
                 Text("Explain it another way", style = MM.type.bodyStrong, color = c.ink)
                 ExplainModes(selected = explain.mode, onExplain = onExplain)
                 ExplainResult(explain)
+                if (flags.hidden || flags.reported) {
+                    Text(
+                        listOfNotNull(
+                            "Hidden from practice".takeIf { flags.hidden },
+                            "Reported · questions held back".takeIf { flags.reported }
+                        ).joinToString(" · "),
+                        style = MM.type.caption,
+                        color = c.inkSecondary
+                    )
+                }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     PrimaryButton("Quiz me on this", onClick = onQuizMe, modifier = Modifier.weight(1f))
                     Spacer(Modifier.width(MM.space.s))
-                    TextAction("Not right?", onClick = onNotRight)
+                    TextAction(
+                        "Not right?",
+                        onClick = {
+                            notRightOpen = !notRightOpen
+                            if (notRightOpen) onNotRight()
+                        },
+                        modifier = Modifier.testTag("concept_not_right")
+                    )
                 }
+                if (notRightOpen) {
+                    NotRightPanel(
+                        concept = concept,
+                        flags = flags,
+                        onRename = onRename,
+                        onToggleHidden = onToggleHidden,
+                        onToggleReported = onToggleReported,
+                        aiSource = aiSource.takeIf { !flags.userEdited }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The "Not right?" choices, the studio's concept menu moved onto the sheet: rename, hide from practice, report a
+ * problem, and report the AI-written definition. Each one is a toggle or a quiet text action, so it can be undone.
+ */
+@Composable
+private fun NotRightPanel(
+    concept: ConceptCard,
+    flags: ConceptFlags,
+    onRename: (String) -> Unit,
+    onToggleHidden: () -> Unit,
+    onToggleReported: () -> Unit,
+    aiSource: (() -> AiReportSource)?
+) {
+    val c = MM.colors
+    var renaming by rememberSaveable(concept.id) { mutableStateOf(false) }
+    var name by rememberSaveable(concept.id) { mutableStateOf(concept.name) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(MM.radius.card)
+            .background(c.surfaceSunk)
+            .padding(MM.space.m)
+            .testTag("concept_not_right_panel"),
+        verticalArrangement = Arrangement.spacedBy(MM.space.s)
+    ) {
+        if (renaming) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                label = { Text("Name", style = MM.type.caption) },
+                textStyle = MM.type.body.copy(color = c.ink),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = c.accent, unfocusedBorderColor = c.line, cursorColor = c.accent),
+                modifier = Modifier.fillMaxWidth().testTag("concept_rename_field")
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                TextAction("Save", enabled = name.isNotBlank(), onClick = {
+                    renaming = false
+                    onRename(name.trim())
+                })
+                TextAction("Cancel", onClick = { renaming = false; name = concept.name })
+            }
+        } else {
+            TextAction("Rename", onClick = { renaming = true }, modifier = Modifier.testTag("concept_rename"))
+        }
+        TextAction(
+            if (flags.hidden) "Show in practice again" else "Hide from practice",
+            onClick = onToggleHidden,
+            modifier = Modifier.testTag("concept_hide")
+        )
+        TextAction(
+            if (flags.reported) "Undo report" else "Report a problem",
+            onClick = onToggleReported,
+            modifier = Modifier.testTag("concept_report")
+        )
+        if (aiSource != null) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Report this definition", style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.weight(1f))
+                ReportAiAction(source = aiSource)
             }
         }
     }
