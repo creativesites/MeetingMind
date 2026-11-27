@@ -27,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Adjust
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
@@ -150,7 +149,8 @@ private fun StarChip(state: StarState) {
         StarState.SHINING -> Icons.Rounded.Circle
         StarState.GROWING -> Icons.Rounded.Adjust
         StarState.NEW -> Icons.Rounded.RadioButtonUnchecked
-        StarState.WORTH_A_LOOK -> Icons.Rounded.AutoAwesome
+        // Worth a look: the gold four-point star drawn below, the same mark as on the sky.
+        StarState.WORTH_A_LOOK -> null
     }
     Row(
         Modifier
@@ -160,7 +160,8 @@ private fun StarChip(state: StarState) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
     ) {
-        Icon(icon, contentDescription = null, tint = c.accent, modifier = Modifier.size(12.dp))
+        if (icon != null) Icon(icon, contentDescription = null, tint = c.accent, modifier = Modifier.size(12.dp))
+        else FourPointStar(c.gold, 12.dp)
         Text(state.label, style = MM.type.caption, color = c.accent)
     }
 }

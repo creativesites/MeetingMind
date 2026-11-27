@@ -23,7 +23,9 @@ class CompanionPresenceTest {
             CompanionPage.READ_ALOUD to Triple(true, false, false),
             CompanionPage.ONBOARDING to Triple(true, true, true),
             CompanionPage.QUICK_SHEET to Triple(true, true, true),
-            CompanionPage.COMPANION_SETTINGS to Triple(true, true, true)
+            CompanionPage.COMPANION_SETTINGS to Triple(true, true, true),
+            CompanionPage.STUDY_HOME to Triple(true, false, false),
+            CompanionPage.PRACTICE to Triple(true, false, false)
         )
         assertEquals("every page is in the table", CompanionPage.entries.toSet(), table.keys)
         for ((page, row) in table) {
