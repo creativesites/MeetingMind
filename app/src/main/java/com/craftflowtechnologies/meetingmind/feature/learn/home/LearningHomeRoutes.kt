@@ -36,7 +36,7 @@ import com.craftflowtechnologies.meetingmind.feature.learn.ui.home.StartWay
 import com.craftflowtechnologies.meetingmind.feature.learn.ui.home.dayLine
 import com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel
 import com.craftflowtechnologies.meetingmind.feature.learning.CourseChoice
-import com.craftflowtechnologies.meetingmind.feature.learning.space.AskLearningSheet
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.ask.HomeAskSheet
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -161,14 +161,14 @@ fun LearningHomeHost(
     }
 
     if (asking) {
-        AskLearningSheet(
-            viewModel = learn,
+        HomeAskSheet(
+            learn = learn,
             sessionId = null,
             hasCourse = false,
             concepts = concepts,
             onDismiss = { asking = false },
             onStartPractice = actions.onStartRound,
-            onShowInTranscript = null
+            onOpenLesson = actions.onOpenLesson
         )
     }
     if (newSession) {
@@ -235,9 +235,9 @@ internal fun startNewSession(
         StartWay.RECORD -> learn.prepareRecording(choice) { actions.onRecordLecture() }
         StartWay.WRITE -> learn.createNotesSession(choice) { noteId -> actions.onOpenNote(noteId) }
         StartWay.IMPORT -> actions.onImportFile()
-        StartWay.VIDEO -> {
-            // The link sheet is global and is not told the course; a session from it lands in no course yet.
-            youTube.open(from = NotebookSpace.LEARNING)
+        StartWay.VIDEO -> learn.prepareCourseForLecture(choice) { courseId ->
+            // The course travels with the link sheet, and the video's notes are filed into it when they are made.
+            youTube.open(from = NotebookSpace.LEARNING, courseId = courseId)
             actions.onOpenYouTube()
         }
     }

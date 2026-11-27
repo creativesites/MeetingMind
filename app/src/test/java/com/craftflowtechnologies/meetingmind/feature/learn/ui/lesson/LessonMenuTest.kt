@@ -3,6 +3,7 @@ package com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -26,8 +27,12 @@ class LessonMenuTest {
 
     private var openedNotes = 0
     private var toggledReviews = 0
+    private var shared = 0
 
-    private fun show(reviewsPaused: Boolean = false, dark: Boolean = false) {
+    private var autoPackToggles = mutableListOf<Boolean>()
+    private var seePlans = 0
+
+    private fun show(reviewsPaused: Boolean = false, dark: Boolean = false, autoPackOpen: Boolean = true) {
         compose.setContent {
             LearnHarness(dark = dark) {
                 LessonScreen(
@@ -50,7 +55,11 @@ class LessonMenuTest {
                     onFixAudio = {},
                     reviewsPaused = reviewsPaused,
                     onOpenNote = { openedNotes++ },
-                    onTogglePauseReviews = { toggledReviews++ }
+                    onTogglePauseReviews = { toggledReviews++ },
+                    onShareStudyPack = { shared++ },
+                    autoPackOpen = autoPackOpen,
+                    onToggleAutoPack = { autoPackToggles += it },
+                    onSeePlans = { seePlans++ }
                 )
             }
         }
@@ -69,6 +78,38 @@ class LessonMenuTest {
         compose.onNodeWithContentDescription("Lesson options").performClick()
         compose.onNodeWithText("Pause reviews").performClick()
         assertEquals(1, toggledReviews)
+    }
+
+    @Test
+    fun `share to a Circle in the overflow shares the study pack`() {
+        show()
+
+        compose.onNodeWithContentDescription("Lesson options").performClick()
+        compose.onNodeWithText("Share to a Circle").assertIsDisplayed().performClick()
+
+        assertEquals(1, shared)
+    }
+
+    @Test
+    fun `the study pack switch turns on the lecture recipe when the plan allows it`() {
+        show(autoPackOpen = true)
+
+        compose.onNodeWithContentDescription("Lesson options").performClick()
+        compose.onNodeWithTag("lesson_menu_auto_pack").assertIsDisplayed().performClick()
+
+        assertEquals(listOf(true), autoPackToggles)
+        assertEquals(0, seePlans)
+    }
+
+    @Test
+    fun `without a paid plan the study pack row opens the plans instead of switching`() {
+        show(autoPackOpen = false)
+
+        compose.onNodeWithContentDescription("Lesson options").performClick()
+        compose.onNodeWithTag("lesson_menu_auto_pack_locked").assertIsDisplayed().performClick()
+
+        assertEquals(emptyList<Boolean>(), autoPackToggles)
+        assertEquals(1, seePlans)
     }
 
     @Test

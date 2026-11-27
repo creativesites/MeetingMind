@@ -26,6 +26,8 @@ import com.craftflowtechnologies.meetingmind.feature.learn.home.LearningHomeHost
 import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LessonActions
 import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LessonHost
 import com.craftflowtechnologies.meetingmind.feature.learn.lesson.ListenHost
+import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
+import com.craftflowtechnologies.meetingmind.feature.learn.exam.ExamPlanNavigation
 import com.craftflowtechnologies.meetingmind.feature.learn.practice.PracticeActions
 import com.craftflowtechnologies.meetingmind.feature.learn.practice.PracticeHost
 import com.craftflowtechnologies.meetingmind.feature.navigation.Routes
@@ -69,7 +71,9 @@ fun NavGraphBuilder.learnGraph(
                 onListen = { navController.navigate(Routes.learnListenRoute(it)) },
                 onPractise = { sessionId -> navController.navigate(Routes.learnPracticeRoute(sessionId = sessionId)) },
                 onQuizConcept = { sessionId, conceptId -> navController.navigate(Routes.learnPracticeRoute(sessionId = sessionId, conceptId = conceptId)) },
-                onOpenRecording = { meetingId, at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) }
+                onOpenRecording = { meetingId, at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) },
+                onCreateCircle = { navController.navigate(Routes.circleCreateRoute("learning")) },
+                onSeePlans = { navController.navigate(Routes.paywallRoute(PaywallTrigger.PREMIUM_ACTION.name)) }
             )
         )
     }
@@ -143,4 +147,15 @@ fun learningHomeActions(navController: NavController) = LearningHomeActions(
     onImportFile = { navController.navigate(Routes.IMPORT) },
     onOpenAllIdeas = { navController.navigate(Routes.learnPracticeRoute()) },
     onOpenSettings = { navController.navigate(Routes.SETTINGS) }
+)
+
+/** Where the exam plan goes: practice (a course, or one idea), a lesson, a note, and the Circle form. */
+fun learnExamNavigation(navController: NavController) = ExamPlanNavigation(
+    onBack = { navController.popBackStack() },
+    onPractise = { courseId -> navController.navigate(Routes.learnPracticeRoute(courseId = courseId)) },
+    onPractiseConcept = { sessionId, conceptId -> navController.navigate(Routes.learnPracticeRoute(sessionId = sessionId, conceptId = conceptId)) },
+    onOpenLesson = { sessionId -> navController.navigate(Routes.learningSessionRoute(sessionId)) },
+    onOpenNote = { noteId -> navController.navigate(Routes.learningSessionRoute(noteId)) },
+    onCreateCircle = { navController.navigate(Routes.circleCreateRoute("learning")) },
+    onSeePlans = { navController.navigate(Routes.paywallRoute(PaywallTrigger.PREMIUM_ACTION.name)) }
 )

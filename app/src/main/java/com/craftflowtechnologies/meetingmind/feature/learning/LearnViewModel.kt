@@ -1683,10 +1683,18 @@ class LearnViewModel @JvmOverloads constructor(
 
     /** Record a lecture: remembers the course so the lecture lands in it when it is ready. */
     fun prepareRecording(choice: CourseChoice, onReady: () -> Unit) {
+        prepareCourseForLecture(choice) { onReady() }
+    }
+
+    /**
+     * Resolves the course the next lecture (a recording or a video's notes) goes into, remembers it, then
+     * calls [onReady] with the course id (null for none). The YouTube sheet is given the same id.
+     */
+    fun prepareCourseForLecture(choice: CourseChoice, onReady: (courseId: String?) -> Unit) {
         viewModelScope.launch(crashGuard) {
             val courseId = runCatching { resolveCourse(choice) }.getOrNull()
             pendingRecordCourse = courseId?.let { it to System.currentTimeMillis() }
-            onReady()
+            onReady(courseId)
         }
     }
 

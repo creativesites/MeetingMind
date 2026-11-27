@@ -692,33 +692,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 navArgument("goalId") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("courseId") { type = NavType.StringType; nullable = true; defaultValue = null }
             )
-        ) {
-            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            var shareMarkdown by remember { mutableStateOf<String?>(null) }
-
-            com.craftflowtechnologies.meetingmind.feature.learning.ExamPrepScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-                onOpenNote = { noteId -> navController.navigate(Routes.learningSessionRoute(noteId)) },
-                onStartExamDrill = { navController.navigate(Routes.learnPracticeRoute()) },
-                onShareToCircle = { markdown -> shareMarkdown = markdown }
+        ) { entry ->
+            com.craftflowtechnologies.meetingmind.feature.learn.exam.ExamPlanHost(
+                goalId = entry.arguments?.getString("goalId"),
+                courseId = entry.arguments?.getString("courseId"),
+                nav = com.craftflowtechnologies.meetingmind.feature.learn.learnExamNavigation(navController)
             )
-
-            if (shareMarkdown != null) {
-                com.craftflowtechnologies.meetingmind.feature.learning.ShareStudyPackToCircleSheet(
-                    title = "Exam Study Pack",
-                    cramSheetMarkdown = shareMarkdown!!,
-                    onDismiss = { shareMarkdown = null },
-                    onPublished = { circleName ->
-                        shareMarkdown = null
-                        android.widget.Toast.makeText(context, "Shared study pack to $circleName", android.widget.Toast.LENGTH_SHORT).show()
-                    },
-                    onNavigateCreateCircle = {
-                        shareMarkdown = null
-                        navController.navigate(Routes.circleCreateRoute("learning"))
-                    }
-                )
-            }
         }
 
         // PERSONAL — "Your garden": the day's question, practices as plants, and the seed jar.

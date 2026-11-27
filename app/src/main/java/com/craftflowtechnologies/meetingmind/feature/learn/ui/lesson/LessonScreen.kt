@@ -79,8 +79,11 @@ import com.craftflowtechnologies.meetingmind.feature.learn.formatLectureTime
 import com.craftflowtechnologies.meetingmind.feature.learn.lesson.ConceptFlags
 import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LegacyLesson
 import com.craftflowtechnologies.meetingmind.feature.learn.lesson.LessonAskScope
-import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.LessonAskSheet
-import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.LessonAskUi
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.ask.AskCiteTarget
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.ask.AskSheet
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.ask.AskSheetScope
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.ask.LessonAskUi
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.ask.toSheetUi
 import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.LessonOverflowMenu
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
@@ -120,6 +123,13 @@ fun LessonScreen(
     /** Opens the lecture's full notes (the overflow menu, and the note offer when the lesson cannot be made). */
     onOpenNote: () -> Unit = {},
     onTogglePauseReviews: () -> Unit = {},
+    /** Shares the lecture's study pack (summary, key ideas, stressed moments) to a Circle. */
+    onShareStudyPack: () -> Unit = {},
+    /** "Study pack after every lecture": on, and whether the learner's plan allows it. */
+    autoPackOn: Boolean = false,
+    autoPackOpen: Boolean = true,
+    onToggleAutoPack: (Boolean) -> Unit = {},
+    onSeePlans: () -> Unit = {},
     onToggleConceptHidden: (String) -> Unit = {},
     onRenameConcept: (conceptId: String, name: String) -> Unit = { _, _ -> },
     /** Non-null while the Ask sheet is open. */
@@ -142,7 +152,12 @@ fun LessonScreen(
                     reviewsPaused = reviewsPaused,
                     onBack = onBack,
                     onOpenNote = onOpenNote,
-                    onTogglePauseReviews = onTogglePauseReviews
+                    onTogglePauseReviews = onTogglePauseReviews,
+                    onShareStudyPack = onShareStudyPack,
+                    autoPackOn = autoPackOn,
+                    autoPackOpen = autoPackOpen,
+                    onToggleAutoPack = onToggleAutoPack,
+                    onSeePlans = onSeePlans
                 )
                 LessonHeader(title = state.title, metaLine = state.metaLine, zuriState = zuri)
                 LectureCard(state = state, onPlayFrom = onPlayFrom, onTogglePlay = onTogglePlay)
@@ -190,13 +205,13 @@ fun LessonScreen(
                 )
             }
             if (ask != null) {
-                LessonAskSheet(
-                    ask = ask,
+                AskSheet(
+                    ui = ask.toSheetUi(),
                     onQuestion = onAskQuestion,
+                    onScope = { onAskScope(if (it == AskSheetScope.COURSE) LessonAskScope.COURSE else LessonAskScope.THIS_LECTURE) },
                     onGeneral = onAskGeneral,
-                    onScope = onAskScope,
-                    onQuiz = onAskQuiz,
-                    onPlayFrom = onPlayFrom,
+                    onQuiz = { onAskQuiz() },
+                    onCite = { target -> if (target is AskCiteTarget.Play) onPlayFrom(target.ms) },
                     onDismiss = onCloseAsk
                 )
             }
@@ -210,7 +225,12 @@ private fun LessonTopBar(
     reviewsPaused: Boolean,
     onBack: () -> Unit,
     onOpenNote: () -> Unit,
-    onTogglePauseReviews: () -> Unit
+    onTogglePauseReviews: () -> Unit,
+    onShareStudyPack: () -> Unit,
+    autoPackOn: Boolean,
+    autoPackOpen: Boolean,
+    onToggleAutoPack: (Boolean) -> Unit,
+    onSeePlans: () -> Unit
 ) {
     val c = MM.colors
     Row(
@@ -230,7 +250,12 @@ private fun LessonTopBar(
         LessonOverflowMenu(
             reviewsPaused = reviewsPaused,
             onOpenNotes = onOpenNote,
-            onTogglePauseReviews = onTogglePauseReviews
+            onTogglePauseReviews = onTogglePauseReviews,
+            onShareStudyPack = onShareStudyPack,
+            autoPackOn = autoPackOn,
+            autoPackOpen = autoPackOpen,
+            onToggleAutoPack = onToggleAutoPack,
+            onSeePlans = onSeePlans
         )
     }
 }

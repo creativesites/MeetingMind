@@ -123,18 +123,22 @@ object YouTubeLinkRequests {
     fun consume() { _pending.value = null }
 }
 
-/** Opens the sheet: `LocalYouTubeSheet.current.open(from = NotebookSpace.FAITH)`. A no-op outside [YouTubeSheetHost]. */
-class YouTubeSheetController(private val show: (NotebookSpace?, String?) -> Unit) {
-    fun open(from: NotebookSpace? = null, link: String? = null) = show(from, link)
+/**
+ * Opens the sheet: `LocalYouTubeSheet.current.open(from = NotebookSpace.FAITH)`. A no-op outside [YouTubeSheetHost].
+ * [courseId] is the Learning course the video's notes go into (null for none). The new-session sheet passes it.
+ */
+class YouTubeSheetController(private val show: (NotebookSpace?, String?, String?) -> Unit) {
+    fun open(from: NotebookSpace? = null, link: String? = null, courseId: String? = null) = show(from, link, courseId)
 }
 
-val LocalYouTubeSheet = staticCompositionLocalOf { YouTubeSheetController { _, _ -> } }
+val LocalYouTubeSheet = staticCompositionLocalOf { YouTubeSheetController { _, _, _ -> } }
 
 class YouTubeSheetState {
     var open by mutableStateOf(false)
     var from by mutableStateOf<NotebookSpace?>(null)
     var link by mutableStateOf<String?>(null)
-    val controller = YouTubeSheetController { f, l -> from = f; link = l; open = true }
+    var courseId by mutableStateOf<String?>(null)
+    val controller = YouTubeSheetController { f, l, c -> from = f; link = l; courseId = c; open = true }
 }
 
 @Composable
@@ -150,6 +154,7 @@ fun YouTubeSheetHost(state: YouTubeSheetState, navigate: (String) -> Unit) {
     if (state.open) YouTubeLinkSheet(
         from = state.from,
         initialLink = state.link,
+        courseId = state.courseId,
         onDismiss = { state.open = false },
         onGo = { route -> state.open = false; navigate(route) }
     )
@@ -157,7 +162,7 @@ fun YouTubeSheetHost(state: YouTubeSheetState, navigate: (String) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun YouTubeLinkSheet(from: NotebookSpace?, initialLink: String?, onDismiss: () -> Unit, onGo: (String) -> Unit) {
+private fun YouTubeLinkSheet(from: NotebookSpace?, initialLink: String?, courseId: String?, onDismiss: () -> Unit, onGo: (String) -> Unit) {
     val context = LocalContext.current
     val spaces = LocalAppIdentity.current.spaces
     val colors = MM.colors
@@ -223,6 +228,9 @@ private fun YouTubeLinkSheet(from: NotebookSpace?, initialLink: String?, onDismi
             }
             if (kind == RecordingType.GENERAL) {
                 Text("Auto lets the AI decide whether it's a sermon, lecture, talk or interview.", style = MM.type.caption, color = colors.inkMuted)
+            }
+            if (courseId != null) {
+                Text("The notes go into the course you chose.", style = MM.type.caption, color = colors.inkMuted, modifier = Modifier.testTag("youtube_sheet_course"))
             }
             Spacer(Modifier.height(MM.space.l))
             if (ready == false) {

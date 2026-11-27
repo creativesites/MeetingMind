@@ -16,9 +16,14 @@ import com.craftflowtechnologies.meetingmind.feature.learn.ListenViewModel
 import com.craftflowtechnologies.meetingmind.feature.learn.ListenVoice
 import com.craftflowtechnologies.meetingmind.feature.learn.LessonViewModel
 import com.craftflowtechnologies.meetingmind.feature.learn.ui.listen.ListenScreen
-import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.LessonAskUi
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.ask.LessonAskUi
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.ask.askSuggestions
 import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.LessonScreen
-import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.askSuggestions
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.gate.StudyGate
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.share.StudyPackShareSheet
+import com.craftflowtechnologies.meetingmind.ai.automation.AutopilotPreferences
+import com.craftflowtechnologies.meetingmind.core.billing.Capability
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.share.studyPackMarkdown
 import com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet
 
 /**
@@ -34,6 +39,7 @@ import com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet
  * - [onQuizConcept] (sessionId, conceptId): a practice round for one concept, from the concept sheet's "Quiz me on this".
  * - [onOpenRecording] (meetingId, startAtMs): the recording's detail, at a moment, when the lesson cannot play it in
  *   place (the "Listen and fix" line; null start for the top of the recording).
+ * - [onCreateCircle]: the share sheet's "Create a study circle" (the host opens the Circle form).
  */
 data class LessonActions(
     val onBack: () -> Unit,
@@ -41,7 +47,10 @@ data class LessonActions(
     val onListen: (noteId: String) -> Unit,
     val onPractise: (sessionId: String) -> Unit,
     val onQuizConcept: (sessionId: String, conceptId: String) -> Unit,
-    val onOpenRecording: (meetingId: String, startAtMs: Long?) -> Unit
+    val onOpenRecording: (meetingId: String, startAtMs: Long?) -> Unit,
+    val onCreateCircle: () -> Unit = {},
+    /** Opens the plans (the paywall), from a paid extra's calm card or row. */
+    val onSeePlans: () -> Unit = {}
 )
 
 /**
@@ -61,6 +70,11 @@ fun LessonHost(noteId: String, actions: LessonActions) {
     var openConcept by rememberSaveable { mutableStateOf<String?>(null) }
     var askOpen by rememberSaveable { mutableStateOf(false) }
     var readAloud by remember { mutableStateOf(false) }
+    var sharePack by remember { mutableStateOf<String?>(null) }
+    // "Study pack after every lecture" is the app's auto-run switch for the lecture recipe, a paid extra.
+    val context = LocalContext.current
+    var autoPackOn by rememberSaveable { mutableStateOf(AutopilotPreferences.isAutoRunEnabled(context)) }
+    val autoPackOpen = StudyGate.open(Capability.AUTOMATION_RECIPES)
 
     val ask = if (!askOpen) null else LessonAskUi(
         turns = askTurns,
@@ -96,6 +110,14 @@ fun LessonHost(noteId: String, actions: LessonActions) {
         conceptFlags = conceptFlags,
         onOpenNote = { actions.onOpenNote(noteId) },
         onTogglePauseReviews = vm::toggleReviewsPaused,
+        onShareStudyPack = { sharePack = studyPackMarkdown(state) },
+        autoPackOn = autoPackOn,
+        autoPackOpen = autoPackOpen,
+        onToggleAutoPack = { on ->
+            autoPackOn = on
+            AutopilotPreferences.setAutoRunEnabled(context, on)
+        },
+        onSeePlans = actions.onSeePlans,
         onToggleConceptHidden = { id -> vm.toggleConceptHidden(id) },
         onRenameConcept = vm::renameConcept,
         ask = ask,
@@ -108,6 +130,18 @@ fun LessonHost(noteId: String, actions: LessonActions) {
         },
         onCloseAsk = { askOpen = false }
     )
+    sharePack?.let { markdown ->
+        StudyPackShareSheet(
+            title = state.title,
+            markdown = markdown,
+            onDismiss = { sharePack = null },
+            onPublished = { circleName ->
+                android.widget.Toast.makeText(context, "Shared to $circleName", android.widget.Toast.LENGTH_SHORT).show()
+            },
+            onNavigateCreateCircle = actions.onCreateCircle,
+            onSeePlans = actions.onSeePlans
+        )
+    }
     if (readAloud) ReadToMeSheet(noteId, onDismiss = { readAloud = false })
 }
 

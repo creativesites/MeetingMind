@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.feature.learning.space
 
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.ask.HomeAskSheet
 import com.craftflowtechnologies.meetingmind.feature.navigation.Routes
 import com.craftflowtechnologies.meetingmind.core.navigation.AppMenuButton
 import com.craftflowtechnologies.meetingmind.core.navigation.MenuEntry
@@ -225,14 +226,14 @@ fun LearningSpaceScreen(
 
     if (askOpen) {
         val concepts by viewModel.allConcepts.collectAsState()
-        AskLearningSheet(
-            viewModel = viewModel,
+        HomeAskSheet(
+            learn = viewModel,
             sessionId = null,
             hasCourse = false,
             concepts = concepts,
             onDismiss = { askOpen = false },
             onStartPractice = actions.onStartPractice,
-            onShowInTranscript = null
+            onOpenLesson = actions.onOpenSession
         )
     }
 }
