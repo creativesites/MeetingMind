@@ -1,6 +1,16 @@
 # Status
 
-Updated: 2026-10-19. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
+Updated: 2026-11-27. Designated branch: `ccr-08b1bb9f-iljmtb`; Study work on `ccr-193c8c6b-bozoxb`. Head: see `git log -1`.
+
+## Study (Learning) rebuild (2026-11-27, branch `ccr-193c8c6b-bozoxb`)
+- **Decision:** the founder approved the redesign canvas and brought Study back into scope. Audit and rules: `docs/mvp/STUDY_AUDIT.md`. Mockups: `design/study/`. Contract: `feature/learn/LearnContract.kt`.
+- **Built:** Study home (round card, "Your sky", continue, courses, weekly rhythm), Lesson (lecture ribbon with stressed moments, 30-second summary, stressed quotes that play the recording, sections with tappable terms, quick checks, hard-to-hear line), concept sheet (lecturer's words, Explain another way, Draw it diagrams, Quiz me), Listen (dark read-along replay), Practice round (tap-to-answer, recall cards, wrong answers come back, Hear your lecturer), Round complete (stars light up, one next step, study-win card).
+- **Data and AI:** `LearningRepository` restored; `StudyKitGenerator` (validated, cited, chunked), `ExplainEngine`, `StudyKitStore` (JSON per session), `SkyLayout`, `RoundComposer`. No schema change. A missed review is due again 10 minutes later.
+- **Entry points:** Learning offered again as a space; "Open lesson" on Lecture and Research notes; "Lesson" pill on recording detail; Study tile on the Today home and a Study shortcut on Work and Calm homes.
+- **Companion:** `CompanionPage.STUDY_HOME` and `PRACTICE`; Zuri curious on the home and questions, a short celebration on a right answer, calm on a wrong one, proud or celebrating on round complete, reading in Listen.
+- **Not done:** Explain it aloud (Teach-Back); Read to Me inside Listen (the Read to Me option opens the existing sheet); a NOD variant through `ZuriSlot`; dotted term underlines; a mono font token.
+- **Not verified on a device:** lesson generation on a real lecture (Gemini and on-device), playback from moments, the round's next-day return.
+- **Build note:** Maven Central returns 429 through this proxy; builds here use a session-only init script that points at Google's Central mirror (`--init-script`).
 
 ## Recording & processing reliability (2026-10-19)
 - **52% hang fixed**: a recording with no words skipped speaker separation (it ran over silence and parked the bar at 52%) and finishes COMPLETED with "No speech was detected". Covered by `NoSpeechRecordingTest`.
