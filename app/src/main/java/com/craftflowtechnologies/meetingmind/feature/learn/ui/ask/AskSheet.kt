@@ -65,7 +65,9 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus
 import com.craftflowtechnologies.meetingmind.feature.learn.StudyTheme
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.AllowanceUsedUpPanel
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
@@ -110,7 +112,11 @@ data class AskSheetTurn(
     val error: String? = null,
     val reportText: String? = null,
     val reportNoteId: String? = null,
-    val reportMeetingId: String? = null
+    val reportMeetingId: String? = null,
+    /** Set when the managed allowance ran out: the answer is the lecture's own words, with the calm panel. */
+    val allowance: LearningAiStatus.AllowanceUsedUp? = null,
+    /** The answer was made on this phone, not in the cloud. */
+    val madeOnPhone: Boolean = false
 )
 
 /** Everything the sheet shows. [scopes] are the chips offered; [suggestions] are the starter questions. */
@@ -139,7 +145,9 @@ fun AskSheet(
     onQuiz: (turnId: String) -> Unit,
     onCite: (AskCiteTarget) -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Opens Plans from the allowance panel. Null when this build cannot sell plans: the panel then has no button. */
+    onSeePlans: (() -> Unit)? = null
 ) {
     StudyTheme {
         val c = MM.colors
@@ -207,7 +215,13 @@ fun AskSheet(
                         }
                     }
                     items(ui.turns, key = { it.id }) { turn ->
-                        AskTurnView(turn = turn, onGeneral = { onGeneral(turn.id) }, onQuiz = { onQuiz(turn.id) }, onCite = onCite)
+                        AskTurnView(
+                            turn = turn,
+                            onGeneral = { onGeneral(turn.id) },
+                            onQuiz = { onQuiz(turn.id) },
+                            onCite = onCite,
+                            onSeePlans = onSeePlans
+                        )
                     }
                 }
 
@@ -258,7 +272,8 @@ private fun AskTurnView(
     turn: AskSheetTurn,
     onGeneral: () -> Unit,
     onQuiz: () -> Unit,
-    onCite: (AskCiteTarget) -> Unit
+    onCite: (AskCiteTarget) -> Unit,
+    onSeePlans: (() -> Unit)?
 ) {
     val c = MM.colors
     // Folded after the learner reported it (the AI-content policy); "Show" brings it back.
@@ -287,7 +302,12 @@ private fun AskTurnView(
             turn.answer != null -> AnswerView(turn, onCite)
         }
         if (hidden) return@Column
+        // The allowance panel sits above the answer that was still found in the lecture's own words.
+        turn.allowance?.let { AllowanceUsedUpPanel(it.resetsAtMs, onSeePlans) }
         turn.error?.let { StatusLine(StatusKind.Info, it) }
+        if (turn.madeOnPhone && turn.answer != null) {
+            Text("Made on this phone", style = MM.type.caption, color = c.inkMuted)
+        }
         if (turn.notInSource && turn.general == null) {
             if (turn.generalPending) {
                 Text("Writing a general answer…", style = MM.type.caption, color = c.inkSecondary)

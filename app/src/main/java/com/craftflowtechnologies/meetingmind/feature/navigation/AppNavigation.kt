@@ -41,6 +41,9 @@ object Routes {
     /** One course (a Learning notebook): how well it is known, practise it, its lectures. */
     const val LEARN_COURSE = "learn_course/{courseId}"
     fun learnCourseRoute(courseId: String) = "learn_course/$courseId"
+    /** "Explain it aloud" for one concept of a lecture: speak it, then see what was covered. */
+    const val LEARN_EXPLAIN = "learn_explain/{sessionId}/{conceptId}"
+    fun learnExplainRoute(sessionId: String, conceptId: String) = "learn_explain/$sessionId/$conceptId"
     /** A lecture's replay with read-along. */
     const val LEARN_LISTEN = "learning_listen/{noteId}"
     fun learnListenRoute(noteId: String) = "learning_listen/$noteId"
@@ -86,6 +89,15 @@ object Routes {
     const val SETUP = "setup"
     // Work (docs/PLAN_PROFESSIONAL.md §6–7).
     const val WORK = "work"
+    /** Personal's routines, journeys, living journal, ideas and vault (the release's Sanctuary), opened from the garden and the menu. */
+    const val PERSONAL_TAB = "personal_sanctuary?tab={tab}&tools={tools}"
+    fun personalRoute(tab: String? = null, tools: Boolean = false): String {
+        val query = listOfNotNull(tab?.let { "tab=$it" }, tools.takeIf { it }?.let { "tools=true" })
+        return "personal_sanctuary" + if (query.isEmpty()) "" else "?" + query.joinToString("&")
+    }
+    const val PERSONAL_ROUTINE_PLAYER = "personal/routine/{routineId}?minEffort={minEffort}"
+    fun personalRoutinePlayerRoute(routineId: String, minEffort: Boolean = false) =
+        "personal/routine/$routineId?minEffort=$minEffort"
     const val WORK_ALL = "work_all?tab={tab}"
     const val WORK_PERSON = "work_person/{personId}"
     const val PROJECT = "project/{projectId}"

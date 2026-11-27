@@ -12,6 +12,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.compose.runtime.collectAsState
+import com.craftflowtechnologies.meetingmind.core.billing.Billing
+import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
+import com.craftflowtechnologies.meetingmind.core.learning.plansAction
 import com.craftflowtechnologies.meetingmind.feature.learn.ListenViewModel
 import com.craftflowtechnologies.meetingmind.feature.learn.ListenVoice
 import com.craftflowtechnologies.meetingmind.feature.learn.LessonViewModel
@@ -49,8 +52,10 @@ data class LessonActions(
     val onQuizConcept: (sessionId: String, conceptId: String) -> Unit,
     val onOpenRecording: (meetingId: String, startAtMs: Long?) -> Unit,
     val onCreateCircle: () -> Unit = {},
-    /** Opens the plans (the paywall), from a paid extra's calm card or row. */
-    val onSeePlans: () -> Unit = {}
+    /** Opens Plans from the allowance panel (the trigger says why). The default does nothing. */
+    val onOpenPlans: (PaywallTrigger) -> Unit = {},
+    /** "Explain it aloud" for one concept of this lecture. */
+    val onExplainAloud: (sessionId: String, conceptId: String) -> Unit = { _, _ -> }
 )
 
 /**
@@ -73,7 +78,7 @@ fun LessonHost(noteId: String, actions: LessonActions) {
     var sharePack by remember { mutableStateOf<String?>(null) }
     // "Study pack after every lecture" is the app's auto-run switch for the lecture recipe, a paid extra.
     val context = LocalContext.current
-    var autoPackOn by rememberSaveable { mutableStateOf(AutopilotPreferences.isAutoRunEnabled(context)) }
+    var autoPackOn by rememberSaveable { mutableStateOf(AutopilotPreferences.isStudyPackAfterLectureEnabled(context)) }
     val autoPackOpen = StudyGate.open(Capability.AUTOMATION_RECIPES)
 
     val ask = if (!askOpen) null else LessonAskUi(
@@ -90,6 +95,7 @@ fun LessonHost(noteId: String, actions: LessonActions) {
         explain = explain,
         openConceptId = openConcept,
         onBack = actions.onBack,
+        onSeePlans = plansAction(Billing.gateway.configured) { actions.onOpenPlans(PaywallTrigger.USAGE_EXHAUSTED) },
         onPlayFrom = vm::playFrom,
         onTogglePlay = vm::togglePlay,
         onHearSummary = { readAloud = true },
@@ -106,6 +112,7 @@ fun LessonHost(noteId: String, actions: LessonActions) {
         onAsk = { askOpen = true },
         onGenerate = vm::generate,
         onFixAudio = { state.meetingId?.let { actions.onOpenRecording(it, null) } },
+        onExplainAloud = { conceptId -> if (state.sessionId.isNotBlank()) actions.onExplainAloud(state.sessionId, conceptId) },
         reviewsPaused = reviewsPaused,
         conceptFlags = conceptFlags,
         onOpenNote = { actions.onOpenNote(noteId) },
@@ -115,9 +122,9 @@ fun LessonHost(noteId: String, actions: LessonActions) {
         autoPackOpen = autoPackOpen,
         onToggleAutoPack = { on ->
             autoPackOn = on
-            AutopilotPreferences.setAutoRunEnabled(context, on)
+            AutopilotPreferences.setStudyPackAfterLectureEnabled(context, on)
         },
-        onSeePlans = actions.onSeePlans,
+        onOpenPremiumPlans = { actions.onOpenPlans(PaywallTrigger.PREMIUM_ACTION) },
         onToggleConceptHidden = { id -> vm.toggleConceptHidden(id) },
         onRenameConcept = vm::renameConcept,
         ask = ask,
@@ -139,7 +146,7 @@ fun LessonHost(noteId: String, actions: LessonActions) {
                 android.widget.Toast.makeText(context, "Shared to $circleName", android.widget.Toast.LENGTH_SHORT).show()
             },
             onNavigateCreateCircle = actions.onCreateCircle,
-            onSeePlans = actions.onSeePlans
+            onSeePlans = { actions.onOpenPlans(PaywallTrigger.PREMIUM_ACTION) }
         )
     }
     if (readAloud) ReadToMeSheet(noteId, onDismiss = { readAloud = false })

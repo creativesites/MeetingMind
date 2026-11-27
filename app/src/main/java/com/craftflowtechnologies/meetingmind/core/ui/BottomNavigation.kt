@@ -43,6 +43,8 @@ import com.craftflowtechnologies.meetingmind.core.navigation.BarSlot
 import com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.outlined.Work
+import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.outlined.SelfImprovement
 import androidx.compose.runtime.compositionLocalOf
 import com.craftflowtechnologies.meetingmind.core.work.TabSlot
 import androidx.compose.material3.Icon

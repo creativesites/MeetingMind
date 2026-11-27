@@ -3,6 +3,7 @@ package com.craftflowtechnologies.meetingmind.ai.learning
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
+import com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus
 import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
 import com.craftflowtechnologies.meetingmind.core.model.LearningEvidence
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
@@ -36,7 +37,12 @@ class ExplainEngine(
         val label = sourceLabel(concept.evidence)
         val reply = when (val res = model.generate(prompt(concept, mode, excerpts), maxOutputTokens)) {
             is AiResult.Success -> res.value
-            else -> return ExplainState(mode = mode, error = res.describeFailure() ?: GENERIC_FAILURE)
+            else -> {
+                val status = LearningAiStatus.of(res)
+                // A used-up allowance is not an error to read out: the sheet shows the calm panel with plans.
+                return if (status is LearningAiStatus.AllowanceUsedUp) ExplainState(mode = mode, allowance = status)
+                else ExplainState(mode = mode, error = res.describeFailure() ?: GENERIC_FAILURE)
+            }
         }
         val json = StudyKitGenerator.extractJsonObject(reply)
             ?: return ExplainState(mode = mode, error = MALFORMED_MESSAGE)

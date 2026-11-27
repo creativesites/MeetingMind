@@ -122,6 +122,7 @@ fun LessonScreen(
     conceptFlags: Map<String, ConceptFlags> = emptyMap(),
     /** Opens the lecture's full notes (the overflow menu, and the note offer when the lesson cannot be made). */
     onOpenNote: () -> Unit = {},
+    onExplainAloud: ((conceptId: String) -> Unit)? = null,
     onTogglePauseReviews: () -> Unit = {},
     /** Shares the lecture's study pack (summary, key ideas, stressed moments) to a Circle. */
     onShareStudyPack: () -> Unit = {},
@@ -129,9 +130,11 @@ fun LessonScreen(
     autoPackOn: Boolean = false,
     autoPackOpen: Boolean = true,
     onToggleAutoPack: (Boolean) -> Unit = {},
-    onSeePlans: () -> Unit = {},
+    onOpenPremiumPlans: () -> Unit = {},
     onToggleConceptHidden: (String) -> Unit = {},
     onRenameConcept: (conceptId: String, name: String) -> Unit = { _, _ -> },
+    /** Opens Plans, for the allowance panel. Null when this build cannot sell plans: the panel then has no button. */
+    onSeePlans: (() -> Unit)? = null,
     /** Non-null while the Ask sheet is open. */
     ask: LessonAskUi? = null,
     onAskQuestion: (String) -> Unit = {},
@@ -157,7 +160,7 @@ fun LessonScreen(
                     autoPackOn = autoPackOn,
                     autoPackOpen = autoPackOpen,
                     onToggleAutoPack = onToggleAutoPack,
-                    onSeePlans = onSeePlans
+                    onOpenPremiumPlans = onOpenPremiumPlans
                 )
                 LessonHeader(title = state.title, metaLine = state.metaLine, zuriState = zuri)
                 LectureCard(state = state, onPlayFrom = onPlayFrom, onTogglePlay = onTogglePlay)
@@ -171,7 +174,7 @@ fun LessonScreen(
                         onFixAudio = onFixAudio
                     )
                 } else {
-                    LessonStatusPanel(status = state.status, onGenerate = onGenerate, onOpenNote = onOpenNote)
+                    LessonStatusPanel(status = state.status, onGenerate = onGenerate, onOpenNote = onOpenNote, onSeePlans = onSeePlans)
                 }
             }
             LessonBottomBar(
@@ -186,6 +189,7 @@ fun LessonScreen(
                 ConceptSheet(
                     concept = openConcept,
                     explain = explain,
+                    onSeePlans = onSeePlans,
                     onDismiss = onCloseConcept,
                     onPlayQuote = onPlayFrom,
                     onExplain = { onExplain(id, it) },
@@ -201,12 +205,14 @@ fun LessonScreen(
                             listOf(openConcept.name, openConcept.definition).filter { it.isNotBlank() }.joinToString("\n"),
                             noteId = state.noteId
                         )
-                    }
+                    },
+                    onExplainAloud = onExplainAloud?.let { open -> { open(id) } }
                 )
             }
             if (ask != null) {
                 AskSheet(
                     ui = ask.toSheetUi(),
+                    onSeePlans = onSeePlans,
                     onQuestion = onAskQuestion,
                     onScope = { onAskScope(if (it == AskSheetScope.COURSE) LessonAskScope.COURSE else LessonAskScope.THIS_LECTURE) },
                     onGeneral = onAskGeneral,
@@ -230,7 +236,7 @@ private fun LessonTopBar(
     autoPackOn: Boolean,
     autoPackOpen: Boolean,
     onToggleAutoPack: (Boolean) -> Unit,
-    onSeePlans: () -> Unit
+    onOpenPremiumPlans: () -> Unit
 ) {
     val c = MM.colors
     Row(
@@ -255,7 +261,7 @@ private fun LessonTopBar(
             autoPackOn = autoPackOn,
             autoPackOpen = autoPackOpen,
             onToggleAutoPack = onToggleAutoPack,
-            onSeePlans = onSeePlans
+            onSeePlans = onOpenPremiumPlans
         )
     }
 }
@@ -438,10 +444,16 @@ private fun QuickCheckCard(check: QuickCheck) {
 
 /** What the page shows instead of the lesson while it is not ready. Each state says what happened, plainly. */
 @Composable
-private fun LessonStatusPanel(status: LessonKitStatus, onGenerate: () -> Unit, onOpenNote: () -> Unit) {
+private fun LessonStatusPanel(status: LessonKitStatus, onGenerate: () -> Unit, onOpenNote: () -> Unit, onSeePlans: (() -> Unit)?) {
     when (status) {
         is LessonKitStatus.Generating -> GeneratingPanel(status.step)
         LessonKitStatus.Ready -> GeneratingPanel("Getting the lesson ready")
+        // Calm, never a dead end: the note and practice still open from the page.
+        is LessonKitStatus.AllowanceUsedUp -> AllowanceUsedUpPanel(
+            resetsAtMs = status.resetsAtMs,
+            onSeePlans = onSeePlans,
+            modifier = Modifier.padding(horizontal = MM.space.l, vertical = MM.space.xl)
+        )
         // Said plainly, and the note is still one tap away.
         is LessonKitStatus.NeedsAi -> EmptyState(
             title = "Set up AI to make this lesson",

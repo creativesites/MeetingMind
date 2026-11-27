@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
+import com.craftflowtechnologies.meetingmind.core.ui.EntryPoints
 import com.craftflowtechnologies.meetingmind.core.identity.Avatar
 import com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
@@ -331,7 +332,7 @@ private fun StartSomethingNew(
     Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
         SectionTitle("Start something new")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-            WayTile("Record a lecture", Modifier.weight(1f).testTag("learning_tile_record"), onClick = onRecordLecture) {
+            WayTile(EntryPoints.learnRecordLecture.label, Modifier.weight(1f).testTag("learning_tile_record"), onClick = onRecordLecture) {
                 // The recording dot: a shape and the word carry it, not the colour alone.
                 Box(Modifier.size(MMSize.iconSmall).clip(CircleShape).background(MM.colors.recording))
             }
@@ -341,7 +342,7 @@ private fun StartSomethingNew(
             WayTile("Import a file", Modifier.weight(1f).testTag("learning_tile_import"), onClick = onImportFile) {
                 Icon(Icons.Rounded.FileUpload, contentDescription = null, tint = MM.colors.accent, modifier = Modifier.size(MMSize.icon))
             }
-            WayTile("Write a study note", Modifier.weight(1f).testTag("learning_tile_note"), onClick = onWriteStudyNote) {
+            WayTile(EntryPoints.learnWriteStudyNote.label, Modifier.weight(1f).testTag("learning_tile_note"), onClick = onWriteStudyNote) {
                 Icon(Icons.AutoMirrored.Rounded.NoteAdd, contentDescription = null, tint = MM.colors.accent, modifier = Modifier.size(MMSize.icon))
             }
         }

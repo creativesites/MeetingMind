@@ -20,6 +20,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.craftflowtechnologies.meetingmind.core.billing.Billing
+import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
+import com.craftflowtechnologies.meetingmind.core.learning.plansAction
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar
@@ -80,7 +83,9 @@ data class LearningHomeActions(
     val onImportFile: () -> Unit,
     val onOpenYouTube: () -> Unit = {},
     val onOpenAllIdeas: () -> Unit = {},
-    val onOpenSettings: () -> Unit = {}
+    val onOpenSettings: () -> Unit = {},
+    /** Opens Plans from an allowance panel (the trigger says why). The default does nothing. */
+    val onOpenPlans: (com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger) -> Unit = {}
 )
 
 /**
@@ -168,7 +173,8 @@ fun LearningHomeHost(
             concepts = concepts,
             onDismiss = { asking = false },
             onStartPractice = actions.onStartRound,
-            onOpenLesson = actions.onOpenLesson
+            onOpenLesson = actions.onOpenLesson,
+            onSeePlans = plansAction(Billing.gateway.configured) { actions.onOpenPlans(PaywallTrigger.USAGE_EXHAUSTED) }
         )
     }
     if (newSession) {

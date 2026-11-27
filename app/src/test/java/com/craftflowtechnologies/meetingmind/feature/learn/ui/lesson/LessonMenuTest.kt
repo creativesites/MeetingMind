@@ -59,7 +59,7 @@ class LessonMenuTest {
                     onShareStudyPack = { shared++ },
                     autoPackOpen = autoPackOpen,
                     onToggleAutoPack = { autoPackToggles += it },
-                    onSeePlans = { seePlans++ }
+                    onOpenPremiumPlans = { seePlans++ }
                 )
             }
         }

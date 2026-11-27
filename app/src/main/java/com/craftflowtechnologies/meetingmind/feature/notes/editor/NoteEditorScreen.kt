@@ -54,6 +54,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
@@ -508,6 +509,22 @@ fun NoteEditorScreen(
                             )
                         }
                         DropdownMenuItem(text = { Text("Move to notebook") }, leadingIcon = { Icon(Icons.Filled.Folder, null) }, onClick = { showMenu = false; showNotebooks = true })
+                        if (note?.workflow != com.craftflowtechnologies.meetingmind.core.model.RecordingType.JOURNAL) {
+                            val editorContext = androidx.compose.ui.platform.LocalContext.current
+                            DropdownMenuItem(
+                                text = { Text("Reflect in Personal Journal") },
+                                leadingIcon = { Icon(Icons.Filled.EditNote, null, tint = Accent) },
+                                onClick = {
+                                    showMenu = false
+                                    val srcId = note?.id ?: return@DropdownMenuItem
+                                    scope.launch {
+                                        val created = com.craftflowtechnologies.meetingmind.core.personal.PersonalRepository(editorContext)
+                                            .createPrivateReflectionForNote(srcId)
+                                        if (created != null) onOpenNote(created.id)
+                                    }
+                                }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Create course from note") },
                             leadingIcon = { Icon(Icons.Rounded.School, null, tint = Accent) },

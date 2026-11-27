@@ -31,6 +31,7 @@ internal fun rhythmPlural(kind: CompanionRhythm.Kind): Int = when (kind) {
     CompanionRhythm.Kind.FAITH_DAYS -> R.plurals.companion_rhythm_faith_days
     CompanionRhythm.Kind.STUDY_DAYS -> R.plurals.companion_rhythm_study_days
     CompanionRhythm.Kind.NOTES_KEPT -> R.plurals.companion_rhythm_notes_kept
+    CompanionRhythm.Kind.PERSONAL_DAYS -> R.plurals.companion_rhythm_personal_days
 }
 
 /**

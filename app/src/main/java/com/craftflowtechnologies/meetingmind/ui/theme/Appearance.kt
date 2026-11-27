@@ -32,16 +32,17 @@ enum class HomeStyle(val label: String, val description: String) {
     CALM("Calm", "Quiet and simple, with your stories and your recent recordings and notes"),
     FOCUS("Focus", "One page only: what's next, what's due, and Record"),
     PROFESSIONAL("Work", "A briefing for the working day: next meeting and prep, what needs you, your schedule, tasks, projects and people — with everything else still here"),
-    LEARNING("Learn", "Your study studio: daily active recall, courses, lecture capture, and exam readiness");
+    LEARNING("Learn", "Your study studio: daily active recall, courses, lecture capture, and exam readiness"),
+    PERSONAL("Personal", "Your daily sanctuary: morning & evening routines, living journal, ideas, journeys and time capsules");
 
     companion object {
         /** The homes a person can choose in Settings. Everyday and Focus are retired and no longer offered. */
-        val SELECTABLE: List<HomeStyle> = listOf(TODAY, PROFESSIONAL, LEARNING, CALM)
+        val SELECTABLE: List<HomeStyle> = listOf(TODAY, PROFESSIONAL, LEARNING, PERSONAL, CALM)
 
         /** The home a new install opens. People who finished onboarding before it existed keep [TODAY]. */
         val DEFAULT_FOR_NEW_INSTALLS = TODAY
 
-        /** The homes offered to someone who uses [spaces]: the Work and Learn homes need their space. */
+        /** The homes offered to someone who uses [spaces]: the Work, Learn and Personal homes need their space. */
         fun selectableFor(spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>): List<HomeStyle> =
             SELECTABLE.filter { it.usableWith(spaces) }
     }
@@ -50,6 +51,7 @@ enum class HomeStyle(val label: String, val description: String) {
     fun usableWith(spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>): Boolean = when (this) {
         PROFESSIONAL -> com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces
         LEARNING -> com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING in spaces
+        PERSONAL -> com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL in spaces
         else -> true
     }
 

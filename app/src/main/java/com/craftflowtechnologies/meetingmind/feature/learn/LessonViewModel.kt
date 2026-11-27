@@ -12,8 +12,11 @@ import com.craftflowtechnologies.meetingmind.ai.learning.StudyKitResult
 import com.craftflowtechnologies.meetingmind.ai.learning.StudyLectureInput
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager
 import com.craftflowtechnologies.meetingmind.ai.routing.ResolvedLanguageModel
+import com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus
 import com.craftflowtechnologies.meetingmind.core.learning.OpenLecture
+import com.craftflowtechnologies.meetingmind.core.learning.toLearningStatus
 import com.craftflowtechnologies.meetingmind.core.learning.SkyLayout
+import com.craftflowtechnologies.meetingmind.core.learning.StudyAiAnalytics
 import com.craftflowtechnologies.meetingmind.core.learning.StudyFormat
 import com.craftflowtechnologies.meetingmind.core.learning.StudyServices
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
@@ -143,7 +146,21 @@ class LessonViewModel(
                 return@launch
             }
             try {
-                _explain.value = ExplainEngine(model.languageModel).explain(concept, mode, open.segments)
+                var result = ExplainEngine(model.languageModel).explain(concept, mode, open.segments)
+                // The cloud allowance ran out: try once on this phone before saying so.
+                if (result.allowance != null) {
+                    val local = services.models.resolveLocal(noteId)
+                    if (local != null) {
+                        try {
+                            result = ExplainEngine(local.languageModel).explain(concept, mode, open.segments)
+                            if (result.allowance == null && result.error == null) result = result.copy(madeOnPhone = true)
+                        } finally {
+                            releaseIfLocal(local)
+                        }
+                    }
+                }
+                StudyAiAnalytics.track(StudyAiAnalytics.FEATURE_EXPLAIN, result.toStatus(), result.madeOnPhone)
+                _explain.value = result
             } finally {
                 releaseIfLocal(model)
             }
@@ -222,10 +239,15 @@ class LessonViewModel(
                 val passages = passagesFor(scope)
                 ai.answerFromSources(q, LearningAsk.rank(q, passages))
             }.getOrNull()
+            val status = ai.lastStatus
+            val madeOnPhone = ai.lastMadeLocally
+            StudyAiAnalytics.track(StudyAiAnalytics.FEATURE_LESSON_ASK, status, madeOnPhone)
             updateTurn(turn.id) {
                 it.copy(
                     pending = false,
                     answer = answer,
+                    allowance = status as? LearningAiStatus.AllowanceUsedUp,
+                    madeOnPhone = madeOnPhone,
                     error = if (answer == null) "Something went wrong while searching. Try asking again." else null
                 )
             }
@@ -238,11 +260,17 @@ class LessonViewModel(
         updateTurn(turnId) { it.copy(generalPending = true) }
         viewModelScope.launch {
             val general = runCatching { ai.answerGenerally(turn.question) }.getOrNull()
+            val status = ai.lastStatus
+            val madeOnPhone = ai.lastMadeLocally
+            StudyAiAnalytics.track(StudyAiAnalytics.FEATURE_LESSON_ASK, status, madeOnPhone)
+            val allowance = status as? LearningAiStatus.AllowanceUsedUp
             updateTurn(turnId) {
                 it.copy(
                     generalPending = false,
                     general = general,
-                    error = if (general == null) "A general answer needs an AI model, and none is available right now." else null
+                    allowance = allowance ?: it.allowance,
+                    madeOnPhone = madeOnPhone,
+                    error = if (general == null && allowance == null) "A general answer needs an AI model, and none is available right now." else null
                 )
             }
         }
@@ -309,19 +337,37 @@ class LessonViewModel(
             return
         }
         val result = try {
-            StudyKitGenerator(model.languageModel, model.modelId, model.contextLengthTokens).generate(
-                StudyLectureInput(open.session.id, open.meetingId, open.segments)
-            ) { step -> _state.update { it.copy(status = LessonKitStatus.Generating(step)) } }
+            generateKit(model, open)
         } finally {
             releaseIfLocal(model)
         }
-        when (result) {
-            is StudyKitResult.Ready -> saveContent(open, result.content)
+        // The cloud allowance ran out before anything was made: try once on this phone, quietly.
+        var final = result
+        var madeOnPhone = false
+        if (result is StudyKitResult.AllowanceUsedUp) {
+            services.models.resolveLocal(noteId)?.let { local ->
+                final = try {
+                    generateKit(local, open)
+                } finally {
+                    releaseIfLocal(local)
+                }
+                madeOnPhone = final is StudyKitResult.Ready
+            }
+        }
+        StudyAiAnalytics.track(StudyAiAnalytics.FEATURE_LESSON_KIT, final.toLearningStatus(), madeOnPhone)
+        when (val outcome = final) {
+            is StudyKitResult.Ready -> saveContent(open, outcome.content)
             is StudyKitResult.NoTranscript -> publish(LessonKitStatus.NoTranscript)
-            is StudyKitResult.NeedsAi -> publish(LessonKitStatus.NeedsAi(result.message))
-            is StudyKitResult.Failed -> publish(LessonKitStatus.Failed(result.message))
+            is StudyKitResult.NeedsAi -> publish(LessonKitStatus.NeedsAi(outcome.message))
+            is StudyKitResult.AllowanceUsedUp -> publish(LessonKitStatus.AllowanceUsedUp(outcome.resetsAtMs))
+            is StudyKitResult.Failed -> publish(LessonKitStatus.Failed(outcome.message))
         }
     }
+
+    private suspend fun generateKit(model: ResolvedLanguageModel, open: OpenLecture): StudyKitResult =
+        StudyKitGenerator(model.languageModel, model.modelId, model.contextLengthTokens).generate(
+            StudyLectureInput(open.session.id, open.meetingId, open.segments)
+        ) { step -> _state.update { it.copy(status = LessonKitStatus.Generating(step)) } }
 
     private suspend fun saveContent(open: OpenLecture, content: GeneratedStudyContent) {
         services.learning.regenerateSession(open.session.id, content.concepts, content.activities)

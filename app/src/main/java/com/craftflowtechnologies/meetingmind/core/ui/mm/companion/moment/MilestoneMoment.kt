@@ -49,6 +49,9 @@ internal fun milestoneCopy(kind: MilestoneKind): MilestoneCopy = when (kind) {
     MilestoneKind.READING_PLAN_DONE -> MilestoneCopy(R.string.companion_milestone_reading_plan, R.string.companion_milestone_reading_plan_sub)
     MilestoneKind.SEVEN_DEVOTIONALS_IN_MONTH -> MilestoneCopy(R.string.companion_milestone_devotionals, R.string.companion_milestone_devotionals_sub)
     MilestoneKind.ALL_CARDS_CLEARED -> MilestoneCopy(R.string.companion_milestone_cards_cleared, R.string.companion_milestone_cards_cleared_sub)
+    MilestoneKind.PERSONAL_JOURNEY_DONE -> MilestoneCopy(R.string.companion_milestone_personal_journey, R.string.companion_milestone_personal_journey_sub)
+    MilestoneKind.PERSONAL_CHALLENGE_DONE -> MilestoneCopy(R.string.companion_milestone_personal_challenge, R.string.companion_milestone_personal_challenge_sub)
+    MilestoneKind.FIRST_ROUTINE_WEEK -> MilestoneCopy(R.string.companion_milestone_first_routine_week, R.string.companion_milestone_first_routine_week_sub)
 }
 
 /**

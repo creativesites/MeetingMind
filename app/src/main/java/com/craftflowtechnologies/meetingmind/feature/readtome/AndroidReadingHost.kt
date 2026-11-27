@@ -71,6 +71,7 @@ class AndroidReadingHost(context: Context) : ReadingHost {
 
     override suspend fun loadNote(noteId: String, options: ExtractOptions): LoadedNote? {
         if (noteId.startsWith(PASSAGE_PREFIX)) return loadPassage(noteId, options)
+        if (noteId.startsWith(COACHING_PREFIX)) return loadCoaching(noteId, options)
         val db = MeetMindDatabase.getInstance(app)
         val doc = NoteRepository(app, db).getDocument(noteId) ?: return null
         val note = doc.note
@@ -129,6 +130,36 @@ class AndroidReadingHost(context: Context) : ReadingHost {
         return LoadedNote(reference.display(), NotebookSpace.FAITH, source, NoteFacts(false, false, false, false), null)
     }
 
+    /** One bundled Personal coaching script, voiced offline or online through the shared Read-to-Me engine. */
+    private fun loadCoaching(id: String, options: ExtractOptions): LoadedNote? {
+        val activityId = id.removePrefix(COACHING_PREFIX)
+        val activity = com.craftflowtechnologies.meetingmind.core.personal.PersonalGrowthCatalog.activityById(activityId)
+            ?: return null
+        val block = com.craftflowtechnologies.meetingmind.core.model.NoteBlock(
+            id = "coaching_$activityId",
+            noteId = id,
+            position = 0,
+            type = com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.PARAGRAPH,
+            content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(activity.spokenScript),
+            source = com.craftflowtechnologies.meetingmind.core.model.BlockSource.USER
+        )
+        val source = NoteSpeechExtractor.extract(
+            noteTitle = activity.title,
+            notePrivate = false,
+            blocks = listOf(block),
+            privateKeys = emptySet(),
+            scripture = ScriptureLookup { null },
+            options = options
+        )
+        return LoadedNote(
+            title = activity.title,
+            space = NotebookSpace.PERSONAL,
+            source = source,
+            facts = NoteFacts(notePrivate = false, notebookConfidential = false, workPrivacyOffline = false, faithLocked = false),
+            language = null
+        )
+    }
+
     override suspend fun environment(): Environment = Environment(
         profile = prefs.preferencesFlow.first().processingProfile,
         geminiConfigured = credentials.getApiKey() != null,
@@ -176,6 +207,7 @@ class AndroidReadingHost(context: Context) : ReadingHost {
 
 private const val SCRIPTURE_TIMEOUT_MS = 10_000L
 private const val PASSAGE_PREFIX = "passage:"
+private const val COACHING_PREFIX = "coaching:"
 
 /** The one coordinator for the app, like the player it feeds. */
 object ReadToMe {
@@ -185,6 +217,9 @@ object ReadToMe {
     /** The reading id for one passage in one translation; [ReadToMeSheet] and the coordinator take it where a note id goes. */
     fun passageId(reference: com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference, versionId: Int?) =
         com.craftflowtechnologies.meetingmind.ai.voice.read.PassageSpeech.passageId(reference, versionId)
+
+    /** The reading id for a bundled Personal coaching activity script. */
+    fun coachingId(activityId: String) = "$COACHING_PREFIX$activityId"
 
     @Volatile private var shared: ReadingCoordinator? = null
 

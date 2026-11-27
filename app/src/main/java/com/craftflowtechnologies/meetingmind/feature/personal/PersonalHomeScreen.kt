@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenScene
+import com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenPlace
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.Plant
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.PlantLook
 import com.craftflowtechnologies.meetingmind.ui.theme.GardenColors
@@ -89,7 +90,7 @@ fun PersonalHomeScreen(
     onWriteAnswer: () -> Unit,
     onOpenPlant: (String) -> Unit,
     onPlantNew: () -> Unit,
-    onOpenSeedJar: () -> Unit,
+    onOpenPlace: (GardenPlace) -> Unit,
     onCaptureIdea: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -110,7 +111,8 @@ fun PersonalHomeScreen(
                     modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom = sceneHeight * 0.05f)
                 )
             }
-            SoilPanel(state, palette, onOpenSeedJar, onPlantNew, onCaptureIdea)
+            SoilPanel(state, palette, onOpenPlace, onPlantNew, onCaptureIdea)
+            PlacesPanel(palette, onOpenPlace)
         }
     }
 }
@@ -296,12 +298,12 @@ private fun SeedSpot(first: Boolean, palette: GardenPalette, onClick: () -> Unit
 
 /** Below the garden: the seed jar, planting something new, and a quick idea. */
 @Composable
-private fun SoilPanel(state: PersonalUiState, p: GardenPalette, onSeedJar: () -> Unit, onPlantNew: () -> Unit, onCaptureIdea: () -> Unit) {
+private fun SoilPanel(state: PersonalUiState, p: GardenPalette, onOpenPlace: (GardenPlace) -> Unit, onPlantNew: () -> Unit, onCaptureIdea: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(p.soil).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SoilTile(
                 title = "Seed jar", line = when (state.ideas) { 0 -> "Your ideas, kept"; 1 -> "1 idea"; else -> "${state.ideas} ideas" },
-                p = p, onClick = onSeedJar, tag = "personal_seed_jar", modifier = Modifier.weight(1f)
+                p = p, onClick = { onOpenPlace(GardenPlace.SEED_JAR) }, tag = "personal_seed_jar", modifier = Modifier.weight(1f)
             ) { JarGlyph(Modifier.width(40.dp).height(60.dp), filled = state.ideas.coerceAtMost(5)) }
             SoilTile(title = "Plant it", line = "Something to practise", p = p, onClick = onPlantNew, tag = "personal_plant_tile", modifier = Modifier.weight(1f)) {
                 Plant(PlantLook(leaves = 2), animate = false, modifier = Modifier.width(40.dp).height(60.dp))
@@ -315,6 +317,31 @@ private fun SoilPanel(state: PersonalUiState, p: GardenPalette, onSeedJar: () ->
         ) {
             Icon(Icons.Outlined.Mic, contentDescription = null, tint = GardenColors.Gold, modifier = Modifier.size(18.dp))
             Text("Drop an idea in the jar", color = GardenColors.SoilInk, fontFamily = InterFamily, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+        }
+    }
+}
+
+/** The rest of the garden's places: each Sanctuary capability, one calm row apiece. */
+@Composable
+private fun PlacesPanel(p: GardenPalette, onOpenPlace: (GardenPlace) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(p.soil).padding(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Around the garden", color = GardenColors.SoilInkSoft, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.2.sp, modifier = Modifier.padding(bottom = 4.dp))
+        GardenPlace.entries.filter { it != GardenPlace.SEED_JAR }.forEach { place ->
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(20.dp)).background(GardenColors.SoilGlass)
+                    .border(1.dp, GardenColors.SoilLine, RoundedCornerShape(20.dp))
+                    .clickable(role = Role.Button, onClickLabel = "Open ${place.title}") { onOpenPlace(place) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .testTag("personal_place_${place.name.lowercase()}"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(place.title, color = GardenColors.SoilInk, fontFamily = GardenSerif, fontSize = 18.sp)
+                    Text(place.line, color = GardenColors.SoilInkSoft, fontFamily = InterFamily, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2)
+                }
+                Text(">", color = GardenColors.Gold, fontFamily = InterFamily, fontSize = 20.sp)
+            }
         }
     }
 }

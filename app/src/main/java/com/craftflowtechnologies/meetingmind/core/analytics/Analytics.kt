@@ -42,4 +42,6 @@ object Events {
     const val RESTORE_TAPPED = "restore_tapped"
     const val USAGE_WARNING = "usage_limit_warning"
     const val USAGE_LIMIT_REACHED = "usage_limit_reached"
+    /** A Learning AI call ended. Properties: feature and outcome (both fixed vocabularies). */
+    const val STUDY_AI = "study_ai"
 }

@@ -61,7 +61,9 @@ fun LessonAskUi.toSheetUi(): AskSheetUi = AskSheetUi(
             error = t.error,
             reportText = aiWritten(answer, general),
             reportNoteId = noteId,
-            reportMeetingId = meetingId
+            reportMeetingId = meetingId,
+            allowance = t.allowance,
+            madeOnPhone = t.madeOnPhone
         )
     },
     scope = if (scope == LessonAskScope.COURSE) AskSheetScope.COURSE else AskSheetScope.LECTURE,
@@ -84,7 +86,9 @@ fun HomeAskSheet(
     concepts: List<LearningConcept>,
     onDismiss: () -> Unit,
     onStartPractice: () -> Unit,
-    onOpenLesson: (noteId: String) -> Unit
+    onOpenLesson: (noteId: String) -> Unit,
+    /** Opens Plans from the allowance panel. Null when this build cannot sell plans. */
+    onSeePlans: (() -> Unit)? = null
 ) {
     val turns by learn.askTurns.collectAsState()
     val scope by learn.askScope.collectAsState()
@@ -102,6 +106,7 @@ fun HomeAskSheet(
     )
     AskSheet(
         ui = ui,
+        onSeePlans = onSeePlans,
         onQuestion = { learn.ask(it) },
         onScope = { learn.setAskScope(it.toVm()) },
         onGeneral = { learn.askGenerally(it) },
@@ -138,7 +143,9 @@ private fun AskTurn.toSheetTurn(): AskSheetTurn {
         error = error,
         reportText = aiWritten(a, general),
         reportNoteId = source?.noteId,
-        reportMeetingId = source?.meetingId
+        reportMeetingId = source?.meetingId,
+        allowance = allowance,
+        madeOnPhone = madeOnPhone
     )
 }
 

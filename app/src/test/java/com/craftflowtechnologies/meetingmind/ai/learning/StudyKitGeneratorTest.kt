@@ -282,6 +282,66 @@ class StudyKitGeneratorTest {
         assertTrue(model.prompts.last().contains("Write a summary"))
     }
 
+    // ------------------------------------------------------------- allowance and call budget
+
+    /** Every call is answered by [reply], which sees the call number and the prompt. Counts calls in [prompts]. */
+    private inner class ScriptedModel(private val reply: (Int, String) -> AiResult<String>) : LanguageModel {
+        val prompts = mutableListOf<String>()
+        override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> {
+            prompts += prompt
+            return reply(prompts.size, prompt)
+        }
+    }
+
+    private val allowanceFailure = AiResult.Failed("This month's cloud allowance is used up.", retryable = false)
+
+    /** A long lecture where every segment repeats the sentence the reading fixture quotes, so quotes can match. */
+    private val longQuoted = (0 until 30).map { i ->
+        seg("Q$i", i * 10_000L, i * 10_000L + 9_000L, "$s2 Filler sentence number $i.".repeat(3))
+    }
+
+    @Test
+    fun `a used-up allowance on the first call is reported as allowance used up, with no further calls`() {
+        val model = ScriptedModel { _, _ -> allowanceFailure }
+        val result = run(model, segments = longQuoted, contextTokens = 2000)
+        assertTrue("expected allowance used up, got $result", result is StudyKitResult.AllowanceUsedUp)
+        assertEquals(1, model.prompts.size)
+    }
+
+    @Test
+    fun `a long lecture makes at most six model calls, and at most three reading calls`() {
+        val model = FakeModel(reading = { readingJson() })
+        run(model, segments = longQuoted, contextTokens = 2000)
+        assertTrue("calls ${model.prompts.size}", model.prompts.size <= 6)
+        assertTrue("reading calls ${model.count("reading")}", model.count("reading") <= 3)
+    }
+
+    @Test
+    fun `an allowance used up after some reading keeps what was made and makes no more calls`() {
+        var readingCalls = 0
+        val model = ScriptedModel { _, prompt ->
+            if (prompt.contains("part of a lecture transcript") && ++readingCalls == 1) {
+                AiResult.Success(readingJson())
+            } else {
+                allowanceFailure
+            }
+        }
+        val result = run(model, segments = longQuoted, contextTokens = 2000)
+        val ready = result as? StudyKitResult.Ready ?: error("expected the first chunk's kit, got $result")
+        assertTrue(ready.content.concepts.isNotEmpty())
+        assertTrue(ready.content.kit.summary.isNotBlank())
+        // One successful reading, one refused reading, and nothing after the refusal.
+        assertEquals(2, model.prompts.size)
+    }
+
+    @Test
+    fun `a summary the model cannot write is named from the sections, not failed`() {
+        val model = FakeModel(summary = "not json at all")
+        val result = run(model)
+        val ready = result as? StudyKitResult.Ready ?: error("expected a ready kit, got $result")
+        assertEquals("This lesson covers Inhibition.", ready.content.kit.summary)
+    }
+
     // ------------------------------------------------------------- fixtures
 
     private fun readingJson(

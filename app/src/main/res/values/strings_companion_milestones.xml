@@ -23,6 +23,15 @@
     <!-- The first note (normally celebrated by First Keep instead; kept so every milestone has copy). -->
     <string name="companion_milestone_first_note">Your first note is kept.</string>
     <string name="companion_milestone_first_note_sub">Everything you said, kept.</string>
+    <!-- A guided Personal Journey was completed. -->
+    <string name="companion_milestone_personal_journey">You finished a Journey.</string>
+    <string name="companion_milestone_personal_journey_sub">Small steps, kept in your own words.</string>
+    <!-- A focused Personal Challenge was completed. -->
+    <string name="companion_milestone_personal_challenge">Challenge complete.</string>
+    <string name="companion_milestone_personal_challenge_sub">You showed up and saw it through.</string>
+    <!-- First week with Personal routines kept. -->
+    <string name="companion_milestone_first_routine_week">A calm week, kept.</string>
+    <string name="companion_milestone_first_routine_week_sub">Your daily rituals are taking root.</string>
 
     <!-- Closes the milestone card. -->
     <string name="companion_milestone_done">Nice</string>
@@ -45,5 +54,9 @@
     <plurals name="companion_rhythm_notes_kept">
         <item quantity="one">%d note kept this week</item>
         <item quantity="other">%d notes kept this week</item>
+    </plurals>
+    <plurals name="companion_rhythm_personal_days">
+        <item quantity="one">%d day kept for yourself this week</item>
+        <item quantity="other">%d days kept for yourself this week</item>
     </plurals>
 </resources>

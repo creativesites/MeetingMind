@@ -16,6 +16,8 @@ import com.craftflowtechnologies.meetingmind.ai.learning.SimpleExplanation
 import com.craftflowtechnologies.meetingmind.ai.learning.TeachBackEvaluation
 import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingCoordinator
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus
+import com.craftflowtechnologies.meetingmind.core.learning.StudyAiAnalytics
 import com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain
 import com.craftflowtechnologies.meetingmind.core.model.ActivityAttempt
 import com.craftflowtechnologies.meetingmind.core.model.CourseProperties
@@ -934,9 +936,23 @@ class LearnViewModel @JvmOverloads constructor(
             _isEvaluating.value = true
             val answer = studentAnswer.ifBlank { activity.expectedAnswer.ifBlank { "Incorrect attempt" } }
             val explanation = aiEngine.explainMistake(activity, answer)
+            noteAiStatus(StudyAiAnalytics.FEATURE_MISTAKE, aiEngine.lastStatus, aiEngine.lastMadeLocally)
             _mistakeExplanation.value = explanation
             _isEvaluating.value = false
         }
+    }
+
+    /**
+     * The managed allowance ran out during the last AI help on a practice item (mistake explanation, simpler
+     * explanation, hints, teach-back). Null when nothing was refused. Screens show the calm panel with plans from it.
+     */
+    private val _aiAllowance = MutableStateFlow<LearningAiStatus.AllowanceUsedUp?>(null)
+    val aiAllowance: StateFlow<LearningAiStatus.AllowanceUsedUp?> = _aiAllowance.asStateFlow()
+
+    /** Records one AI call's outcome: an analytics event, and the allowance flag for the screens. */
+    private fun noteAiStatus(feature: String, status: LearningAiStatus, madeOnPhone: Boolean = false) {
+        StudyAiAnalytics.track(feature, status, madeOnPhone)
+        _aiAllowance.value = status as? LearningAiStatus.AllowanceUsedUp
     }
 
     fun setVoiceRecording(recording: Boolean) {
@@ -955,6 +971,7 @@ class LearnViewModel @JvmOverloads constructor(
                 spokenTranscript = spokenTranscript,
                 concept = null
             )
+            noteAiStatus(StudyAiAnalytics.FEATURE_TEACH_BACK, eval.status, aiEngine.lastMadeLocally)
             _teachBackEvaluation.value = eval
             _isEvaluating.value = false
 
@@ -1090,6 +1107,7 @@ class LearnViewModel @JvmOverloads constructor(
                     definition = concept.definition,
                     domain = domain
                 )
+                noteAiStatus(StudyAiAnalytics.FEATURE_EXPLAIN_SIMPLE, aiEngine.lastStatus, aiEngine.lastMadeLocally)
                 _simpleExplanations.value = _simpleExplanations.value + (concept.id to explanation)
             } catch (e: Exception) {
                 Log.e("LearnViewModel", "Failed to explain concept simply: ${concept.name}", e)
@@ -1151,6 +1169,7 @@ class LearnViewModel @JvmOverloads constructor(
                         expectedAnswer = activity.expectedAnswer,
                         domain = domain
                     )
+                    noteAiStatus(StudyAiAnalytics.FEATURE_HINTS, aiEngine.lastStatus, aiEngine.lastMadeLocally)
                     _hintLadder.value = hints
                     _revealedHintCount.value = if (hints.isNotEmpty()) 1 else 0
                 } catch (e: Exception) {
@@ -1520,10 +1539,15 @@ class LearnViewModel @JvmOverloads constructor(
                 Log.e("LearnViewModel", "Ask Learning failed", e)
                 null
             }
+            val status = aiEngine.lastStatus
+            val madeOnPhone = aiEngine.lastMadeLocally
+            StudyAiAnalytics.track(StudyAiAnalytics.FEATURE_HOME_ASK, status, madeOnPhone)
             updateTurn(turn.id) {
                 it.copy(
                     pending = false,
                     answer = answer,
+                    allowance = status as? LearningAiStatus.AllowanceUsedUp,
+                    madeOnPhone = madeOnPhone,
                     error = if (answer == null) "Something went wrong while searching. Try asking again." else null
                 )
             }
@@ -1536,11 +1560,17 @@ class LearnViewModel @JvmOverloads constructor(
         updateTurn(turnId) { it.copy(generalPending = true) }
         viewModelScope.launch(crashGuard) {
             val general = runCatching { aiEngine.answerGenerally(turn.question) }.getOrNull()
+            val status = aiEngine.lastStatus
+            val madeOnPhone = aiEngine.lastMadeLocally
+            StudyAiAnalytics.track(StudyAiAnalytics.FEATURE_HOME_ASK, status, madeOnPhone)
+            val allowance = status as? LearningAiStatus.AllowanceUsedUp
             updateTurn(turnId) {
                 it.copy(
                     generalPending = false,
                     general = general,
-                    error = if (general == null) "A general answer needs an AI model, and none is available right now." else null
+                    allowance = allowance ?: it.allowance,
+                    madeOnPhone = madeOnPhone,
+                    error = if (general == null && allowance == null) "A general answer needs an AI model, and none is available right now." else null
                 )
             }
         }
@@ -1760,7 +1790,11 @@ data class AskTurn(
     val answer: LearningAnswer? = null,
     val generalPending: Boolean = false,
     val general: LearningAnswer? = null,
-    val error: String? = null
+    val error: String? = null,
+    /** Set when the managed allowance ran out. The answer above (if any) is still the lecture's own words. */
+    val allowance: LearningAiStatus.AllowanceUsedUp? = null,
+    /** True when the answer was made on this phone after the cloud route ran out. Said quietly. */
+    val madeOnPhone: Boolean = false
 )
 
 /** Step 2 of creating a session. */

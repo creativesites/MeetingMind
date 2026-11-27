@@ -3,6 +3,10 @@ package com.craftflowtechnologies.meetingmind.feature.learn.ui.home
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.craftflowtechnologies.meetingmind.feature.learn.RoundSummary
+import com.craftflowtechnologies.meetingmind.feature.learn.SkyLink
+import com.craftflowtechnologies.meetingmind.feature.learn.SkyState
+import com.craftflowtechnologies.meetingmind.feature.learn.SkyStar
+import com.craftflowtechnologies.meetingmind.feature.learn.StarState
 import com.craftflowtechnologies.meetingmind.feature.learn.StudyHomeState
 import com.craftflowtechnologies.meetingmind.feature.learn.home.HomeCourse
 import com.craftflowtechnologies.meetingmind.feature.learn.home.HomeLecture
@@ -21,7 +25,7 @@ internal object LearningHomeSamples {
         study = StudyHomeState(
             loading = false,
             round = RoundSummary(dueCount = 8, minutes = 5, sourceTitles = listOf("Enzyme kinetics", "Supply shocks", "Acids and bases")),
-            sky = StudyHomeSamples.sky,
+            sky = SkySamples.sky,
             studiedDays = listOf(true, true, false, true, true, false, false),
             todayIndex = 2,
             companionLine = "8 cards are due. A quick round?",
@@ -59,6 +63,41 @@ internal object LearningHomeSamples {
         study = StudyHomeState(loading = false, hasAnyLesson = false),
         courses = emptyList(),
         recent = emptyList()
+    )
+}
+
+/** The mockup's sky (design/study/Main.dc.html): star positions and links, shared by the Learning home samples. */
+internal object SkySamples {
+    /** Star positions from the mockup's 352 x 190 box, as fractions. */
+    private fun at(px: Float, py: Float) = px / 352f to py / 190f
+
+    private fun star(id: String, label: String, state: StarState, p: Pair<Float, Float>) =
+        SkyStar(id, label, state, p.first, p.second)
+
+    val sky = SkyState(
+        stars = listOf(
+            star("km", "Km", StarState.SHINING, at(52f, 58f)),
+            star("vmax", "Vmax", StarState.SHINING, at(110f, 40f)),
+            star("inhibition", "Inhibition", StarState.SHINING, at(150f, 86f)),
+            star("elasticity", "Elasticity", StarState.SHINING, at(280f, 92f)),
+            star("supply", "Supply shock", StarState.SHINING, at(232f, 120f)),
+            star("allostery", "Allostery", StarState.GROWING, at(96f, 118f)),
+            star("demand", "Demand curve", StarState.GROWING, at(206f, 70f)),
+            star("ph", "pH", StarState.GROWING, at(318f, 128f)),
+            star("buffers", "Buffers", StarState.GROWING, at(60f, 150f)),
+            star("rate", "Rate law", StarState.NEW, at(300f, 44f)),
+            star("cofactors", "Cofactors", StarState.NEW, at(232f, 172f)),
+            star("isotherms", "Isotherms", StarState.NEW, at(20f, 104f)),
+            star("competitive", "Competitive", StarState.WORTH_A_LOOK, at(150f, 138f)),
+            star("cooperativity", "Cooperativity", StarState.WORTH_A_LOOK, at(222f, 22f))
+        ),
+        links = listOf(
+            SkyLink("km", "vmax"), SkyLink("vmax", "inhibition"),
+            SkyLink("inhibition", "allostery"), SkyLink("allostery", "km"),
+            SkyLink("inhibition", "demand"), SkyLink("demand", "elasticity"),
+            SkyLink("supply", "elasticity"), SkyLink("elasticity", "ph")
+        ),
+        totalIdeas = 31
     )
 }
 

@@ -1,8 +1,8 @@
 package com.craftflowtechnologies.meetingmind.ai.learning
 
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
-import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
+import com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivityType
 import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
@@ -41,6 +41,8 @@ sealed interface StudyKitResult {
     data object NoTranscript : StudyKitResult
     /** No AI is available here: offline with no local model, or not set up. */
     data class NeedsAi(val message: String) : StudyKitResult
+    /** The managed allowance is used up and nothing could be made. [resetsAtMs] is 0 when unknown. */
+    data class AllowanceUsedUp(val resetsAtMs: Long) : StudyKitResult
     data class Failed(val message: String) : StudyKitResult
 }
 
@@ -109,7 +111,7 @@ class StudyKitGenerator(
     private sealed interface Ask {
         data class Json(val obj: JSONObject) : Ask
         data object Malformed : Ask
-        data class Stop(val result: StudyKitResult) : Ask
+        data class Stop(val status: LearningAiStatus) : Ask
     }
 
     suspend fun generate(input: StudyLectureInput, onProgress: (String) -> Unit = {}): StudyKitResult {
@@ -124,18 +126,25 @@ class StudyKitGenerator(
         val lecture = Lecture(lines, lectureEnd, hardToHearRanges(input.segments))
         val chunks = chunk(lines, budgetChars())
 
-        // 1. Reading: concepts and sections, chunk by chunk.
+        // Call budget per lecture: at most MAX_READING_CALLS reading calls, MAX_ACTIVITY_CALLS check calls and one
+        // summary call, so at most 6 model calls however long the lecture. A longer lecture is read from evenly
+        // spaced chunks, not every chunk. Once a call says the allowance is used up or AI is missing, no further
+        // calls are made, and what was made before that point is kept.
+        var stop: LearningAiStatus? = null
+
+        // 1. Reading: concepts and sections, from the sampled chunks.
         onProgress(CAPTION_READING)
         val readings = mutableListOf<JSONObject>()
         var malformed = 0
-        for (chunkLines in chunks) {
+        for (chunkLines in sampleChunks(chunks, MAX_READING_CALLS)) {
             when (val ask = askJson(readingPrompt(chunkLines))) {
-                is Ask.Stop -> return ask.result
+                is Ask.Stop -> { stop = ask.status; break }
                 is Ask.Malformed -> malformed++
                 is Ask.Json -> readings += ask.obj
             }
         }
-        if (readings.isEmpty()) return StudyKitResult.Failed(MALFORMED_MESSAGE)
+        // Nothing was made: the stop (or the malformed answers) is the result.
+        if (readings.isEmpty()) return stop?.let { stopResult(it) } ?: StudyKitResult.Failed(MALFORMED_MESSAGE)
 
         // 2. Stressed moments and concept validation.
         onProgress(CAPTION_STRESSED)
@@ -157,25 +166,29 @@ class StudyKitGenerator(
         // 3. Quick checks: multiple-choice and recall activities, from a sample of chunks.
         onProgress(CAPTION_CHECKS)
         val conceptNames = concepts.map { it.name }
-        val activityChunks = sampleChunks(chunks, MAX_ACTIVITY_CALLS)
         val activityDrafts = mutableListOf<ActivityDraft>()
-        val perChunkCap = (MAX_ACTIVITIES / activityChunks.size.coerceAtLeast(1)).coerceAtLeast(2)
-        for (chunkLines in activityChunks) {
-            when (val ask = askJson(activityPrompt(chunkLines, conceptNames))) {
-                is Ask.Stop -> return ask.result
-                is Ask.Malformed -> malformed++
-                is Ask.Json -> activityDrafts += parseActivities(ask.obj, lecture, conceptNames).take(perChunkCap)
+        if (stop == null) {
+            val activityChunks = sampleChunks(chunks, MAX_ACTIVITY_CALLS)
+            val perChunkCap = (MAX_ACTIVITIES / activityChunks.size.coerceAtLeast(1)).coerceAtLeast(2)
+            for (chunkLines in activityChunks) {
+                when (val ask = askJson(activityPrompt(chunkLines, conceptNames))) {
+                    is Ask.Stop -> { stop = ask.status; break }
+                    is Ask.Malformed -> malformed++
+                    is Ask.Json -> activityDrafts += parseActivities(ask.obj, lecture, conceptNames).take(perChunkCap)
+                }
             }
         }
         val activities = acceptActivities(activityDrafts, concepts, lecture)
 
-        // 4. Summary, written last from the merged sections.
-        val summary = when (val ask = askJson(summaryPrompt(sections, concepts))) {
-            is Ask.Stop -> return ask.result
-            is Ask.Malformed -> return StudyKitResult.Failed(MALFORMED_MESSAGE)
-            is Ask.Json -> ask.obj.optString("summary").trim()
+        // 4. Summary, written last from the merged sections. If the model cannot write it, the summary names the
+        // sections (or concepts) instead, so what was made is still kept.
+        val modelSummary = if (stop != null) null else when (val ask = askJson(summaryPrompt(sections, concepts))) {
+            is Ask.Stop -> { stop = ask.status; null }
+            is Ask.Malformed -> null
+            is Ask.Json -> ask.obj.optString("summary").trim().takeIf { it.isNotEmpty() }
         }
-        if (summary.isBlank()) return StudyKitResult.Failed(MALFORMED_MESSAGE)
+        val summary = modelSummary ?: fallbackSummary(sections, concepts)
+            ?: return stop?.let { stopResult(it) } ?: StudyKitResult.Failed(MALFORMED_MESSAGE)
 
         val createdAt = now()
         val sessionId = input.sessionId
@@ -237,15 +250,25 @@ class StudyKitGenerator(
     // ---------------------------------------------------------------- model calls
 
     private suspend fun askJson(prompt: String): Ask {
-        val reply = when (val res = model.generate(prompt, maxOutputTokens)) {
-            is AiResult.Success -> res.value
-            is AiResult.ModelUnavailable, is AiResult.DeviceUnsupported,
-            is AiResult.InsufficientMemory, is AiResult.InsufficientStorage ->
-                return Ask.Stop(StudyKitResult.NeedsAi(res.describeFailure() ?: NO_AI_MESSAGE))
-            is AiResult.Failed -> return Ask.Stop(StudyKitResult.Failed(res.describeFailure() ?: GENERIC_FAILURE))
-        }
-        val json = extractJsonObject(reply) ?: return Ask.Malformed
+        val res = model.generate(prompt, maxOutputTokens)
+        if (res !is AiResult.Success) return Ask.Stop(LearningAiStatus.of(res))
+        val json = extractJsonObject(res.value) ?: return Ask.Malformed
         return Ask.Json(json)
+    }
+
+    private fun stopResult(status: LearningAiStatus): StudyKitResult = when (status) {
+        is LearningAiStatus.AllowanceUsedUp -> StudyKitResult.AllowanceUsedUp(status.resetsAtMs)
+        is LearningAiStatus.NoAi -> StudyKitResult.NeedsAi(status.message)
+        is LearningAiStatus.Failed -> StudyKitResult.Failed(status.message)
+        LearningAiStatus.Ready -> StudyKitResult.Failed(GENERIC_FAILURE)
+    }
+
+    /** A summary from what was made, used only when the model could not write one. Null when there is nothing to name. */
+    private fun fallbackSummary(sections: List<ResolvedSection>, concepts: List<MergedConcept>): String? {
+        val names = sections.map { it.title }.filter { it.isNotBlank() }.ifEmpty { concepts.map { it.name } }
+            .take(SUMMARY_FALLBACK_NAMES)
+        if (names.isEmpty()) return null
+        return "This lesson covers ${names.joinToString(", ")}."
     }
 
     // ---------------------------------------------------------------- reading
@@ -556,7 +579,10 @@ class StudyKitGenerator(
         const val HARD_TO_HEAR_CONFIDENCE = 0.5f
 
         private const val CHOICE_COUNT = 4
-        private const val MAX_ACTIVITY_CALLS = 4
+        /** Model calls per lecture: reading 3 + checks 2 + summary 1 = 6 at most. See [generate]. */
+        private const val MAX_READING_CALLS = 3
+        private const val MAX_ACTIVITY_CALLS = 2
+        private const val SUMMARY_FALLBACK_NAMES = 6
         private const val PROMPT_RESERVE_TOKENS = 900
         private const val CHARS_PER_TOKEN = 3
         private const val MIN_CHUNK_CHARS = 2_000
@@ -564,7 +590,6 @@ class StudyKitGenerator(
         private const val SUMMARY_SECTION_CHARS = 240
         private const val MALFORMED_MESSAGE = "The model's answer could not be read. Try again."
         private const val GENERIC_FAILURE = "The study kit could not be made."
-        private const val NO_AI_MESSAGE = "No AI is set up on this device for study kits."
 
         private const val READING_SCHEMA = """{
   "concepts": [{"name": "", "definition": "", "emphasis": "", "relationships": [""], "startMs": 0, "endMs": 0, "quote": ""}],

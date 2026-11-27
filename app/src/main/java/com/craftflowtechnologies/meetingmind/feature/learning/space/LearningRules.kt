@@ -269,3 +269,13 @@ fun keyPointsOf(expectedAnswer: String): List<String> {
     val parts = if (lines.size >= 2) lines else expectedAnswer.split(Regex("""(?<=[.;])\s+""")).map { it.trim() }.filter { it.length > 2 }
     return parts.take(4)
 }
+
+/** A key point is suggested as covered when most of its meaningful words appear in the answer. Moved from the retired PracticeModeScreen. */
+internal fun suggestedTicks(points: List<String>, typed: String): List<Int> {
+    val words = typed.lowercase().split(Regex("""[^\p{L}\p{N}]+""")).filter { it.length > 3 }.toSet()
+    if (words.isEmpty()) return emptyList()
+    return points.mapIndexedNotNull { i, p ->
+        val key = p.lowercase().split(Regex("""[^\p{L}\p{N}]+""")).filter { it.length > 3 }.distinct()
+        if (key.isNotEmpty() && key.count { it in words } * 2 >= key.size) i else null
+    }
+}

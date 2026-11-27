@@ -32,7 +32,10 @@ data class TeachBackEvaluation(
     val criteriaEvaluations: List<TeachBackCriterionEvaluation>,
     val missingClaims: List<String>,
     val socraticFollowUp: String? = null,
-    val evidenceStartMs: Long? = null
+    val evidenceStartMs: Long? = null,
+    /** How the model call behind this evaluation ended. Ready when it answered; otherwise the rubric fallback was used. */
+    val status: com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus =
+        com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus.Ready
 )
 
 data class MistakeExplanation(

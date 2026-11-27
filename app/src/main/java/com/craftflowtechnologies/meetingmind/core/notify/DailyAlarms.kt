@@ -91,6 +91,8 @@ class DailyAlarmReceiver : BroadcastReceiver() {
             ReminderScheduler.handles(key) -> ReminderScheduler.onAlarm(context, key)
             com.craftflowtechnologies.meetingmind.core.work.WorkRhythmScheduler.handles(key) ->
                 com.craftflowtechnologies.meetingmind.core.work.WorkRhythmScheduler.onAlarm(context, key)
+            com.craftflowtechnologies.meetingmind.core.personal.PersonalRhythmScheduler.handles(key) ->
+                com.craftflowtechnologies.meetingmind.core.personal.PersonalRhythmScheduler.onAlarm(context, key)
         }
     }
 }

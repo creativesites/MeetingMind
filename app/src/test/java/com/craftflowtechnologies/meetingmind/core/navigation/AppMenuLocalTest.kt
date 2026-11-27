@@ -4,7 +4,7 @@ import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK
-import com.craftflowtechnologies.meetingmind.feature.learning.space.learningMenu
+import com.craftflowtechnologies.meetingmind.feature.learn.learningMenu
 import com.craftflowtechnologies.meetingmind.feature.navigation.Routes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
