@@ -217,49 +217,4 @@ val WorkGridScene: Scene = { t ->
     drawPath(line, BentoColors.Violet.copy(alpha = 0.6f), style = Stroke(width = 2.dp.toPx()))
 }
 
-/** Personal: a window with light, and a plant that sways. */
-val WindowHomeScene: Scene = { t ->
-    val w = size.width
-    val h = size.height
-    val sway = sin(t * TwoPi) * 3f
-    drawRect(Brush.verticalGradient(listOf(BentoArtColors.WallTop, BentoArtColors.WallBottom)))
-    val left = w * 0.62f
-    val right = w * 0.97f
-    val top = h * 0.14f
-    val radius = (right - left) / 2
-    val arch = Path().apply {
-        moveTo(left, h)
-        lineTo(left, top + radius)
-        arcTo(Rect(left, top, right, top + 2 * radius), 180f, 180f, false)
-        lineTo(right, h)
-        close()
-    }
-    drawPath(arch, BentoArtColors.Arch)
-    drawPath(arch, BentoArtColors.ArchEdge, style = Stroke(width = 1.5.dp.toPx()))
-    val mid = (left + right) / 2
-    drawLine(BentoArtColors.Mullion, Offset(mid, top), Offset(mid, h), strokeWidth = 1.dp.toPx())
-    drawLine(BentoArtColors.Mullion, Offset(left, h * 0.5f), Offset(right, h * 0.5f), strokeWidth = 1.dp.toPx())
-    val leaf = BentoArtColors.LeafSoft
-    rotate(-14f + sway, pivot = Offset(w * 0.20f, h * 0.9f)) {
-        drawOval(leaf, topLeft = Offset(w * 0.16f, h * 0.70f), size = androidx.compose.ui.geometry.Size(w * 0.10f, h * 0.22f))
-    }
-    rotate(12f - sway, pivot = Offset(w * 0.27f, h * 0.9f)) {
-        drawOval(BentoArtColors.LeafGreen, topLeft = Offset(w * 0.22f, h * 0.66f), size = androidx.compose.ui.geometry.Size(w * 0.09f, h * 0.24f))
-    }
-}
 
-/** Journal: ruled paper with a soft corner fold. */
-val RuledPaperScene: Scene = { _ ->
-    val w = size.width
-    val h = size.height
-    drawRect(BentoArtColors.RuledPaper)
-    val rule = BentoArtColors.Rule
-    val stroke = 1.dp.toPx()
-    var y = h * 0.30f
-    while (y < h) {
-        drawLine(rule, Offset(0f, y), Offset(w, y), strokeWidth = stroke)
-        y += 28.dp.toPx()
-    }
-    val fold = Path().apply { moveTo(w * 0.72f, 0f); lineTo(w, 0f); lineTo(w, h * 0.28f); close() }
-    drawPath(fold, BentoArtColors.CornerFold.copy(alpha = 0.8f))
-}

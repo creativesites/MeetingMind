@@ -748,6 +748,23 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         )
     }
 
+    /** Plants a line of this note as a practice in Your garden; the practice remembers the note. */
+    fun plantPractice(request: com.craftflowtechnologies.meetingmind.feature.personal.PlantRequest) = viewModelScope.launch {
+        val app = getApplication<android.app.Application>()
+        com.craftflowtechnologies.meetingmind.core.practice.PracticeRepository(
+            com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(app),
+            onRemindersChanged = { com.craftflowtechnologies.meetingmind.core.tasks.TaskReminders.sync(app) }
+        ).plant(
+            title = request.title,
+            rhythm = com.craftflowtechnologies.meetingmind.feature.personal.PlantMapping.rhythm(request.rhythm),
+            remindMinutes = request.nudge.minutes,
+            checkInWeeks = request.checkInWeeks,
+            sourceNoteId = request.sourceNoteId,
+            sourceTitle = request.sourceTitle
+        )
+        android.widget.Toast.makeText(app, "Planted in your garden", android.widget.Toast.LENGTH_SHORT).show()
+    }
+
     fun saveTask(task: com.craftflowtechnologies.meetingmind.core.tasks.Task, newPersonName: String?) = viewModelScope.launch {
         val personId = newPersonName?.takeIf { it.isNotBlank() }?.let { tasks.savePerson(it).id } ?: task.personId
         tasks.save(task.copy(personId = personId))

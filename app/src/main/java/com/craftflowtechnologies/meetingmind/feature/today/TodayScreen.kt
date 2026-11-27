@@ -261,7 +261,8 @@ fun TodayScreen(
         onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
         onCreate = { create.open() }, onCircles = onOpenCircles, onWork = onOpenWork,
         onNextUp = tile.onClick, onJournal = onNewNote,
-        onOpenCircle = onOpenCircle, onStartCircle = onStartCircle, onRetryCircles = onRetryCircles
+        onOpenCircle = onOpenCircle, onStartCircle = onStartCircle, onRetryCircles = onRetryCircles,
+        onPersonal = onOpenPersonal
     )
 
     // The setup card nags until setup is done; "thinking only" can't be snoozed — it's a real problem.

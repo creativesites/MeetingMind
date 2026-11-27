@@ -63,6 +63,13 @@ class PracticeRepository(
             rows.map { it.toDomain(byPractice[it.id].orEmpty().toSet()) }
         }
 
+    /** Practices the person let go, most recent first, with the days they kept. */
+    fun observeLetGo(): Flow<List<Practice>> =
+        combine(practices.observeLetGo(), practices.observeAllDays()) { rows, days ->
+            val byPractice = days.groupBy({ it.practiceId }, { LocalDate.parse(it.day) })
+            rows.map { it.toDomain(byPractice[it.id].orEmpty().toSet()) }
+        }
+
     suspend fun get(id: String): Practice? = io {
         val row = practices.getById(id) ?: return@io null
         row.toDomain(practices.daysFor(id).map { LocalDate.parse(it.day) }.toSet())

@@ -65,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenWindowTile
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.feature.today.InterFamily
 import com.craftflowtechnologies.meetingmind.feature.today.OutfitFamily
@@ -102,7 +103,9 @@ data class BentoActions(
     /** "Start a circle" from the Circles tile's empty state. */
     val onStartCircle: () -> Unit = {},
     /** "Try again" from the Circles tile's failed state. */
-    val onRetryCircles: () -> Unit = {}
+    val onRetryCircles: () -> Unit = {},
+    /** Opens Personal, "Your garden", from its window tile. */
+    val onPersonal: () -> Unit = {}
 )
 
 private val Ink = BentoColors.Ink
@@ -131,18 +134,18 @@ fun HomeBento(
                 }
                 CreateAndCircles(actions, circles, index = 3)
                 if (sections.work) WorkTile(data, actions.onWork, index = 4)
+                if (sections.personal) Reveal(5) { GardenWindowTile(actions.onPersonal, height = 200.dp) }
             }
             HomeLayout.WORK_PERSONAL -> {
                 WorkTile(data, actions.onWork, index = 0)
-                CreateAndCircles(actions, circles, index = 1)
-                EveningTile(data, actions.onNextUp, index = 3)
+                Reveal(1) { GardenWindowTile(actions.onPersonal) }
+                CreateAndCircles(actions, circles, index = 2)
                 PlanCard(data.plan, index = 4)
             }
             HomeLayout.PERSONAL -> {
-                EveningTile(data, actions.onNextUp, index = 0)
+                Reveal(0) { GardenWindowTile(actions.onPersonal) }
                 CreateAndCircles(actions, circles, index = 1)
-                JournalTile(actions.onJournal, index = 3)
-                PlanCard(data.plan, index = 4)
+                PlanCard(data.plan, index = 3)
             }
             HomeLayout.WORK -> {
                 WorkTile(data, actions.onWork, index = 0)
@@ -300,32 +303,6 @@ private fun WorkTile(data: BentoData, onClick: () -> Unit, index: Int) {
             if (data.todayCount == 0) "Nothing on your calendar today" else "${data.todayCount} on your calendar today",
             color = InkSoft, fontFamily = InterFamily, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp).fillMaxWidth(0.6f)
         )
-    }
-}
-
-@Composable
-private fun EveningTile(data: BentoData, onClick: () -> Unit, index: Int) {
-    SceneTile(index, WindowHomeScene, height = 176.dp, scrim = Color.Transparent, tag = "bento_evening", onClick = onClick) {
-        TileHeader(Icons.Filled.Home, "Personal", BentoColors.BrownInk)
-        Spacer(Modifier.weight(1f))
-        Column(Modifier.fillMaxWidth(0.6f)) {
-            Text(data.nextTitle, color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, lineHeight = 23.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(data.nextWhen, color = BentoColors.BrownText, fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
-            Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Plan my day", color = BentoColors.Violet, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = BentoColors.Violet, modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun JournalTile(onClick: () -> Unit, index: Int) {
-    SceneTile(index, RuledPaperScene, height = 150.dp, scrim = Color.Transparent, tag = "bento_journal", onClick = onClick) {
-        TileHeader(Icons.Filled.EditNote, "Journal", BentoColors.BrownInk)
-        Spacer(Modifier.weight(1f))
-        Text("Write today's entry", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-        Text("Notes from your day", color = BentoColors.BrownText, fontFamily = InterFamily, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
     }
 }
 

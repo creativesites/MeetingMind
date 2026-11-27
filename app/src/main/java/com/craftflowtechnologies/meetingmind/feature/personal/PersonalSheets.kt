@@ -62,7 +62,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.MM
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlantSheet(initialTitle: String, onDismiss: () -> Unit, onPlant: (PlantRequest) -> Unit) {
+fun PlantSheet(initialTitle: String, onDismiss: () -> Unit, onPlant: (PlantRequest) -> Unit, source: PlantSource? = null) {
     val colors = MM.colors
     var title by rememberSaveable { mutableStateOf(initialTitle) }
     var rhythm by rememberSaveable { mutableStateOf(PlantRhythm.WEEKDAYS) }
@@ -77,6 +77,7 @@ fun PlantSheet(initialTitle: String, onDismiss: () -> Unit, onPlant: (PlantReque
                 Plant(PlantLook(leaves = 2), animate = false, modifier = Modifier.width(44.dp).height(56.dp))
                 Text("Plant it", color = colors.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold, fontSize = 26.sp)
             }
+            source?.let { Text("From “${it.title}”", color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 14.sp, modifier = Modifier.testTag("personal_plant_source")) }
             OutlinedTextField(
                 value = title, onValueChange = { title = it.take(80) },
                 label = { Text("What will you practise?") },
@@ -97,7 +98,7 @@ fun PlantSheet(initialTitle: String, onDismiss: () -> Unit, onPlant: (PlantReque
             }
             Text(PlantSummary.line(rhythm, weeks), color = colors.inkSecondary, fontFamily = GardenSerif, fontSize = 16.sp, lineHeight = 23.sp)
             GoldButton("Plant it in my garden", enabled = title.isNotBlank(), tag = "personal_plant_confirm") {
-                onPlant(PlantRequest(title.trim(), rhythm, nudge, weeks))
+                onPlant(PlantRequest(title.trim(), rhythm, nudge, weeks, source?.noteId, source?.title))
             }
         }
     }
@@ -116,7 +117,8 @@ fun PracticeSheet(
     onKeepGoing: () -> Unit,
     onBloom: () -> Unit,
     onLetGo: () -> Unit,
-    onOpenSource: (String) -> Unit
+    onOpenSource: (String) -> Unit,
+    onAdjust: () -> Unit = {}
 ) {
     val colors = MM.colors
     var confirmLetGo by remember { mutableStateOf(false) }
@@ -166,6 +168,11 @@ fun PracticeSheet(
                     enabled = true, tag = "personal_tend", checked = plant.tendedToday
                 ) { onTend(!plant.tendedToday) }
             }
+            if (!plant.bloomed && !confirmLetGo) {
+                TextButton(onClick = onAdjust, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("personal_adjust")) {
+                    Text("Adjust how often or the nudge", color = colors.ink, fontFamily = InterFamily, fontWeight = FontWeight.Medium)
+                }
+            }
             if (confirmLetGo) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(colors.surfaceSunk).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Let it go? It leaves the garden and Tasks. The days you kept stay with your notes.", color = colors.ink, fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 20.sp)
@@ -179,6 +186,27 @@ fun PracticeSheet(
                     Text(if (plant.bloomed) "Take it out of the garden" else "Let it go", color = colors.inkSecondary, fontFamily = InterFamily)
                 }
             }
+        }
+    }
+}
+
+/** Adjust a growing practice: how often it comes round and when to nudge. Its days stay. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AdjustSheet(plant: GardenPlantUi, onDismiss: () -> Unit, onSave: (PlantRhythm, PlantNudge) -> Unit) {
+    val colors = MM.colors
+    var rhythm by rememberSaveable { mutableStateOf(plant.rhythm) }
+    var nudge by rememberSaveable { mutableStateOf(plant.nudge) }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = colors.surface) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).padding(bottom = 24.dp).navigationBarsPadding().testTag("personal_adjust_sheet"),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Text(plant.title, color = colors.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 27.sp)
+            Section("How often") { ChipRow(PlantRhythm.entries, rhythm, { it.label }) { rhythm = it } }
+            Section("Nudge me") { ChipRow(PlantNudge.entries, nudge, { it.label }) { nudge = it } }
+            Text("The days you've kept stay as they are.", color = colors.inkSecondary, fontFamily = InterFamily, fontSize = 14.sp)
+            GoldButton("Save", enabled = rhythm != plant.rhythm || nudge != plant.nudge, tag = "personal_adjust_save") { onSave(rhythm, nudge) }
         }
     }
 }

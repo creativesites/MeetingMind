@@ -288,6 +288,9 @@ fun NoteEditorScreen(
     val allPeople by remember(showPeople) { if (showPeople) viewModel.people else kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsState(initial = emptyList())
     var showAssistant by remember { mutableStateOf(false) }
     var taskDraft by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.tasks.Task?>(null) }
+    // A line planted as a practice in Your garden (Personal): the line's text, then the Plant sheet.
+    var plantDraft by remember { mutableStateOf<String?>(null) }
+    val usesPersonal = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL in com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current.spaces
     var exporting by remember { mutableStateOf(false) }
     var pendingCapture by remember { mutableStateOf<Pair<File, Boolean>?>(null) }
 
@@ -1213,12 +1216,24 @@ fun NoteEditorScreen(
                 blockMenuFor = null
                 scope.launch { taskDraft = viewModel.taskFor(b.id) }
             }) else null,
+            onPlantIt = if (usesPersonal && b.type.isText && b.type != NoteBlockType.MARKDOWN && b.content.text.isNotBlank()) ({
+                blockMenuFor = null
+                plantDraft = b.content.text.trim()
+            }) else null,
             onReportAi = if (com.craftflowtechnologies.meetingmind.core.notes.AiMarkdown.isAiSource(b.source)) ({ blockMenuFor = null; reportAi(listOf(b)) }) else null
         )
     }
     if (showAssistant) com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(
         viewModel.assistant, onOpenNote = { showAssistant = false; onOpenNote(it) }, onOpenTasks = { showAssistant = false; onOpenTasks() }, onDismiss = { showAssistant = false }
     )
+    plantDraft?.let { line ->
+        com.craftflowtechnologies.meetingmind.feature.personal.PlantSheet(
+            initialTitle = line,
+            source = com.craftflowtechnologies.meetingmind.feature.personal.PlantSource(viewModel.noteId, note?.title?.ifBlank { null } ?: "this note"),
+            onDismiss = { plantDraft = null },
+            onPlant = { viewModel.plantPractice(it); plantDraft = null }
+        )
+    }
     taskDraft?.let { t ->
         val people by viewModel.people.collectAsState()
         com.craftflowtechnologies.meetingmind.feature.tasks.TaskEditorSheet(

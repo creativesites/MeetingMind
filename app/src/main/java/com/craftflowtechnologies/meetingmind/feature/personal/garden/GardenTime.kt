@@ -73,6 +73,9 @@ object GardenQuestions {
         "What do you want to remember about today?"
     )
 
+    /** The question for this moment, on the phone's clock. */
+    fun forNow(): String = java.time.LocalDateTime.now().let { forDay(it.toLocalDate(), it.toLocalTime()) }
+
     fun forDay(date: LocalDate, time: LocalTime): String {
         val set = if (time.hour >= 17 || time.hour < 5) evening else morning
         val index = Math.floorMod(date.toEpochDay(), set.size.toLong()).toInt()

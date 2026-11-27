@@ -185,18 +185,18 @@ object Workflows {
                 TemplateSection("my_notes", "Notes", SectionSource.USER)
             )
             RecordingType.MOTIVATION -> listOf(
-                TemplateSection("core_mindset", "Core mindset shift", SectionSource.AI, hint = "The central idea in a sentence or two"),
-                TemplateSection("key_principles", "Key principles & bytes", SectionSource.AI, NoteBlockType.BULLET, "Memorable insights to retain"),
-                TemplateSection("quotes", "Memorable quotes", SectionSource.AI, NoteBlockType.QUOTE, "Words worth keeping"),
-                TemplateSection("daily_habits", "Daily challenge & habits", SectionSource.AI, NoteBlockType.CHECKLIST, "Practical actions to apply"),
-                TemplateSection("my_notes", "My reflection", SectionSource.USER, hint = "How this applies to your season right now")
+                TemplateSection("core_mindset", "The big idea", SectionSource.AI, hint = "The central idea in a sentence or two"),
+                TemplateSection("key_principles", "Worth remembering", SectionSource.AI, NoteBlockType.BULLET, "Insights to keep"),
+                TemplateSection("quotes", "In their words", SectionSource.AI, NoteBlockType.QUOTE, "Words worth keeping"),
+                TemplateSection("daily_habits", "Try this week", SectionSource.AI, NoteBlockType.CHECKLIST, "Small things to practise"),
+                TemplateSection("my_notes", "My take", SectionSource.USER, hint = "How does this fit your life right now?")
             )
             RecordingType.LIFE_SKILLS -> listOf(
-                TemplateSection("overview", "What this teaches", SectionSource.AI, hint = "The practical skill or framework"),
-                TemplateSection("playbook", "Step-by-step playbook", SectionSource.AI, NoteBlockType.NUMBERED, "Each step in order"),
-                TemplateSection("dos_and_donts", "Do's & mistakes to avoid", SectionSource.AI, NoteBlockType.BULLET, "Pitfalls and best practices"),
-                TemplateSection("try_this", "Action checklist", SectionSource.AI, NoteBlockType.CHECKLIST, "Concrete next steps to practice"),
-                TemplateSection("my_notes", "My notes", SectionSource.USER, hint = "Your own notes and adaptations")
+                TemplateSection("overview", "What it teaches", SectionSource.AI, hint = "The practical skill or framework"),
+                TemplateSection("playbook", "Step by step", SectionSource.AI, NoteBlockType.NUMBERED, "Each step in order"),
+                TemplateSection("dos_and_donts", "Do's and pitfalls", SectionSource.AI, NoteBlockType.BULLET, "What helps and what trips people up"),
+                TemplateSection("try_this", "Try this week", SectionSource.AI, NoteBlockType.CHECKLIST, "Small things to practise"),
+                TemplateSection("my_notes", "My take", SectionSource.USER, hint = "How will you adapt it?")
             )
             else -> emptyList()
         }
@@ -241,8 +241,8 @@ object Workflows {
             RecordingType.SERMON -> "Themes, passages & scripture references" to "Sermon notes"
             RecordingType.BIBLE_STUDY -> "Passages & observations" to "Study notes"
             RecordingType.LECTURE -> "Concepts & definitions" to "Study notes"
-            RecordingType.MOTIVATION -> "Mindset shifts, quotes & habits" to "Motivation notes"
-            RecordingType.LIFE_SKILLS -> "Step-by-step playbook & takeaways" to "Life skills playbook"
+            RecordingType.MOTIVATION -> "The big idea, quotes & things to try" to "Talk notes"
+            RecordingType.LIFE_SKILLS -> "Steps, pitfalls & things to try" to "How-to notes"
             RecordingType.INTERVIEW -> "Questions, answers & quotes" to "Interview notes"
             RecordingType.MEETING, RecordingType.CUSTOM, RecordingType.GENERAL -> "Topics, decisions & actions" to "Meeting brief"
             RecordingType.IDEA, RecordingType.VOICE_MEMO, RecordingType.JOURNAL, RecordingType.DICTATION -> "Key points" to "Cleaned-up note"

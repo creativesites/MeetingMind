@@ -448,6 +448,18 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     // The app menu (core/navigation/AppMenu.kt): every space and feature, from any screen.
     val appMenu = com.craftflowtechnologies.meetingmind.core.navigation.rememberAppMenuState()
     val youTubeSheet = com.craftflowtechnologies.meetingmind.feature.importing.rememberYouTubeSheetState()
+    // Personal ("Your garden"): one set of destinations shared by the garden and its lists.
+    val personalNav = remember(navController) {
+        com.craftflowtechnologies.meetingmind.feature.personal.PersonalNav(
+            onAnswerAloud = { question -> navController.navigate(Routes.lanternRoute(question)) },
+            onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+            onOpenSeedJar = { navController.navigate(Routes.PERSONAL_SEEDS) { launchSingleTop = true } },
+            onCaptureIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) },
+            onOpenSky = { navController.navigate(Routes.PERSONAL_SKY) { launchSingleTop = true } },
+            onOpenPractices = { navController.navigate(Routes.PERSONAL_PRACTICES) { launchSingleTop = true } },
+            onBack = { navController.popBackStack() }
+        )
+    }
     androidx.compose.runtime.CompositionLocalProvider(
         com.craftflowtechnologies.meetingmind.core.navigation.LocalAppMenu provides appMenu.controller,
         com.craftflowtechnologies.meetingmind.feature.importing.LocalYouTubeSheet provides youTubeSheet.controller,
@@ -786,14 +798,36 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 }
             ) { personalBar ->
                 Box(Modifier.padding(bottom = personalBar.calculateBottomPadding())) {
-                    com.craftflowtechnologies.meetingmind.feature.personal.PersonalHost(
-                        onAnswerAloud = { question -> navController.navigate(Routes.recordTitledRoute(RecordingType.JOURNAL, question)) },
-                        onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
-                        onOpenSeedJar = { navController.navigate(Routes.NOTES) },
-                        onCaptureIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) }
-                    )
+                    com.craftflowtechnologies.meetingmind.feature.personal.PersonalHost(personalNav)
                 }
             }
+        }
+        composable(Routes.PERSONAL_PRACTICES) {
+            com.craftflowtechnologies.meetingmind.feature.personal.PracticesHost(personalNav)
+        }
+        composable(
+            route = Routes.LANTERN,
+            arguments = listOf(navArgument("q") { type = NavType.StringType; nullable = true; defaultValue = null })
+        ) { entry ->
+            val question = entry.arguments?.getString("q")?.takeIf { it.isNotBlank() }
+                ?: remember { com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenQuestions.forNow() }
+            val vm: RecordingViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.personal.lantern.LanternHost(
+                question = question,
+                viewModel = vm,
+                onClose = { navController.popBackStack() },
+                onComplete = { meetingId, audioPath, durationMs ->
+                    navController.navigate(Routes.processingRoute(meetingId, audioPath, durationMs)) {
+                        popUpTo(Routes.LANTERN) { inclusive = true }
+                    }
+                },
+                onWriteInstead = {
+                    recoveryScope.launch {
+                        val note = noteRepository.createNote(workflow = RecordingType.JOURNAL, title = question, draft = true)
+                        navController.navigate(Routes.noteRoute(note.id)) { popUpTo(Routes.LANTERN) { inclusive = true } }
+                    }
+                }
+            )
         }
 
         // FAITH — one view model shared by the space and its two sub-pages, all behind the optional lock.

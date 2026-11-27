@@ -29,6 +29,12 @@ object Routes {
     const val LEARN = "learn"
     /** Personal: "Your garden". */
     const val PERSONAL = "personal"
+    const val PERSONAL_PRACTICES = "personal/practices"
+    const val PERSONAL_SKY = "personal/sky"
+    const val PERSONAL_SEEDS = "personal/seeds"
+    /** The lantern: answering the day's question out loud. No question means today's. */
+    const val LANTERN = "personal/lantern?q={q}"
+    fun lanternRoute(question: String? = null) = "personal/lantern" + (question?.let { "?q=" + android.net.Uri.encode(it) } ?: "")
     const val LEARNING_SESSION = "learning_session/{noteId}"
     fun learningSessionRoute(noteId: String) = "learning_session/$noteId"
     const val LEARN_PRACTICE = "learn_practice?sessionId={sessionId}&activityId={activityId}"

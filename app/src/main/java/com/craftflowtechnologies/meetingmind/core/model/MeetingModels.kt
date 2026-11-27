@@ -26,8 +26,8 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
     CONVERSATION("Conversation", "General conversation summary"),
     RESEARCH("Research", "Notes and findings"),
     JOURNAL("Journal", "A personal, private entry"),
-    MOTIVATION("Motivation", "Mindset shifts, quotes, and daily habits"),
-    LIFE_SKILLS("Life skills", "Step-by-step frameworks, do's & don'ts, and playbooks"),
+    MOTIVATION("Talk or podcast", "The big idea, what to remember and what to try"),
+    LIFE_SKILLS("How-to", "The steps, the pitfalls and what to try"),
     // The Faith workflows (docs/PLAN_V1.md §6). Same pipeline, templates and hooks as every other
     // type — a workflow is configuration, never a separate code path.
     SERMON("Sermon", "Scripture, structure, and sermon notes"),

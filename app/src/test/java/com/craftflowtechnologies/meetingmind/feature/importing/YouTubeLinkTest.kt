@@ -19,6 +19,7 @@ class YouTubeLinkTest {
         assertEquals(RecordingType.SERMON, YouTubeLinks.startKind(NotebookSpace.FAITH, all))
         assertEquals(RecordingType.LECTURE, YouTubeLinks.startKind(NotebookSpace.LEARNING, all))
         assertEquals(RecordingType.GENERAL, YouTubeLinks.startKind(null, all))
+        assertEquals(RecordingType.MOTIVATION, YouTubeLinks.startKind(NotebookSpace.PERSONAL, all))
         assertEquals("Auto", YouTubeLinks.label(RecordingType.GENERAL))
     }
 
@@ -57,7 +58,11 @@ class YouTubeLinkTest {
         AppMenuModel.sections(spaces).flatMap { it.entries }.filter { it.target is MenuTarget.YouTube }
 
     @Test fun `the menu always has YouTube notes, with a sermon row only in Faith`() {
-        assertEquals(listOf("everyday.youtube"), youTubeRows(setOf(NotebookSpace.PERSONAL)).map { it.id })
+        assertEquals(listOf("everyday.youtube"), youTubeRows(setOf(NotebookSpace.WORK)).map { it.id })
+        // Personal offers talk notes of its own: their "Try this week" lines become seed packets.
+        val personal = youTubeRows(setOf(NotebookSpace.PERSONAL))
+        assertEquals(listOf("everyday.youtube", "personal.youtube"), personal.map { it.id })
+        assertEquals(NotebookSpace.PERSONAL, (personal.last().target as MenuTarget.YouTube).from)
         val everything = youTubeRows(all)
         assertTrue(everything.any { it.id == "learn.youtube" && (it.target as MenuTarget.YouTube).from == NotebookSpace.LEARNING })
         assertTrue(everything.any { it.id == "faith.youtube" && (it.target as MenuTarget.YouTube).from == NotebookSpace.FAITH })

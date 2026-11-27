@@ -81,6 +81,8 @@ object YouTubeLinks {
     fun kindFor(from: NotebookSpace?): RecordingType = when (from) {
         NotebookSpace.FAITH -> RecordingType.SERMON
         NotebookSpace.LEARNING -> RecordingType.LECTURE
+        // From the garden: a talk or podcast, whose "Try this week" lines become seed packets.
+        NotebookSpace.PERSONAL -> RecordingType.MOTIVATION
         else -> RecordingType.GENERAL
     }
 

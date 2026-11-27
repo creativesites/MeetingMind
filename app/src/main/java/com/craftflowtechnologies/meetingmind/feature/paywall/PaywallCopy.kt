@@ -37,7 +37,7 @@ object PaywallCopy {
         IncludedRow("Use your own Gemini API key (BYOK)", free = false, paid = true, capability = Capability.BYOK_KEY),
         IncludedRow("Connected cloud integrations (Tasks, Notion, Slack/Teams, Pinned Vault)", free = false, paid = true, capability = Capability.CONNECTED_INTEGRATIONS),
         IncludedRow("Automation recipes and trigger workflows", free = false, paid = true, capability = Capability.AUTOMATION_RECIPES),
-        IncludedRow("Cross-session deep synthesis & executive briefs", free = false, paid = true, capability = Capability.DEEP_SYNTHESIS),
+        IncludedRow("Cross-session deep synthesis, executive briefs and Zuri's read across your reflections", free = false, paid = true, capability = Capability.DEEP_SYNTHESIS),
         IncludedRow("Church and organization ministry workflows", free = false, paid = true, capability = Capability.CHURCH_ORG_WORKFLOWS)
     )
 
@@ -54,7 +54,7 @@ object PaywallCopy {
         NotebookSpace.LEARNING ->
             OutcomeCopy("Every lecture, ready to revise", "Come back to a class with a question instead of a rewind.")
         NotebookSpace.PERSONAL ->
-            OutcomeCopy("Find anything you've ever said", "Search every conversation by what was said, not when it happened.")
+            OutcomeCopy("Grow what you're learning", "Answer a question each day, out loud and in private, and turn the talks you take notes on into small practices.")
         null ->
             OutcomeCopy("Get more from every recording", "More of MeetingMind's AI assistance for your meetings, study and ideas.")
     }

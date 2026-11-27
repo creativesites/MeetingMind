@@ -475,6 +475,8 @@ internal fun BlockMenu(
     onSplitMarkdown: (() -> Unit)? = null,
     onAiTools: (() -> Unit)? = null,
     onMakeTask: (() -> Unit)? = null,
+    /** Plants this line as a practice in Your garden. Null when the person doesn't use Personal. */
+    onPlantIt: (() -> Unit)? = null,
     /** Reports an AI-written block (Play's AI-generated content policy). Null for the person's own words. */
     onReportAi: (() -> Unit)? = null
 ) {
@@ -485,6 +487,7 @@ internal fun BlockMenu(
         text = {
             Column {
                 onMakeTask?.let { MenuRow("Make it a task…") { it() } }
+                onPlantIt?.let { MenuRow("Plant it in your garden…") { it() } }
                 onAiTools?.let { MenuRow("AI tools") { it() } }
                 onEditMarkdown?.let { MenuRow("Edit Markdown") { it() } }
                 onSplitMarkdown?.let { MenuRow("Split into separate blocks") { it() } }

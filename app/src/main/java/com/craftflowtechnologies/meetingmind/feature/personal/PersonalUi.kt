@@ -29,7 +29,10 @@ data class GardenPlantUi(
     val sourceNoteId: String?,
     /** "7 of 10 days kept since you planted it". */
     val windowLine: String,
-    val checkInDue: Boolean
+    val checkInDue: Boolean,
+    /** Its rhythm and nudge as the sheets offer them, for "Adjust". */
+    val rhythm: PlantRhythm = PlantRhythm.WEEKDAYS,
+    val nudge: PlantNudge = PlantNudge.NONE
 ) {
     /** The few words under the plant's name in the garden. */
     val tag: String get() = when {
@@ -52,8 +55,26 @@ data class PersonalUiState(
     val lights: Int = 0,
     val plants: List<GardenPlantUi> = emptyList(),
     val ideas: Int = 0,
+    /** Practices the person let go: kept in the Practices list, with "Plant again". */
+    val letGo: List<LetGoUi> = emptyList(),
+    /** Recent talk, book and podcast notes with lines worth practising: the seed packets. */
+    val packets: List<SeedPacketUi> = emptyList(),
     val loaded: Boolean = false
 )
+
+/** A practice that was let go. */
+@Immutable
+data class LetGoUi(val id: String, val title: String, val keptDays: Int, val rhythm: PlantRhythm, val nudge: PlantNudge, val sourceNoteId: String?, val sourceTitle: String?)
+
+/** One line from a note that could become a practice. */
+@Immutable
+data class SeedUi(val text: String, val planted: Boolean)
+
+/** A note's seed packet: its title and the lines in its "try this" sections. */
+@Immutable
+data class SeedPacketUi(val noteId: String, val title: String, val kind: String, val seeds: List<SeedUi>) {
+    val unplanted: Int get() = seeds.count { !it.planted }
+}
 
 /** How often a new practice should come round, as the Plant sheet offers it. */
 enum class PlantRhythm(val label: String, val perWeek: Int) {
@@ -65,8 +86,27 @@ enum class PlantNudge(val label: String, val minutes: Int?) {
     NONE("No reminder", null), MORNING("Morning, 08:00", 8 * 60), EVENING("Evening, 17:30", 17 * 60 + 30)
 }
 
-/** What the Plant sheet hands back. */
-data class PlantRequest(val title: String, val rhythm: PlantRhythm, val nudge: PlantNudge, val checkInWeeks: Int)
+/** What the Plant sheet hands back. [sourceNoteId] and [sourceTitle] are set when it was planted from a note. */
+data class PlantRequest(
+    val title: String,
+    val rhythm: PlantRhythm,
+    val nudge: PlantNudge,
+    val checkInWeeks: Int,
+    val sourceNoteId: String? = null,
+    val sourceTitle: String? = null
+)
+
+/** Where a new practice came from, shown on the Plant sheet. */
+data class PlantSource(val noteId: String, val title: String)
+
+object PlantNudges {
+    /** The sheet's choice for stored reminder minutes; an unusual time reads as the nearer of the two. */
+    fun of(minutes: Int?): PlantNudge = when {
+        minutes == null -> PlantNudge.NONE
+        minutes < 13 * 60 -> PlantNudge.MORNING
+        else -> PlantNudge.EVENING
+    }
+}
 
 object PlantSummary {
     /** "About 10 chances before we look at how it grew." No streaks, nothing withers. */

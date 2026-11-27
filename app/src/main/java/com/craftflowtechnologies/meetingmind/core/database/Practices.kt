@@ -63,6 +63,10 @@ interface PracticeDao {
     )
     fun observeGarden(): Flow<List<PracticeEntity>>
 
+    /** Practices the person let go, most recent first. Their kept days stay. */
+    @Query("SELECT * FROM practices WHERE state = 'LET_GO' ORDER BY COALESCE(endedAt, updatedAt) DESC")
+    fun observeLetGo(): Flow<List<PracticeEntity>>
+
     @Query("SELECT * FROM practice_days")
     fun observeAllDays(): Flow<List<PracticeDayEntity>>
 

@@ -33,6 +33,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Icon
@@ -91,7 +93,15 @@ fun PersonalHomeScreen(
     onPlantNew: () -> Unit,
     onOpenSeedJar: () -> Unit,
     onCaptureIdea: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenSky: () -> Unit = {},
+    onOpenPractices: () -> Unit = {},
+    onOpenNote: (String) -> Unit = {},
+    /** Plant one line of a seed packet: the note, its title, the line. */
+    onPlantSeed: (noteId: String, noteTitle: String, line: String) -> Unit = { _, _, _ -> },
+    onTalkNotes: () -> Unit = {},
+    /** The app menu button; a slot so screenshot tests can leave it out. */
+    menuButton: @Composable (tint: Color) -> Unit = {}
 ) {
     val palette = GardenColors.palette(state.phase, MM.colors.isDark)
     BoxWithConstraints(modifier.fillMaxSize().background(palette.soil).testTag("personal_home")) {
@@ -100,9 +110,9 @@ fun PersonalHomeScreen(
             Box(Modifier.fillMaxWidth().height(sceneHeight)) {
                 GardenScene(palette, fireflies = state.lights, animate = animate, modifier = Modifier.fillMaxSize())
                 Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp)) {
-                    Header(state, palette)
+                    Header(state, palette, onOpenSky, menuButton)
                     Spacer(Modifier.height(20.dp))
-                    LanternCard(state, palette, animate, onAnswerAloud, onWriteAnswer)
+                    LanternCard(state, palette, animate, onAnswerAloud, onWriteAnswer, onOpenSky)
                 }
                 GardenBed(
                     plants = state.plants, palette = palette, animate = animate,
@@ -110,24 +120,37 @@ fun PersonalHomeScreen(
                     modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom = sceneHeight * 0.05f)
                 )
             }
-            SoilPanel(state, palette, onOpenSeedJar, onPlantNew, onCaptureIdea)
+            SoilPanel(state, onOpenSeedJar, onOpenPractices, onCaptureIdea)
+            if (state.packets.any { it.unplanted > 0 }) PacketsSection(state.packets, palette.soil, onOpenNote, onPlantSeed)
+            TalkNotesRow(palette.soil, onTalkNotes)
         }
     }
 }
 
 @Composable
-private fun Header(state: PersonalUiState, p: GardenPalette) {
-    Column(Modifier.padding(top = 20.dp)) {
-        Text(state.whenLine, color = p.inkSoft, fontFamily = InterFamily, fontSize = 13.sp)
-        Text(
-            "Your garden", color = p.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold,
-            fontSize = 34.sp, lineHeight = 40.sp, modifier = Modifier.semantics { heading() }
-        )
+private fun Header(state: PersonalUiState, p: GardenPalette, onOpenSky: () -> Unit, menuButton: @Composable (Color) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Top) {
+        Column(Modifier.weight(1f).padding(top = 4.dp)) {
+            Text(state.whenLine, color = p.inkSoft, fontFamily = InterFamily, fontSize = 13.sp)
+            Text(
+                "Your garden", color = p.ink, fontFamily = GardenSerif, fontWeight = FontWeight.SemiBold,
+                fontSize = 34.sp, lineHeight = 40.sp, modifier = Modifier.semantics { heading() }
+            )
+        }
+        Box(
+            Modifier.size(48.dp).clip(CircleShape).background(p.glass).border(1.dp, p.glassLine, CircleShape)
+                .clickable(role = Role.Button, onClickLabel = "Open your sky", onClick = onOpenSky).testTag("personal_open_sky"),
+            contentAlignment = Alignment.Center
+        ) { Icon(Icons.Outlined.AutoAwesome, contentDescription = "Your sky: patterns in your reflections", tint = p.ink, modifier = Modifier.size(22.dp)) }
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.size(48.dp).clip(CircleShape).background(p.glass).border(1.dp, p.glassLine, CircleShape), contentAlignment = Alignment.Center) {
+            menuButton(p.ink)
+        }
     }
 }
 
 @Composable
-private fun LanternCard(state: PersonalUiState, p: GardenPalette, animate: Boolean, onAnswer: () -> Unit, onWrite: () -> Unit) {
+private fun LanternCard(state: PersonalUiState, p: GardenPalette, animate: Boolean, onAnswer: () -> Unit, onWrite: () -> Unit, onOpenSky: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(30.dp)).background(p.glass)
             .border(1.dp, p.glassLine, RoundedCornerShape(30.dp)).padding(20.dp).testTag("personal_question"),
@@ -146,7 +169,11 @@ private fun LanternCard(state: PersonalUiState, p: GardenPalette, animate: Boole
                 contentAlignment = Alignment.Center
             ) { Icon(Icons.Outlined.Edit, contentDescription = "Write your answer instead", tint = p.ink, modifier = Modifier.size(20.dp)) }
             Spacer(Modifier.weight(1f))
-            Column(horizontalAlignment = Alignment.End, modifier = Modifier.semantics(mergeDescendants = true) {}) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClickLabel = "Open your sky", onClick = onOpenSky)
+                    .padding(4.dp).semantics(mergeDescendants = true) {}.testTag("personal_lights")
+            ) {
                 Text("${state.lights}", color = p.ink, fontFamily = GardenSerif, fontSize = 22.sp, lineHeight = 24.sp)
                 Text(if (state.lights == 1) "light\nthis week" else "lights\nthis week", color = p.inkSoft, fontFamily = InterFamily, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2, textAlign = TextAlign.End)
             }
@@ -294,33 +321,100 @@ private fun SeedSpot(first: Boolean, palette: GardenPalette, onClick: () -> Unit
     }
 }
 
-/** Below the garden: the seed jar, planting something new, and a quick idea. */
+/** Below the garden: the seed jar, every practice, and a quick idea. The soil is dark at every hour. */
 @Composable
-private fun SoilPanel(state: PersonalUiState, p: GardenPalette, onSeedJar: () -> Unit, onPlantNew: () -> Unit, onCaptureIdea: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(p.soil).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun SoilPanel(state: PersonalUiState, onSeedJar: () -> Unit, onPractices: () -> Unit, onCaptureIdea: () -> Unit) {
+    val growing = state.plants.count { !it.bloomed }
+    Column(Modifier.fillMaxWidth().background(GardenColors.palette(state.phase, MM.colors.isDark).soil).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SoilTile(
                 title = "Seed jar", line = when (state.ideas) { 0 -> "Your ideas, kept"; 1 -> "1 idea"; else -> "${state.ideas} ideas" },
-                p = p, onClick = onSeedJar, tag = "personal_seed_jar", modifier = Modifier.weight(1f)
+                onClick = onSeedJar, tag = "personal_seed_jar", modifier = Modifier.weight(1f)
             ) { JarGlyph(Modifier.width(40.dp).height(60.dp), filled = state.ideas.coerceAtMost(5)) }
-            SoilTile(title = "Plant it", line = "Something to practise", p = p, onClick = onPlantNew, tag = "personal_plant_tile", modifier = Modifier.weight(1f)) {
-                Plant(PlantLook(leaves = 2), animate = false, modifier = Modifier.width(40.dp).height(60.dp))
-            }
+            SoilTile(
+                title = "Practices", line = when (growing) { 0 -> "Plant something"; 1 -> "1 growing"; else -> "$growing growing" },
+                onClick = onPractices, tag = "personal_practices_tile", modifier = Modifier.weight(1f)
+            ) { Plant(PlantLook(leaves = 2), animate = false, modifier = Modifier.width(40.dp).height(60.dp)) }
         }
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(26.dp)).border(1.dp, GardenColors.SoilLine, RoundedCornerShape(26.dp))
-                .clickable(role = Role.Button, onClick = onCaptureIdea).padding(horizontal = 18.dp).testTag("personal_capture_idea"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Icon(Icons.Outlined.Mic, contentDescription = null, tint = GardenColors.Gold, modifier = Modifier.size(18.dp))
-            Text("Drop an idea in the jar", color = GardenColors.SoilInk, fontFamily = InterFamily, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+        SoilRow(Icons.Outlined.Mic, "Drop an idea in the jar", "personal_capture_idea", onCaptureIdea)
+    }
+}
+
+@Composable
+private fun SoilRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, tag: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(26.dp)).border(1.dp, GardenColors.SoilLine, RoundedCornerShape(26.dp))
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 18.dp).testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = GardenColors.Gold, modifier = Modifier.size(18.dp))
+        Text(text, color = GardenColors.SoilInk, fontFamily = InterFamily, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+    }
+}
+
+/** Seed packets: lines worth practising from recent talk and how-to notes, one tap to plant. */
+@Composable
+private fun PacketsSection(packets: List<SeedPacketUi>, soil: Color, onOpenNote: (String) -> Unit, onPlant: (String, String, String) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(soil).padding(top = 16.dp, bottom = 8.dp).testTag("personal_packets")) {
+        Text(
+            "From what you're learning", color = GardenColors.SoilInk, fontFamily = GardenSerif, fontSize = 20.sp,
+            modifier = Modifier.padding(horizontal = 20.dp).semantics { heading() }
+        )
+        Text(
+            "Things to try from your talk and how-to notes. Plant one to practise it.", color = GardenColors.SoilInkSoft,
+            fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 10.dp)
+        )
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            packets.filter { it.unplanted > 0 }.forEach { packet -> Packet(packet, onOpenNote, onPlant) }
         }
     }
 }
 
 @Composable
-private fun SoilTile(title: String, line: String, p: GardenPalette, onClick: () -> Unit, tag: String, modifier: Modifier, art: @Composable () -> Unit) {
+private fun Packet(packet: SeedPacketUi, onOpenNote: (String) -> Unit, onPlant: (String, String, String) -> Unit) {
+    Column(
+        Modifier.width(236.dp).clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
+            .background(GardenColors.Packet).testTag("personal_packet_${packet.noteId}")
+    ) {
+        Row(
+            Modifier.fillMaxWidth().background(GardenColors.PacketBand).clickable(role = Role.Button, onClickLabel = "Open the note") { onOpenNote(packet.noteId) }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(packet.kind.uppercase(), color = GardenColors.PacketInkSoft, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, letterSpacing = 1.sp)
+                Text(packet.title, color = GardenColors.PacketInk, fontFamily = GardenSerif, fontSize = 16.sp, lineHeight = 20.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            packet.seeds.filter { !it.planted }.take(3).forEachIndexed { i, seed ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(seed.text, color = GardenColors.PacketInk, fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Box(
+                        Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(22.dp)).background(GardenColors.PacketButton)
+                            .clickable(role = Role.Button, onClickLabel = "Plant “${seed.text}”") { onPlant(packet.noteId, packet.title, seed.text) }
+                            .padding(horizontal = 12.dp).testTag("personal_seed_${packet.noteId}_$i"),
+                        contentAlignment = Alignment.Center
+                    ) { Text("Plant", color = GardenColors.PacketButtonInk, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                }
+            }
+            val more = packet.unplanted - 3
+            if (more > 0) Text("+$more more in the note", color = GardenColors.PacketInkSoft, fontFamily = InterFamily, fontSize = 12.sp)
+        }
+    }
+}
+
+/** Where talk notes come from: a YouTube talk or podcast, or recording one. */
+@Composable
+private fun TalkNotesRow(soil: Color, onTalkNotes: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(soil).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp)) {
+        SoilRow(Icons.Outlined.PlayCircle, "Notes from a talk or video", "personal_talk_notes", onTalkNotes)
+    }
+}
+
+@Composable
+private fun SoilTile(title: String, line: String, onClick: () -> Unit, tag: String, modifier: Modifier, art: @Composable () -> Unit) {
     Row(
         modifier.heightIn(min = 104.dp).clip(RoundedCornerShape(24.dp)).background(GardenColors.SoilGlass).border(1.dp, GardenColors.SoilLine, RoundedCornerShape(24.dp))
             .clickable(role = Role.Button, onClick = onClick).padding(14.dp).testTag(tag),

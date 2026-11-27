@@ -44,6 +44,20 @@ data class GardenPalette(
     val darkScene: Boolean
 )
 
+/** The lantern screen's colours for one theme. */
+@Immutable
+data class LanternPalette(
+    /** The corners of the room, the middle, and the warm light around the lantern. */
+    val edge: Color,
+    val middle: Color,
+    val glow: Color,
+    val ink: Color,
+    val inkSoft: Color,
+    /** Quiet buttons' fill and hairline. */
+    val quiet: Color,
+    val line: Color
+)
+
 /** Fixed colours for the garden and its plants. */
 object GardenColors {
     // The lantern gold, shared with the Bento circle tile, and the ink that reads on it.
@@ -56,6 +70,13 @@ object GardenColors {
     val SoilInkSoft = Color(0xFFD9D1E2)
     val SoilGlass = Color(0x17FFFFFF)
     val SoilLine = Color(0x2EFFFFFF)
+    // Seed packets: paper packets with a printed band, the same in both themes (they are objects).
+    val Packet = Color(0xFFFBF6EC)
+    val PacketBand = Color(0xFFF1DDBA)
+    val PacketInk = Color(0xFF2A1F14)
+    val PacketInkSoft = Color(0xFF6B5A44)
+    val PacketButton = Color(0xFF2A1F14)
+    val PacketButtonInk = Color(0xFFFBF6EC)
     /** Gold text on a light scene's glass (4.5:1 or better). */
     val GoldInk = Color(0xFF7A4F12)
     val Ember = Color(0xFFFFE9AE)
@@ -76,6 +97,15 @@ object GardenColors {
     val Star = Color(0xFFFFFFFF)
 
     fun palette(phase: GardenPhase, darkTheme: Boolean): GardenPalette = if (darkTheme) dark(phase) else light(phase)
+
+    /** The lantern: a warm, lamplit room in the light theme and a night garden in the dark. */
+    fun lantern(darkTheme: Boolean): LanternPalette = if (darkTheme) LanternPalette(
+        edge = Color(0xFF0A0918), middle = Color(0xFF1A1533), glow = Color(0xFF3A2448),
+        ink = Color(0xFFF7F2EA), inkSoft = Color(0xFFBFB5D6), quiet = Color(0x14FFFFFF), line = Color(0x33FFFFFF)
+    ) else LanternPalette(
+        edge = Color(0xFFF3E7D6), middle = Color(0xFFF8EEDF), glow = Color(0xFFF6D9A8),
+        ink = Color(0xFF2A1F14), inkSoft = Color(0xFF5E4C36), quiet = Color(0x0F2A1F14), line = Color(0x332A1F14)
+    )
 
     private fun light(phase: GardenPhase): GardenPalette = when (phase) {
         GardenPhase.DAWN -> GardenPalette(

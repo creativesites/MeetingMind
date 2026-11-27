@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Personal: "Your garden". English only for now; the i18n session translates. -->
+<resources>
+    <!-- The lantern: answering the day's question out loud. -->
+    <string name="lantern_close">Close the lantern</string>
+    <string name="lantern_private">Only you</string>
+    <string name="lantern_private_description">Private. Kept on this phone and out of exports and shares unless you include it.</string>
+    <string name="lantern_listening">Zuri is listening. Take your time.</string>
+    <string name="lantern_paused">Paused. Pick up whenever you\'re ready.</string>
+    <string name="lantern_starting">Lighting the lantern…</string>
+    <string name="lantern_follow_up_label">If you want to keep going</string>
+    <string name="lantern_keep">Keep it</string>
+    <string name="lantern_keep_description">Keep this answer</string>
+    <string name="lantern_pause">Pause</string>
+    <string name="lantern_resume">Carry on</string>
+    <string name="lantern_type_instead">Type instead</string>
+    <string name="lantern_mic_title">The lantern listens through your microphone</string>
+    <string name="lantern_mic_body">Your answer is recorded on this phone and turned into a private journal note. Nothing is shared.</string>
+    <string name="lantern_mic_allow">Allow the microphone</string>
+    <string name="lantern_mic_write">Write my answer instead</string>
+    <string name="lantern_failed">The microphone couldn\'t start. Another app may be using it.</string>
+    <string name="lantern_try_again">Try again</string>
+    <string name="lantern_discard_title">Let this answer go?</string>
+    <string name="lantern_discard_body">What you\'ve said so far won\'t be kept.</string>
+    <string name="lantern_discard_confirm">Let it go</string>
+    <string name="lantern_discard_cancel">Keep talking</string>
+    <string name="lantern_elapsed">%1$d:%2$02d</string>
+</resources>

@@ -9,6 +9,7 @@ import com.craftflowtechnologies.meetingmind.core.practice.Practice
 import com.craftflowtechnologies.meetingmind.core.practice.PracticeGrowth
 import com.craftflowtechnologies.meetingmind.core.practice.PracticeRepository
 import com.craftflowtechnologies.meetingmind.core.practice.Rhythm
+import com.craftflowtechnologies.meetingmind.core.repository.NoteContent
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenQuestions
 import com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenTime
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -45,14 +47,31 @@ class PersonalViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Recent talk and how-to notes, with the lines in their "try this" sections. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val packetSources = notes.observeNotesForWorkflows(SeedPackets.WORKFLOWS).mapLatest { list ->
+        list.filterNot { NoteContent.isDraft(it) }.sortedByDescending { it.createdAt }.take(SeedPackets.MAX_PACKETS).mapNotNull { note ->
+            val doc = runCatching { notes.getDocument(note.id) }.getOrNull() ?: return@mapNotNull null
+            val lines = SeedPackets.lines(doc.blocks.map { SeedPackets.Line(it.sectionKey, it.type.name, it.content.text) })
+            if (lines.isEmpty()) null else Triple(note, lines, note.workflow)
+        }
+    }
+
+    private val reflectionsAndIdeas = combine(
+        notes.observeNotesForWorkflows(REFLECTIONS),
+        notes.observeNotesForWorkflows(listOf(RecordingType.IDEA))
+    ) { reflections, ideas -> reflections.filterNot { NoteContent.isDraft(it) } to ideas.filterNot { NoteContent.isDraft(it) } }
+
     val state: StateFlow<PersonalUiState> = combine(
         practices.observeGarden(),
-        notes.observeNotesForWorkflows(REFLECTIONS),
-        notes.observeNotesForWorkflows(listOf(RecordingType.IDEA)),
+        practices.observeLetGo(),
+        reflectionsAndIdeas,
+        packetSources,
         clock
-    ) { garden, reflections, ideas, now ->
+    ) { garden, letGo, (reflections, ideas), sources, now ->
         val today = now.toLocalDate()
         val weekAgo = today.minusDays(6).atStartOfDay(zone).toInstant().toEpochMilli()
+        val planted = (garden + letGo).filter { it.sourceNoteId != null }.groupBy({ it.sourceNoteId!! }, { SeedPackets.key(it.title) })
         PersonalUiState(
             phase = GardenTime.phase(now.toLocalTime()),
             whenLine = GardenTime.whenLine(today, now.toLocalTime()),
@@ -61,6 +80,11 @@ class PersonalViewModel(app: Application) : AndroidViewModel(app) {
             lights = reflections.count { it.createdAt >= weekAgo },
             plants = garden.map { PlantMapping.toUi(it, today, zone) },
             ideas = ideas.size,
+            letGo = letGo.map { PlantMapping.letGo(it) },
+            packets = sources.map { (note, lines, workflow) ->
+                val done = planted[note.id].orEmpty().toSet()
+                SeedPacketUi(note.id, note.title.ifBlank { workflow.displayName }, workflow.displayName, lines.map { SeedUi(it, SeedPackets.key(it) in done) })
+            },
             loaded = true
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PersonalUiState())
@@ -71,9 +95,13 @@ class PersonalViewModel(app: Application) : AndroidViewModel(app) {
             rhythm = PlantMapping.rhythm(request.rhythm),
             remindMinutes = request.nudge.minutes,
             checkInWeeks = request.checkInWeeks,
-            sourceNoteId = null,
-            sourceTitle = null
+            sourceNoteId = request.sourceNoteId,
+            sourceTitle = request.sourceTitle
         )
+    }
+
+    fun adjust(id: String, rhythm: PlantRhythm, nudge: PlantNudge) = viewModelScope.launch {
+        practices.adjust(id, PlantMapping.rhythm(rhythm), nudge.minutes)
     }
 
     fun tend(id: String, done: Boolean) = viewModelScope.launch { if (done) practices.tendToday(id) else practices.untendToday(id) }
@@ -116,8 +144,22 @@ object PlantMapping {
             sourceLine = p.sourceTitle?.let { "From “$it”" },
             sourceNoteId = p.sourceNoteId,
             windowLine = if (bloomed) "Part of you now" else if (scheduled == 0) "Planted today" else "$kept of $scheduled days kept since you planted it",
-            checkInDue = !bloomed && PracticeGrowth.checkInDue(p.checkInAt, System.currentTimeMillis())
+            checkInDue = !bloomed && PracticeGrowth.checkInDue(p.checkInAt, System.currentTimeMillis()),
+            rhythm = plantRhythm(p.rhythm),
+            nudge = PlantNudges.of(p.remindMinutes)
         )
+    }
+
+    fun letGo(p: Practice): LetGoUi = LetGoUi(
+        id = p.id, title = p.title, keptDays = p.days.size, rhythm = plantRhythm(p.rhythm),
+        nudge = PlantNudges.of(p.remindMinutes), sourceNoteId = p.sourceNoteId, sourceTitle = p.sourceTitle
+    )
+
+    fun plantRhythm(r: Rhythm): PlantRhythm = when (r) {
+        Rhythm.DAILY -> PlantRhythm.DAILY
+        Rhythm.WEEKDAYS -> PlantRhythm.WEEKDAYS
+        Rhythm.THREE_A_WEEK -> PlantRhythm.THREE_A_WEEK
+        Rhythm.WEEKLY -> PlantRhythm.WEEKLY
     }
 
     fun look(stage: PracticeGrowth.Stage, resting: Boolean, tended: Boolean): PlantLook = when (stage) {
