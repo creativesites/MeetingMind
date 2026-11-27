@@ -61,6 +61,8 @@ class MMRadius internal constructor() {
     val pill: Shape = CircleShape
     /** Bottom sheets and menus: top corners only. */
     val sheet: Shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    /** A speech bubble: round everywhere except the tail corner nearest the speaker (bottom start). */
+    val bubble: Shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 6.dp)
 }
 
 val LocalMMRadius = staticCompositionLocalOf { MMRadius() }
