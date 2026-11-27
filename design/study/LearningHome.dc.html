@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Learning home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0E7490}a:hover{color:#0B5568}
+@keyframes zfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes twinkle{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.zfloat{animation:zfloat 3.2s ease-in-out infinite}
+.twinkle{animation:twinkle 2.4s ease-in-out infinite}
+.pulse{animation:pulse 1.4s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width: 390px; height: 1560px; box-sizing: border-box; background: #FAFAF9; font-family: Inter, system-ui, sans-serif; color: #18181B; display: flex; flex-direction: column; position: relative; overflow: hidden">
+
+  <div style="display: flex; align-items: center; gap: 8px; padding: 18px 16px 4px">
+    <button aria-label="Menu" style="width: 44px; height: 44px; border-radius: 22px; border: 1px solid #E5E5E3; background: #FFFFFF; display: flex; align-items: center; justify-content: center; padding: 0">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#18181B" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"></path></svg>
+    </button>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 1px; padding-left: 4px">
+      <span style="font-size: 12px; color: #6B6B73; font-weight: 500">Wednesday evening</span>
+      <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Learning</h1>
+    </div>
+    <button aria-label="Account and settings" style="width: 44px; height: 44px; border-radius: 22px; border: none; background: #E3F1F5; color: #0B5568; font-weight: 700; font-size: 14px; font-family: Inter, sans-serif">TM</button>
+  </div>
+
+  <a href="#" style="margin: 12px 16px 0; height: 52px; border-radius: 26px; background: #FFFFFF; border: 1px solid #E5E5E3; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px; text-decoration: none; color: #6B6B73; font-size: 15px">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#52525B" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+    <span style="flex: 1">Ask or find anything in your lectures</span>
+    <span style="width: 36px; height: 36px; border-radius: 18px; background: #E3F1F5; display: flex; align-items: center; justify-content: center">
+      <svg width="20" height="20" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="#1F9AB5"></circle><ellipse cx="40" cy="48" rx="6" ry="8" fill="#151827"></ellipse><ellipse cx="60" cy="48" rx="6" ry="8" fill="#151827"></ellipse></svg>
+    </span>
+  </a>
+
+  <div style="margin: 16px 16px 0; background: #0E7490; border-radius: 24px; padding: 18px; color: #FFFFFF; display: flex; flex-direction: column; gap: 12px; position: relative; overflow: hidden">
+    <div style="display: flex; gap: 12px; align-items: center">
+      <div class="zfloat" style="flex-shrink: 0">
+        <svg width="52" height="52" viewBox="0 0 100 100" aria-hidden="true">
+          <defs><radialGradient id="lh1" cx="36%" cy="30%" r="75%"><stop offset="0" stop-color="#E8FAFD"></stop><stop offset="0.5" stop-color="#7FD3E3"></stop><stop offset="1" stop-color="#2A93AB"></stop></radialGradient></defs>
+          <g transform="rotate(-9 50 52)"><circle cx="50" cy="52" r="38" fill="url(#lh1)"></circle>
+          <ellipse cx="45" cy="49" rx="5.5" ry="7.5" fill="#151827"></ellipse><ellipse cx="65" cy="49" rx="5.5" ry="7.5" fill="#151827"></ellipse>
+          <circle cx="47" cy="46" r="2" fill="#FFFFFF"></circle><circle cx="67" cy="46" r="2" fill="#FFFFFF"></circle>
+          <ellipse cx="56" cy="66" rx="3.2" ry="3.8" fill="#151827"></ellipse></g>
+        </svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="font-size: 12px; font-weight: 600; opacity: 0.9">Tonight's round</span>
+        <span style="font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15">8 cards · about 5 min</span>
+        <span style="font-size: 13px; opacity: 0.92">Done by 9:20 if you start now</span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 10px">
+      <a href="Practice.dc.html" style="flex: 1; height: 48px; border-radius: 24px; background: #FFFFFF; color: #0B5568; font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="#0B5568" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>Start round</a>
+      <button style="height: 48px; padding: 0 16px; border-radius: 24px; background: transparent; border: 1px solid rgba(255,255,255,0.5); color: #FFFFFF; font-size: 14px; font-weight: 600; font-family: Inter, sans-serif">Later</button>
+    </div>
+  </div>
+
+  <div style="padding: 22px 20px 10px"><h2 style="margin: 0; font-size: 17px; font-weight: 700">Start something new</h2></div>
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 0 16px">
+    <a href="#" style="background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 12px 6px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-decoration: none; color: #18181B; font-size: 12px; font-weight: 600; text-align: center; line-height: 1.25">
+      <span style="width: 40px; height: 40px; border-radius: 20px; background: #18181B; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="6" fill="#E5484D"></circle></svg></span>Record a lecture</a>
+    <a href="#" style="background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 12px 6px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-decoration: none; color: #18181B; font-size: 12px; font-weight: 600; text-align: center; line-height: 1.25">
+      <span style="width: 40px; height: 40px; border-radius: 20px; background: #E3F1F5; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0B5568" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="4"></rect><path d="M10.5 9.5v5l4-2.5z" fill="#0B5568"></path></svg></span>From a video link</a>
+    <a href="#" style="background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 12px 6px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-decoration: none; color: #18181B; font-size: 12px; font-weight: 600; text-align: center; line-height: 1.25">
+      <span style="width: 40px; height: 40px; border-radius: 20px; background: #E3F1F5; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0B5568" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5"></path><path d="M5 19h14"></path></svg></span>Import a file</a>
+    <a href="#" style="background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 12px 6px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-decoration: none; color: #18181B; font-size: 12px; font-weight: 600; text-align: center; line-height: 1.25">
+      <span style="width: 40px; height: 40px; border-radius: 20px; background: #E3F1F5; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0B5568" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg></span>Write a study note</a>
+  </div>
+
+  <div style="padding: 22px 20px 8px"><h2 style="margin: 0; font-size: 17px; font-weight: 700">Continue</h2></div>
+  <a href="Lesson.dc.html" style="margin: 0 16px; background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 20px; padding: 14px 16px; display: flex; gap: 14px; align-items: center; text-decoration: none; color: #18181B">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 12px; font-weight: 600; color: #0E7490">BIO 201 · Lecture 7</span>
+      <span style="font-size: 17px; font-weight: 700">Enzyme kinetics</span>
+      <span style="font-size: 13px; color: #6B6B73">You stopped at 2 · Inhibition</span>
+    </div>
+    <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="none" stroke="#E5E5E3" stroke-width="4"></circle><circle cx="24" cy="24" r="20" fill="none" stroke="#0E7490" stroke-width="4" stroke-dasharray="125.6" stroke-dashoffset="69" transform="rotate(-90 24 24)" stroke-linecap="round"></circle><text x="24" y="28" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#18181B">45%</text></svg>
+  </a>
+
+  <div style="margin: 16px 16px 0; background: #0F1622; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline">
+      <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #F0F3F8">Your sky</h2>
+      <a href="#" style="font-size: 13px; font-weight: 600; color: #5CC8DD; text-decoration: none">31 ideas</a>
+    </div>
+    <svg width="326" height="110" viewBox="0 0 326 110" role="img" aria-label="5 shining, 4 growing, 3 new, 2 worth a look">
+      <g stroke="#5CC8DD" stroke-width="1" opacity="0.4" fill="none"><path d="M30 40L90 22L130 64L70 88Z"></path><path d="M130 64L190 46L250 70L300 34"></path></g>
+      <g fill="#5CC8DD"><circle cx="30" cy="40" r="11" opacity="0.18"></circle><circle cx="30" cy="40" r="4"></circle><circle cx="90" cy="22" r="11" opacity="0.18"></circle><circle cx="90" cy="22" r="4"></circle><circle cx="130" cy="64" r="11" opacity="0.18"></circle><circle cx="130" cy="64" r="4"></circle><circle cx="250" cy="70" r="11" opacity="0.18"></circle><circle cx="250" cy="70" r="4"></circle></g>
+      <g fill="#0F1622" stroke="#5CC8DD" stroke-width="1.6"><circle cx="70" cy="88" r="3.6"></circle><circle cx="190" cy="46" r="3.6"></circle></g>
+      <g class="twinkle" fill="#E0B25A"><path d="M300 28l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"></path></g>
+    </svg>
+    <span style="font-size: 13px; color: #B7C0CF">5 shining · 4 growing · 2 worth a look</span>
+  </div>
+
+  <div style="padding: 22px 20px 10px; display: flex; justify-content: space-between; align-items: baseline">
+    <h2 style="margin: 0; font-size: 17px; font-weight: 700">Courses</h2>
+    <a href="#" style="font-size: 14px; font-weight: 600; text-decoration: none">Add a course</a>
+  </div>
+  <div style="display: flex; gap: 10px; padding: 0 16px; overflow: hidden">
+    <a href="Course.dc.html" style="flex: 0 0 148px; background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #18181B">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #0E7490">BIO 201</span>
+      <span style="font-size: 15px; font-weight: 700">Biochemistry</span>
+      <div style="height: 6px; border-radius: 3px; background: #E5E5E3; overflow: hidden"><div style="width: 62%; height: 6px; background: #0E7490"></div></div>
+      <span style="font-size: 12px; color: #7A4E0F; font-weight: 600">4 due · exam in 12 days</span>
+    </a>
+    <a href="Course.dc.html" style="flex: 0 0 148px; background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #18181B">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #0E7490">ECON 101</span>
+      <span style="font-size: 15px; font-weight: 700">Economics</span>
+      <div style="height: 6px; border-radius: 3px; background: #E5E5E3; overflow: hidden"><div style="width: 80%; height: 6px; background: #0E7490"></div></div>
+      <span style="font-size: 12px; color: #6B6B73">All caught up</span>
+    </a>
+    <a href="Course.dc.html" style="flex: 0 0 148px; background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #18181B">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #0E7490">CHEM 110</span>
+      <span style="font-size: 15px; font-weight: 700">Chemistry</span>
+      <div style="height: 6px; border-radius: 3px; background: #E5E5E3; overflow: hidden"><div style="width: 30%; height: 6px; background: #0E7490"></div></div>
+      <span style="font-size: 12px; color: #6B6B73">2 due</span>
+    </a>
+  </div>
+
+  <div style="padding: 22px 20px 8px"><h2 style="margin: 0; font-size: 17px; font-weight: 700">Recent lectures</h2></div>
+  <div style="margin: 0 16px; background: #FFFFFF; border: 1px solid #E5E5E3; border-radius: 20px; display: flex; flex-direction: column">
+    <a href="Lesson.dc.html" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #EDEDEB; text-decoration: none; color: #18181B">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px; font-weight: 600">Supply shocks</span><span style="font-size: 12px; color: #6B6B73">ECON 101 · Mon · 52 min</span></div>
+      <span style="font-size: 12px; font-weight: 700; color: #0B5568; background: #E3F1F5; padding: 5px 10px; border-radius: 12px">Lesson ready</span>
+    </a>
+    <a href="#" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #EDEDEB; text-decoration: none; color: #18181B">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px; font-weight: 600">Acids and bases</span><span style="font-size: 12px; color: #6B6B73">CHEM 110 · Today · 1 h 02 min</span></div>
+      <span class="pulse" style="font-size: 12px; font-weight: 600; color: #52525B; background: #F5F5F4; padding: 5px 10px; border-radius: 12px">Making lesson…</span>
+    </a>
+    <a href="#" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; text-decoration: none; color: #18181B">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px; font-weight: 600">Study note: cell signalling</span><span style="font-size: 12px; color: #6B6B73">BIO 201 · Sun · written</span></div>
+      <span style="font-size: 12px; font-weight: 700; color: #0B5568; background: #E3F1F5; padding: 5px 10px; border-radius: 12px">Lesson ready</span>
+    </a>
+  </div>
+
+  <div style="margin: 16px 16px 0; background: #F5F5F4; border-radius: 18px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between">
+    <span style="font-size: 14px; font-weight: 600">You studied 4 days this week</span>
+    <div style="display: flex; gap: 4px"><span style="width: 10px; height: 10px; border-radius: 5px; background: #0E7490"></span><span style="width: 10px; height: 10px; border-radius: 5px; background: #0E7490"></span><span style="width: 10px; height: 10px; border-radius: 5px; background: #D4D4D8"></span><span style="width: 10px; height: 10px; border-radius: 5px; background: #0E7490"></span><span style="width: 10px; height: 10px; border-radius: 5px; background: #0E7490"></span><span style="width: 10px; height: 10px; border-radius: 5px; border: 2px solid #0E7490; box-sizing: border-box"></span><span style="width: 10px; height: 10px; border-radius: 5px; background: #D4D4D8"></span></div>
+  </div>
+
+  <div style="flex: 1"></div>
+  <nav aria-label="Main" style="height: 76px; background: #FFFFFF; border-top: 1px solid #E5E5E3; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; padding-bottom: 6px">
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; color: #0E7490; text-decoration: none">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0E7490" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"></path></svg>Home</a>
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; font-weight: 500; color: #52525B; text-decoration: none">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#52525B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h7M9 16h5"></path></svg>Notes</a>
+    <a href="NewSession.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: #18181B; text-decoration: none">
+      <span style="width: 44px; height: 30px; border-radius: 15px; background: #0E7490; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></span>New</a>
+    <a href="Practice.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; font-weight: 500; color: #52525B; text-decoration: none">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#52525B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="13" height="15" rx="2"></rect><path d="M8 3h11a1 1 0 0 1 1 1v13"></path></svg>Practice</a>
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; font-weight: 500; color: #52525B; text-decoration: none">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#52525B" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>Tasks</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1560}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

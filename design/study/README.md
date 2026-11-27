@@ -14,5 +14,11 @@ approved canvas "MeetingMind Study redesign". Open them as reference; build with
 | Recall.dc.html | Practice: recall card | `feature/learn/ui/practice` |
 | ExplainAloud.dc.html | Explain it aloud (later release) | not built yet |
 | RoundDone.dc.html | Round complete | `feature/learn/ui/practice` |
+| LearningHome.dc.html | Learning home: the Learning space and the Learning home style | `feature/learn/ui/home` |
+| Course.dc.html | Course page | `feature/learn/ui/course` |
+| NewSession.dc.html | Start a study session (sheet) | `feature/learn/ui/home` |
+| FormatMatch.dc.html | Practice formats: match, order, fill the gap (all ten formats use this style) | `feature/learn/ui/practice` |
 
 Shapes and states shared by all of them: `feature/learn/LearnContract.kt`. Rules: `docs/mvp/STUDY_AUDIT.md`.
+
+2026-11-27, second pass (founder): Learning's old screens are all replaced by this design; Learning's functionality is kept. One Learning: the `learn_study` routes are retired.
