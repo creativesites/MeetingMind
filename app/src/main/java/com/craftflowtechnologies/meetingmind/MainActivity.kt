@@ -358,6 +358,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.WORK -> Routes.WORK
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.LEARN -> Routes.LEARN
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH -> Routes.FAITH
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.PERSONAL -> Routes.PERSONAL
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.TASKS -> Routes.TASKS
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NONE -> Routes.HOME
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
@@ -419,6 +420,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Inbox -> navController.navigate(Routes.WORK_INBOX) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WorkSpace -> navController.navigate(Routes.WORK) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Learn -> navController.navigate(Routes.LEARN) { launchSingleTop = true }
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.PersonalSpace -> navController.navigate(Routes.PERSONAL) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WeeklyReview -> navController.navigate(Routes.WEEKLY_REVIEW) { launchSingleTop = true }
             // Prepare opens the sheet on Work, over the space that owns it; the sheet reads the event from the link.
             is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Prepare -> {
@@ -565,7 +567,19 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.LEARNING) LearnHomeHost(
                 navController = navController,
                 onNavigateBottomNav = navigateToPrimary
-            ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM) com.craftflowtechnologies.meetingmind.feature.today.home.CalmHome(
+            ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PERSONAL) {
+                val pvm: com.craftflowtechnologies.meetingmind.feature.personal.PersonalViewModel = viewModel()
+                com.craftflowtechnologies.meetingmind.feature.personal.PersonalSpaceScreen(
+                    viewModel = pvm,
+                    onStartRoutine = { rId, min -> navController.navigate(Routes.personalRoutinePlayerRoute(rId, min)) },
+                    onRecordJournal = { navController.navigate(Routes.recordTypeRoute(RecordingType.JOURNAL)) },
+                    onRecordIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) },
+                    onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                    onOpenYouTube = { youTubeSheet.controller.open(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL) },
+                    onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) },
+                    onOpenPaywall = { navController.navigate(Routes.paywallRoute("AUTOMATION_RECIPES")) { launchSingleTop = true } }
+                )
+            } else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM) com.craftflowtechnologies.meetingmind.feature.today.home.CalmHome(
                 today = vm,
                 onRecord = { navController.navigate(Routes.RECORDING) },
                 onNewNote = { openNewNote(false) },
@@ -612,6 +626,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
                 onOpenLearn = { navController.navigate(Routes.LEARN) },
+                onOpenPersonal = { navController.navigate(Routes.PERSONAL) },
                 onOpenTasks = { navController.navigate(Routes.TASKS) },
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 homeCircles = homeCircles,
@@ -1128,6 +1143,44 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) },
                 onRecord = { navController.navigate(Routes.RECORDING) },
                 onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) }
+            )
+        }
+
+        // PERSONAL (Sanctuary Home, Living Journal, Idea Studio, Growth & Routines, Memory Vault)
+        composable(
+            route = Routes.PERSONAL_TAB,
+            arguments = listOf(navArgument("tab") { type = NavType.StringType; nullable = true; defaultValue = null })
+        ) { entry ->
+            val pvm: com.craftflowtechnologies.meetingmind.feature.personal.PersonalViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.personal.PersonalSpaceScreen(
+                viewModel = pvm,
+                initialTab = entry.arguments?.getString("tab"),
+                onStartRoutine = { rId, min -> navController.navigate(Routes.personalRoutinePlayerRoute(rId, min)) },
+                onRecordJournal = { navController.navigate(Routes.recordTypeRoute(RecordingType.JOURNAL)) },
+                onRecordIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenYouTube = { youTubeSheet.controller.open(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL) },
+                onHome = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME) },
+                onOpenPaywall = { navController.navigate(Routes.paywallRoute("AUTOMATION_RECIPES")) { launchSingleTop = true } }
+            )
+        }
+        composable(
+            route = Routes.PERSONAL_ROUTINE_PLAYER,
+            arguments = listOf(
+                navArgument("routineId") { type = NavType.StringType },
+                navArgument("minEffort") { type = NavType.BoolType; defaultValue = false }
+            )
+        ) { entry ->
+            val routineId = entry.arguments?.getString("routineId").orEmpty()
+            val minEffort = entry.arguments?.getBoolean("minEffort") ?: false
+            val rvm: com.craftflowtechnologies.meetingmind.feature.personal.RoutinePlayerViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.personal.RoutinePlayerScreen(
+                routineId = routineId,
+                initialMinEffort = minEffort,
+                viewModel = rvm,
+                onClose = { navController.popBackStack() },
+                onOpenVoiceRecorderForJournal = { navController.navigate(Routes.recordTypeRoute(RecordingType.JOURNAL)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) }
             )
         }
 

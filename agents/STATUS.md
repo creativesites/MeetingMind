@@ -1,6 +1,16 @@
 # Status
 
-Updated: 2026-11-21. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+Updated: 2026-11-27. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+
+## Personal Vertical (Phases 1–3, Schema 32) (2026-11-27)
+- **Room Schema 32 (`MIGRATION_31_32`):** Added 6 normalized tables (`personal_routines`, `routine_steps`, `routine_completions`, `growth_enrollments`, `growth_step_progress`, `personal_daily_plans`), `PeopleDao.observeBySpace`, exported `32.json`, and `Migration31To32Test`.
+- **First-class Personal space & 5-tab Sanctuary dock:** Wired `NotebookSpace.PERSONAL` across bottom nav, Home picker, Today `SpacesRow` live glance (`rememberPersonalGlanceLine`), deep links, daily rhythm alarms, and Note Editor's private "Reflect in Personal Journal" bridge.
+- **Growth engine & living 3D journal:** Bundled 12 starter Routines, 14 Guided Journeys, 8 Challenges, and 12+ Coaching activities voiced via cached Read-to-Me (`coaching:` prefix); full-screen `RoutinePlayerScreen` with ambient soundscapes, breathing pacer, and low-energy day mode; `RoutineEditorSheet`, `LifeChapterDetailSheet`, `EnrollmentDetailSheet`, interactive mood calendar, offline Idea Collision engine, and 3D visual rituals (`Personal3DVisuals.kt`).
+- **Privacy, Inner Circle & Phase 3 Pro integrations:** Added `PersonalSanctuaryLock` (per-space BiometricPrompt lock + `FLAG_SECURE` recents shield), `GuidedActivityStageSheet`, `MemoryUnsealCeremonySheet` ("Reply to past self"), Inner Circle & Gift/Mention Radar, Personal Life Lists, 4 Personal Pro Autopilot recipes (`EVENING_STOIC_DEBRIEF`, `IDEA_TO_ACTION_BLUEPRINT`, `THERAPY_OR_COACHING_PREP`, `WEEKLY_LIFE_LETTER`), Obsidian SAF Markdown sync, and Day One JSON importer.
+- **Verified:** `:app:assembleDebug` (`arm64-v8a`, `com.craftflowtechnologies.meetingmind.dev`) built with zero compile errors on 2026-11-24 and passed the `DEV_BUILDS.md` secret scan (only the expected Firebase key from `google-services-dev.json`). Static design-system guard scan across `core/personal` and `feature/personal` returned 0 hits.
+- **Open:**
+  - Not yet verified on the Galaxy S20+: the previously built debug APK under `app/build/` was cleared, and rebuilding is currently blocked by low disk space (`329 MiB` free on `/`) and two other Gradle daemons running on this 8 GB Mac.
+  - Targeted unit tests (`Migration31To32Test`, `PersonalRepositoryTest`, `PersonalPolishTest`, `PostSessionAutopilotTest`, `NavigationModelTest`, `CompanionMotionTest`, `ColorLiteralGuardTest`, `AssistantTest`) are written and compiled cleanly in debug Kotlin, pending execution once disk space and Gradle are free.
 
 ## Release v51 for closed testing (2026-11-21)
 - **Bundle:** built at `6694dc6` from a clean tree and copied to the founder's `~/Downloads/meetingmind-v51.aab` (141.6 MB, sha256 `c2599ebc5c813139…`).

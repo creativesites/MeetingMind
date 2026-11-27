@@ -21,13 +21,13 @@ import org.junit.Test
 /** The bar, the app menu, background schedules and homes all follow the spaces a person chose. */
 class NavigationModelTest {
 
-    // ---- Bar (Work spec R2 table, plus Faith claiming a place under the same rule, R-1).
+    // ---- Bar (Work spec R2 table, plus Faith and Personal claiming places under the same rule).
     @Test fun `bar places follow the R2 table`() {
         assertEquals(listOf(BarSlot.WORK, BarSlot.LEARN), BarConfig.slots(setOf(WORK, LEARNING)))
         assertEquals(listOf(BarSlot.WORK, BarSlot.TASKS), BarConfig.slots(setOf(WORK)))
         assertEquals(listOf(BarSlot.LEARN, BarSlot.TASKS), BarConfig.slots(setOf(LEARNING)))
-        assertEquals(listOf(BarSlot.TASKS, BarSlot.SEARCH), BarConfig.slots(setOf(PERSONAL)))
-        assertEquals(listOf(BarSlot.FAITH, BarSlot.TASKS), BarConfig.slots(setOf(FAITH, PERSONAL)))
+        assertEquals(listOf(BarSlot.PERSONAL, BarSlot.TASKS), BarConfig.slots(setOf(PERSONAL)))
+        assertEquals(listOf(BarSlot.FAITH, BarSlot.PERSONAL), BarConfig.slots(setOf(FAITH, PERSONAL)))
         assertEquals(listOf(BarSlot.WORK, BarSlot.FAITH), BarConfig.slots(setOf(WORK, FAITH)))
     }
 
@@ -35,6 +35,7 @@ class NavigationModelTest {
         val all = NotebookSpace.entries.toSet()
         assertEquals(listOf(BarSlot.WORK, BarSlot.LEARN), BarConfig.slots(AppIdentity(all), HomeStyle.TODAY))
         assertEquals(listOf(BarSlot.LEARN, BarSlot.WORK), BarConfig.slots(AppIdentity(all), HomeStyle.LEARNING))
+        assertEquals(listOf(BarSlot.PERSONAL, BarSlot.WORK), BarConfig.slots(AppIdentity(all), HomeStyle.PERSONAL))
         val sanctuary = AppIdentity(all, look = com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel.SANCTUARY)
         assertEquals(listOf(BarSlot.FAITH, BarSlot.WORK), BarConfig.slots(sanctuary, HomeStyle.TODAY))
     }

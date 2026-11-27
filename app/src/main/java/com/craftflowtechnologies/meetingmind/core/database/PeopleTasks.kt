@@ -203,6 +203,9 @@ interface PeopleDao {
     @Query("SELECT * FROM people WHERE deletedAt IS NULL ORDER BY name COLLATE NOCASE")
     suspend fun getAll(): List<PersonEntity>
 
+    @Query("SELECT * FROM people WHERE deletedAt IS NULL AND isSelf = 0 AND space = :space ORDER BY name COLLATE NOCASE")
+    fun observeBySpace(space: String): Flow<List<PersonEntity>>
+
     @Query(
         """SELECT p.id, p.name, p.relationship, p.notes, p.createdAt, p.updatedAt,
             (SELECT COUNT(*) FROM tasks t WHERE t.personId = p.id AND t.doneAt IS NULL AND t.deletedAt IS NULL) AS openTasks,

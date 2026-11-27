@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Personal vertical headers & tabs -->
+    <string name="personal_header_sanctuary">Personal</string>
+    <string name="personal_header_journal">Living Journal</string>
+    <string name="personal_header_ideas">Idea Studio</string>
+    <string name="personal_header_growth">Growth</string>
+    <string name="personal_header_vault">Memory Vault</string>
+    <string name="personal_action_today">Today</string>
+    <string name="personal_action_dismiss">Dismiss</string>
+    <string name="personal_action_edit">Edit</string>
+    <string name="personal_action_rest">Rest</string>
+    <string name="personal_journal_search_placeholder">Search your journal…</string>
+    <string name="personal_journal_empty_title">Your living journal is open</string>
+    <string name="personal_journal_empty_body">Speak a 60-second reflection, complete a routine step, or tap Add to Today to start your first day page.</string>
+    <string name="personal_ideas_empty_title">Spark Vault is ready</string>
+    <string name="personal_ideas_empty_body">Catch fleeting shower thoughts, creative sparks, and voice memos—then incubate them from Spark to Shipped.</string>
+</resources>

@@ -28,7 +28,15 @@ enum class CompanionState : CompanionVisual {
     /** Phase B (P-5). */
     PROUD,
     /** Phase B (F-7 read-aloud). */
-    READING;
+    READING,
+    /** Personal Phase 2: evening routine / cozy sanctuary rest. */
+    COZY,
+    /** Personal Phase 2: guided breathing pacer synced to level 0..1. */
+    BREATHING,
+    /** Personal Phase 2: walking / advancing along a Guided Journey path. */
+    STRIDING,
+    /** Personal Phase 2: revisiting a memory or unsealing a 3D Time Capsule. */
+    NOSTALGIC;
 
     companion object {
         /** The six states the MVP draws and tests. */
@@ -91,7 +99,16 @@ data class StageDetail(val doneMinutes: Int? = null, val totalMinutes: Int? = nu
 data class CaptionKey(val stage: ProcessingStage, val detail: StageDetail? = null)
 
 /** Milestones that may earn a Proud moment, once each, ever (§3.1 Proud). Never loss-based. */
-enum class MilestoneKind { FIRST_NOTE, TENTH_NOTE, READING_PLAN_DONE, SEVEN_DEVOTIONALS_IN_MONTH, ALL_CARDS_CLEARED }
+enum class MilestoneKind {
+    FIRST_NOTE,
+    TENTH_NOTE,
+    READING_PLAN_DONE,
+    SEVEN_DEVOTIONALS_IN_MONTH,
+    ALL_CARDS_CLEARED,
+    PERSONAL_JOURNEY_DONE,
+    PERSONAL_CHALLENGE_DONE,
+    FIRST_ROUTINE_WEEK
+}
 
 enum class OneShotKind(val visual: CompanionVisual, val durationMs: Long) {
     CELEBRATING(CompanionState.CELEBRATING, 1_600),

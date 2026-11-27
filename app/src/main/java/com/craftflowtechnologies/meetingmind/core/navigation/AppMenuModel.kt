@@ -74,7 +74,12 @@ object AppMenuModel {
         )
         NotebookSpace.PERSONAL -> MenuSection(
             "personal", "Personal", listOf(
-                go("personal.journal", "Journal", MenuIcon.JOURNAL, Routes.recordTypeRoute(RecordingType.JOURNAL), "Say what's on your mind"),
+                go("personal.home", "Personal sanctuary", MenuIcon.HOME, Routes.PERSONAL, "Today's plan, routines, journal and growth"),
+                go("personal.journal", "Living journal", MenuIcon.JOURNAL, Routes.personalRoute("JOURNAL"), "Day pages, volumes and reflections"),
+                go("personal.growth", "Routines, journeys & coaching", MenuIcon.PLANS, Routes.personalRoute("GROWTH"), "Morning/evening routines, guided journeys and challenges"),
+                go("personal.ideas", "Idea studio", MenuIcon.CREATE, Routes.personalRoute("IDEAS"), "Spark vault and idea incubator"),
+                go("personal.vault", "Memory vault & capsules", MenuIcon.ARCHIVE, Routes.personalRoute("VAULT"), "Time capsules, milestones and voice keepsakes"),
+                go("personal.record_journal", "Record a journal entry", MenuIcon.RECORD, Routes.recordTypeRoute(RecordingType.JOURNAL), "Say what's on your mind"),
                 go("personal.idea", "Capture an idea", MenuIcon.RECORD, Routes.recordTypeRoute(RecordingType.IDEA))
             ), NotebookSpace.PERSONAL
         )

@@ -74,6 +74,12 @@ object Routes {
     const val SETUP = "setup"
     // Work (docs/PLAN_PROFESSIONAL.md §6–7).
     const val WORK = "work"
+    const val PERSONAL = "personal"
+    const val PERSONAL_TAB = "personal?tab={tab}"
+    fun personalRoute(tab: String? = null) = "personal" + (tab?.let { "?tab=$it" } ?: "")
+    const val PERSONAL_ROUTINE_PLAYER = "personal/routine/{routineId}?minEffort={minEffort}"
+    fun personalRoutinePlayerRoute(routineId: String, minEffort: Boolean = false) =
+        "personal/routine/$routineId?minEffort=$minEffort"
     const val WORK_ALL = "work_all?tab={tab}"
     const val WORK_PERSON = "work_person/{personId}"
     const val PROJECT = "project/{projectId}"

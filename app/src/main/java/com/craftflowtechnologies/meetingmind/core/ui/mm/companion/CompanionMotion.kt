@@ -153,6 +153,10 @@ object ZuriMotion {
         MotionSpec(CompanionState.CURIOUS, Timing.OneShot(600), tracks = CuriousTracks),
         MotionSpec(CompanionState.PROUD, Timing.OneShot(1200), tracks = ProudTracks),
         MotionSpec(CompanionState.READING, Timing.Driven, blinkEveryMs = 2400, fps = 30),
+        MotionSpec(CompanionState.COZY, Timing.Loop(5200), breath = Breath(5200, 0.024f), sway = Sway(6400, 1.8f, 3f), fps = 30),
+        MotionSpec(CompanionState.BREATHING, Timing.Driven, breath = Breath(14000, 0.045f), fps = 60),
+        MotionSpec(CompanionState.STRIDING, Timing.Loop(1100), sway = Sway(1100, 4.5f), blinkEveryMs = 3600, fps = 60),
+        MotionSpec(CompanionState.NOSTALGIC, Timing.Loop(4800), breath = Breath(4800, 0.014f), sway = Sway(6200, 1.5f, -3f), blinkEveryMs = 4200, fps = 30),
         MotionSpec(CreateMode.PRAYERFUL, Timing.Loop(6000), breath = Breath(6000, 0.008f), fps = 30),
         MotionSpec(CreateMode.PEACEFUL, Timing.Loop(6000), breath = Breath(6000, 0.015f), fps = 30),
         MotionSpec(CreateMode.GRATEFUL, Timing.Loop(4500), breath = Breath(4500, 0.012f), sway = Sway(7850, 1f, 4f), fps = 30),
@@ -258,6 +262,26 @@ object CompanionPoses {
                 p.lookX = if (rm) 0f else readingGlance(t); p.lookY = 0.6f; p.mouth = Mouth.SMILE
                 p.sy = 1f + 0.015f * L; p.sx = 1f + 0.006f * L; p.blink = blinkAt(spec.blinkEveryMs, t, rm); p.talk = L
             }
+            CompanionState.COZY -> {
+                p.sx = bx + 0.018f; p.sy = by - 0.018f; p.dy = 1.6f
+                p.tilt = if (rm) 3f else sway(spec, t, rm); p.eyes = Eyes.CLOSED; p.mouth = Mouth.SMILE
+            }
+            CompanionState.BREATHING -> {
+                val expand = if (rm) 0.5f else L.coerceIn(0f, 1f)
+                p.sx = 0.96f + 0.085f * expand; p.sy = 0.96f + 0.095f * expand
+                p.dy = -2.2f * expand; p.eyes = Eyes.CLOSED; p.mouth = Mouth.SMILE
+            }
+            CompanionState.STRIDING -> {
+                val step = if (rm) 0.35f else abs(sin(t * TAU / 1.1f))
+                p.dy = -3.4f * step; p.hop = step * 0.4f; p.tilt = if (rm) 3f else sway(spec, t, rm)
+                p.eyes = Eyes.HAPPY; p.mouth = Mouth.SMILE; p.lookX = 0.9f
+                p.blink = blinkAt(spec.blinkEveryMs, t, rm)
+            }
+            CompanionState.NOSTALGIC -> {
+                p.sx = bx; p.sy = by; p.tilt = if (rm) -3f else sway(spec, t, rm)
+                p.eyes = Eyes.SOFT; p.mouth = Mouth.SMILE; p.lookX = -0.8f; p.lookY = -1.2f
+                p.fx = Fx.GLINT; p.blink = blinkAt(spec.blinkEveryMs, t, rm)
+            }
             CreateMode.PRAYERFUL -> { p.sx = bx; p.sy = by; p.dy = 1f; p.eyes = Eyes.CLOSED; p.mouth = Mouth.NONE; p.hands = true }
             CreateMode.PEACEFUL -> { p.sx = bx; p.sy = by; p.eyes = Eyes.CLOSED; p.mouth = Mouth.SMILE }
             CreateMode.GRATEFUL -> { p.sx = bx; p.sy = by; p.eyes = Eyes.HAPPY; p.mouth = Mouth.SMILE; p.tilt = if (rm) 4f else sway(spec, t, rm); p.fx = Fx.HEART }
@@ -335,6 +359,13 @@ object CompanionPoses {
                         // The sprout follows the voice while reading aloud.
                         h0 = 4f + L * 5f; h1 = 6f + L * 7f; h2 = 4f + L * 5f
                     }
+                    v == CompanionState.COZY -> { h0 = 3.5f; h1 = 5.5f; h2 = 3.5f; lean = 8f }
+                    v == CompanionState.BREATHING -> {
+                        val ex = if (rm) 0.5f else L
+                        h0 = 4f + ex * 4.5f; h1 = 6.5f + ex * 6.5f; h2 = 4f + ex * 4.5f
+                    }
+                    v == CompanionState.STRIDING -> { h0 = 6f; h1 = 10f; h2 = 6f; lean = if (rm) -5f else -5f + sin(t * 11f) * 3f }
+                    v == CompanionState.NOSTALGIC -> { h0 = 4.5f; h1 = 7.5f; h2 = 4.5f; lean = -4f }
                     celebrating -> { h0 = 8f; h1 = 12f; h2 = 8f }
                     v == CompanionState.PROUD -> { h0 = 5f + 3f * e; h1 = 8f + 4f * e; h2 = 5f + 3f * e }
                     v == CompanionState.CURIOUS -> { h0 = 5f + 1f * e; h1 = 8f + 2.5f * e; h2 = 5f + 1f * e; lean = -6f * e }
@@ -375,6 +406,10 @@ object CompanionPoses {
                         tail = 18f * e + if (rm) 0f else sin(t * TAU * 2.5f) * 7f * (1f - (t / 1.2f)).coerceIn(0f, 1f)
                     }
                     v == CompanionState.READING -> { ear = 12f + L * 4f; headR = -4f }
+                    v == CompanionState.COZY -> { ear = 6f; headDy = 2.5f; headR = 5f; tail = if (rm) 4f else sin(t * 1.4f) * 4f }
+                    v == CompanionState.BREATHING -> { ear = 8f + (if (rm) 0.5f else L) * 5f; headR = 2f }
+                    v == CompanionState.STRIDING -> { ear = 16f; headR = -4f; tail = if (rm) 10f else sin(t * 7f) * 14f }
+                    v == CompanionState.NOSTALGIC -> { ear = 10f; headR = -7f; tail = 4f }
                 }
                 if (p.calm) { ear = 8f; headR = 4f }
                 p.dy = dy; p.headTilt = headR; p.headDy = headDy; p.ear = ear; p.tail = tail
@@ -396,6 +431,10 @@ object CompanionPoses {
                     v == CompanionState.CURIOUS -> { tail = 6f * e; headR = -12f * e }
                     v == CompanionState.PROUD -> { tail = 14f * e; wing = -10f * e }
                     v == CompanionState.READING -> { tail = 2f; headR = -4f }
+                    v == CompanionState.COZY -> { tail = -6f; headDy = 2f; headR = 7f }
+                    v == CompanionState.BREATHING -> { tail = -2f; wing = -(if (rm) 0.5f else L) * 18f }
+                    v == CompanionState.STRIDING -> { tail = 10f; wing = if (rm) -12f else -10f - abs(sin(t * 10f)) * 14f }
+                    v == CompanionState.NOSTALGIC -> { tail = 3f; headR = -6f }
                 }
                 if (p.calm) { tail = -4f; headR = 6f }
                 p.tail = tail; p.wing = wing; p.headDy = headDy; p.headTilt = headR
@@ -410,6 +449,10 @@ object CompanionPoses {
                     // Proud: the corner lifts a little; Curious leans toward the question.
                     v == CompanionState.PROUD -> fold = 12f + 1.5f * e
                     v == CompanionState.CURIOUS -> lean = -2f * e
+                    v == CompanionState.COZY -> { fold = 13f; lean = 3f }
+                    v == CompanionState.BREATHING -> { fold = 11f + (if (rm) 0.5f else L) * 3f }
+                    v == CompanionState.STRIDING -> { fold = 14f; lean = -3f }
+                    v == CompanionState.NOSTALGIC -> { fold = 13.5f; lean = -2f }
                 }
                 p.fold = fold; p.pageLean = lean
             }
