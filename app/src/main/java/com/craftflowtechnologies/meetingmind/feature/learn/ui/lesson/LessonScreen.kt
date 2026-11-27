@@ -291,10 +291,12 @@ private fun LectureCard(state: LessonState, onPlayFrom: (Long) -> Unit, onToggle
         contentPadding = MM.space.l
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("The lecture, at a glance", style = MM.type.bodyStrong, color = c.ink, modifier = Modifier.weight(1f))
-            if (stressed.isNotEmpty()) {
-                Text(stressedCountLabel(stressed.size), style = MM.type.caption, color = c.goldInk)
-                Spacer(Modifier.width(MM.space.xs))
+            // Title and count stack, so neither squeezes the other at large text sizes or on narrow phones.
+            Column(Modifier.weight(1f)) {
+                Text("The lecture, at a glance", style = MM.type.bodyStrong, color = c.ink)
+                if (stressed.isNotEmpty()) {
+                    Text(stressedCountLabel(stressed.size), style = MM.type.caption, color = c.goldInk)
+                }
             }
             IconButton(onClick = onTogglePlay) {
                 Icon(
