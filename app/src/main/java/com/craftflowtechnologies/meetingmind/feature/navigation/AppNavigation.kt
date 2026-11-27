@@ -31,9 +31,19 @@ object Routes {
     const val PERSONAL = "personal"
     const val LEARNING_SESSION = "learning_session/{noteId}"
     fun learningSessionRoute(noteId: String) = "learning_session/$noteId"
-    const val LEARN_PRACTICE = "learn_practice?sessionId={sessionId}&activityId={activityId}"
-    fun learnPracticeRoute(sessionId: String? = null, activityId: String? = null) =
-        "learn_practice" + listOfNotNull(sessionId?.let { "sessionId=$it" }, activityId?.let { "activityId=$it" }).joinToString("&", prefix = "?").takeIf { sessionId != null || activityId != null }.orEmpty()
+    /** A practice round: every due card, one lesson, one course (notebook id) or one concept ("Quiz me on this"). */
+    const val LEARN_PRACTICE = "learn_practice?sessionId={sessionId}&activityId={activityId}&course={course}&concept={concept}"
+    fun learnPracticeRoute(sessionId: String? = null, activityId: String? = null, courseId: String? = null, conceptId: String? = null) =
+        "learn_practice" + listOfNotNull(
+            sessionId?.let { "sessionId=$it" }, activityId?.let { "activityId=$it" },
+            courseId?.let { "course=$it" }, conceptId?.let { "concept=$it" }
+        ).joinToString("&", prefix = "?").takeIf { it.length > 1 }.orEmpty()
+    /** One course (a Learning notebook): how well it is known, practise it, its lectures. */
+    const val LEARN_COURSE = "learn_course/{courseId}"
+    fun learnCourseRoute(courseId: String) = "learn_course/$courseId"
+    /** A lecture's replay with read-along. */
+    const val LEARN_LISTEN = "learning_listen/{noteId}"
+    fun learnListenRoute(noteId: String) = "learning_listen/$noteId"
     const val LEARN_EXAM = "learn_exam?goalId={goalId}&courseId={courseId}"
     fun learnExamRoute(goalId: String? = null, courseId: String? = null) =
         "learn_exam" + listOfNotNull(goalId?.let { "goalId=$it" }, courseId?.let { "courseId=$it" }).joinToString("&", prefix = "?").takeIf { goalId != null || courseId != null }.orEmpty()
@@ -57,19 +67,6 @@ object Routes {
     /** A saved devotional, opened as it was — never rewritten. */
     fun pastDevotionalRoute(noteId: String) = "devotional?note=$noteId"
     const val DEVOTIONAL_ARCHIVE = "devotional_archive"
-    /**
-     * Study (the approved redesign, feature/learn): home, a lecture's lesson page, its replay and a
-     * practice round. Runs beside Learning (LEARN) on its own routes until the two are combined.
-     */
-    const val STUDY_HOME = "learn_study"
-    const val STUDY_LESSON = "learn_study/lesson/{noteId}"
-    const val STUDY_LISTEN = "learn_study/listen/{noteId}"
-    const val STUDY_PRACTICE = "learn_study/practice?session={session}&concept={concept}"
-    fun studyLessonRoute(noteId: String) = "learn_study/lesson/$noteId"
-    fun studyListenRoute(noteId: String) = "learn_study/listen/$noteId"
-    fun studyPracticeRoute(sessionId: String? = null, conceptId: String? = null) =
-        "learn_study/practice" + listOfNotNull(sessionId?.let { "session=$it" }, conceptId?.let { "concept=$it" })
-            .joinToString("&", prefix = "?").takeIf { sessionId != null || conceptId != null }.orEmpty()
     /** Study beside a note: a sermon's timeline and transcript, or a Bible passage. */
     const val STUDY = "study/{noteId}?meeting={meeting}&ref={ref}"
     fun studyRoute(noteId: String, meetingId: String? = null, passageId: String? = null) =

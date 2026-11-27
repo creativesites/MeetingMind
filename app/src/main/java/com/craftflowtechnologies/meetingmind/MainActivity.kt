@@ -613,7 +613,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
-                onOpenStudy = { navController.navigate(Routes.STUDY_HOME) },
+                onOpenStudy = { navController.navigate(Routes.LEARN) },
                 onOpenLearn = { navController.navigate(Routes.LEARN) },
                 onOpenTasks = { navController.navigate(Routes.TASKS) },
                 onOpenPersonal = { navController.navigate(Routes.PERSONAL) },
@@ -684,38 +684,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
 
-        // LEARN — Learning vertical flagship studio
-        composable(Routes.LEARN) {
-            LearnHomeHost(
-                navController = navController,
-                onNavigateBottomNav = null
-            )
-        }
-
-        composable(
-            route = Routes.LEARN_PRACTICE,
-            arguments = listOf(
-                navArgument("sessionId") { type = NavType.StringType; nullable = true; defaultValue = null },
-                navArgument("activityId") { type = NavType.StringType; nullable = true; defaultValue = null }
-            )
-        ) { backStackEntry ->
-            val sessionId = backStackEntry.arguments?.getString("sessionId")
-            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            // Practice is a full-screen mode (decision D1). Callers prepare the deck on the shared
-            // view model first; a bare sessionId (old links) opens that session's practice.
-            LaunchedEffect(sessionId) {
-                if (!sessionId.isNullOrBlank() && vm.practiceActivities.value.isEmpty()) {
-                    vm.startSessionPractice(sessionId, dueOnly = false) { }
-                }
-            }
-            com.craftflowtechnologies.meetingmind.ui.theme.LearningAccent {
-                com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeModeScreen(
-                    viewModel = vm,
-                    onClose = { navController.popBackStack() },
-                    onOpenSession = { id -> navController.navigate(Routes.learningSessionRoute(id)) }
-                )
-            }
-        }
+        // LEARN: home, course, lesson, listen and practice live in feature/learn/LearnRoutes.kt (learnGraph).
 
         composable(
             route = Routes.LEARN_EXAM,
@@ -748,30 +717,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         shareMarkdown = null
                         navController.navigate(Routes.circleCreateRoute("learning"))
                     }
-                )
-            }
-        }
-
-        composable(
-            Routes.LEARNING_SESSION,
-            arguments = listOf(navArgument("noteId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val noteId = backStackEntry.arguments?.getString("noteId").orEmpty()
-            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            LaunchedEffect(noteId) {
-                if (noteId.isNotBlank()) {
-                    vm.loadSessionDetail(noteId)
-                }
-            }
-
-            com.craftflowtechnologies.meetingmind.ui.theme.LearningAccent {
-                com.craftflowtechnologies.meetingmind.feature.learning.space.SessionStudioScreen(
-                    noteId = noteId,
-                    viewModel = vm,
-                    onBack = { navController.popBackStack() },
-                    onOpenNotes = { id -> navController.navigate(Routes.noteRoute(id)) },
-                    onPlayMoment = { meetingId, startMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startMs)) },
-                    onStartPractice = { navController.navigate(Routes.learnPracticeRoute()) }
                 )
             }
         }
@@ -1158,7 +1103,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         }
 
         // STUDY (docs/mvp/STUDY_AUDIT.md)
-        learnGraph(navController, onSearch = openSearch)
+        learnGraph(navController, onSearch = openSearch, onNavigateBottomNav = navigateToPrimary)
 
         // WORK (docs/PLAN_PROFESSIONAL.md §6–7)
         composable(Routes.WORK) {
@@ -1420,7 +1365,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onCreateCircle = { navController.navigate(Routes.circleCreateRoute("faith")) },
                 onOpenStudyStudio = { id -> navController.navigate(Routes.learningSessionRoute(id)) },
                 onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) },
-                onOpenLesson = { navController.navigate(Routes.studyLessonRoute(it)) }
+                onOpenLesson = { navController.navigate(Routes.learningSessionRoute(it)) }
             )
         }
 
@@ -1522,7 +1467,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onStudy = { noteId, mId -> navController.navigate(Routes.studyRoute(noteId, meetingId = mId)) },
                 onCreateBrief = { mId -> navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.MEETING, mId)) },
                 onOpenPaywall = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) },
-                onOpenLesson = { navController.navigate(Routes.studyLessonRoute(it)) }
+                onOpenLesson = { navController.navigate(Routes.learningSessionRoute(it)) }
             )
         }
 
@@ -1786,31 +1731,10 @@ private fun LearnHomeHost(
     navController: NavHostController,
     onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-
-    // The Learning space (design/learning-vertical-design-spec.md). Exam Prep and Teach-Back are
-    // Release 2 and 1.1, so the space has no entry to them (decision D3); their code is kept.
-    com.craftflowtechnologies.meetingmind.feature.learning.space.LearningSpaceScreen(
-        viewModel = vm,
+    // The Learning home style: the same Learning home as the Learning place, with Home current.
+    com.craftflowtechnologies.meetingmind.feature.learn.home.LearningHomeHost(
         onNavigateBottomNav = onNavigateBottomNav,
-        actions = com.craftflowtechnologies.meetingmind.feature.learning.space.LearningSpaceActions(
-            onBack = { navController.popBackStack() },
-            onOpenSpace = { navController.navigate(Routes.LEARN) { launchSingleTop = true } },
-            onOpenSession = { id -> navController.navigate(Routes.learningSessionRoute(id)) },
-            onStartPractice = { navController.navigate(Routes.learnPracticeRoute()) { launchSingleTop = true } },
-            onRecordLecture = { navController.navigate(Routes.recordTypeRoute(RecordingType.LECTURE)) },
-            onWriteStudyNote = {
-                vm.createStudyNote(
-                    title = "Study Note",
-                    domain = com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain.GENERAL,
-                    courseNotebookId = null
-                ) { noteId ->
-                    navController.navigate(Routes.noteRoute(noteId))
-                }
-            },
-            onImport = { navController.navigate(Routes.IMPORT) },
-            onOpenNote = { id -> navController.navigate(Routes.noteRoute(id)) }
-        )
+        actions = com.craftflowtechnologies.meetingmind.feature.learn.learningHomeActions(navController),
+        asHome = true
     )
 }
