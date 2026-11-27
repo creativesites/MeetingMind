@@ -304,7 +304,7 @@ internal fun lecturerPillText(time: String, item: PracticeItem): String {
  * shown by switching the state for its duration.
  */
 @Composable
-private fun rememberChoicePose(index: Int, correct: Boolean?): CompanionState {
+internal fun rememberChoicePose(index: Int, correct: Boolean?): CompanionState {
     var pose by remember(index) { mutableStateOf(CompanionState.IDLE) }
     LaunchedEffect(index, correct) {
         val (shown, holdMs) = when (correct) {

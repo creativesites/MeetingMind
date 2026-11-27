@@ -13,16 +13,17 @@ import com.craftflowtechnologies.meetingmind.core.learning.StudyFormat
 import com.craftflowtechnologies.meetingmind.core.learning.StudyServices
 import com.craftflowtechnologies.meetingmind.core.model.DeterministicSpacedScheduler
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
+import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
+import com.craftflowtechnologies.meetingmind.core.model.LearningMasteryState
 import com.craftflowtechnologies.meetingmind.core.model.RecallRating
 import com.craftflowtechnologies.meetingmind.core.model.ReviewSchedule
-import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
-import com.craftflowtechnologies.meetingmind.feature.learn.StudyKit
-import com.craftflowtechnologies.meetingmind.feature.learn.AnswerFeedback
-import com.craftflowtechnologies.meetingmind.feature.learn.PracticeItem
-import com.craftflowtechnologies.meetingmind.feature.learn.PracticeState
-import com.craftflowtechnologies.meetingmind.feature.learn.RecallButton
-import com.craftflowtechnologies.meetingmind.feature.learn.RoundResult
-import com.craftflowtechnologies.meetingmind.feature.learn.StarState
+import com.craftflowtechnologies.meetingmind.feature.learn.practice.PracticeBuilder
+import com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeFormat
+import com.craftflowtechnologies.meetingmind.feature.learning.space.PracticePlanItem
+import com.craftflowtechnologies.meetingmind.feature.learning.space.PracticeSetSize
+import com.craftflowtechnologies.meetingmind.feature.learning.space.buildPracticeDeck
+import com.craftflowtechnologies.meetingmind.feature.learning.space.clozeMatches
+import com.craftflowtechnologies.meetingmind.feature.learning.space.nativeVariant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,17 +40,25 @@ sealed interface PracticeScope {
     /** The due items of one lesson. */
     data class OneSession(val sessionId: String) : PracticeScope
 
+    /** The due items of every lesson in one course. Sessions carry the course name, so it is the key. */
+    data class OneCourse(val courseName: String) : PracticeScope
+
     /** "Quiz me on this": every active item for one concept, due or not. */
     data class OneConcept(val sessionId: String, val conceptId: String) : PracticeScope
 }
 
 /**
- * A practice round: builds it from the scope, takes answers, re-queues a miss once, records every
- * attempt through [com.craftflowtechnologies.meetingmind.core.repository.StudyRepository] and
- * summarises the round at the end. Works offline: the round is built from stored items and kits.
+ * The one practice engine. It builds a round with Learning's planner ([buildPracticeDeck]: formats
+ * follow each concept's mastery, no format twice in a row, at most [PracticeSetSize] items interleaved
+ * across lessons), turns each planned variant into a [PracticeItem] ([PracticeBuilder]), takes
+ * answers, re-queues a miss once, records every attempt through [StudyServices.learning] (the same
+ * tables Learning reads), and summarises the round with [RoundComposer] and [SkyLayout].
  *
- * Actions: [answerChoice] for multiple choice, [reveal] and [rate] for recall, [notSure] to skip
- * with the answer shown, and [continueNext] to move on.
+ * Works offline: the round is built from stored concepts, activities and kits.
+ *
+ * Actions: [answer] for the answerable formats (options, true or false, fill, match, order, short
+ * answer typed), [reveal] and [rate] for the self-rated ones (recall, worked, short, explain),
+ * [notSure] to skip with the answer shown, and [continueNext] to move on.
  */
 class PracticeViewModel(
     application: Application,
@@ -63,16 +72,20 @@ class PracticeViewModel(
     private var queue: List<PracticeItem> = emptyList()
     private var index = 0
     private val cards = mutableMapOf<String, DueCard>()
+    /** How each activity is asked this round, written to the attempt so the next round asks it another way. */
+    private val formats = mutableMapOf<String, PracticeFormat>()
     private val schedules = mutableMapOf<String, ReviewSchedule>()
     private val requeued = mutableSetOf<String>()
     private val firstTry = linkedMapOf<String, Boolean>()
     private val misses = mutableMapOf<String, Int>()
     private val nextDue = mutableMapOf<String, Long>()
-    private val kits = mutableMapOf<String, StudyKit?>()
+    private val kits = mutableMapOf<String, com.craftflowtechnologies.meetingmind.feature.learn.StudyKit?>()
     private var sessionIds: Set<String> = emptySet()
     private var startedAt = 0L
     private var starsBefore: Map<String, StarState> = emptyMap()
     private val persistLock = Mutex()
+    /** A short answer as typed, saved with the learner's rating. */
+    private var typedResponse = ""
 
     init {
         viewModelScope.launch { load() }
@@ -82,11 +95,7 @@ class PracticeViewModel(
         val now = services.now()
         startedAt = now
         val all = services.snapshots.sessions()
-        val relevant = when (val s = scope) {
-            PracticeScope.AllDue -> all
-            is PracticeScope.OneSession -> all.filter { it.session.id == s.sessionId }
-            is PracticeScope.OneConcept -> all.filter { it.session.id == s.sessionId }
-        }
+        val relevant = sessionsIn(all)
         sessionIds = relevant.map { it.session.id }.toSet()
         starsBefore = starsOf(all, now)
 
@@ -94,16 +103,22 @@ class PracticeViewModel(
             kits[snap.session.id] = services.kits.load(snap.session.id)
             candidatesOf(snap, now)
         }
-        val round = when (scope) {
-            is PracticeScope.OneConcept -> candidates.sortedBy { it.schedule.dueAt }.take(RoundComposer.MAX_ITEMS)
-            else -> RoundComposer.compose(candidates, now)
+        val ordered = if (scope is PracticeScope.OneConcept) {
+            candidates.sortedBy { it.schedule.dueAt }
+        } else {
+            candidates.sortedWith(compareBy({ !isPriority(it, now) }, { it.schedule.dueAt }, { it.activity.id }))
         }
+        val byId = ordered.associateBy { it.activity.id }
+        val siblingNames = relevant.flatMap { it.concepts }.map { it.name }.distinct()
 
-        round.forEach { card ->
+        val plan = planRound(ordered, relevant, now)
+        queue = plan.mapNotNull { item ->
+            val card = byId[item.activity.id] ?: return@mapNotNull null
             cards[card.activity.id] = card
             schedules[card.activity.id] = card.schedule
+            formats[card.activity.id] = item.variant.format
+            PracticeBuilder.toItem(item.variant, card, kits[card.sessionId], siblingNames)
         }
-        queue = round.map { RoundComposer.toPracticeItem(it, kits[it.sessionId]) }
         index = 0
         val first = queue.firstOrNull()
         _state.value = PracticeState(
@@ -116,7 +131,33 @@ class PracticeViewModel(
         )
     }
 
-    /** Multiple choice: the learner picked option [i]. */
+    /**
+     * Plans the round. Candidates arrive in priority order (overdue and needs-review first); the
+     * planner picks each one's format from its mastery and history, and interleaves lessons.
+     */
+    private fun planRound(candidates: List<DueCard>, relevant: List<SessionSnapshot>, now: Long): List<PracticePlanItem> {
+        if (candidates.isEmpty()) return emptyList()
+        val oneConcept = scope is PracticeScope.OneConcept
+        val concepts: Map<String, LearningConcept> = relevant.flatMap { it.concepts }.associateBy { it.id }
+        val attempts = relevant.flatMap { it.attempts }
+        val siblings: List<LearningActivity> = relevant.flatMap { it.activities }.distinctBy { it.id }
+        return runCatching {
+            buildPracticeDeck(
+                activities = candidates.map { it.activity },
+                concepts = concepts,
+                attempts = attempts,
+                maxItems = PracticeSetSize,
+                seed = now / DeterministicSpacedScheduler.DAY_MS * 31,
+                interleave = !oneConcept,
+                rampUp = oneConcept,
+                siblingActivities = siblings
+            )
+        }.getOrElse {
+            // If planning fails, the items are asked as written, so the round always opens.
+            candidates.take(PracticeSetSize).map { PracticePlanItem(it.activity, nativeVariant(it.activity)) }
+        }
+    }
+
     /** "Hear your lecturer": plays the item's source clip, then pauses at its end. */
     fun playSource(item: PracticeItem) {
         val meetingId = item.meetingId ?: return
@@ -133,37 +174,65 @@ class PracticeViewModel(
         }
     }
 
-    fun answerChoice(i: Int) {
-        val item = current() as? PracticeItem.Choice ?: return
+    /**
+     * The learner's answer to the current item. Options and true or false take [PracticeAnswer.Pick];
+     * fill the gap [PracticeAnswer.Fill]; match [PracticeAnswer.Match]; order [PracticeAnswer.Order].
+     * A typed short answer is saved and reveals the model answer; the learner then rates it.
+     */
+    fun answer(answer: PracticeAnswer) {
+        val item = current() ?: return
         if (!canAnswer()) return
-        val correct = i == item.correctIndex
-        val why = if (correct) item.rightWhy else item.wrongWhys[i] ?: "The lecture's answer is: ${item.options[item.correctIndex]}."
-        grade(item, response = item.options.getOrElse(i) { "" }, correct = correct, rating = null, chosen = i, why = why)
+        when (answer) {
+            is PracticeAnswer.Pick -> when (item) {
+                is PracticeItem.Choice -> gradePick(item, answer.index, item.correctIndex, item.rightWhy) {
+                    item.wrongWhys[it] ?: "The lecture's answer is: ${item.options[item.correctIndex]}."
+                }
+                is PracticeWhichIdea -> gradePick(item, answer.index, item.correctIndex, item.rightWhy) {
+                    item.wrongWhys[it] ?: "The idea here is: ${item.options[item.correctIndex]}."
+                }
+                is PracticeTrueFalse -> gradePick(item, answer.index, item.correctIndex, item.rightWhy) { item.wrongWhy }
+                else -> Unit
+            }
+            is PracticeAnswer.Fill -> (item as? PracticeFillGap)?.let { gradeFill(it, answer.word) }
+            is PracticeAnswer.Match -> (item as? PracticeMatch)?.let { gradeMatch(it, answer.termToMeaning) }
+            is PracticeAnswer.Order -> (item as? PracticeOrder)?.let { gradeOrder(it, answer.order) }
+            is PracticeAnswer.Typed -> if (item is PracticeShortAnswer) {
+                typedResponse = answer.text
+                _state.update { it.copy(revealed = true) }
+            }
+        }
     }
 
-    /** Recall: show the answer side. */
+    /** The items of the round in order, including any re-queued miss. For tests and diagnostics. */
+    internal fun roundItems(): List<PracticeItem> = queue
+
+    /** The format each item of the round is asked in, in order. For tests and diagnostics. */
+    internal fun roundFormats(): List<PracticeFormat> = queue.mapNotNull { formats[it.activityId] }
+
+    /** Multiple choice: the learner picked option [i]. */
+    fun answerChoice(i: Int) = answer(PracticeAnswer.Pick(i))
+
+    /** Self-rated items: show the answer side. */
     fun reveal() {
-        if (current() !is PracticeItem.Recall) return
+        if (current() == null) return
         _state.update { it.copy(revealed = true) }
     }
 
-    /** Recall: the learner rated how well they knew it. */
+    /** Self-rated items: the learner rated how well they knew it. */
     fun rate(button: RecallButton) {
-        val item = current() as? PracticeItem.Recall ?: return
-        if (!canAnswer()) return
-        grade(item, response = "", correct = button != RecallButton.MISSED, rating = button.rating, chosen = null, why = item.answer)
+        val item = current() ?: return
+        if (!canAnswer() || !isRateable(item)) return
+        grade(item, typedResponse, correct = button != RecallButton.MISSED, rating = button.rating, chosen = null, why = answerText(item))
     }
 
     /** "Not sure": counts as a miss, and shows the answer. */
     fun notSure() {
-        when (val item = current()) {
-            is PracticeItem.Choice -> if (canAnswer()) {
-                grade(item, response = "", correct = false, rating = null, chosen = null, why = item.rightWhy)
-            }
-            is PracticeItem.Recall -> if (canAnswer()) {
-                grade(item, response = "", correct = false, rating = RecallRating.AGAIN, chosen = null, why = item.answer)
-            }
-            null -> Unit
+        val item = current() ?: return
+        if (!canAnswer()) return
+        if (isRateable(item)) {
+            grade(item, "", correct = false, rating = RecallRating.AGAIN, chosen = null, why = answerText(item))
+        } else {
+            grade(item, "", correct = false, rating = null, chosen = null, why = answerText(item))
         }
     }
 
@@ -176,6 +245,7 @@ class PracticeViewModel(
         } else {
             index = next
             val item = queue[next]
+            typedResponse = ""
             _state.update {
                 it.copy(
                     index = next,
@@ -189,11 +259,41 @@ class PracticeViewModel(
         }
     }
 
-    // ---------------------------------------------------------------- internals
+    // ---------------------------------------------------------------- grading
 
     private fun current(): PracticeItem? = _state.value.current
 
     private fun canAnswer(): Boolean = _state.value.feedback == null && _state.value.result == null
+
+    private fun gradePick(
+        item: PracticeItem,
+        picked: Int,
+        correctIndex: Int,
+        rightWhy: String,
+        wrongWhy: (Int) -> String
+    ) {
+        val correct = picked == correctIndex
+        grade(item, response = "", correct = correct, rating = null, chosen = picked, why = if (correct) rightWhy else wrongWhy(picked))
+    }
+
+    private fun gradeFill(item: PracticeFillGap, word: String) {
+        val correct = clozeMatches(item.answer, word)
+        grade(item, response = word, correct = correct, rating = null, chosen = null, why = item.fullLine)
+    }
+
+    private fun gradeMatch(item: PracticeMatch, termToMeaning: Map<Int, Int>) {
+        val correct = termToMeaning.size == item.terms.size && item.terms.indices.all { termToMeaning[it] == it }
+        val why = if (correct) "Each term goes with its meaning." else
+            item.terms.indices.joinToString("\n") { "${item.terms[it]}: ${item.meanings[it]}" }
+        grade(item, response = "matched ${termToMeaning.size} of ${item.terms.size}", correct = correct, rating = null, chosen = null, why = why)
+    }
+
+    private fun gradeOrder(item: PracticeOrder, order: List<Int>) {
+        val correct = order == item.steps.indices.toList()
+        val why = if (correct) "That is the order in the lecture." else
+            "The order in the lecture:\n" + item.steps.withIndex().joinToString("\n") { "${it.index + 1}. ${it.value}" }
+        grade(item, response = order.joinToString(","), correct = correct, rating = null, chosen = null, why = why)
+    }
 
     private fun grade(
         item: PracticeItem,
@@ -227,7 +327,7 @@ class PracticeViewModel(
         _state.update {
             it.copy(
                 total = queue.size,
-                revealed = if (item is PracticeItem.Recall) true else it.revealed,
+                revealed = if (item is PracticeItem.Recall || isRateable(item)) true else it.revealed,
                 feedback = AnswerFeedback(chosenIndex = chosen, correct = correct, why = why, nextLine = nextLine)
             )
         }
@@ -235,6 +335,9 @@ class PracticeViewModel(
     }
 
     private fun persist(activityId: String, response: String, correct: Boolean, rating: RecallRating?, why: String) {
+        // The format goes first, so Learning's ladder and no-repeat rule see how this item was asked.
+        val format = formats[activityId]
+        val feedback = if (format != null) "${format.tag}; $why" else why
         viewModelScope.launch {
             persistLock.withLock {
                 services.learning.recordAttempt(
@@ -242,7 +345,7 @@ class PracticeViewModel(
                     userResponse = response,
                     isCorrect = correct,
                     selfRating = rating,
-                    feedback = why
+                    feedback = feedback
                 )
             }
         }
@@ -292,6 +395,15 @@ class PracticeViewModel(
         }
     }
 
+    // ---------------------------------------------------------------- scope and candidates
+
+    private fun sessionsIn(all: List<SessionSnapshot>): List<SessionSnapshot> = when (val s = scope) {
+        PracticeScope.AllDue -> all
+        is PracticeScope.OneSession -> all.filter { it.session.id == s.sessionId }
+        is PracticeScope.OneCourse -> all.filter { it.session.courseName == s.courseName }
+        is PracticeScope.OneConcept -> all.filter { it.session.id == s.sessionId }
+    }
+
     private fun candidatesOf(snap: SessionSnapshot, now: Long): List<DueCard> {
         val pairs: List<Pair<LearningActivity, ReviewSchedule>> = when (val s = scope) {
             is PracticeScope.OneConcept -> snap.activities
@@ -313,6 +425,10 @@ class PracticeViewModel(
         }
     }
 
+    /** Overdue by more than a day, or needs review: these go first in an all-due round. */
+    private fun isPriority(card: DueCard, now: Long): Boolean =
+        card.mastery == LearningMasteryState.NEEDS_REVIEW || now - card.schedule.dueAt > DeterministicSpacedScheduler.DAY_MS
+
     private fun starsOf(snaps: List<SessionSnapshot>, now: Long): Map<String, StarState> {
         val attempts = snaps.flatMap { it.attemptsByConcept.entries }.associate { it.key to it.value }
         val schedules = snaps.flatMap { it.scheduleByConcept.entries }.associate { it.key to it.value }
@@ -321,8 +437,28 @@ class PracticeViewModel(
         }
     }
 
+    // ---------------------------------------------------------------- display helpers
+
+    /** Formats with a rating: recall, worked example, short answer and explain. */
+    private fun isRateable(item: PracticeItem): Boolean =
+        item is PracticeItem.Recall || item is PracticeWorked || item is PracticeShortAnswer || item is PracticeExplain
+
+    /** The right answer as one line, shown with a miss. */
+    private fun answerText(item: PracticeItem): String = when (item) {
+        is PracticeItem.Recall -> item.answer
+        is PracticeItem.Choice -> item.rightWhy
+        is PracticeWhichIdea -> item.rightWhy
+        is PracticeTrueFalse -> item.rightWhy
+        is PracticeFillGap -> item.fullLine
+        is PracticeMatch -> item.terms.indices.joinToString("\n") { "${item.terms[it]}: ${item.meanings[it]}" }
+        is PracticeOrder -> item.steps.joinToString("\n")
+        is PracticeWorked -> item.answer
+        is PracticeShortAnswer -> item.modelAnswer
+        is PracticeExplain -> item.modelAnswer
+    }
+
     private fun hintsFor(item: PracticeItem): Map<RecallButton, String> {
-        if (item !is PracticeItem.Recall) return emptyMap()
+        if (!isRateable(item)) return emptyMap()
         val schedule = schedules[item.activityId]
         val now = services.now()
         return RecallButton.values().associateWith { button ->
@@ -336,7 +472,7 @@ class PracticeViewModel(
 
     private fun emptyMessageFor(): String = when (scope) {
         PracticeScope.AllDue -> "All caught up. Nice work."
-        is PracticeScope.OneSession, is PracticeScope.OneConcept -> "There is nothing to practise here yet."
+        is PracticeScope.OneSession, is PracticeScope.OneCourse, is PracticeScope.OneConcept -> "There is nothing to practise here yet."
     }
 
     private companion object {
