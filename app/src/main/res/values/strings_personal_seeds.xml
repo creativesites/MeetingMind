@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="seeds_title">Seed jar</string>
+    <string name="seeds_back">Back to your garden</string>
+    <string name="seeds_new_idea">New idea</string>
+    <string name="seeds_tab_ideas">Ideas · %1$d</string>
+    <string name="seeds_tab_sort">To sort · %1$d</string>
+    <plurals name="seeds_jar_count">
+        <item quantity="one">%d idea in the jar</item>
+        <item quantity="other">%d ideas in the jar</item>
+    </plurals>
+    <string name="seeds_empty_jar">Ideas you drop in the jar glow here.</string>
+    <string name="seeds_seed_description">Idea: %1$s</string>
+    <string name="seeds_dropped_in">Dropped in %1$s</string>
+    <string name="seeds_open">Open</string>
+    <string name="seeds_untitled">Untitled</string>
+    <string name="seeds_untitled_task">Untitled idea</string>
+    <string name="seeds_sort_explainer">Quick recordings that didn\'t say what they were. Nothing moves until you choose.</string>
+    <string name="seeds_sort_empty">Nothing to sort. Everything has a home.</string>
+    <string name="seeds_meta_line">%1$s · %2$s</string>
+    <string name="seeds_move_to">Move to %1$s</string>
+    <string name="seeds_add_to_tasks">Add to Tasks</string>
+    <string name="seeds_keep_here">Keep here</string>
+</resources>

@@ -75,6 +75,11 @@ object GardenColors {
     val Mound = Color(0x33FFFFFF)
     val Star = Color(0xFFFFFFFF)
 
+    // The seed jar's glass: a faint fill, a hairline edge and a shine, drawn over the sky.
+    val JarGlass = Color(0x24FFFFFF)
+    val JarLine = Color(0x8CFFFFFF)
+    val JarShine = Color(0x59FFFFFF)
+
     fun palette(phase: GardenPhase, darkTheme: Boolean): GardenPalette = if (darkTheme) dark(phase) else light(phase)
 
     private fun light(phase: GardenPhase): GardenPalette = when (phase) {
