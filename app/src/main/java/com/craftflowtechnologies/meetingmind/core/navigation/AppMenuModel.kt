@@ -20,7 +20,7 @@ sealed interface MenuTarget {
 enum class MenuIcon {
     HOME, PULSE, TASKS, INBOX, REVIEW, RECORD, LEARN, PRACTICE, LIBRARY, FAITH, BIBLE, DEVOTIONAL, PRAY,
     PRAYER_LIST, PLANS, TESTIMONIES, JOURNAL, NOTES, SEARCH, CIRCLES, IMPORT, CREATE, ARCHIVE,
-    SETTINGS, PLAN, AI, APPEARANCE, BACKUP, INTEGRATIONS, VIDEO
+    SETTINGS, PLAN, AI, APPEARANCE, BACKUP, INTEGRATIONS, VIDEO, GARDEN
 }
 
 data class MenuEntry(val id: String, val label: String, val icon: MenuIcon, val target: MenuTarget, val hint: String? = null)
@@ -74,6 +74,7 @@ object AppMenuModel {
         )
         NotebookSpace.PERSONAL -> MenuSection(
             "personal", "Personal", listOf(
+                go("personal.garden", "Your garden", MenuIcon.GARDEN, Routes.PERSONAL, "Today's question, practices and ideas"),
                 go("personal.journal", "Journal", MenuIcon.JOURNAL, Routes.recordTypeRoute(RecordingType.JOURNAL), "Say what's on your mind"),
                 go("personal.idea", "Capture an idea", MenuIcon.RECORD, Routes.recordTypeRoute(RecordingType.IDEA))
             ), NotebookSpace.PERSONAL

@@ -1,6 +1,17 @@
 # Status
 
-Updated: 2026-11-21. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+Updated: 2026-11-27. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+
+## Personal becomes "Your garden" (2026-11-27, branch `ccr-4eced482-bn5f1l`)
+- **Design:** the founder chose the garden concept (design canvas "MeetingMind: Personal vertical redesign", page "Your garden (new)").
+- **Built:**
+  - Personal has a home of its own (`feature/personal/`): a painted scene that follows the clock (dawn, day, dusk, night), the day's question with "Light the lantern" (records a private Journal titled with the question; "Write instead" is the quiet button), practices drawn as plants, and the seed jar.
+  - Light and dark: `ui/theme/GardenColors.kt` paints every time of day for both themes; in the dark theme no phase is a bright sky (tested).
+  - Practices (`core/practice/`, schema 32, `375f8af1`): a practice is also a repeating PRACTICE task, so it shows in Tasks; ticking it there logs the day. Plants grow by kept days, rest when untended, never die. No streaks anywhere.
+  - Navigation: Personal claims a bottom-bar place like Work, Learning and Faith (Personal only: Personal, Tasks); the Today "Your spaces" card opens the garden instead of a blank note; "Your garden" leads the menu's Personal section.
+- **Tests (2026-11-27, this machine):** 183 run, all pass except `DesignSystemGuardTest` on `AiCraft.kt`, which predates this. Garden screenshots in `src/test/screenshots/personal/` (four times of day and empty, light and dark, both sheets), reviewed.
+- **Open:** not checked on the S20+; the reflection prompt is generic only (no AI follow-up yet); next phases from the canvas: the lantern recording screen, Your sky (patterns across reflections), seed packets from talk notes ("Plant it" from a note), the seed jar sorting screen, the Today window tile. New strings are inline English (for the i18n session).
+- **Build notes for cloud sessions:** Android SDK at `/home/user/android-sdk` (needs `dl.google.com`, allowed in the "MeetingMind" environment); Gradle needs `--no-configuration-cache` here; Maven Central sometimes answers 429, so retry after a minute.
 
 ## Release v51 for closed testing (2026-11-21)
 - **Bundle:** built at `6694dc6` from a clean tree and copied to the founder's `~/Downloads/meetingmind-v51.aab` (141.6 MB, sha256 `c2599ebc5c813139…`).

@@ -27,6 +27,8 @@ object Routes {
     const val PAYWALL = "paywall?trigger={trigger}"
     fun paywallRoute(trigger: String = "SETTINGS") = "paywall?trigger=$trigger"
     const val LEARN = "learn"
+    /** Personal: "Your garden". */
+    const val PERSONAL = "personal"
     const val LEARNING_SESSION = "learning_session/{noteId}"
     fun learningSessionRoute(noteId: String) = "learning_session/$noteId"
     const val LEARN_PRACTICE = "learn_practice?sessionId={sessionId}&activityId={activityId}"

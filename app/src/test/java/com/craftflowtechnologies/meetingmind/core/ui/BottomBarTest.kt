@@ -54,11 +54,13 @@ class BottomBarTest {
         compose.onNodeWithTag("bottom_nav_work").assertDoesNotExist()
     }
 
-    @Test fun personalOnlyGetsTasksAndSearch() {
+    /** Personal has a home of its own (the garden), so it claims a place like Work, Learning and Faith. */
+    @Test fun personalOnlyGetsPersonalAndTasks() {
         show(setOf(NotebookSpace.PERSONAL))
+        compose.onNodeWithTag("bottom_nav_personal").performClick()
         compose.onNodeWithTag("bottom_nav_tasks").performClick()
-        compose.onNodeWithTag("bottom_nav_search").performClick()
-        assertEquals(listOf(BottomNavDestination.TASKS, BottomNavDestination.SEARCH), tapped)
+        assertEquals(listOf(BottomNavDestination.PERSONAL, BottomNavDestination.TASKS), tapped)
+        compose.onNodeWithTag("bottom_nav_search").assertDoesNotExist()
     }
 
     @Test fun todayNotesAndNewAreAlwaysThere() {

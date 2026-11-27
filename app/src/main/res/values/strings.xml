@@ -194,7 +194,7 @@
     <string name="onboarding_space_faith">Faith</string>
     <string name="onboarding_space_faith_line">Sermons, Bible study, devotionals and prayer</string>
     <string name="onboarding_space_personal">Personal</string>
-    <string name="onboarding_space_personal_line">Conversations, ideas and voice notes</string>
+    <string name="onboarding_space_personal_line">Reflections, practices and ideas</string>
     <string name="onboarding_spaces_footnote">Keep at least one. You can change this any time in Settings.</string>
     <string name="onboarding_name_title_plain">What should we call you?</string>
     <string name="onboarding_name_optional">%1$s (optional)</string>

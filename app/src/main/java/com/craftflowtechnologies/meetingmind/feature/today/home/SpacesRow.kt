@@ -67,7 +67,7 @@ object SpaceLines {
             else -> "${g.learnDue} cards to review"
         }
         NotebookSpace.FAITH -> g.devotionalTitle?.takeIf { it.isNotBlank() } ?: "Today's devotional"
-        NotebookSpace.PERSONAL -> "Journal and ideas"
+        NotebookSpace.PERSONAL -> "Your garden"
     }
 
     fun tasks(g: SpaceGlance): String = when (g.tasksDue) {

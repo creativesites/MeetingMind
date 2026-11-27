@@ -34,7 +34,7 @@ object SpaceStyle {
         NotebookSpace.WORK -> "Meetings, tasks, projects and people"
         NotebookSpace.LEARNING -> "Lectures, classes, study and practice"
         NotebookSpace.FAITH -> "Sermons, the Bible, devotionals and prayer"
-        NotebookSpace.PERSONAL -> "Journal, ideas and life"
+        NotebookSpace.PERSONAL -> "Reflect, practise and keep ideas"
     }
 
     /** What turning the space on adds to the app, so the choice is concrete. */
@@ -42,7 +42,7 @@ object SpaceStyle {
         NotebookSpace.WORK -> "Adds the Work home, Tasks, Inbox and meeting briefs"
         NotebookSpace.LEARNING -> "Adds Learn, daily recall, your library and practice"
         NotebookSpace.FAITH -> "Adds Faith, the Bible, the daily devotional and prayer"
-        NotebookSpace.PERSONAL -> "Adds journal entries and personal notes"
+        NotebookSpace.PERSONAL -> "Adds your garden: a daily question, practices and a seed jar"
     }
 
     fun icon(space: NotebookSpace): ImageVector = when (space) {

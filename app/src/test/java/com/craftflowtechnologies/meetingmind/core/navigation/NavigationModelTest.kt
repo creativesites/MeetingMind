@@ -26,8 +26,10 @@ class NavigationModelTest {
         assertEquals(listOf(BarSlot.WORK, BarSlot.LEARN), BarConfig.slots(setOf(WORK, LEARNING)))
         assertEquals(listOf(BarSlot.WORK, BarSlot.TASKS), BarConfig.slots(setOf(WORK)))
         assertEquals(listOf(BarSlot.LEARN, BarSlot.TASKS), BarConfig.slots(setOf(LEARNING)))
-        assertEquals(listOf(BarSlot.TASKS, BarSlot.SEARCH), BarConfig.slots(setOf(PERSONAL)))
-        assertEquals(listOf(BarSlot.FAITH, BarSlot.TASKS), BarConfig.slots(setOf(FAITH, PERSONAL)))
+        // Personal is a space with a home of its own (the garden), so it claims a place like the others.
+        assertEquals(listOf(BarSlot.PERSONAL, BarSlot.TASKS), BarConfig.slots(setOf(PERSONAL)))
+        assertEquals(listOf(BarSlot.FAITH, BarSlot.PERSONAL), BarConfig.slots(setOf(FAITH, PERSONAL)))
+        assertEquals(listOf(BarSlot.WORK, BarSlot.PERSONAL), BarConfig.slots(setOf(WORK, PERSONAL)))
         assertEquals(listOf(BarSlot.WORK, BarSlot.FAITH), BarConfig.slots(setOf(WORK, FAITH)))
     }
 

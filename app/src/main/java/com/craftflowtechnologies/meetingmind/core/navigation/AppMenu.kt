@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Church
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.LocalFlorist
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Groups
@@ -275,6 +276,7 @@ private fun iconFor(icon: MenuIcon): ImageVector = when (icon) {
     MenuIcon.PLANS -> Icons.Rounded.CalendarMonth
     MenuIcon.TESTIMONIES -> Icons.Rounded.Celebration
     MenuIcon.JOURNAL -> Icons.Rounded.EditNote
+    MenuIcon.GARDEN -> Icons.Rounded.LocalFlorist
     MenuIcon.NOTES -> Icons.AutoMirrored.Rounded.Notes
     MenuIcon.SEARCH -> Icons.Rounded.Search
     MenuIcon.CIRCLES -> Icons.Rounded.Groups

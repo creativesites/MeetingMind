@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Church
+import androidx.compose.material.icons.filled.LocalFlorist
+import androidx.compose.material.icons.outlined.LocalFlorist
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.outlined.Home
@@ -77,7 +79,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Line
  */
 enum class BottomNavDestination {
     HOME, NOTES, NEW, SEARCH, SETTINGS,
-    WORK, LEARN, FAITH, TASKS,
+    WORK, LEARN, FAITH, PERSONAL, TASKS,
     /** No tab is current (a screen reached from elsewhere, such as Settings). */
     NONE
 }
@@ -108,6 +110,7 @@ private fun slotItem(slot: BarSlot): NavItem = when (slot) {
     BarSlot.WORK -> NavItem(BottomNavDestination.WORK, "Work", Icons.Filled.Work, Icons.Outlined.Work)
     BarSlot.LEARN -> NavItem(BottomNavDestination.LEARN, "Learn", Icons.Filled.School, Icons.Outlined.School)
     BarSlot.FAITH -> NavItem(BottomNavDestination.FAITH, "Faith", Icons.Filled.Church, Icons.Outlined.Church)
+    BarSlot.PERSONAL -> NavItem(BottomNavDestination.PERSONAL, "Personal", Icons.Filled.LocalFlorist, Icons.Outlined.LocalFlorist)
     BarSlot.TASKS -> NavItem(BottomNavDestination.TASKS, "Tasks", Icons.Filled.TaskAlt, Icons.Outlined.TaskAlt)
     BarSlot.SEARCH -> NavItem(BottomNavDestination.SEARCH, "Search", Icons.Filled.Search, Icons.Outlined.Search)
 }

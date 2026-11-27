@@ -137,6 +137,8 @@ fun TodayScreen(
     onOpenDevotional: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit = {},
     onOpenFaith: () -> Unit = {},
+    /** Opens Personal, the garden. */
+    onOpenPersonal: () -> Unit = {},
     onOpenWork: () -> Unit = {},
     onOpenLearn: () -> Unit = {},
     /** The Tasks card in "Your spaces". */
@@ -335,7 +337,7 @@ fun TodayScreen(
                             com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK -> onOpenWork()
                             com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.LEARNING -> onOpenLearn()
                             com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH -> onOpenFaith()
-                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL -> onNewNote()
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.PERSONAL -> onOpenPersonal()
                         }
                     },
                     onOpenTasks = onOpenTasks,

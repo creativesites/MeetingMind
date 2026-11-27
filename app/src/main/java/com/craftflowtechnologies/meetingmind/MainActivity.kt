@@ -358,6 +358,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.WORK -> Routes.WORK
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.LEARN -> Routes.LEARN
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.FAITH -> Routes.FAITH
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.PERSONAL -> Routes.PERSONAL
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.TASKS -> Routes.TASKS
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NONE -> Routes.HOME
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
@@ -613,6 +614,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenWork = { navController.navigate(Routes.WORK) },
                 onOpenLearn = { navController.navigate(Routes.LEARN) },
                 onOpenTasks = { navController.navigate(Routes.TASKS) },
+                onOpenPersonal = { navController.navigate(Routes.PERSONAL) },
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 homeCircles = homeCircles,
                 onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
@@ -769,6 +771,28 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onPlayMoment = { meetingId, startMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startMs)) },
                     onStartPractice = { navController.navigate(Routes.learnPracticeRoute()) }
                 )
+            }
+        }
+
+        // PERSONAL — "Your garden": the day's question, practices as plants, and the seed jar.
+        composable(Routes.PERSONAL) {
+            androidx.compose.material3.Scaffold(
+                contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+                bottomBar = {
+                    com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
+                        current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.PERSONAL,
+                        onNavigate = { if (it != com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.PERSONAL) navigateToPrimary(it) }
+                    )
+                }
+            ) { personalBar ->
+                Box(Modifier.padding(bottom = personalBar.calculateBottomPadding())) {
+                    com.craftflowtechnologies.meetingmind.feature.personal.PersonalHost(
+                        onAnswerAloud = { question -> navController.navigate(Routes.recordTitledRoute(RecordingType.JOURNAL, question)) },
+                        onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                        onOpenSeedJar = { navController.navigate(Routes.NOTES) },
+                        onCaptureIdea = { navController.navigate(Routes.recordTypeRoute(RecordingType.IDEA)) }
+                    )
+                }
             }
         }
 
