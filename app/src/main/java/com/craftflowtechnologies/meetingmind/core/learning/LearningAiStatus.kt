@@ -74,6 +74,10 @@ object StudyAiAnalytics {
     const val FEATURE_EXPLAIN = "explain"
     const val FEATURE_LESSON_ASK = "lesson_ask"
     const val FEATURE_HOME_ASK = "home_ask"
+    const val FEATURE_MISTAKE = "mistake"
+    const val FEATURE_EXPLAIN_SIMPLE = "explain_simple"
+    const val FEATURE_HINTS = "hints"
+    const val FEATURE_TEACH_BACK = "teach_back"
 
     fun track(feature: String, status: LearningAiStatus, madeOnPhone: Boolean = false) {
         val outcome = if (madeOnPhone && status is LearningAiStatus.Ready) LearningAiStatus.OUTCOME_LOCAL else status.outcome

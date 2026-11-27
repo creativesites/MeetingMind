@@ -183,8 +183,11 @@ class LearningAiEngine(
             appendLine("Respond with JSON: {\"overall\": \"COVERED|PARTLY_COVERED|NOT_YET_DEMONSTRATED\", \"score\": 85, \"summary\": \"evaluation\", \"missing\": [\"points\"], \"socraticFollowUp\": \"question\", \"criteria\": [{\"claim\": \"c\", \"status\": \"MET|PARTIAL|UNMET\", \"feedback\": \"f\"}]}")
         }
 
-        val res = generateText(prompt, TEACHBACK_SCHEMA) ?: return null
-        return runCatching { parseTeachBackJson(stripMarkdownCodeFences(res), rubric) }.getOrNull()
+        val res = generateText(prompt, TEACHBACK_SCHEMA)
+        // Read straight after the call: the typed outcome travels on the evaluation so the screen can show the allowance panel.
+        val callStatus = lastStatus
+        if (res == null) return null
+        return runCatching { parseTeachBackJson(stripMarkdownCodeFences(res), rubric) }.getOrNull()?.copy(status = callStatus)
     }
 
     suspend fun evaluateTeachBack(
@@ -193,6 +196,8 @@ class LearningAiEngine(
         concept: LearningConcept?
     ): TeachBackEvaluation {
         evaluateTeachBackWithAi(rubric, spokenTranscript, concept)?.let { return it }
+        // The AI did not answer; the offline rubric below carries why (NoAi, AllowanceUsedUp, Failed).
+        val callStatus = lastStatus
 
         // Deterministic offline rubric evaluation
         val lowerTranscript = spokenTranscript.lowercase()
@@ -224,6 +229,7 @@ class LearningAiEngine(
         val missing = evaluations.filter { it.status == TeachBackStatus.UNMET }.map { it.criterion.claim }
 
         return TeachBackEvaluation(
+            status = callStatus,
             overallCoverage = coverage,
             scorePercent = score,
             summary = when (coverage) {

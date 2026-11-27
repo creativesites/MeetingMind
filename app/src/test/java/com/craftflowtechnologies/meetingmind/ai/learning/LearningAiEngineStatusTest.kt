@@ -73,6 +73,13 @@ class LearningAiEngineStatusTest {
     }
 
     @Test
+    fun `a teach-back evaluation carries the allowance outcome of its rubric fallback`() {
+        val engine = LearningAiEngine(transport = FakeCloud(allowanceFailure))
+        val eval = runBlocking { engine.evaluateTeachBack(rubric = emptyList(), spokenTranscript = "anything", concept = null) }
+        assertTrue(eval.status is LearningAiStatus.AllowanceUsedUp)
+    }
+
+    @Test
     fun `an ordinary cloud failure with no on-device model is a retryable failure, not an allowance`() {
         val engine = LearningAiEngine(transport = FakeCloud(AiResult.Failed("Gemini is unavailable right now.")))
         assertNull(runBlocking { engine.answerGenerally("What is an enzyme?") })
