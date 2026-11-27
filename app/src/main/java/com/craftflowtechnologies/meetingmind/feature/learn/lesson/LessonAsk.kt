@@ -3,6 +3,7 @@ package com.craftflowtechnologies.meetingmind.feature.learn.lesson
 import android.app.Application
 import com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine
 import com.craftflowtechnologies.meetingmind.ai.learning.LearningAnswer
+import com.craftflowtechnologies.meetingmind.core.learning.LearningAiStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -30,7 +31,11 @@ data class LessonAskTurn(
     val answer: LearningAnswer? = null,
     val generalPending: Boolean = false,
     val general: LearningAnswer? = null,
-    val error: String? = null
+    val error: String? = null,
+    /** Set when the managed allowance ran out: the answer below is the lecture's own words, with the calm panel and plans. */
+    val allowance: LearningAiStatus.AllowanceUsedUp? = null,
+    /** True when the answer was made on this phone after the cloud route ran out. Said quietly. */
+    val madeOnPhone: Boolean = false
 )
 
 /** The concept's state the concept sheet's "Not right?" panel needs: what the learner has already changed. */

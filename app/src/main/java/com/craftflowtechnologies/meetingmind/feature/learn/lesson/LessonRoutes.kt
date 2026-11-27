@@ -12,6 +12,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.compose.runtime.collectAsState
+import com.craftflowtechnologies.meetingmind.core.billing.Billing
+import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
+import com.craftflowtechnologies.meetingmind.core.learning.plansAction
 import com.craftflowtechnologies.meetingmind.feature.learn.ListenViewModel
 import com.craftflowtechnologies.meetingmind.feature.learn.ListenVoice
 import com.craftflowtechnologies.meetingmind.feature.learn.LessonViewModel
@@ -41,7 +44,9 @@ data class LessonActions(
     val onListen: (noteId: String) -> Unit,
     val onPractise: (sessionId: String) -> Unit,
     val onQuizConcept: (sessionId: String, conceptId: String) -> Unit,
-    val onOpenRecording: (meetingId: String, startAtMs: Long?) -> Unit
+    val onOpenRecording: (meetingId: String, startAtMs: Long?) -> Unit,
+    /** Opens Plans from the allowance panel (the trigger says why). The default does nothing. */
+    val onOpenPlans: (PaywallTrigger) -> Unit = {}
 )
 
 /**
@@ -76,6 +81,7 @@ fun LessonHost(noteId: String, actions: LessonActions) {
         explain = explain,
         openConceptId = openConcept,
         onBack = actions.onBack,
+        onSeePlans = plansAction(Billing.gateway.configured) { actions.onOpenPlans(PaywallTrigger.USAGE_EXHAUSTED) },
         onPlayFrom = vm::playFrom,
         onTogglePlay = vm::togglePlay,
         onHearSummary = { readAloud = true },

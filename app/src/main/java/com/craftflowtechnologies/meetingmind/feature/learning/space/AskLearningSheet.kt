@@ -68,6 +68,7 @@ import com.craftflowtechnologies.meetingmind.core.model.LearningEvidence
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
+import com.craftflowtechnologies.meetingmind.feature.learn.ui.lesson.AllowanceUsedUpPanel
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.feature.learning.AskScopeKind
 import com.craftflowtechnologies.meetingmind.feature.learning.AskTurn
@@ -94,7 +95,9 @@ fun AskLearningSheet(
     onDismiss: () -> Unit,
     onStartPractice: () -> Unit,
     onShowInTranscript: ((LearningEvidence) -> Unit)? = null,
-    initialQuestion: String? = null
+    initialQuestion: String? = null,
+    /** Opens Plans from the allowance panel. Null when this build cannot sell plans, or the caller has no Plans route. */
+    onSeePlans: (() -> Unit)? = null
 ) {
     val turns by viewModel.askTurns.collectAsState()
     val scope by viewModel.askScope.collectAsState()
@@ -164,7 +167,8 @@ fun AskLearningSheet(
                         meetingId = sessionMeetingId,
                         onCite = { p -> citation = p to p.sourceTitle },
                         onGeneral = { viewModel.askGenerally(turn.id) },
-                        onQuiz = { viewModel.quizFromAnswer(turn) { onDismiss(); onStartPractice() } }
+                        onQuiz = { viewModel.quizFromAnswer(turn) { onDismiss(); onStartPractice() } },
+                        onSeePlans = onSeePlans
                     )
                 }
                 if (practiceError != null) item(key = "perr") { StatusLine(StatusKind.Info, practiceError!!) }
@@ -231,7 +235,8 @@ private fun TurnView(
     meetingId: String?,
     onCite: (AskPassage) -> Unit,
     onGeneral: () -> Unit,
-    onQuiz: () -> Unit
+    onQuiz: () -> Unit,
+    onSeePlans: (() -> Unit)?
 ) {
     // Hidden after the student reported it (Play AI-content policy); "Show" brings it back.
     var hidden by rememberSaveable(turn.id) { mutableStateOf(false) }
@@ -255,7 +260,9 @@ private fun TurnView(
             turn.answer != null -> AnswerView(turn.answer, turn.scopeLabel, onCite)
         }
         if (hidden) return@Column
+        turn.allowance?.let { AllowanceUsedUpPanel(it.resetsAtMs, onSeePlans) }
         turn.error?.let { StatusLine(StatusKind.Info, it) }
+        if (turn.madeOnPhone && turn.answer != null) Text("Made on this phone", style = MM.type.caption, color = MM.colors.inkSecondary)
         val a = turn.answer
         if (a != null && a.kind == AnswerKind.NOT_IN_SOURCE && turn.general == null) {
             if (turn.generalPending) {

@@ -56,6 +56,15 @@ class ExplainEngineTest {
     }
 
     @Test
+    fun `a used-up allowance is reported as the allowance, not as an error`() {
+        val model = Canned(AiResult.Failed("This month's cloud allowance is used up.", retryable = false))
+        val state = runBlocking { ExplainEngine(model).explain(concept(evidence), ExplainMode.SIMPLER, segments) }
+        assertTrue(state.allowance != null)
+        assertNull(state.error)
+        assertNull(state.text)
+    }
+
+    @Test
     fun `a concept with no lecture evidence is not explained`() {
         val model = Canned(AiResult.Success("{\"text\": \"Made up.\"}"))
         val state = runBlocking { ExplainEngine(model).explain(concept(emptyList()), ExplainMode.SIMPLER, segments) }

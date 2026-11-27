@@ -8,6 +8,7 @@ import com.craftflowtechnologies.meetingmind.ai.routing.LanguageModelFactory
 import com.craftflowtechnologies.meetingmind.ai.routing.ResolvedLanguageModel
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.ModelCapability
+import com.craftflowtechnologies.meetingmind.core.model.ModelTier
 import com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy
 import kotlinx.coroutines.flow.first
 
@@ -18,6 +19,12 @@ import kotlinx.coroutines.flow.first
 fun interface StudyModelSource {
     /** Null when no model is available for this note. */
     suspend fun resolve(noteId: String): ResolvedLanguageModel?
+
+    /**
+     * The on-device model only, for one retry after the cloud allowance is used up. Null when none is installed.
+     * Never reaches the network.
+     */
+    suspend fun resolveLocal(noteId: String): ResolvedLanguageModel? = null
 }
 
 /**
@@ -36,6 +43,12 @@ class AppStudyModelSource(private val context: Context) : StudyModelSource {
         )
         return factory.resolve(profile, ModelCapability.SUMMARIZATION)
     }
+
+    override suspend fun resolveLocal(noteId: String): ResolvedLanguageModel? = LanguageModelFactory(
+        context = context,
+        modelStorage = LocalModelStorage(context),
+        geminiTransport = CloudAi.transport(context)
+    ).resolveLocal(ModelCapability.SUMMARIZATION, ModelTier.RECOMMENDED)
 
     /** Frees the on-device model after a job, as note AI does. Cloud models hold nothing. */
     suspend fun done(model: ResolvedLanguageModel) {
