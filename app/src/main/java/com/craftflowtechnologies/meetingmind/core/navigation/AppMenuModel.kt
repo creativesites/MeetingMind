@@ -76,12 +76,12 @@ object AppMenuModel {
             "personal", "Personal", listOf(
                 // One list with the garden's places (feature/personal/garden/GardenPlace.kt).
                 go("personal.garden", "Your garden", MenuIcon.GARDEN, Routes.PERSONAL, "Today's question, practices and ideas"),
-                go("personal.rituals", "Rituals", MenuIcon.PLANS, Routes.personalRoute("SANCTUARY"), "Morning and evening routines"),
-                go("personal.journeys", "Journeys & challenges", MenuIcon.PLANS, Routes.personalRoute("GROWTH"), "Guided journeys, challenges and coaching"),
-                go("personal.living_journal", "Living journal", MenuIcon.JOURNAL, Routes.personalRoute("JOURNAL"), "Day pages, volumes and the calendar"),
-                go("personal.ideas", "Seed jar", MenuIcon.CREATE, Routes.personalRoute("IDEAS"), "Ideas you have kept, and the ones being grown"),
-                go("personal.vault", "Keepsakes", MenuIcon.ARCHIVE, Routes.personalRoute("VAULT"), "Time capsules and memories, sealed until their day"),
-                go("personal.privacy", "Privacy & sync", MenuIcon.SETTINGS, Routes.personalRoute("SANCTUARY", tools = true), "Sanctuary lock, Obsidian and Day One"),
+                go("personal.rituals", "Rituals", MenuIcon.PLANS, Routes.gardenPlaceRoute("rituals"), "Morning and evening routines"),
+                go("personal.journeys", "Journeys & challenges", MenuIcon.PLANS, Routes.gardenPlaceRoute("journeys"), "Guided journeys, challenges and coaching"),
+                go("personal.living_journal", "Living journal", MenuIcon.JOURNAL, Routes.gardenPlaceRoute("journal"), "Day pages, volumes and the calendar"),
+                go("personal.ideas", "Seed jar", MenuIcon.CREATE, Routes.gardenPlaceRoute("seed_jar"), "Ideas you have kept, and the ones being grown"),
+                go("personal.vault", "Keepsakes", MenuIcon.ARCHIVE, Routes.gardenPlaceRoute("keepsakes"), "Time capsules and memories, sealed until their day"),
+                go("personal.privacy", "Privacy & sync", MenuIcon.SETTINGS, Routes.gardenPlaceRoute("privacy"), "Sanctuary lock, Obsidian and Day One"),
                 go("personal.idea", "Capture an idea", MenuIcon.RECORD, Routes.recordTypeRoute(RecordingType.IDEA))
             ), NotebookSpace.PERSONAL
         )

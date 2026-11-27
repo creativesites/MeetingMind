@@ -1,5 +1,9 @@
 package com.craftflowtechnologies.meetingmind.feature.personal
 
+import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
+import com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenPageHeader
+import com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenPlace
+import com.craftflowtechnologies.meetingmind.feature.personal.garden.GardenTheme
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -127,38 +131,71 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * The first-class Personal Space hub ("Remember · Reflect · Build · Grow · Preserve").
- *
- * Uses a clean 5-tab in-vertical floating dock (Sanctuary · Journal · Ideas · Growth · Vault)
- * so Routines, Journeys, Challenges, Coaching, Playbooks, Living Journal, Idea Studio, and Time
- * Capsules feel like one coherent personal sanctuary rather than a pile of utilities.
+ * One Personal capability on its own garden page. Each page keeps the Sanctuary's logic and data (the
+ * same view model and repository); the look is the garden's, through [GardenTheme]. The places are
+ * listed in [GardenPlace]; there is no tab strip. The sanctuary lock and screenshot shield apply to
+ * every page.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PersonalSpaceScreen(
+fun GardenPlaceScreen(
+    place: GardenPlace,
     viewModel: SanctuaryViewModel,
-    initialTab: String? = null,
     onStartRoutine: (routineId: String, minEffort: Boolean) -> Unit,
     onRecordJournal: () -> Unit,
     onRecordIdea: () -> Unit,
     onOpenNote: (String) -> Unit,
     onOpenYouTube: () -> Unit,
+    onOpenPlace: (GardenPlace) -> Unit,
+    onBack: () -> Unit,
     onHome: () -> Unit,
-    openTools: Boolean = false
+    onOpenPaywall: (PaywallTrigger) -> Unit
+) {
+    GardenTheme {
+        GardenPlaceContent(
+            place = place,
+            viewModel = viewModel,
+            onStartRoutine = onStartRoutine,
+            onRecordJournal = onRecordJournal,
+            onRecordIdea = onRecordIdea,
+            onOpenNote = onOpenNote,
+            onOpenYouTube = onOpenYouTube,
+            onOpenPlace = onOpenPlace,
+            onBack = onBack,
+            onHome = onHome,
+            autopilotUnlocked = AutopilotWorkspace.isUnlocked(LocalContext.current),
+            onOpenPaywall = onOpenPaywall
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GardenPlaceContent(
+    place: GardenPlace,
+    viewModel: SanctuaryViewModel,
+    onStartRoutine: (routineId: String, minEffort: Boolean) -> Unit,
+    onRecordJournal: () -> Unit,
+    onRecordIdea: () -> Unit,
+    onOpenNote: (String) -> Unit,
+    onOpenYouTube: () -> Unit,
+    onOpenPlace: (GardenPlace) -> Unit,
+    onBack: () -> Unit,
+    onHome: () -> Unit,
+    autopilotUnlocked: Boolean,
+    onOpenPaywall: (PaywallTrigger) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val hostActivity = remember(context) { context.findFragmentActivity() }
     val biometricAuth = remember(hostActivity) { hostActivity?.let { BiometricPromptAuthenticator(it) } }
 
-    LaunchedEffect(initialTab) { viewModel.selectTabByName(initialTab) }
+    LaunchedEffect(place) { viewModel.selectTab(place.tab ?: PersonalTab.SANCTUARY) }
     LifecycleResumeEffect(Unit) {
         viewModel.refreshTodayIfNeeded()
         onPauseOrDispose {}
     }
 
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
-    val tab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val journalMode by viewModel.journalViewMode.collectAsStateWithLifecycle()
     val growthSubTab by viewModel.growthSubTab.collectAsStateWithLifecycle()
     val banner by viewModel.statusBanner.collectAsStateWithLifecycle()
@@ -191,8 +228,6 @@ fun PersonalSpaceScreen(
     var showCustomChallengeDialog by remember { mutableStateOf(false) }
     var showLifeChapterDialog by remember { mutableStateOf(false) }
     var showAddPersonDialog by remember { mutableStateOf(false) }
-    var showSanctuaryToolsSheet by remember { mutableStateOf(false) }
-    LaunchedEffect(openTools) { if (openTools) showSanctuaryToolsSheet = true }
     var chapterDetailTarget by remember { mutableStateOf<LifeChapter?>(null) }
     var enrollmentDetailTarget by remember { mutableStateOf<GrowthEnrollment?>(null) }
     var showLettingGoSheet by remember { mutableStateOf(false) }
@@ -266,47 +301,29 @@ fun PersonalSpaceScreen(
         return
     }
 
+    val lastSyncLabel = remember(ui.lastObsidianSyncMs) {
+        if (ui.lastObsidianSyncMs > 0L) {
+            SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(ui.lastObsidianSyncMs))
+        } else null
+    }
+
     Box(Modifier.fillMaxSize()) {
-        Scaffold(
-            containerColor = c.background,
-            bottomBar = {
-                PersonalDockBar(
-                    current = tab,
-                    onSelect = viewModel::selectTab
-                )
-            }
-        ) { padding ->
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .statusBarsPadding()
-                    .testTag("personal_space_screen")
-            ) {
-                ScreenHeader(
-                    title = when (tab) {
-                        PersonalTab.SANCTUARY -> stringResource(R.string.personal_header_sanctuary)
-                        PersonalTab.JOURNAL -> stringResource(R.string.personal_header_journal)
-                        PersonalTab.IDEAS -> stringResource(R.string.personal_header_ideas)
-                        PersonalTab.GROWTH -> stringResource(R.string.personal_header_growth)
-                        PersonalTab.VAULT -> stringResource(R.string.personal_header_vault)
-                    },
-                    modifier = Modifier.padding(horizontal = MM.space.l),
-                    actions = {
-                        IconButton(
-                            onClick = { showSanctuaryToolsSheet = true },
-                            modifier = Modifier.testTag("personal_sanctuary_tools_button")
-                        ) {
-                            Icon(
-                                Icons.Rounded.Shield,
-                                contentDescription = "Sanctuary Tools & Privacy",
-                                tint = if (lockEnabled) c.accent else c.inkSecondary
-                            )
-                        }
-                        TextAction(stringResource(R.string.personal_action_today), onClick = onHome)
-                        AppMenuButton(focus = NotebookSpace.PERSONAL)
-                    }
-                )
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(MM.colors.background)
+                .statusBarsPadding()
+                .testTag("garden_place_${place.name.lowercase()}")
+        ) {
+            GardenPageHeader(
+                title = place.title,
+                onBack = onBack,
+                modifier = Modifier.padding(top = MM.space.xs),
+                actions = {
+                    TextAction(stringResource(R.string.personal_action_today), onClick = onHome)
+                    AppMenuButton(focus = NotebookSpace.PERSONAL)
+                }
+            )
 
                 banner?.let { msg ->
                     Box(Modifier.padding(horizontal = MM.space.l, vertical = MM.space.xs)) {
@@ -314,8 +331,8 @@ fun PersonalSpaceScreen(
                     }
                 }
 
-                when (tab) {
-                    PersonalTab.SANCTUARY -> SanctuaryTabContent(
+                when (place) {
+                    GardenPlace.RITUALS -> SanctuaryTabContent(
                         ui = ui,
                         onTapIntention = { showIntentionDialog = true },
                         onToggleMinEffortDay = viewModel::toggleMinEffortDay,
@@ -332,20 +349,30 @@ fun PersonalSpaceScreen(
                         onOpenNote = onOpenNote,
                         onOpenMemoryCeremony = { memoryCeremonyTarget = it },
                         onOpenGrowthTab = {
-                            viewModel.selectTab(PersonalTab.GROWTH)
                             viewModel.selectGrowthSubTab(it)
+                            onOpenPlace(GardenPlace.JOURNEYS)
                         }
                     )
-                    PersonalTab.JOURNAL -> LivingJournalTabContent(
+                    GardenPlace.JOURNAL -> LivingJournalTabContent(
                         ui = ui,
                         viewMode = journalMode,
                         onSelectViewMode = viewModel::selectJournalViewMode,
                         onRecordJournal = onRecordJournal,
                         onQuickWrite = { showQuickWriteSheet = true },
                         onOpenLettingGo = { showLettingGoSheet = true },
-                        onOpenNote = onOpenNote
+                        onOpenNote = onOpenNote,
+                        autopilot = {
+                            PersonalAutopilotCard(
+                                autopilotUnlocked = autopilotUnlocked,
+                                isAutopilotRunning = ui.isAutopilotRunning,
+                                onRunPersonalAutopilot = { recipe ->
+                                    viewModel.runPersonalAutopilot(recipe) { noteId -> onOpenNote(noteId) }
+                                },
+                                onOpenPaywall = onOpenPaywall
+                            )
+                        }
                     )
-                    PersonalTab.IDEAS -> IdeaStudioTabContent(
+                    GardenPlace.SEED_JAR -> IdeaStudioTabContent(
                         ui = ui,
                         onRecordIdea = onRecordIdea,
                         onQuickSpark = { showSparkDialog = true },
@@ -355,7 +382,7 @@ fun PersonalSpaceScreen(
                         onDismissCollision = viewModel::dismissIdeaCollision,
                         onOpenNote = onOpenNote
                     )
-                    PersonalTab.GROWTH -> GrowthTabContent(
+                    GardenPlace.JOURNEYS -> GrowthTabContent(
                         ui = ui,
                         subTab = growthSubTab,
                         onSelectSubTab = viewModel::selectGrowthSubTab,
@@ -380,7 +407,7 @@ fun PersonalSpaceScreen(
                         onOpenNote = onOpenNote,
                         onOpenYouTube = onOpenYouTube
                     )
-                    PersonalTab.VAULT -> MemoryVaultTabContent(
+                    GardenPlace.KEEPSAKES -> MemoryVaultTabContent(
                         ui = ui,
                         onSealCapsule = { showCapsuleDialog = true },
                         onTapLockedCapsule = { msg -> viewModel.showInfoBanner(msg) },
@@ -388,9 +415,27 @@ fun PersonalSpaceScreen(
                         onOpenNote = onOpenNote,
                         onRestartRefresher = viewModel::restartAsRefresher
                     )
+                    GardenPlace.PRIVACY -> PrivacySyncPage(
+                        lockEnabled = lockEnabled,
+                        recentsShieldEnabled = recentsShieldEnabled,
+                        obsidianVaultLabel = ui.obsidianVaultLabel,
+                        lastSyncLabel = lastSyncLabel,
+                        onToggleLock = { enabled ->
+                            lockEnabled = enabled
+                            PersonalSanctuaryLock.setLockEnabled(context, enabled)
+                            if (enabled) PersonalSanctuaryLock.markUnlocked()
+                        },
+                        onToggleRecentsShield = { enabled ->
+                            recentsShieldEnabled = enabled
+                            PersonalSanctuaryLock.setRecentsShieldEnabled(context, enabled)
+                        },
+                        onLockNow = { PersonalSanctuaryLock.lockNow() },
+                        onPickObsidianFolder = { obsidianFolderPicker.launch(null) },
+                        onSyncObsidianNow = { viewModel.syncObsidianVault() },
+                        onImportDayOneJson = { dayOneJsonPicker.launch(arrayOf("application/json", "text/plain", "*/*")) }
+                    )
                 }
             }
-        }
 
         MilestoneHost(
             kind = pendingMilestone,
@@ -629,44 +674,6 @@ fun PersonalSpaceScreen(
                 memoryCeremonyTarget = null
                 viewModel.replyToPastMemory(mem.id, replyText, onCreated = onOpenNote)
             }
-        )
-    }
-
-    if (showSanctuaryToolsSheet) {
-        val lastSyncLabel = remember(ui.lastObsidianSyncMs) {
-            if (ui.lastObsidianSyncMs > 0L) {
-                SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(ui.lastObsidianSyncMs))
-            } else null
-        }
-        PersonalSanctuaryToolsSheet(
-            lockEnabled = lockEnabled,
-            recentsShieldEnabled = recentsShieldEnabled,
-            obsidianVaultLabel = ui.obsidianVaultLabel,
-            lastSyncLabel = lastSyncLabel,
-            isAutopilotRunning = ui.isAutopilotRunning,
-            onToggleLock = { enabled ->
-                lockEnabled = enabled
-                PersonalSanctuaryLock.setLockEnabled(context, enabled)
-                if (enabled) PersonalSanctuaryLock.markUnlocked()
-            },
-            onToggleRecentsShield = { enabled ->
-                recentsShieldEnabled = enabled
-                PersonalSanctuaryLock.setRecentsShieldEnabled(context, enabled)
-            },
-            onLockNow = {
-                showSanctuaryToolsSheet = false
-                PersonalSanctuaryLock.lockNow()
-            },
-            onPickObsidianFolder = { obsidianFolderPicker.launch(null) },
-            onSyncObsidianNow = { viewModel.syncObsidianVault() },
-            onImportDayOneJson = { dayOneJsonPicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
-            onRunPersonalAutopilot = { recipe ->
-                viewModel.runPersonalAutopilot(recipe) { noteId ->
-                    showSanctuaryToolsSheet = false
-                    onOpenNote(noteId)
-                }
-            },
-            onDismiss = { showSanctuaryToolsSheet = false }
         )
     }
 
@@ -1023,7 +1030,8 @@ private fun LivingJournalTabContent(
     onRecordJournal: () -> Unit,
     onQuickWrite: () -> Unit,
     onOpenLettingGo: () -> Unit,
-    onOpenNote: (String) -> Unit
+    onOpenNote: (String) -> Unit,
+    autopilot: @Composable () -> Unit = {}
 ) {
     val c = MM.colors
     val now = System.currentTimeMillis()
@@ -1053,6 +1061,8 @@ private fun LivingJournalTabContent(
         contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.m),
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
+        item(key = "journal_autopilot") { autopilot() }
+
         // View Switcher + Search + Mood Filter + Quick Actions
         item(key = "journal_controls") {
             Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
@@ -1742,69 +1752,6 @@ private fun MemoryVaultTabContent(
                     onOpenAnthology = enroll.finaleNoteId?.let { fId -> { onOpenNote(fId) } },
                     onRestartRefresher = { onRestartRefresher(enroll) }
                 )
-            }
-        }
-    }
-}
-
-// ====================================================================== IN-VERTICAL 5-TAB FLOATING DOCK
-
-@Composable
-private fun PersonalDockBar(
-    current: PersonalTab,
-    onSelect: (PersonalTab) -> Unit
-) {
-    val c = MM.colors
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = MM.space.m, vertical = MM.space.s),
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            shape = MM.radius.pill,
-            color = c.surfaceRaised,
-            border = BorderStroke(1.dp, c.line),
-            shadowElevation = 6.dp
-        ) {
-            Row(
-                Modifier.padding(horizontal = MM.space.xs, vertical = MM.space.xs),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-            ) {
-                PersonalTab.entries.forEach { t ->
-                    val selected = t == current
-                    val icon: ImageVector = when (t) {
-                        PersonalTab.SANCTUARY -> Icons.Rounded.SelfImprovement
-                        PersonalTab.JOURNAL -> Icons.AutoMirrored.Rounded.MenuBook
-                        PersonalTab.IDEAS -> Icons.Rounded.Lightbulb
-                        PersonalTab.GROWTH -> Icons.Rounded.Explore
-                        PersonalTab.VAULT -> Icons.Rounded.Inventory2
-                    }
-                    Surface(
-                        onClick = { onSelect(t) },
-                        shape = MM.radius.pill,
-                        color = if (selected) c.accentWash else c.surfaceRaised,
-                        modifier = Modifier.testTag("personal_dock_${t.name.lowercase()}")
-                    ) {
-                        Row(
-                            Modifier.padding(horizontal = if (selected) 12.dp else 10.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                icon,
-                                contentDescription = t.label,
-                                tint = if (selected) c.accent else c.inkSecondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            if (selected) {
-                                Spacer(Modifier.width(6.dp))
-                                Text(t.label, style = MM.type.bodyStrong, color = c.ink)
-                            }
-                        }
-                    }
-                }
             }
         }
     }

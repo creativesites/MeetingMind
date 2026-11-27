@@ -282,11 +282,6 @@ class SanctuaryViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun selectTab(tab: PersonalTab) { _selectedTab.value = tab }
 
-    fun selectTabByName(name: String?) {
-        if (name.isNullOrBlank()) return
-        PersonalTab.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }?.let { _selectedTab.value = it }
-    }
-
     fun selectJournalViewMode(mode: JournalViewMode) { _journalViewMode.value = mode }
     fun selectGrowthSubTab(tab: GrowthSubTab) { _growthSubTab.value = tab }
     fun dismissBanner() { _statusBanner.value = null }

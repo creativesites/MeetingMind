@@ -1,5 +1,7 @@
 package com.craftflowtechnologies.meetingmind.ui.theme
 
+import androidx.compose.ui.graphics.lerp
+
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
@@ -140,3 +142,41 @@ object GardenColors {
         )
     }
 }
+
+/**
+ * The garden's colours as the app's design tokens. Garden pages sit on the garden's soil, which is dark
+ * in both themes, so the text is the soil's light ink. Every Sanctuary body and sheet already reads
+ * [MM.colors], so providing this set restyles them without touching their code.
+ */
+fun gardenMMColors(p: GardenPalette): MMColors = MMColors(
+    isDark = true,
+    background = p.soil,
+    surface = lerp(p.soil, Color.White, 0.07f),
+    surfaceRaised = lerp(p.soil, Color.White, 0.12f),
+    surfaceSunk = lerp(p.soil, Color.Black, 0.3f),
+    canvas = p.soil,
+    track = lerp(p.soil, Color.White, 0.2f),
+    ink = GardenColors.SoilInk,
+    inkSecondary = GardenColors.SoilInkSoft,
+    inkMuted = lerp(GardenColors.SoilInkSoft, p.soil, 0.4f),
+    inkFaint = lerp(GardenColors.SoilInkSoft, p.soil, 0.6f),
+    onInk = p.soil,
+    line = GardenColors.SoilLine,
+    lineSoft = GardenColors.SoilGlass,
+    lineFaint = lerp(p.soil, Color.White, 0.08f),
+    accent = GardenColors.Gold,
+    accentWash = lerp(p.soil, GardenColors.Gold, 0.22f),
+    onAccent = GardenColors.OnGold,
+    success = GardenColors.Leaf3,
+    warning = GardenColors.GoldSoft,
+    danger = GardenColors.BloomCore,
+    dangerWash = lerp(p.soil, GardenColors.BloomCore, 0.22f),
+    gold = GardenColors.Gold,
+    goldWash = lerp(p.soil, GardenColors.Gold, 0.16f),
+    goldInk = GardenColors.GoldSoft,
+    speaker2 = GardenColors.Leaf1,
+    speaker3 = GardenColors.GoldDeep,
+    speaker4 = GardenColors.Leaf4,
+    recording = GardenColors.BloomCore,
+    scrim = Color.Black.copy(alpha = 0.55f)
+)
