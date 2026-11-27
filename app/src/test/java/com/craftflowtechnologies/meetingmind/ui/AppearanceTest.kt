@@ -53,8 +53,8 @@ class AppearanceTest {
         assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.EVERYDAY).encode()).homeStyle)
     }
 
-    @Test fun onlyTheThreeHomesAreSelectable() {
-        assertEquals(listOf(HomeStyle.TODAY, HomeStyle.PROFESSIONAL, HomeStyle.LEARNING, HomeStyle.CALM), HomeStyle.SELECTABLE)
+    @Test fun onlyTheVisibleHomesAreSelectable() {
+        assertEquals(listOf(HomeStyle.TODAY, HomeStyle.PROFESSIONAL, HomeStyle.LEARNING, HomeStyle.PERSONAL, HomeStyle.CALM), HomeStyle.SELECTABLE)
     }
 
     @Test fun accentRecolorsBothPalettesAndKeepsTheRest() {

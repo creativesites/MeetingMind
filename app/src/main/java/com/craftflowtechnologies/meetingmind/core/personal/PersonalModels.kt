@@ -436,7 +436,7 @@ object PersonalNoteMeta {
 }
 
 enum class IdeaStage(val label: String) {
-    SPARK("Spark"),
+    SPARK("Seed"),
     SIMMERING("Simmering"),
     BUILDING("Building"),
     SHIPPED("Shipped");
